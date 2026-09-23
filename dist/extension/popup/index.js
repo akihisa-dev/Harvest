@@ -1,6 +1,21 @@
 "use strict";
+const openButton = document.querySelector("#open-workspace");
 const statusElement = document.querySelector("#status");
-if (!statusElement) {
-    throw new Error("Popup status element is missing.");
-}
-statusElement.textContent = "Harvest拡張機能の初期画面です。機能はまだ定義されていません。";
+if (!openButton || !statusElement)
+    throw new Error("Popup elements are missing.");
+openButton.addEventListener("click", async () => {
+    openButton.disabled = true;
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const sourceId = tab?.id;
+        const url = new URL(chrome.runtime.getURL("app/index.html"));
+        if (sourceId !== undefined)
+            url.searchParams.set("tab", String(sourceId));
+        await chrome.tabs.create({ url: url.href });
+        window.close();
+    }
+    catch {
+        statusElement.textContent = "画面を開けませんでした。もう一度お試しください。";
+        openButton.disabled = false;
+    }
+});

@@ -9,6 +9,11 @@ for (const path of [
   "../dist/extension/popup/index.html",
   "../dist/extension/popup/index.js",
   "../dist/extension/popup/style.css",
+  "../dist/extension/app/index.html",
+  "../dist/extension/app/index.js",
+  "../dist/extension/app/style.css",
+  "../dist/extension/core/images.js",
+  "../dist/extension/core/pdf.js",
   "../dist/extension/_locales/ja/messages.json"
 ]) {
   await access(new URL(path, import.meta.url));

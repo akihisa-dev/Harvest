@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Harvest | 画像を集める</title>
+    <link rel="stylesheet" href="style.css">
+    <script type="module" src="index.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar"><h1>Harvest</h1><span>ページの画像からPDFを作成</span></header>
+    <main>
+      <section class="controls" aria-labelledby="source-heading">
+        <h2 id="source-heading">収集するページ</h2>
+        <div class="source-row">
+          <label for="source-tab">開いているページ</label>
+          <select id="source-tab"></select>
+          <button id="scan" type="button">画像を探す</button>
+        </div>
+        <p class="hint">ページ内の画像を探し、画像一覧につながるリンクがあればその先も調べます。</p>
+        <div id="links" class="links" hidden></div>
+      </section>
+      <section class="results" aria-labelledby="images-heading">
+        <div class="section-head"><h2 id="images-heading">画像</h2><span id="count">0枚</span></div>
+        <div id="groups" class="groups" hidden></div>
+        <div class="toolbar"><button id="select-all" type="button" disabled>すべて選択</button><button id="clear-all" type="button" disabled>選択を解除</button></div>
+        <p id="empty">ページを選んで「画像を探す」を押してください。</p>
+        <ol id="images" class="image-list"></ol>
+      </section>
+      <aside class="export" aria-labelledby="export-heading">
+        <h2 id="export-heading">PDFを保存</h2>
+        <p>選択した画像を、一覧の上から順に1枚ずつページに配置します。矢印で順番を変えられます。</p>
+        <button id="export" type="button" disabled>選択した画像をPDFにする</button>
+        <p id="status" role="status" aria-live="polite"></p>
+      </aside>
+    </main>
+  </body>
+</html>

@@ -32,10 +32,17 @@ try {
   if (result.status !== 0) throw new Error("TypeScriptのビルドに失敗しました。");
 
   await mkdir(join(stage, "popup"), { recursive: true });
+  await mkdir(join(stage, "app"), { recursive: true });
+  await mkdir(join(stage, "core"), { recursive: true });
   await mkdir(join(stage, "_locales", "ja"), { recursive: true });
   await copyFile(join(root, "popup", "index.html"), join(stage, "popup", "index.html"));
   await copyFile(join(root, "popup", "style.css"), join(stage, "popup", "style.css"));
   await copyFile(join(stage, ".compiled", "extension", "popup.js"), join(stage, "popup", "index.js"));
+  await copyFile(join(root, "app", "index.html"), join(stage, "app", "index.html"));
+  await copyFile(join(root, "app", "style.css"), join(stage, "app", "style.css"));
+  await copyFile(join(stage, ".compiled", "extension", "app.js"), join(stage, "app", "index.js"));
+  await copyFile(join(stage, ".compiled", "core", "images.js"), join(stage, "core", "images.js"));
+  await copyFile(join(stage, ".compiled", "core", "pdf.js"), join(stage, "core", "pdf.js"));
   await copyFile(join(root, "_locales", "ja", "messages.json"), join(stage, "_locales", "ja", "messages.json"));
   await writeFile(join(stage, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   await rm(join(stage, ".compiled"), { recursive: true, force: true });
