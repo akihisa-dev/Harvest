@@ -1,0 +1,20 @@
+{
+  "name": "harvest-chrome-extension",
+  "version": "0.1.0",
+  "description": "Harvest Chrome extension",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "packageManager": "pnpm@12.5.1",
+  "engines": { "node": ">=22 <27" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit --pretty false",
+    "check:runtime": "node scripts/check-runtime.mjs",
+    "check:version": "node scripts/check-version.mjs",
+    "check:manifest": "node scripts/check-manifest.mjs",
+    "check:build": "node scripts/check-build.mjs",
+    "verify": "pnpm check:runtime && pnpm build && pnpm typecheck && pnpm check:manifest && pnpm check:build && pnpm check:version",
+    "verify:full": "pnpm verify"
+  },
+  "devDependencies": { "typescript": "6.0.3" }
+}
