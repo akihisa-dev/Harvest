@@ -1,0 +1,21 @@
+name: 機能の提案
+description: 解決したい問題と期待する結果を提案します
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 解決したい問題
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 期待する結果
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: 権限・データ・対象サイトへの影響
+      description: 分からない場合は空欄で構いません。

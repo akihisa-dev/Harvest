@@ -12,12 +12,13 @@ pnpmの版は`package.json`と`pnpm-lock.yaml`に固定し、通常設定は`pnp
 
 ```sh
 pnpm install --frozen-lockfile
+pnpm setup:hooks
 pnpm verify:full
 ```
 
 `pnpm build`で`dist/extension/`を作成し、Chromeの拡張機能管理画面から「パッケージ化されていない拡張機能を読み込む」で読み込みます。`dist/extension/`はソースと同期してGitにも登録します。それ以外の`dist/`生成物は登録しません。
 
-Chrome APIに依存しない処理はsrc/core/、Chrome固有処理はsrc/extension/に置きます。権限・対象サイトは必要な機能が決まるまで追加しません。
+Chrome APIに依存しない処理はsrc/core/、Chrome固有処理はsrc/extension/に置きます。権限・対象サイトは必要な機能が決まるまで追加しません。作業規約はAGENTS.md、参加手順はCONTRIBUTING.md、GitHub公開前の設定はdocs/repository-setup.mdを参照してください。
 
 ## ライセンス
 

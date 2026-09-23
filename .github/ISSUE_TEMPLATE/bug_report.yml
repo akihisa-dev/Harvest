@@ -1,0 +1,28 @@
+name: 不具合報告
+description: 再現可能な不具合を報告します
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 起きたこと
+      description: 期待した結果と実際の結果を書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: ChromeとOSの版
+    validations:
+      required: true
+  - type: textarea
+    id: privacy
+    attributes:
+      label: 個人情報・秘密情報
+      description: 認証情報や利用者データを記載しないでください。
