@@ -30,4 +30,4 @@
 - 独立した目的ごとにcommitし、commitごとにSemVerのversionを更新します。versionだけのcommitは作りません。`package.json`、`manifest.template.json`、`dist/extension/manifest.json`を同じcommitに含め、ソース変更で生成物が変わる場合は`dist/extension/`も同じcommitに含めます。
 - commit件名は`<type>[!]: <version> <日本語の説明>`とします。複数ファイル、version更新、運用変更を含む本文には`scope:`、`目的:`、`内容:`、`確認:`、`影響:`を記載します。
 - 通常のcommitではtagを作りません。tag作成、release、push、GitHub上の設定変更は、それぞれ明示依頼がある場合だけ行います。
-- GitHub Actionsは完全なcommit SHAで固定し、更新差分をレビューします。
+- GitHub Actionsは使わず、必要な確認はローカルで行います。

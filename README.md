@@ -1,6 +1,6 @@
 # Harvest
 
-HarvestのChrome拡張機能を開発するリポジトリです。製品機能はまだ定義していないため、Manifest V3、最小のポップアップ、厳格なTypeScript設定、再現可能なビルドとCIを用意しています。
+HarvestのChrome拡張機能を開発するリポジトリです。製品機能はまだ定義していないため、Manifest V3、最小のポップアップ、厳格なTypeScript設定、再現可能なビルドを用意しています。
 
 ## 開発環境
 

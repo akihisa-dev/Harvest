@@ -8,8 +8,12 @@ coverage/
 .env
 .env.*
 !.env.example
+.npmrc
 *.pem
 *.key
+*.p12
+*.pfx
+*.jks
 .DS_Store
 Thumbs.db
 desktop.ini
