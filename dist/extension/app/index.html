@@ -12,9 +12,11 @@
     <main>
       <section class="controls" aria-labelledby="source-heading">
         <h2 id="source-heading">収集するページ</h2>
+        <p class="hint">開いているタブの名前とURLは、下のボタンを押したときに表示します。「画像を探す」を押すと指定ページの画像URLを読み取ります。画像とPDFは端末内で処理し、開発者のサーバーへ送りません。</p>
         <div class="source-row">
           <label for="source-tab">開いているページ</label>
-          <select id="source-tab"></select>
+          <button id="load-tabs" type="button">開いているタブを表示</button>
+          <select id="source-tab" disabled></select>
           <label for="source-url">またはページのURL</label>
           <input id="source-url" type="url" inputmode="url" placeholder="https://example.com/" autocomplete="url">
           <button id="scan" type="button">画像を探す</button>

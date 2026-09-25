@@ -5,7 +5,7 @@ Harvestは、Chromeで開けるWebページの画像を集め、選んだ画像�
 ## 使い方
 
 1. Chromeで画像のあるページを開き、Harvestのアイコンを押してサイドパネルを開きます。
-2. 調べるタブを確認するか、URLを入力して「画像を探す」を押します。URLをサイドパネルへドラッグしても始められます。
+2. 「開いているタブを表示」を押して調べるタブを選ぶか、URLを入力して「画像を探す」を押します。URLをサイドパネルへドラッグしても始められます。
 3. 必要な画像を選び、矢印で順番を整えます。「高画質で保存」を選び、「選択した画像をPDFにする」を押します。
 
 漫画本文とみなせるまとまりが見つかった場合は、初めにそのまとまりだけを選択します。それ以外の場合はすべて選択します。表紙・サムネイルや単発画像も手動で選べます。「結果を消す」で収集結果と選択状態を消せます。
@@ -35,6 +35,8 @@ pnpm verify:full
 `pnpm build`で`dist/extension/`を作成し、Chromeの拡張機能管理画面から「パッケージ化されていない拡張機能を読み込む」で読み込みます。配布用ZIPは`pnpm package:extension`で作成します。Windowsでは`配布ZIPを作成.bat`、macOSでは`配布ZIPを作成.command`を開いても作成できます。これらは同じ作成処理を呼び出します。この処理は固定版のNode.jsとpnpmを確認してビルドし、ZIPの整合性と最上位の`manifest.json`を確認してから、`dist/Harvest-extension-<version>.zip`へ保存します。`dist/extension/`はソースと同期してGitにも登録します。ZIPを含むそれ以外の`dist/`生成物は登録しません。
 
 Chrome APIに依存しない処理はsrc/core/、Chrome固有処理はsrc/extension/に置きます。作業規約はAGENTS.md、参加手順はCONTRIBUTING.md、GitHub公開前の設定はdocs/repository-setup.mdを参照してください。
+
+Chrome ウェブストアへの提出には[提出手順](store/submit.md)と[掲載文](store/listing-ja.md)を使います。利用者データの取扱いは[プライバシーポリシー](docs/privacy-policy.md)に記載しています。
 
 ## ライセンス
 

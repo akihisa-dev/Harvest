@@ -1,6 +1,7 @@
 import { defaultSelectedImageGroups, galleryLinkScore, groupImages, normalizeImageUrls, sortImageUrlsForSite } from "../core/images.js";
 import { createPdf } from "../core/pdf.js";
 const source = required("#source-tab");
+const loadTabsButton = required("#load-tabs");
 const sourceUrl = required("#source-url");
 const scanButton = required("#scan");
 const exportButton = required("#export");
@@ -136,7 +137,8 @@ async function scanLink(url) {
 function setBusy(value) {
     busy = value;
     scanButton.disabled = value || (!source.value && !sourceUrl.value.trim());
-    source.disabled = value;
+    source.disabled = value || source.options.length === 0;
+    loadTabsButton.disabled = value;
     sourceUrl.disabled = value;
     qualityInput.disabled = value;
     resetButton.disabled = value;
@@ -432,19 +434,30 @@ resetButton.addEventListener("click", () => {
     render();
 });
 backToImagesButton.addEventListener("click", () => { completionElement.hidden = true; imagesElement.scrollIntoView({ block: "start" }); });
-void (async () => {
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const preferred = activeTab?.id;
-    const tabs = (await chrome.tabs.query({})).filter(tab => tab.id !== undefined && isWebUrl(tab.url));
-    for (const tab of tabs) {
-        const option = document.createElement("option");
-        option.value = String(tab.id);
-        option.textContent = `${tab.title || tab.url} — ${new URL(tab.url).hostname}`;
-        if (tab.id === preferred)
-            option.selected = true;
-        source.append(option);
+loadTabsButton.addEventListener("click", async () => {
+    loadTabsButton.disabled = true;
+    try {
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tabs = (await chrome.tabs.query({})).filter(tab => tab.id !== undefined && isWebUrl(tab.url));
+        source.replaceChildren();
+        for (const tab of tabs) {
+            const option = document.createElement("option");
+            option.value = String(tab.id);
+            option.textContent = `${tab.title || tab.url} — ${new URL(tab.url).hostname}`;
+            if (tab.id === activeTab?.id)
+                option.selected = true;
+            source.append(option);
+        }
+        source.disabled = tabs.length === 0;
+        loadTabsButton.textContent = "タブ一覧を更新";
+        scanButton.disabled = !source.value && !sourceUrl.value.trim();
+        if (!tabs.length)
+            setStatus("収集できるWebページのタブがありません。URLを入力してください。");
     }
-    scanButton.disabled = !source.value && !sourceUrl.value.trim();
-    if (!tabs.length)
-        setStatus("収集できるWebページのタブがありません。URLを入力してください。");
-})().catch(() => setStatus("開いているページを取得できませんでした。"));
+    catch {
+        setStatus("開いているページを取得できませんでした。");
+    }
+    finally {
+        loadTabsButton.disabled = false;
+    }
+});

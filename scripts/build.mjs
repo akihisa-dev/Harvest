@@ -33,6 +33,7 @@ try {
 
   await mkdir(join(stage, "app"), { recursive: true });
   await mkdir(join(stage, "core"), { recursive: true });
+  await mkdir(join(stage, "icons"), { recursive: true });
   await mkdir(join(stage, "_locales", "ja"), { recursive: true });
   await copyFile(join(stage, ".compiled", "extension", "background.js"), join(stage, "background.js"));
   await copyFile(join(root, "app", "index.html"), join(stage, "app", "index.html"));
@@ -40,6 +41,9 @@ try {
   await copyFile(join(stage, ".compiled", "extension", "app.js"), join(stage, "app", "index.js"));
   await copyFile(join(stage, ".compiled", "core", "images.js"), join(stage, "core", "images.js"));
   await copyFile(join(stage, ".compiled", "core", "pdf.js"), join(stage, "core", "pdf.js"));
+  for (const size of [16, 32, 48, 128]) {
+    await copyFile(join(root, "assets", "icons", `icon-${size}.png`), join(stage, "icons", `icon-${size}.png`));
+  }
   await copyFile(join(root, "_locales", "ja", "messages.json"), join(stage, "_locales", "ja", "messages.json"));
   await writeFile(join(stage, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   await rm(join(stage, ".compiled"), { recursive: true, force: true });

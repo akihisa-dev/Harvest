@@ -16,5 +16,10 @@ if (manifest.side_panel?.default_path !== "app/index.html" ||
     !manifest.permissions?.includes("sidePanel")) {
   throw new Error("サイドパネルの設定が不足しています。");
 }
+for (const size of [16, 32, 48, 128]) {
+  if (manifest.icons?.[size] !== `icons/icon-${size}.png`) {
+    throw new Error(`${size}pxのアイコン設定が不足しています。`);
+  }
+}
 await access(new URL("../_locales/ja/messages.json", import.meta.url));
 console.log("Manifest template is valid.");

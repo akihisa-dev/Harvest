@@ -12,6 +12,10 @@ for (const path of [
   "../dist/extension/app/style.css",
   "../dist/extension/core/images.js",
   "../dist/extension/core/pdf.js",
+  "../dist/extension/icons/icon-16.png",
+  "../dist/extension/icons/icon-32.png",
+  "../dist/extension/icons/icon-48.png",
+  "../dist/extension/icons/icon-128.png",
   "../dist/extension/_locales/ja/messages.json"
 ]) {
   await access(new URL(path, import.meta.url));

@@ -1,4 +1,4 @@
 {
   "extensionName": { "message": "Harvest" },
-  "extensionDescription": { "message": "開いているWebページの画像を選び、PDFに保存します。" }
+  "extensionDescription": { "message": "Webページの画像をサイドパネルで集め、選択してPDFに保存します。" }
 }
