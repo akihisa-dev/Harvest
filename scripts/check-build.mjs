@@ -6,9 +6,7 @@ const actual = JSON.parse(await readFile(new URL("../dist/extension/manifest.jso
 assert.deepEqual(actual, expected, "生成manifestがtemplateと一致しません。");
 
 for (const path of [
-  "../dist/extension/popup/index.html",
-  "../dist/extension/popup/index.js",
-  "../dist/extension/popup/style.css",
+  "../dist/extension/background.js",
   "../dist/extension/app/index.html",
   "../dist/extension/app/index.js",
   "../dist/extension/app/style.css",

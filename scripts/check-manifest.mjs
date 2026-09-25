@@ -8,6 +8,13 @@ if (manifest.version !== packageJson.version) throw new Error("manifestとpackag
 if (!manifest.default_locale || !manifest.name || !manifest.description) {
   throw new Error("manifestの名称、説明、既定localeが必要です。");
 }
-if (!manifest.action?.default_popup) throw new Error("action.default_popupが必要です。");
+if (manifest.action?.default_popup || !manifest.action?.default_title) {
+  throw new Error("アイコンはポップアップを使わず、サイドパネルを開く必要があります。");
+}
+if (manifest.side_panel?.default_path !== "app/index.html" ||
+    manifest.background?.service_worker !== "background.js" ||
+    !manifest.permissions?.includes("sidePanel")) {
+  throw new Error("サイドパネルの設定が不足しています。");
+}
 await access(new URL("../_locales/ja/messages.json", import.meta.url));
 console.log("Manifest template is valid.");

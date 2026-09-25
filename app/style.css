@@ -1,25 +1,26 @@
 :root { font-family: system-ui, sans-serif; color: #17253b; background: #f3f6fb; }
 * { box-sizing: border-box; }
 body { margin: 0; }
-button, select { font: inherit; }
+button, select, input { font: inherit; }
 button { border: 1px solid #bac9dd; border-radius: 9px; background: white; color: #173d73; font-weight: 700; padding: 9px 13px; cursor: pointer; }
 button:hover:not(:disabled) { background: #eaf2ff; }
 button:disabled { opacity: .45; cursor: default; }
 button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #4c93e8; outline-offset: 2px; }
-.topbar { display: flex; align-items: baseline; gap: 16px; background: #173d73; color: white; padding: 16px 28px; }
+.topbar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; background: #173d73; color: white; padding: 14px 16px; }
 .topbar h1 { font-size: 23px; margin: 0; }
 .topbar span { font-size: 13px; opacity: .8; }
-main { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; max-width: 1360px; margin: 0 auto; padding: 22px; }
-section, aside { background: white; border: 1px solid #d7e1ef; border-radius: 14px; padding: 20px; }
-.controls { grid-column: 1 / -1; }
+main { display: grid; gap: 12px; padding: 12px; min-width: 0; }
+section, aside { min-width: 0; background: white; border: 1px solid #d7e1ef; border-radius: 14px; padding: 14px; }
 h2 { font-size: 18px; margin: 0 0 14px; }
-.source-row { display: flex; align-items: center; gap: 10px; }
+.source-row { display: flex; align-items: stretch; flex-direction: column; gap: 8px; }
 .source-row label { font-size: 14px; font-weight: 700; white-space: nowrap; }
-.source-row select { flex: 1; min-width: 0; border: 1px solid #bac9dd; border-radius: 9px; background: white; padding: 9px; }
+.source-row select, .source-row input { width: 100%; min-width: 0; border: 1px solid #bac9dd; border-radius: 9px; background: white; padding: 9px; }
 #scan, #export { background: #1653b5; border-color: #1653b5; color: white; }
 #scan:hover:not(:disabled), #export:hover:not(:disabled) { background: #0d428f; }
 .hint, .export p { color: #52637c; font-size: 13px; line-height: 1.6; margin: 10px 0 0; }
 .results { min-width: 0; }
+.completion { margin-bottom: 14px; padding: 12px; border: 1px solid #a9d8b5; border-radius: 10px; background: #edf9f0; }
+.completion p { margin: 0 0 8px; color: #176038; font-weight: 700; }
 .section-head { display: flex; align-items: baseline; gap: 12px; }
 .section-head span { color: #52637c; font-size: 13px; }
 .toolbar, .groups, .links { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
@@ -29,16 +30,18 @@ h2 { font-size: 18px; margin: 0 0 14px; }
 .groups button { font-size: 12px; padding: 6px 9px; }
 .groups button.active { background: #dbeafe; border-color: #6098dd; }
 #empty { color: #667991; font-size: 14px; }
-.image-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0; }
-.image-list li { border: 1px solid #d7e1ef; border-radius: 11px; overflow: hidden; background: #fff; }
+.image-list { display: grid; gap: 10px; list-style: none; padding: 0; margin: 0; }
+.image-list li { display: flex; min-width: 0; border: 1px solid #d7e1ef; border-radius: 11px; overflow: hidden; background: #fff; }
 .image-list li.unselected { opacity: .48; }
-.preview { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: contain; background: #edf2f8; }
-.item-body { padding: 9px; }
+.preview { display: block; width: 86px; height: 86px; flex: none; object-fit: contain; background: #edf2f8; }
+.item-body { min-width: 0; flex: 1; padding: 9px; }
 .item-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; margin-bottom: 8px; }
 .item-actions { display: flex; align-items: center; gap: 5px; }
 .item-actions label { display: flex; align-items: center; gap: 3px; font-size: 12px; flex: 1; }
 .item-actions button { padding: 4px 7px; }
-.export { align-self: start; position: sticky; top: 18px; }
-#export { width: 100%; margin-top: 18px; }
+.export { align-self: start; }
+.quality { display: block; margin-top: 14px; font-size: 13px; font-weight: 700; }
+#export { width: 100%; margin-top: 12px; }
 #status { min-height: 2em; overflow-wrap: anywhere; }
-@media (max-width: 850px) { main { display: block; padding: 12px; } section, aside { margin-bottom: 12px; } .export { position: static; } .source-row { align-items: stretch; flex-direction: column; } }
+#reset { width: 100%; }
+@media (max-width: 320px) { .preview { width: 64px; height: 80px; } .item-actions { flex-wrap: wrap; } }

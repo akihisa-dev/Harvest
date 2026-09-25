@@ -1,7 +1,0 @@
-:root { font-family: system-ui, sans-serif; color: #162337; background: #f6f8fb; }
-body { box-sizing: border-box; margin: 0; width: 320px; padding: 20px; }
-h1 { font-size: 20px; margin: 0 0 8px; }
-p { font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
-button { width: 100%; border: 0; border-radius: 10px; background: #1653b5; color: white; font: inherit; font-weight: 700; padding: 12px; cursor: pointer; }
-button:disabled { opacity: .55; cursor: wait; }
-#status { min-height: 1em; margin: 12px 0 0; color: #b53b31; }

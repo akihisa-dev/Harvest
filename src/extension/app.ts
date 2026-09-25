@@ -1,4 +1,4 @@
-import { galleryLinkScore, imageGroupLabel, normalizeImageUrls, type ImageItem } from "../core/images.js";
+import { defaultSelectedImageGroups, galleryLinkScore, groupImages, normalizeImageUrls, sortImageUrlsForSite, type ImageItem } from "../core/images.js";
 import { createPdf, type PdfImagePage } from "../core/pdf.js";
 
 interface PageScan {
@@ -9,10 +9,15 @@ interface PageScan {
 }
 
 const source = required<HTMLSelectElement>("#source-tab");
+const sourceUrl = required<HTMLInputElement>("#source-url");
 const scanButton = required<HTMLButtonElement>("#scan");
 const exportButton = required<HTMLButtonElement>("#export");
 const selectAllButton = required<HTMLButtonElement>("#select-all");
 const clearAllButton = required<HTMLButtonElement>("#clear-all");
+const resetButton = required<HTMLButtonElement>("#reset");
+const completionElement = required<HTMLDivElement>("#completion");
+const backToImagesButton = required<HTMLButtonElement>("#back-to-images");
+const qualityInput = required<HTMLInputElement>("#high-quality");
 const imagesElement = required<HTMLOListElement>("#images");
 const groupsElement = required<HTMLDivElement>("#groups");
 const linksElement = required<HTMLDivElement>("#links");
@@ -49,6 +54,8 @@ function scanDocument(): PageScan {
     add(img.getAttribute("data-original"));
     add(img.getAttribute("data-full"));
     add(img.getAttribute("data-high-res"));
+    add(img.getAttribute("data-lib-src"));
+    add(img.getAttribute("data-lazyload"));
     add(lastSrcset(img.getAttribute("data-srcset")));
     add(lastSrcset(img.getAttribute("srcset")));
     add(img.getAttribute("data-src"));
@@ -60,6 +67,9 @@ function scanDocument(): PageScan {
   }
   for (const meta of document.querySelectorAll('meta[property="og:image"], meta[name="twitter:image"]')) {
     add(meta.getAttribute("content"));
+  }
+  for (const match of document.documentElement.outerHTML.matchAll(/https?:\/\/[^\s"'\\<>]+?\.(?:jpe?g|png|webp|avif)(?:\?[^\s"'\\<>]*)?/gi)) {
+    add(match[0].replaceAll("&amp;", "&"));
   }
   for (const anchor of document.querySelectorAll<HTMLAnchorElement>("a[href]")) {
     const href = anchor.href;
@@ -81,7 +91,7 @@ function setStatus(message: string): void { statusElement.textContent = message;
 
 function addScan(result: PageScan): void {
   const existing = new Set(images.map(item => item.url));
-  for (const url of normalizeImageUrls(result.images, result.url)) {
+  for (const url of sortImageUrlsForSite(normalizeImageUrls(result.images, result.url), result.url)) {
     if (existing.has(url)) continue;
     images.push({url, sourcePage: result.url, selected: true});
     existing.add(url);
@@ -101,7 +111,7 @@ async function scanTab(tabId: number): Promise<PageScan> {
   return injection.result;
 }
 
-async function scanLink(url: string): Promise<void> {
+async function scanUrl(url: string): Promise<PageScan> {
   const tab = await chrome.tabs.create({url, active: false});
   if (tab.id === undefined) throw new Error("リンク先を開けませんでした。");
   try {
@@ -121,28 +131,50 @@ async function scanLink(url: string): Promise<void> {
         if (current.status === "complete") listener(tab.id!, {status: "complete"});
       }).catch(() => undefined);
     });
-    addScan(await scanTab(tab.id));
+    return await scanTab(tab.id);
   } finally {
     await chrome.tabs.remove(tab.id).catch(() => undefined);
   }
 }
 
+async function scanLink(url: string): Promise<void> {
+  addScan(await scanUrl(url));
+}
+
 function setBusy(value: boolean): void {
   busy = value;
-  scanButton.disabled = value || !source.value;
+  scanButton.disabled = value || (!source.value && !sourceUrl.value.trim());
+  source.disabled = value;
+  sourceUrl.disabled = value;
+  qualityInput.disabled = value;
+  resetButton.disabled = value;
   exportButton.disabled = value || !images.some(item => item.selected);
   render();
 }
 
 async function startScan(): Promise<void> {
+  if (busy) return;
+  const enteredUrl = sourceUrl.value.trim();
+  let targetUrl = "";
+  if (enteredUrl) {
+    try {
+      const parsed = new URL(enteredUrl);
+      if (!isWebUrl(parsed.href)) throw new Error();
+      targetUrl = parsed.href;
+    } catch {
+      setStatus("HTTPまたはHTTPSのページURLを入力してください。");
+      return;
+    }
+  }
   const tabId = Number(source.value);
-  if (!Number.isInteger(tabId)) return;
+  if (!targetUrl && (!source.value || !Number.isInteger(tabId))) return;
   images = [];
   links = [];
+  completionElement.hidden = true;
   setBusy(true);
   setStatus("ページを調べています…");
   try {
-    const result = await scanTab(tabId);
+    const result = targetUrl ? await scanUrl(targetUrl) : await scanTab(tabId);
     pageTitle = result.title || "画像";
     rootPageUrl = result.url;
     addScan(result);
@@ -155,11 +187,17 @@ async function startScan(): Promise<void> {
       try { await scanLink(recommended.link.url); }
       catch { setStatus("リンク先は読み取れませんでした。元のページの画像を表示しています。"); }
     }
+    const grouped = groupImages(images.map(item => item.url));
+    const initiallySelected = defaultSelectedImageGroups(grouped);
+    for (const [key, group] of Object.entries(grouped)) {
+      for (const item of images) if (group.items.includes(item.url)) item.selected = initiallySelected[key] ?? true;
+    }
+    render();
     if (!statusElement.textContent?.includes("読み取れませんでした")) {
       setStatus(images.length ? `${images.length}枚の画像が見つかりました。` : "画像が見つかりませんでした。");
     }
   } catch {
-    setStatus("このページを読み取れませんでした。通常のWebページを選んでください。");
+    setStatus("このページを読み取れませんでした。Chromeで開けるWebページを指定してください。");
   } finally {
     setBusy(false);
   }
@@ -193,24 +231,21 @@ function renderLinks(): void {
 
 function renderGroups(): void {
   groupsElement.replaceChildren();
-  const groups = new Map<string, number>();
-  for (const image of images) {
-    const label = imageGroupLabel(image.url);
-    groups.set(label, (groups.get(label) || 0) + 1);
-  }
-  groupsElement.hidden = groups.size < 2;
-  for (const [label, count] of groups) {
+  const groups = groupImages(images.map(item => item.url));
+  groupsElement.hidden = Object.keys(groups).length === 0;
+  for (const group of Object.values(groups).sort((a, b) => a.priority - b.priority)) {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = `${label} (${count})`;
+    button.textContent = group.label;
     button.title = "このまとまりの選択を切り替える";
+    button.disabled = busy;
     button.addEventListener("click", () => {
-      const group = images.filter(item => imageGroupLabel(item.url) === label);
-      const select = !group.every(item => item.selected);
-      for (const item of group) item.selected = select;
+      const members = images.filter(item => group.items.includes(item.url));
+      const select = !members.every(item => item.selected);
+      for (const item of members) item.selected = select;
       render();
     });
-    if (images.some(item => imageGroupLabel(item.url) === label && item.selected)) button.classList.add("active");
+    if (images.some(item => group.items.includes(item.url) && item.selected)) button.classList.add("active");
     groupsElement.append(button);
   }
 }
@@ -279,7 +314,7 @@ function render(): void {
   renderImages();
 }
 
-async function toPdfPage(imageUrl: string): Promise<PdfImagePage> {
+async function toPdfPage(imageUrl: string, highQuality: boolean): Promise<PdfImagePage> {
   const response = await fetch(imageUrl, {credentials: "include"});
   if (!response.ok) throw new Error(`画像の取得に失敗しました (${response.status})`);
   const blob = await response.blob();
@@ -295,7 +330,7 @@ async function toPdfPage(imageUrl: string): Promise<PdfImagePage> {
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(bitmap, 0, 0);
-    const jpeg = await new Promise<Blob>((resolve, reject) => canvas.toBlob(result => result ? resolve(result) : reject(new Error("画像を変換できませんでした。")), "image/jpeg", 0.95));
+    const jpeg = await new Promise<Blob>((resolve, reject) => canvas.toBlob(result => result ? resolve(result) : reject(new Error("画像を変換できませんでした。")), "image/jpeg", highQuality ? 0.95 : 0.72));
     return {jpeg: new Uint8Array(await jpeg.arrayBuffer()), width: bitmap.width, height: bitmap.height};
   } finally {
     bitmap.close();
@@ -306,26 +341,34 @@ async function exportPdf(): Promise<void> {
   const selected = images.filter(item => item.selected);
   if (!selected.length) return;
   setBusy(true);
-  const pages: PdfImagePage[] = [];
+  const prepared: Array<PdfImagePage | null> = Array(selected.length).fill(null);
   let failed = 0;
   try {
-    for (const [index, image] of selected.entries()) {
-      setStatus(`画像を準備しています… ${index + 1} / ${selected.length}`);
-      try { pages.push(await toPdfPage(image.url)); }
-      catch { failed += 1; }
-    }
+    let next = 0;
+    let completed = 0;
+    await Promise.all(Array.from({length: Math.min(3, selected.length)}, async () => {
+      while (next < selected.length) {
+        const index = next++;
+        try { prepared[index] = await toPdfPage(selected[index]!.url, qualityInput.checked); }
+        catch { failed += 1; }
+        completed += 1;
+        setStatus(`画像を準備しています… ${completed} / ${selected.length}`);
+      }
+    }));
+    const pages = prepared.filter((page): page is PdfImagePage => page !== null);
     if (!pages.length) throw new Error("画像を取得できませんでした。画像のあるページを開いて再度お試しください。");
     setStatus("PDFを作成しています…");
     const blob = createPdf(pages);
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${pageTitle.replace(/[\\/:*?"<>|]/g, "_").slice(0, 80) || "画像"}.pdf`;
+    link.download = `${pageTitle.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) || "画像"}.pdf`;
     document.body.append(link);
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 60000);
     setStatus(failed ? `${pages.length}枚を保存しました。${failed}枚は取得できず、PDFに含まれていません。` : `${pages.length}枚のPDFを保存しました。`);
+    completionElement.hidden = false;
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "PDFを作成できませんでした。");
   } finally {
@@ -334,20 +377,43 @@ async function exportPdf(): Promise<void> {
 }
 
 scanButton.addEventListener("click", () => { void startScan(); });
+sourceUrl.addEventListener("input", () => { scanButton.disabled = busy || (!source.value && !sourceUrl.value.trim()); });
+sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter") void startScan(); });
+document.addEventListener("dragover", event => { if (event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain")) event.preventDefault(); });
+document.addEventListener("drop", event => {
+  if (busy) return;
+  const dropped = event.dataTransfer?.getData("text/uri-list") || event.dataTransfer?.getData("text/plain") || "";
+  const url = dropped.split(/\r?\n/).find(line => line && !line.startsWith("#"))?.trim();
+  if (!url || !isWebUrl(url)) return;
+  event.preventDefault();
+  sourceUrl.value = url;
+  void startScan();
+});
 exportButton.addEventListener("click", () => { void exportPdf(); });
 selectAllButton.addEventListener("click", () => { for (const item of images) item.selected = true; render(); });
 clearAllButton.addEventListener("click", () => { for (const item of images) item.selected = false; render(); });
+resetButton.addEventListener("click", () => {
+  images = [];
+  links = [];
+  pageTitle = "画像";
+  rootPageUrl = "";
+  completionElement.hidden = true;
+  setStatus("収集結果を消しました。");
+  render();
+});
+backToImagesButton.addEventListener("click", () => { completionElement.hidden = true; imagesElement.scrollIntoView({block: "start"}); });
 
 void (async () => {
-  const preferred = new URL(location.href).searchParams.get("tab");
+  const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
+  const preferred = activeTab?.id;
   const tabs = (await chrome.tabs.query({})).filter(tab => tab.id !== undefined && isWebUrl(tab.url));
   for (const tab of tabs) {
     const option = document.createElement("option");
     option.value = String(tab.id);
     option.textContent = `${tab.title || tab.url} — ${new URL(tab.url!).hostname}`;
-    if (option.value === preferred) option.selected = true;
+    if (tab.id === preferred) option.selected = true;
     source.append(option);
   }
-  scanButton.disabled = !source.value;
-  if (!tabs.length) setStatus("収集できるWebページのタブがありません。");
+  scanButton.disabled = !source.value && !sourceUrl.value.trim();
+  if (!tabs.length) setStatus("収集できるWebページのタブがありません。URLを入力してください。");
 })().catch(() => setStatus("開いているページを取得できませんでした。"));

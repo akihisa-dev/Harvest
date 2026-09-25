@@ -11,6 +11,9 @@ interface HarvestManifest {
 }
 
 declare const chrome: {
+  sidePanel: {
+    setPanelBehavior(behavior: {openPanelOnActionClick: boolean}): Promise<void>;
+  };
   runtime: {
     getURL(path: string): string;
     getManifest(): HarvestManifest;
