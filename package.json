@@ -25,5 +25,5 @@
     "verify:release": "pnpm verify:full && pnpm check:release",
     "setup:hooks": "node scripts/setup-hooks.mjs"
   },
-  "devDependencies": { "typescript": "6.0.3" }
+  "devDependencies": { "typescript": "7.0.2" }
 }
