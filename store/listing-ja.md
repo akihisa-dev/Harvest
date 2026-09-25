@@ -45,7 +45,7 @@ Harvestは、Webページの画像を集め、必要な画像を選んで1つの
 
 ### プライバシーポリシーURL
 
-公開後の [プライバシーポリシー](../docs/privacy-policy.md) の、誰でも読めるURLを入力する。現在は公開先が未決定のため、ローカルファイルのパスを入力しない。
+`https://github.com/akihisa-dev/Harvest/blob/main/docs/privacy-policy.md` を入力する。提出前に、ログインせず閲覧できることを確認する。
 
 ## 審査担当者向け操作手順
 

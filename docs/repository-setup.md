@@ -1,6 +1,6 @@
-# GitHub公開前の設定
+# GitHubリポジトリの運用設定
 
-HarvestはローカルGitだけを初期化しています。GitHubリポジトリ、remote、公開範囲は設定していません。公開先が決まった後、管理者が次を設定します。
+Harvestの公開リポジトリは [akihisa-dev/Harvest](https://github.com/akihisa-dev/Harvest) です。管理者は次の設定を確認します。
 
 ## 保護とレビュー
 
