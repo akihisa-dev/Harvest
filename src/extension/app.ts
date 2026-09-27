@@ -32,6 +32,8 @@ const selectAllButton = required<HTMLButtonElement>("#select-all");
 const clearAllButton = required<HTMLButtonElement>("#clear-all");
 const resetButton = required<HTMLButtonElement>("#reset");
 const completionElement = required<HTMLDivElement>("#completion");
+const failuresElement = required<HTMLElement>("#failures");
+const failedImagesElement = required<HTMLUListElement>("#failed-images");
 const backToImagesButton = required<HTMLButtonElement>("#back-to-images");
 const imagesElement = required<HTMLOListElement>("#images");
 const groupsElement = required<HTMLDivElement>("#groups");
@@ -52,6 +54,7 @@ let viewerPanY = 0;
 let viewerPointer: {id: number; x: number; y: number; panX: number; panY: number} | null = null;
 const viewerThumbRows = new Map<string, HTMLLIElement>();
 let busy = false;
+let pendingExport: {selected: ImageItem[]; prepared: Map<ImageItem, PdfImagePage>; failed: Set<ImageItem>} | null = null;
 type ScanState = "initial" | "scanning" | "results" | "empty" | "error";
 let scanState: ScanState = "initial";
 
@@ -68,6 +71,7 @@ interface ImageRowParts {
   order: HTMLSpanElement;
   name: HTMLSpanElement;
   selectedMark: HTMLSpanElement;
+  failedMark: HTMLSpanElement;
 }
 const imageRowParts = new WeakMap<HTMLLIElement, ImageRowParts>();
 let imageView: {visibleImages: readonly ImageItem[]; previewOrder: ImageItem[]; rows: Map<string, HTMLLIElement>} = {
@@ -237,6 +241,7 @@ async function startScan(): Promise<void> {
   }
   hideSourceInput();
   images = [];
+  pendingExport = null;
   activeGroupKey = null;
   viewerMode = false;
   viewerImageUrl = null;
@@ -413,9 +418,12 @@ function createImageRow(item: ImageItem): HTMLLIElement {
   selectedMark.className = "item-selected";
   selectedMark.textContent = "✓";
   selectedMark.setAttribute("aria-hidden", "true");
-  body.append(order, name, selectedMark);
+  const failedMark = document.createElement("span");
+  failedMark.className = "item-failed";
+  failedMark.textContent = "取得失敗";
+  body.append(order, name, selectedMark, failedMark);
   row.append(preview, body);
-  imageRowParts.set(row, {preview, order, name, selectedMark});
+  imageRowParts.set(row, {preview, order, name, selectedMark, failedMark});
   row.addEventListener("pointerdown", () => { suppressThumbnailClick = false; });
   row.addEventListener("click", () => {
     if (suppressThumbnailClick || draggedImage || busy) return;
@@ -468,6 +476,9 @@ function renderImages(visibleImages: readonly ImageItem[]): void {
     row.style.order = String(index);
     if (item.selected) row.classList.remove("unselected");
     else row.classList.add("unselected");
+    const failed = pendingExport?.failed.has(item) ?? false;
+    if (failed) row.classList.add("failed");
+    else row.classList.remove("failed");
     if (draggedImage !== item) row.classList.remove("dragging");
     row.setAttribute("role", "button");
     row.setAttribute("aria-pressed", String(item.selected));
@@ -478,7 +489,7 @@ function renderImages(visibleImages: readonly ImageItem[]): void {
     row.setAttribute("data-focus-kind", "image");
     row.setAttribute("data-focus-url", item.url);
     row.setAttribute("data-focus-action", "drag");
-    row.setAttribute("aria-label", `${imageFilename(item.url)}、${overallIndex + 1}番目。クリックでPDF選択、ドラッグまたはAltと上下矢印で並べ替え`);
+    row.setAttribute("aria-label", `${imageFilename(item.url)}、${overallIndex + 1}番目。${failed ? "取得失敗。" : ""}クリックでPDF選択、ドラッグまたはAltと上下矢印で並べ替え`);
     parts.preview.src = item.url;
     parts.preview.alt = `画像 ${index + 1}`;
     parts.order.textContent = `${overallIndex + 1}`;
@@ -486,6 +497,7 @@ function renderImages(visibleImages: readonly ImageItem[]): void {
     parts.name.textContent = imageFilename(item.url);
     parts.name.title = item.url;
     parts.selectedMark.hidden = false;
+    parts.failedMark.hidden = !failed;
   });
   imagesElement.ondragover = event => {
     if (!draggedImage || busy) return;
@@ -607,12 +619,27 @@ function renderViewer(): void {
 }
 
 function render(): void {
+  const selected = images.filter(item => item.selected);
+  if (pendingExport && (selected.length !== pendingExport.selected.length ||
+      selected.some((item, index) => item !== pendingExport!.selected[index]))) {
+    pendingExport = null;
+    if (!busy) setStatus("選択や順序が変わりました。PDFを保存してください。", "info");
+  }
   const groups = groupImages(images.map(item => item.url));
   if (activeGroupKey !== null && !groups[activeGroupKey]) activeGroupKey = null;
   const visibleImages = filterImagesByGroup(images, activeGroupKey === null ? null : groups[activeGroupKey]!);
-  const selectedCount = images.filter(item => item.selected).length;
+  const selectedCount = selected.length;
   setMotionText(countElement, `${selectedCount} / ${images.length}枚を選択${activeGroupKey === null ? "" : `・${visibleImages.length}枚を表示`}`);
-  exportButton.textContent = selectedCount ? `PDFを保存（${selectedCount}枚）` : "PDFを保存";
+  exportButton.textContent = pendingExport?.failed.size
+    ? `失敗した${pendingExport.failed.size}枚を再試行`
+    : selectedCount ? `PDFを保存（${selectedCount}枚）` : "PDFを保存";
+  failuresElement.hidden = !pendingExport?.failed.size;
+  failedImagesElement.replaceChildren(...(pendingExport?.selected.filter(item => pendingExport!.failed.has(item)) ?? []).map(item => {
+    const row = document.createElement("li");
+    row.textContent = `${images.indexOf(item) + 1}番 ${imageFilename(item.url)}`;
+    row.title = item.url;
+    return row;
+  }));
   emptyElement.hidden = images.length > 0;
   emptyElement.textContent = scanState === "scanning"
     ? "画像を調べています…"
@@ -632,20 +659,29 @@ function render(): void {
 }
 
 async function exportPdf(): Promise<void> {
+  if (busy) return;
   const selected = images.filter(item => item.selected);
   if (!selected.length) return;
+  const retry = Boolean(pendingExport?.failed.size);
+  const work = pendingExport ?? {selected, prepared: new Map<ImageItem, PdfImagePage>(), failed: new Set<ImageItem>()};
+  const remaining = work.selected.filter(item => !work.prepared.has(item));
+  completionElement.hidden = true;
   setBusy(true);
-  const prepared: Array<PdfImagePage | null> = Array(selected.length).fill(null);
-  let failed = 0;
-  setStatus(`画像を準備しています… 0 / ${selected.length}`, "busy");
+  setStatus(`${retry ? "画像を再試行" : "画像を準備"}しています… 0 / ${remaining.length}`, "busy");
   try {
-    for (const [index, image] of selected.entries()) {
-      try { prepared[index] = await toPdfPage(image.url); }
-      catch { failed += 1; }
-      setStatus(`画像を準備しています… ${index + 1} / ${selected.length}`, "busy");
+    work.failed.clear();
+    for (const [index, image] of remaining.entries()) {
+      try { work.prepared.set(image, await toPdfPage(image.url)); }
+      catch { work.failed.add(image); }
+      setStatus(`${retry ? "画像を再試行" : "画像を準備"}しています… ${index + 1} / ${remaining.length}`, "busy");
     }
-    const pages = prepared.filter((page): page is PdfImagePage => page !== null);
-    if (!pages.length) throw new Error("画像を取得できませんでした。画像のあるページを開いて再度お試しください。");
+    if (work.failed.size) {
+      pendingExport = work;
+      viewerMode = false;
+      setStatus(`${work.failed.size}枚を取得できませんでした。画像を確認して再試行してください。`, "error");
+      return;
+    }
+    const pages = work.selected.map(item => work.prepared.get(item)!);
     setStatus("PDFを作成しています…", "busy");
     const blob = createPdf(pages);
     const url = URL.createObjectURL(blob);
@@ -656,12 +692,15 @@ async function exportPdf(): Promise<void> {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-    setStatus(failed ? `${pages.length}枚を保存しました。${failed}枚は取得できず、PDFに含まれていません。` : `${pages.length}枚のPDFを保存しました。`, "success");
+    pendingExport = null;
+    setStatus(`${pages.length}枚のPDFを保存しました。`, "success");
     completionElement.hidden = false;
   } catch (error) {
+    pendingExport = work.prepared.size || work.failed.size ? work : null;
     setStatus(error instanceof Error ? error.message : "PDFを作成できませんでした。", "error");
   } finally {
     setBusy(false);
+    if (pendingExport === work && work.failed.size) failuresElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"});
   }
 }
 
@@ -742,6 +781,7 @@ selectAllButton.addEventListener("click", () => { for (const item of images) ite
 clearAllButton.addEventListener("click", () => { for (const item of images) item.selected = false; render(); });
 resetButton.addEventListener("click", () => {
   images = [];
+  pendingExport = null;
   activeGroupKey = null;
   viewerMode = false;
   viewerImageUrl = null;

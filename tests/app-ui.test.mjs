@@ -21,6 +21,11 @@ class StubElement {
   addEventListener(name, callback) { this.listeners.set(name, callback); }
   append(...children) { this.children.push(...children.filter(Boolean)); }
   replaceChildren(...children) { this.children = children.filter(Boolean); }
+  remove() {}
+  click() { if (this.tagName === "a") this.owner.downloads.push(this.download); }
+  getContext() { return this.tagName === "canvas" ? {
+    fillRect() {}, drawImage() {}, getImageData: () => ({data: new Uint8ClampedArray([12, 34, 56, 255])}),
+  } : null; }
   setAttribute(name, value) { this.attributes.set(name, String(value)); }
   removeAttribute(name) { this.attributes.delete(name); }
   getAttribute(name) { return this.attributes.get(name) ?? null; }
@@ -52,10 +57,19 @@ function visualRows(imagesElement) {
   return [...imagesElement.children].sort((a, b) => Number(a.style.order || 0) - Number(b.style.order || 0));
 }
 
-test("画像操作後もフォーカス、件数、表示絞り込み、全体順序を保つ", async () => {
+async function waitUntil(predicate) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (predicate()) return;
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  assert.fail("処理が完了しませんでした");
+}
+
+test("画像操作と失敗画像の再試行で選択順序とPDFの完全性を保つ", async () => {
   const document = {
     activeElement: null,
     animations: [],
+    downloads: [],
     elements: new Map(),
     createElement(tagName) { return new StubElement(tagName, document); },
     createTextNode(text) { return {textContent: text}; },
@@ -70,9 +84,10 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     },
     addEventListener() {},
   };
+  document.body = new StubElement("body", document);
   for (const selector of [
     "#source-url", "#scan", "#export", "#select-all", "#clear-all", "#reset",
-    "#completion", "#back-to-images", "#images", "#groups", "#group-selections",
+    "#completion", "#back-to-images", "#failures", "#failed-images", "#images", "#groups", "#group-selections",
     "#count", "#empty", "#status", "#viewer-toggle", "#viewer", "#viewer-empty",
     "#viewer-page", "#viewer-previous", "#viewer-position", "#viewer-next", "#viewer-image",
     "#viewer-filename", "#viewer-thumbnails", "#viewer-zoom-in", "#viewer-zoom-out",
@@ -82,6 +97,7 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
   const previousChrome = globalThis.chrome;
   const previousWindow = globalThis.window;
   const previousFetch = globalThis.fetch;
+  const previousCreateImageBitmap = globalThis.createImageBitmap;
   let resultImages = [
     "https://example.com/pages/001.jpg",
     "https://example.com/pages/002.jpg",
@@ -91,7 +107,8 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
   let executionCount = 0;
   const createdUrls = [];
   globalThis.document = document;
-  globalThis.window = {setTimeout, clearTimeout, matchMedia: () => ({matches: false})};
+  globalThis.window = {setTimeout: (callback, delay) => setTimeout(callback, delay === 60000 ? 0 : delay), clearTimeout, matchMedia: () => ({matches: false})};
+  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {}});
   globalThis.chrome = {
     tabs: {
       query: async () => [{id: 7, url: "https://example.com/view"}],
@@ -284,7 +301,14 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     document.querySelector("#images").children[0].dispatch("drop");
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), beforeExternalDrop);
 
-    globalThis.fetch = async () => { throw new Error("test"); };
+    const failedUrl = resultImages[0];
+    const fetches = [];
+    let failOnce = true;
+    globalThis.fetch = async url => {
+      fetches.push(url);
+      if (url === failedUrl && failOnce) throw new Error("test");
+      return {ok: true, blob: async () => new Blob([new Uint8Array([1])], {type: "image/png"})};
+    };
     document.querySelector("#export").dispatch("click");
     assert.equal(document.querySelector("#status").textContent, "画像を準備しています… 0 / 4");
     assert.equal(document.querySelector("#images").children.every(row => !row.draggable), true);
@@ -298,7 +322,19 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     document.querySelector("#images").children[1].dispatch("drop", {clientX: 75, clientY: 150});
     assert.equal(document.querySelector("#status").dataset.state, "busy");
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), busyOrder);
-    await new Promise(resolve => setImmediate(resolve));
+    await waitUntil(() => document.querySelector("#failures").hidden === false);
+    assert.equal(document.downloads.length, 0);
+    assert.equal(document.querySelector("#failures").hidden, false);
+    assert.deepEqual(document.querySelector("#failed-images").children.map(row => row.textContent), ["3番 001.jpg"]);
+    assert.equal(document.querySelector("#export").textContent, "失敗した1枚を再試行");
+    assert.equal(document.querySelector("#images").children.find(row => row.children[0].src === failedUrl).className.includes("failed"), true);
+    failOnce = false;
+    document.querySelector("#export").dispatch("click");
+    await waitUntil(() => document.downloads.length === 1);
+    assert.deepEqual(fetches, [...busyOrder, failedUrl]);
+    assert.deepEqual(document.downloads, ["ページ.pdf"]);
+    assert.equal(document.querySelector("#failures").hidden, true);
+    assert.equal(document.querySelector("#status").dataset.state, "success");
 
     for (;;) {
       const selectedRow = document.querySelector("#images").children.find(row => row.getAttribute("aria-pressed") === "true");
@@ -321,6 +357,7 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     assert.deepEqual(createdUrls, []);
   } finally {
     globalThis.fetch = previousFetch;
+    globalThis.createImageBitmap = previousCreateImageBitmap;
     globalThis.document = previousDocument;
     globalThis.chrome = previousChrome;
     globalThis.window = previousWindow;
