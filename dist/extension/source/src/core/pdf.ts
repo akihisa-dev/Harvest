@@ -1,13 +1,18 @@
-import type { PdfImagePage, PdfSourcePageOptions } from "./pdf-types.js";
+import type { PdfImagePage, PdfRgbImagePage, PdfSourcePageOptions } from "./pdf-types.js";
 
 export type { PdfJpegImagePage, PdfRgbImagePage, PdfImagePage, PdfJpegImage, PdfSourcePageOptions } from "./pdf-types.js";
 export { getOriginalJpegPage } from "./jpeg.js";
 
 const textEncoder = new TextEncoder();
-const PDF_HEADER = new Uint8Array([
+const PDF_HEADER_1_3 = new Uint8Array([
   0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x33, 0x0a,
   0x25, 0xe2, 0xe3, 0xcf, 0xd3, 0x0a,
 ]);
+const PDF_HEADER_1_5 = new Uint8Array([
+  0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x35, 0x0a,
+  0x25, 0xe2, 0xe3, 0xcf, 0xd3, 0x0a,
+]);
+const SOURCE_COPY_CODES = Array.from({ length: 0x7e - 0x21 + 1 }, (_, index) => index + 0x21);
 
 function pdfText(value: string): Uint8Array {
   return textEncoder.encode(value);
@@ -35,7 +40,7 @@ function validateDimension(value: number, name: string): void {
   }
 }
 
-function validateImage(image: PdfImagePage, index: number): { data: Uint8Array; filter: string } {
+function validateImage(image: PdfImagePage, index: number | string): { data: Uint8Array; filter: string } {
   if (image === null || typeof image !== "object") {
     throw new TypeError(`Image ${index} must be an image page.`);
   }
@@ -57,6 +62,27 @@ function validateImage(image: PdfImagePage, index: number): { data: Uint8Array; 
   return { data, filter: hasJpeg ? "DCTDecode" : "FlateDecode" };
 }
 
+function replaceLoneSurrogates(value: string): string {
+  let output = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        output += value.slice(index, index + 2);
+        index += 1;
+      } else {
+        output += "\ufffd";
+      }
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      output += "\ufffd";
+    } else {
+      output += value[index];
+    }
+  }
+  return output;
+}
+
 function validateSourcePage(source: PdfSourcePageOptions | undefined): PdfSourcePageOptions | undefined {
   if (source === undefined) return undefined;
   if (source === null || typeof source !== "object") {
@@ -67,7 +93,37 @@ function validateSourcePage(source: PdfSourcePageOptions | undefined): PdfSource
       throw new TypeError(`Source page ${name} must be a string.`);
     }
   }
-  return source;
+  return {
+    ...source,
+    heading: replaceLoneSurrogates(source.heading),
+    filename: replaceLoneSurrogates(source.filename),
+    url: replaceLoneSurrogates(source.url),
+  };
+}
+
+function validateSourceGlyphs(source: PdfSourcePageOptions): Map<string, PdfRgbImagePage> {
+  const input = source.glyphs;
+  if (input === undefined) return new Map();
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw new TypeError("Source page glyphs must be a character-to-image object.");
+  }
+
+  const output = new Map<string, PdfRgbImagePage>();
+  for (const [inputCharacter, image] of Object.entries(input)) {
+    const character = replaceLoneSurrogates(inputCharacter);
+    const codePoints = [...character];
+    const codePoint = codePoints[0]?.codePointAt(0);
+    if (codePoints.length !== 1 || codePoint === undefined || codePoint <= 0xff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+      throw new RangeError("Source page glyph keys must be one Unicode scalar above U+00FF.");
+    }
+    if (image === null || typeof image !== "object" || !("rgbFlate" in image) || image.rgbFlate === undefined) {
+      throw new TypeError(`Source page glyph ${character} must provide an RGB Flate image.`);
+    }
+    validateImage(image, `source glyph ${character}`);
+    if (output.has(character)) throw new TypeError(`Source page has duplicate glyphs after Unicode normalization: ${character}.`);
+    output.set(character, image);
+  }
+  return output;
 }
 
 const SOURCE_PAGE_WIDTH = 595;
@@ -100,11 +156,13 @@ function wrapSourceLine(value: string, maxWidth: number): string[] {
 }
 
 function sourceToUnicodeCMap(text: string): Uint8Array {
-  const codeUnits = new Set<number>();
-  for (let index = 0; index < text.length; index += 1) codeUnits.add(text.charCodeAt(index));
-  const mappings = [...codeUnits].sort((left, right) => left - right)
-    .map(codeUnit => `<${codeUnit.toString(16).padStart(4, "0")}> <${codeUnit.toString(16).padStart(4, "0")}>`)
-    .join("\n");
+  const characters = [...new Set(text)].sort((left, right) => left.codePointAt(0)! - right.codePointAt(0)!);
+  const mappings = characters.map(character => `${pdfHex(character)} ${pdfHex(character)}`);
+  const mappingBlocks: string[] = [];
+  for (let index = 0; index < mappings.length; index += 100) {
+    const block = mappings.slice(index, index + 100);
+    mappingBlocks.push(`${block.length} beginbfchar`, ...block, "endbfchar");
+  }
   const cmap = [
     "/CIDInit /ProcSet findresource begin",
     "12 dict begin",
@@ -112,12 +170,12 @@ function sourceToUnicodeCMap(text: string): Uint8Array {
     "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
     "/CMapName /Adobe-Identity-UCS def",
     "/CMapType 2 def",
-    "1 begincodespacerange",
-    "<0000> <FFFF>",
+    "3 begincodespacerange",
+    "<0000> <D7FF>",
+    "<E000> <FFFF>",
+    "<D800DC00> <DBFFDFFF>",
     "endcodespacerange",
-    `${codeUnits.size} beginbfchar`,
-    mappings,
-    "endbfchar",
+    ...mappingBlocks,
     "endcmap",
     "CMapName currentdict /CMap defineresource pop",
     "end",
@@ -127,7 +185,54 @@ function sourceToUnicodeCMap(text: string): Uint8Array {
   return pdfText(cmap);
 }
 
-function sourcePageContent(source: PdfSourcePageOptions): { contents: Uint8Array; cmapText: string } {
+interface SourceCopyFont {
+  readonly name: string;
+  readonly fontObject: number;
+  readonly cmapObject: number;
+  readonly characters: readonly string[];
+}
+
+interface SourceGlyphObject {
+  readonly character: string;
+  readonly name: string;
+  readonly object: number;
+  readonly image: PdfRgbImagePage;
+}
+
+function sourceCopyToUnicodeCMap(characters: readonly string[], fontName: string): Uint8Array {
+  const mappings = characters.map((character, index) => {
+    const code = SOURCE_COPY_CODES[index]!;
+    return `<${code.toString(16).padStart(2, "0")}> ${pdfHex(character)}`;
+  });
+  const mappingBlocks: string[] = [];
+  for (let index = 0; index < mappings.length; index += 100) {
+    const block = mappings.slice(index, index + 100);
+    mappingBlocks.push(`${block.length} beginbfchar`, ...block, "endbfchar");
+  }
+  return pdfText([
+    "/CIDInit /ProcSet findresource begin",
+    "12 dict begin",
+    "begincmap",
+    "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+    `/CMapName /Harvest-Source-${fontName}-UCS def`,
+    "/CMapType 2 def",
+    "1 begincodespacerange",
+    "<21> <7e>",
+    "endcodespacerange",
+    ...mappingBlocks,
+    "endcmap",
+    "CMapName currentdict /CMap defineresource pop",
+    "end",
+    "end",
+    "",
+  ].join("\n"));
+}
+
+function sourcePageContent(
+  source: PdfSourcePageOptions,
+  glyphObjects: ReadonlyMap<string, SourceGlyphObject>,
+  copyGlyphs: ReadonlyMap<string, { readonly fontName: string; readonly code: number }>,
+): { contents: Uint8Array; cmapText: string } {
   const availableWidth = (SOURCE_PAGE_WIDTH - SOURCE_PAGE_MARGIN * 2) * 1000;
   const headingLines = wrapSourceLine(source.heading, availableWidth / 18);
   const filenameLines = wrapSourceLine(source.filename, availableWidth / 12);
@@ -164,13 +269,54 @@ function sourcePageContent(source: PdfSourcePageOptions): { contents: Uint8Array
         x += [...run].reduce((width, character) => width + sourceCharacterWidth(character), 0) * section.size / 1000;
         run = "";
       };
-      for (const character of line) {
+      const lineCharacters = [...line];
+      for (let index = 0; index < lineCharacters.length;) {
+        const character = lineCharacters[index]!;
+        const glyph = glyphObjects.get(character);
+        if (glyph !== undefined) {
+          flush();
+          const copy = copyGlyphs.get(character);
+          const glyphRun = [glyph];
+          let encoded = copy === undefined ? "" : copy.code.toString(16).padStart(2, "0");
+          if (copy !== undefined) {
+            for (let next = index + 1; next < lineCharacters.length; next += 1) {
+              const nextCharacter = lineCharacters[next]!;
+              const nextGlyph = glyphObjects.get(nextCharacter);
+              const nextCopy = copyGlyphs.get(nextCharacter);
+              if (nextGlyph === undefined || nextCopy?.fontName !== copy.fontName) break;
+              glyphRun.push(nextGlyph);
+              encoded += nextCopy.code.toString(16).padStart(2, "0");
+            }
+          }
+          if (copy !== undefined) {
+            commands.push(
+              `/${copy.fontName} ${section.size} Tf 166.667 Tz 3 Tr ` +
+              `1 0 0 1 ${x.toFixed(3)} ${y.toFixed(3)} Tm ` +
+              `<${encoded}> Tj 100 Tz 0 Tr`,
+            );
+          }
+          commands.push("ET");
+          for (const runGlyph of glyphRun) {
+            const width = sourceCharacterWidth(runGlyph.character) * section.size / 1000;
+            const height = section.size;
+            commands.push(
+              `q\n${width.toFixed(3)} 0 0 ${height.toFixed(3)} ` +
+              `${x.toFixed(3)} ${(y - height * 0.2).toFixed(3)} cm\n/${runGlyph.name} Do\nQ`,
+            );
+            x += width;
+          }
+          commands.push("BT");
+          runFont = null;
+          index += glyphRun.length;
+          continue;
+        }
         const font: "F1" | "F2" = character.codePointAt(0)! <= 0xff ? "F2" : "F1";
         if (runFont !== font) {
           flush();
           runFont = font;
         }
         run += character;
+        index += 1;
       }
       flush();
       y -= section.leading;
@@ -197,10 +343,22 @@ function joinChunks(chunks: readonly Uint8Array[], totalLength: number): Uint8Ar
  */
 export function createPdfFromJpegs(images: readonly PdfImagePage[], source?: PdfSourcePageOptions): Uint8Array {
   const sourcePage = validateSourcePage(source);
-  const sourceObjectCount = sourcePage === undefined ? 0 : 6;
+  const sourceGlyphs = sourcePage === undefined ? new Map<string, PdfRgbImagePage>() : validateSourceGlyphs(sourcePage);
+  const sourceCharacters = sourcePage === undefined
+    ? []
+    : [...new Set([...sourcePage.heading, ...sourcePage.filename, ...sourcePage.url].filter(character => character.codePointAt(0)! > 0xff))];
+  const glyphCharacters = sourceCharacters.filter(character => sourceGlyphs.has(character));
+  const copyFontGroups: string[][] = [];
+  for (let index = 0; index < glyphCharacters.length; index += SOURCE_COPY_CODES.length) {
+    copyFontGroups.push(glyphCharacters.slice(index, index + SOURCE_COPY_CODES.length));
+  }
+  const sourceObjectCount = sourcePage === undefined
+    ? 0
+    : 7 + glyphCharacters.length + copyFontGroups.length * 2;
   const objectCount = 2 + images.length * 3 + sourceObjectCount;
   const objects: Uint8Array[] = [];
   const offsets = new Array<number>(objectCount + 1).fill(0);
+  const pdfHeader = sourcePage === undefined ? PDF_HEADER_1_3 : PDF_HEADER_1_5;
 
   objects.push(pdfText("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"));
 
@@ -254,13 +412,44 @@ export function createPdfFromJpegs(images: readonly PdfImagePage[], source?: Pdf
     const descendantObject = pageObject + 3;
     const toUnicodeObject = pageObject + 4;
     const standardFontObject = pageObject + 5;
-    const { contents, cmapText } = sourcePageContent(sourcePage);
+    const descriptorObject = pageObject + 6;
+    const sourceGlyphObjects = new Map<string, SourceGlyphObject>();
+    glyphCharacters.forEach((character, index) => {
+      sourceGlyphObjects.set(character, {
+        character,
+        name: `G${index}`,
+        object: pageObject + 7 + index,
+        image: sourceGlyphs.get(character)!,
+      });
+    });
+    const copyFontObjectStart = pageObject + 7 + glyphCharacters.length;
+    const copyFonts: SourceCopyFont[] = copyFontGroups.map((characters, index) => ({
+      name: `F${index + 3}`,
+      fontObject: copyFontObjectStart + index * 2,
+      cmapObject: copyFontObjectStart + index * 2 + 1,
+      characters,
+    }));
+    const copyGlyphs = new Map<string, { readonly fontName: string; readonly code: number }>();
+    for (const font of copyFonts) {
+      font.characters.forEach((character, index) => {
+        copyGlyphs.set(character, { fontName: font.name, code: SOURCE_COPY_CODES[index]! });
+      });
+    }
+    const { contents, cmapText } = sourcePageContent(sourcePage, sourceGlyphObjects, copyGlyphs);
     const toUnicode = sourceToUnicodeCMap(cmapText);
+    const fontResources = [
+      `/F1 ${fontObject} 0 R`,
+      `/F2 ${standardFontObject} 0 R`,
+      ...copyFonts.map(font => `/${font.name} ${font.fontObject} 0 R`),
+    ].join(" ");
+    const glyphResources = [...sourceGlyphObjects.values()]
+      .map(glyph => `/${glyph.name} ${glyph.object} 0 R`).join(" ");
 
     objects.push(pdfText(
       `${pageObject} 0 obj\n` +
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${SOURCE_PAGE_WIDTH} ${SOURCE_PAGE_HEIGHT}] ` +
-      `/Resources << /Font << /F1 ${fontObject} 0 R /F2 ${standardFontObject} 0 R >> >> ` +
+      `/Resources << /Font << ${fontResources} >> ` +
+      (glyphResources === "" ? "" : `/XObject << ${glyphResources} >> `) + ">> " +
       `/Contents ${contentsObject} 0 R >>\nendobj\n`,
     ));
     objects.push(joinChunks([
@@ -270,7 +459,7 @@ export function createPdfFromJpegs(images: readonly PdfImagePage[], source?: Pdf
     ], pdfText(`${contentsObject} 0 obj\n<< /Length ${contents.byteLength} >>\nstream\n`).byteLength + contents.byteLength + "endstream\nendobj\n".length));
     objects.push(pdfText(
       `${fontObject} 0 obj\n` +
-      `<< /Type /Font /Subtype /Type0 /BaseFont /HeiseiKakuGo-W5 ` +
+      `<< /Type /Font /Subtype /Type0 /BaseFont /HeiseiKakuGo-W5-UniJIS-UTF16-H ` +
       `/Encoding /UniJIS-UTF16-H /DescendantFonts [${descendantObject} 0 R] ` +
       `/ToUnicode ${toUnicodeObject} 0 R >>\nendobj\n`,
     ));
@@ -278,7 +467,7 @@ export function createPdfFromJpegs(images: readonly PdfImagePage[], source?: Pdf
       `${descendantObject} 0 obj\n` +
       `<< /Type /Font /Subtype /CIDFontType0 /BaseFont /HeiseiKakuGo-W5 ` +
       `/CIDSystemInfo << /Registry (Adobe) /Ordering (Japan1) /Supplement 6 >> ` +
-      `/DW 1000 >>\nendobj\n`,
+      `/FontDescriptor ${descriptorObject} 0 R /DW 1000 >>\nendobj\n`,
     ));
     objects.push(joinChunks([
       pdfText(`${toUnicodeObject} 0 obj\n<< /Length ${toUnicode.byteLength} >>\nstream\n`),
@@ -289,17 +478,53 @@ export function createPdfFromJpegs(images: readonly PdfImagePage[], source?: Pdf
       `${standardFontObject} 0 obj\n` +
       "<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>\nendobj\n",
     ));
+    objects.push(pdfText(
+      `${descriptorObject} 0 obj\n` +
+      "<< /Type /FontDescriptor /FontName /HeiseiKakuGo-W5 /Flags 4 " +
+      "/FontBBox [0 -200 1000 900] /ItalicAngle 0 /Ascent 880 /Descent -120 " +
+      "/CapHeight 700 /StemV 80 >>\nendobj\n",
+    ));
+
+    for (const glyph of sourceGlyphObjects.values()) {
+      const { data } = validateImage(glyph.image, `source glyph ${glyph.character}`);
+      const header = pdfText(
+        `${glyph.object} 0 obj\n` +
+        `<< /Type /XObject /Subtype /Image /Width ${glyph.image.width} /Height ${glyph.image.height} ` +
+        `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode ` +
+        `/Length ${data.byteLength} >>\nstream\n`,
+      );
+      objects.push(joinChunks([
+        header,
+        data,
+        pdfText("\nendstream\nendobj\n"),
+      ], header.byteLength + data.byteLength + "\nendstream\nendobj\n".length));
+    }
+
+    for (const font of copyFonts) {
+      const cmap = sourceCopyToUnicodeCMap(font.characters, font.name);
+      objects.push(pdfText(
+        `${font.fontObject} 0 obj\n` +
+        `<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding ` +
+        `/ToUnicode ${font.cmapObject} 0 R >>\nendobj\n`,
+      ));
+      const cmapHeader = pdfText(`${font.cmapObject} 0 obj\n<< /Length ${cmap.byteLength} >>\nstream\n`);
+      objects.push(joinChunks([
+        cmapHeader,
+        cmap,
+        pdfText("endstream\nendobj\n"),
+      ], cmapHeader.byteLength + cmap.byteLength + "endstream\nendobj\n".length));
+    }
   }
 
-  const chunks: Uint8Array[] = [PDF_HEADER];
-  let totalLength = PDF_HEADER.byteLength;
+  const chunks: Uint8Array[] = [pdfHeader];
+  let totalLength = pdfHeader.byteLength;
   for (const object of objects) {
     totalLength += object.byteLength;
     chunks.push(object);
   }
 
   // Build offsets from the actual serialized object sequence.
-  let cursor = PDF_HEADER.byteLength;
+  let cursor = pdfHeader.byteLength;
   let objectIndex = 1;
   for (const object of objects) {
     offsets[objectIndex] = cursor;

@@ -23,4 +23,6 @@ export interface PdfSourcePageOptions {
   readonly heading: string;
   readonly filename: string;
   readonly url: string;
+  /** Rasterized source characters above U+00FF, used for consistent display and Unicode copying. */
+  readonly glyphs?: Readonly<Record<string, PdfRgbImagePage>> | undefined;
 }

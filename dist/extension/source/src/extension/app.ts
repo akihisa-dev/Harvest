@@ -4,6 +4,7 @@ import { createCollectionController } from "./collection-controller.js";
 import { scanTab, scanUrl } from "./page-access.js";
 import { preparePdfImages, PdfImageError } from "./pdf-image.js";
 import { createPdf, type PdfImagePage } from "../core/pdf.js";
+import { prepareSourceGlyphs } from "./pdf-source-glyphs.js";
 import { animateLayoutChange, prefersReducedMotion, reconcileKeyedChildren, setMotionText } from "./motion.js";
 import { formatCount, formatFailedAria, formatGroupLabel, formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { createViewerController } from "./viewer-controller.js";
@@ -588,9 +589,14 @@ async function exportPdf(): Promise<void> {
     const pages = work.selected.map(item => work.prepared.get(item)!);
     setStatus(t("pdfCreating"), "busy", `${pages.length} / ${pages.length}`);
     const filename = pdfFilename();
-    const blob = createPdf(pages, includeSourcePage.checked ? {
+    const sourcePage = includeSourcePage.checked ? {
       heading: t("sourceHeading"), filename, url: work.selected[0]!.sourcePage,
-    } : undefined);
+    } : undefined;
+    const glyphs = sourcePage ? await prepareSourceGlyphs(
+      [sourcePage.heading, sourcePage.filename, sourcePage.url], controller.signal,
+    ) : undefined;
+    if (disposed || controller.signal.aborted) return;
+    const blob = createPdf(pages, sourcePage ? {...sourcePage, glyphs} : undefined);
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
