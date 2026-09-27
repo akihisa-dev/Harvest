@@ -178,6 +178,10 @@ function hideSourceInput() {
     sourceDrop.hidden = false;
     updateSourceDrop();
 }
+function clearSourceUrl() {
+    sourceUrl.value = "";
+    hideSourceInput();
+}
 function setStatus(message, state = "info") {
     setMotionText(statusElement, message);
     statusElement.dataset["state"] = state;
@@ -745,6 +749,7 @@ async function exportPdf() {
         link.click();
         link.remove();
         window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+        clearSourceUrl();
         pendingExport = null;
         setStatus(t("pdfSaved", { count: pages.length, plural: formatPlural(pages.length) }), "success");
         completionElement.hidden = false;
@@ -894,6 +899,7 @@ resetOrderButton.addEventListener("click", () => {
 resetButton.addEventListener("click", () => {
     if (busy)
         return;
+    clearSourceUrl();
     collectionAnalyzedUrl = null;
     images = [];
     initialImageOrder = [];

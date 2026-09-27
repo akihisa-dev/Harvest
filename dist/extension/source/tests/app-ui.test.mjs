@@ -157,6 +157,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     await waitUntil(() => !document.querySelector("#scan").disabled);
     assert.equal(document.downloads.length, 1, "同じリンクの再クリックはPDF保存し、処理中の連打は無視する");
     assert.equal(executionCount, scansBeforePdf, "PDF保存では再解析しない");
+    assert.equal(document.querySelector("#source-url").value, "", "保存成功時は入力したURLを消す");
+    assert.equal(document.querySelector("#source-drop").dataset.hasUrl, "false");
     document.downloads.length = 0;
     rejectScan = true;
     capturedMessage({url: "https://example.com/failed"});
@@ -174,8 +176,10 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(executionCount, scansAfterStop);
     createdUrls.length = 0;
     executionCount = 0;
-    document.querySelector("#source-url").value = "";
+    assert.equal(document.querySelector("#source-url").value, "https://example.com/failed");
     document.querySelector("#reset").dispatch("click");
+    assert.equal(document.querySelector("#source-url").value, "", "クリア時は入力したURLを消す");
+    assert.equal(document.querySelector("#source-drop").dataset.hasUrl, "false");
     const empty = document.querySelector("#empty");
     assert.equal(empty.textContent, "ここに画像が並びます。\n「解析」を押して、画像を集めましょう。");
 
@@ -363,6 +367,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     const failedUrl = resultImages[0];
     const fetches = [];
     let failOnce = true;
+    document.querySelector("#source-url").value = "https://example.com/next";
+    document.querySelector("#source-url").dispatch("input");
     globalThis.fetch = async url => {
       fetches.push(url);
       if (url === failedUrl && failOnce) throw new Error("test");
@@ -384,6 +390,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), busyOrder);
     await waitUntil(() => document.querySelector("#failures").hidden === false);
     assert.equal(document.downloads.length, 0);
+    assert.equal(document.querySelector("#source-url").value, "https://example.com/next", "保存失敗時は再試行のためURLを残す");
     assert.equal(document.querySelector("#failures").hidden, false);
     assert.deepEqual(document.querySelector("#failed-images").children.map(row => row.textContent), ["3番 001.jpg — 画像を取得できませんでした。通信状態と画像URLを確認してください。"]);
     assert.equal(document.querySelector("#export").textContent, "失敗した1枚を再試行");
@@ -401,12 +408,15 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#export").textContent, "失敗した1枚を再試行");
     rejectScan = false;
     failOnce = false;
+    createdUrls.length = 0;
     document.querySelector("#export").dispatch("click");
     await waitUntil(() => document.downloads.length === 1);
     assert.deepEqual(fetches, [...busyOrder, failedUrl]);
     assert.deepEqual(document.downloads, ["ページ.pdf"]);
     assert.equal(document.querySelector("#failures").hidden, true);
     assert.equal(document.querySelector("#status").dataset.state, "success");
+    assert.equal(document.querySelector("#source-url").value, "", "再試行後に保存できたらURLを消す");
+    assert.equal(document.querySelector("#source-drop").dataset.hasUrl, "false");
 
     coverButton.dispatch("click");
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
