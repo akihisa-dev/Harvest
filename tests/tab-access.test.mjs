@@ -34,7 +34,12 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     },
     scripting: {executeScript: async ({target}) => {
       scannedTabs.push(target.tabId);
-      return [{result: {url: "https://example.com/page", title: "ページ", images: [], links: []}}];
+      return [{result: {
+        url: "https://example.com/page",
+        title: "ページ",
+        images: [],
+        links: [{url: "https://example.com/gallery", label: "一覧"}],
+      }}];
     }}
   };
   try {
@@ -44,6 +49,7 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(queries, [{active: true, currentWindow: true}]);
     assert.deepEqual(scannedTabs, [7]);
+    assert.deepEqual(createdUrls, []);
 
     element("#source-url").value = "https://example.com/other";
     listeners.get("#scan:click")();

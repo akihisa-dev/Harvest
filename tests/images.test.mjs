@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defaultSelectedImageGroups, filterImagesByGroup, galleryLinkScore, groupImages, imageGroupLabel, normalizeImageUrls, sortImageUrlsForSite } from "../dist/extension/core/images.js";
+import { defaultSelectedImageGroups, filterImagesByGroup, groupImages, imageGroupLabel, normalizeImageUrls, sortImageUrlsForSite } from "../dist/extension/core/images.js";
 
 test("画像候補を元ページから解決し、重複と実行できないURLを除く", () => {
   assert.deepEqual(normalizeImageUrls([
@@ -38,13 +38,6 @@ test("抽出結果のsrcset表記とプロトコル相対URLを実際に正規�
 test("画像のまとまりはサイト名と保存先の階層で表す", () => {
   assert.equal(imageGroupLabel("https://example.com/book/pages/01.jpg"), "example.com / pages");
   assert.equal(imageGroupLabel("https://example.com/cover.jpg"), "example.com");
-});
-
-test("画像一覧に関係しそうな同一サイトのリンクだけを候補にする", () => {
-  const source = "https://example.com/book";
-  assert.ok(galleryLinkScore({url: "/book/gallery", label: "全ページを見る"}, source) > 0);
-  assert.equal(galleryLinkScore({url: "/about", label: "運営会社"}, source), 0);
-  assert.equal(galleryLinkScore({url: "https://other.example/gallery", label: "ギャラリー"}, source), -1);
 });
 
 test("UI用の画像除外規則は本文画像を残す", () => {

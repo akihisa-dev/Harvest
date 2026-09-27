@@ -51,7 +51,7 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
   for (const selector of [
     "#source-url", "#scan", "#export", "#select-all", "#clear-all", "#reset",
     "#completion", "#back-to-images", "#high-quality", "#images", "#groups", "#group-selections",
-    "#links", "#count", "#empty", "#status",
+    "#count", "#empty", "#status",
   ]) document.querySelector(selector);
   const previousDocument = globalThis.document;
   const previousChrome = globalThis.chrome;
@@ -63,15 +63,14 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     "https://example.com/cover/001.jpg",
     "https://example.com/cover/002.jpg",
   ];
-  let resultLinks = [];
   let executionCount = 0;
-  let manualShouldFail = false;
+  const createdUrls = [];
   globalThis.document = document;
   globalThis.window = {setTimeout, clearTimeout};
   globalThis.chrome = {
     tabs: {
       query: async () => [{id: 7, url: "https://example.com/view"}],
-      create: async ({url}) => { if (manualShouldFail) throw new Error("test"); return {id: 8, url}; },
+      create: async ({url}) => { createdUrls.push(url); return {id: 8, url}; },
       get: async () => ({status: "complete"}),
       remove: async () => {},
       onUpdated: {addListener() {}, removeListener() {}},
@@ -80,7 +79,7 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
       executionCount += 1;
       return [{result: {
         url: "https://example.com/view", title: "ページ",
-        links: executionCount === 3 ? [] : resultLinks,
+        links: [{url: "https://example.com/pages/gallery", label: "一覧"}],
         images: executionCount === 3 ? [] : resultImages,
       }}];
     }},
@@ -166,18 +165,13 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     assert.equal(empty.hidden, false);
     assert.equal(empty.textContent, "ここに画像が並びます。\n「解析」を押して、画像を集めましょう。");
     resultImages = [];
-    resultLinks = [{url: "https://example.com/pages/gallery", label: "一覧"}];
     globalThis.fetch = previousFetch;
     document.querySelector("#scan").dispatch("click");
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(empty.hidden, false);
     assert.equal(empty.textContent, "画像が見つかりませんでした。");
-    manualShouldFail = true;
-    const manualLink = document.querySelector("#links").children.find(child => child.textContent === "一覧");
-    manualLink.dispatch("click");
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(document.querySelector("#status").dataset.state, "error");
-    assert.equal(empty.textContent, "解析できませんでした。ページURLを確認して、もう一度お試しください。");
+    assert.equal(executionCount, 2);
+    assert.deepEqual(createdUrls, []);
   } finally {
     globalThis.fetch = previousFetch;
     globalThis.document = previousDocument;

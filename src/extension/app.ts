@@ -1,11 +1,10 @@
-import { defaultSelectedImageGroups, filterImagesByGroup, galleryLinkScore, groupImages, normalizeImageUrls, sortImageUrlsForSite, type ImageGroups, type ImageItem } from "../core/images.js";
+import { defaultSelectedImageGroups, filterImagesByGroup, groupImages, normalizeImageUrls, sortImageUrlsForSite, type ImageGroups, type ImageItem } from "../core/images.js";
 import { createPdf, type PdfImagePage } from "../core/pdf.js";
 
 interface PageScan {
   url: string;
   title: string;
   images: string[];
-  links: Array<{url: string; label: string}>;
 }
 
 const sourceUrl = required<HTMLInputElement>("#source-url");
@@ -20,15 +19,12 @@ const qualityInput = required<HTMLInputElement>("#high-quality");
 const imagesElement = required<HTMLOListElement>("#images");
 const groupsElement = required<HTMLDivElement>("#groups");
 const groupSelectionsElement = required<HTMLDivElement>("#group-selections");
-const linksElement = required<HTMLDivElement>("#links");
 const countElement = required<HTMLSpanElement>("#count");
 const emptyElement = required<HTMLParagraphElement>("#empty");
 const statusElement = required<HTMLParagraphElement>("#status");
 
 let images: ImageItem[] = [];
-let links: PageScan["links"] = [];
 let pageTitle = "画像";
-let rootPageUrl = "";
 let activeGroupKey: string | null = null;
 let busy = false;
 type ScanState = "initial" | "scanning" | "results" | "empty" | "error";
@@ -53,7 +49,6 @@ function isWebUrl(url: string | undefined): url is string {
 
 function scanDocument(): PageScan {
   const candidates: string[] = [];
-  const pageLinks: PageScan["links"] = [];
   const add = (value: string | null | undefined): void => {
     if (value && !value.startsWith("data:") && !value.startsWith("blob:")) candidates.push(value);
   };
@@ -84,9 +79,6 @@ function scanDocument(): PageScan {
   for (const anchor of document.querySelectorAll<HTMLAnchorElement>("a[href]")) {
     const href = anchor.href;
     if (/\.(?:jpe?g|png|webp|avif|gif)(?:[?#]|$)/i.test(href)) add(href);
-    if (pageLinks.length < 300 && /^https?:\/\//i.test(href)) {
-      pageLinks.push({url: href, label: (anchor.textContent || anchor.getAttribute("aria-label") || href).trim().slice(0, 100)});
-    }
   }
   let inspectedBackgrounds = 0;
   for (const element of document.querySelectorAll<HTMLElement>("*")) {
@@ -94,7 +86,7 @@ function scanDocument(): PageScan {
     const background = getComputedStyle(element).backgroundImage;
     for (const match of background.matchAll(/url\(["']?([^"')]+)["']?\)/g)) add(match[1]);
   }
-  return {url: location.href, title: document.title, images: candidates, links: pageLinks};
+  return {url: location.href, title: document.title, images: candidates};
 }
 
 function setStatus(message: string, state: StatusState = "info"): void {
@@ -137,12 +129,6 @@ function addScan(result: PageScan): void {
     images.push({url, sourcePage: result.url, selected: true});
     existing.add(url);
   }
-  const seen = new Set(links.map(link => link.url));
-  for (const link of result.links) {
-    if (galleryLinkScore(link, result.url) < 0 || seen.has(link.url)) continue;
-    links.push(link);
-    seen.add(link.url);
-  }
   render();
 }
 
@@ -154,12 +140,12 @@ async function scanTab(tabId: number): Promise<PageScan> {
 
 async function scanUrl(url: string): Promise<PageScan> {
   const tab = await chrome.tabs.create({url, active: false});
-  if (tab.id === undefined) throw new Error("リンク先を開けませんでした。");
+  if (tab.id === undefined) throw new Error("指定したページを開けませんでした。");
   try {
     await new Promise<void>((resolve, reject) => {
       const timer = window.setTimeout(() => {
         chrome.tabs.onUpdated.removeListener(listener);
-        reject(new Error("リンク先の読み込みが時間切れになりました。"));
+        reject(new Error("指定したページの読み込みが時間切れになりました。"));
       }, 20000);
       const listener = (tabId: number, change: {status?: string}): void => {
         if (tabId !== tab.id || change.status !== "complete") return;
@@ -176,10 +162,6 @@ async function scanUrl(url: string): Promise<PageScan> {
   } finally {
     await chrome.tabs.remove(tab.id).catch(() => undefined);
   }
-}
-
-async function scanLink(url: string): Promise<void> {
-  addScan(await scanUrl(url));
 }
 
 function setBusy(value: boolean): void {
@@ -207,7 +189,6 @@ async function startScan(): Promise<void> {
     }
   }
   images = [];
-  links = [];
   activeGroupKey = null;
   scanState = "scanning";
   completionElement.hidden = true;
@@ -227,71 +208,20 @@ async function startScan(): Promise<void> {
       result = await scanTab(activeTab.id);
     }
     pageTitle = result.title || "画像";
-    rootPageUrl = result.url;
     addScan(result);
-    const recommended = result.links
-      .map(link => ({link, score: galleryLinkScore(link, result.url)}))
-      .filter(entry => entry.score > 0)
-      .sort((a, b) => b.score - a.score)[0];
-    let recommendedLinkFailed = false;
-    if (recommended) {
-      setStatus("画像一覧につながるリンク先を調べています…", "busy");
-      try { await scanLink(recommended.link.url); }
-      catch {
-        recommendedLinkFailed = true;
-        scanState = "error";
-        setStatus("リンク先は読み取れませんでした。元のページの画像を表示しています。", "error");
-      }
-    }
     const grouped = groupImages(images.map(item => item.url));
     const initiallySelected = defaultSelectedImageGroups(grouped);
     for (const [key, group] of Object.entries(grouped)) {
       for (const item of images) if (group.items.includes(item.url)) item.selected = initiallySelected[key] ?? true;
     }
     render();
-    if (!recommendedLinkFailed) {
-      scanState = images.length ? "results" : "empty";
-      setStatus(images.length ? `${images.length}枚の画像が見つかりました。` : "画像が見つかりませんでした。", images.length ? "success" : "info");
-    }
+    scanState = images.length ? "results" : "empty";
+    setStatus(images.length ? `${images.length}枚の画像が見つかりました。` : "画像が見つかりませんでした。", images.length ? "success" : "info");
   } catch {
     scanState = "error";
     setStatus("このページを読み取れませんでした。Chromeで開けるWebページを指定してください。", "error");
   } finally {
     setBusy(false);
-  }
-}
-
-function renderLinks(): void {
-  linksElement.replaceChildren();
-  const ranked = links.map(link => ({link, score: galleryLinkScore(link, rootPageUrl)}))
-    .filter(entry => entry.score > 0).slice(0, 12);
-  linksElement.hidden = ranked.length === 0;
-  if (!ranked.length) return;
-  const label = document.createElement("p");
-  label.textContent = "ほかのリンク先も調べる";
-  linksElement.append(label);
-  for (const {link} of ranked) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = link.label || link.url;
-    button.title = link.url;
-    button.disabled = busy;
-    button.addEventListener("click", async () => {
-      scanState = "scanning";
-      setBusy(true);
-      setStatus("リンク先を調べています…", "busy");
-      try {
-        await scanLink(link.url);
-        scanState = images.length ? "results" : "empty";
-        setStatus(`${images.length}枚の画像が見つかりました。`, "success");
-      }
-      catch {
-        scanState = images.length ? "results" : "error";
-        setStatus("リンク先を読み取れませんでした。", "error");
-      }
-      finally { setBusy(false); }
-    });
-    linksElement.append(button);
   }
 }
 
@@ -446,7 +376,6 @@ function render(): void {
   exportButton.disabled = busy || !images.some(item => item.selected);
   renderGroups(groups);
   renderGroupSelections(groups);
-  renderLinks();
   renderImages(visibleImages);
   restoreFocus();
 }
@@ -531,11 +460,9 @@ selectAllButton.addEventListener("click", () => { for (const item of images) ite
 clearAllButton.addEventListener("click", () => { for (const item of images) item.selected = false; render(); });
 resetButton.addEventListener("click", () => {
   images = [];
-  links = [];
   activeGroupKey = null;
   scanState = "initial";
   pageTitle = "画像";
-  rootPageUrl = "";
   completionElement.hidden = true;
   setStatus("収集結果を消しました。", "info");
   render();
