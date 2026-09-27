@@ -42,5 +42,7 @@ test("上部と画像領域の配分を内容によらず固定し操作を切�
   const maximum = Number(header.match(/max-height:\s*(\d+)dvh/)?.[1]);
   assert.ok(maximum > 0 && maximum <= 60, "画像領域に画面の40%以上を残す");
   assert.match(header, /overflow-y:\s*auto/, "上部の操作はスクロールで到達できる");
+  assert.match(header, /scrollbar-width:\s*none/, "上部にスクロールバーを表示しない");
+  assert.match(css, /\.app-header::-webkit-scrollbar\s*\{\s*display:\s*none/, "Chromeでも上部のスクロールバーを表示しない");
   assert.match(header, /grid-template-rows:\s*max-content max-content/, "固定領域の中で内容を圧縮せずスクロールさせる");
 });
