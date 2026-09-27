@@ -23,6 +23,15 @@
         <div class="section-head"><h2 id="images-heading">画像</h2><span id="count">0枚</span></div>
         <div class="filter-bar"><span>表示する画像</span><div id="groups" class="groups" role="group" aria-label="表示する画像" hidden></div></div>
         <div class="toolbar"><button id="select-all" type="button" disabled>すべて選択</button><button id="clear-all" type="button" disabled>選択を解除</button></div>
+        <aside class="export" aria-labelledby="export-heading">
+          <h2 id="export-heading">PDFを保存</h2>
+          <div class="export-actions">
+            <label class="quality"><input id="high-quality" type="checkbox" checked> 高画質で保存</label>
+            <button id="export" type="button" disabled>選択した画像をPDFにする</button>
+            <button id="reset" type="button">結果を消す</button>
+          </div>
+          <p id="status" role="status" aria-live="polite"></p>
+        </aside>
       </div>
     </div>
     <main>
@@ -32,14 +41,6 @@
         <p id="empty">「解析」を押すと、開いているページの画像を表示します。</p>
         <ol id="images" class="image-list"></ol>
       </section>
-      <aside class="export" aria-labelledby="export-heading">
-        <h2 id="export-heading">PDFを保存</h2>
-        <p>選択した画像を、一覧の上から順に1枚ずつページに配置します。矢印で順番を変えられます。</p>
-        <label class="quality"><input id="high-quality" type="checkbox" checked> 高画質で保存</label>
-        <button id="export" type="button" disabled>選択した画像をPDFにする</button>
-        <p id="status" role="status" aria-live="polite"></p>
-        <button id="reset" type="button">結果を消す</button>
-      </aside>
     </main>
   </body>
 </html>
