@@ -1,6 +1,7 @@
 import { defaultSelectedImageGroups, filterImagesByGroup, groupImages, normalizeImageUrls, sortImageUrlsForSite, type ImageGroups, type ImageItem } from "../core/images.js";
 import { toPdfPage } from "./pdf-image.js";
 import { createPdf, type PdfImagePage } from "../core/pdf.js";
+import { animateLayoutChange, prefersReducedMotion, reconcileKeyedChildren, setMotionText } from "./motion.js";
 
 interface PageScan {
   url: string;
@@ -38,6 +39,16 @@ type FocusTarget =
 let focusTarget: FocusTarget | null = null;
 let draggedImage: ImageItem | null = null;
 let suppressThumbnailClick = false;
+interface ImageRowParts {
+  preview: HTMLImageElement;
+  order: HTMLSpanElement;
+  name: HTMLSpanElement;
+  selectedMark: HTMLSpanElement;
+}
+const imageRowParts = new WeakMap<HTMLLIElement, ImageRowParts>();
+let imageView: {visibleImages: readonly ImageItem[]; previewOrder: ImageItem[]; rows: Map<string, HTMLLIElement>} = {
+  visibleImages: [], previewOrder: [], rows: new Map(),
+};
 
 function required<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -92,7 +103,7 @@ function scanDocument(): PageScan {
 }
 
 function setStatus(message: string, state: StatusState = "info"): void {
-  statusElement.textContent = message;
+  setMotionText(statusElement, message);
   statusElement.dataset["state"] = state;
 }
 
@@ -216,60 +227,69 @@ async function startScan(): Promise<void> {
 }
 
 function renderGroups(groups: ImageGroups): void {
-  groupsElement.replaceChildren();
   groupsElement.hidden = Object.keys(groups).length === 0;
-  if (groupsElement.hidden) return;
-  const allButton = document.createElement("button");
-  allButton.type = "button";
-  allButton.textContent = "すべて表示";
-  allButton.disabled = busy;
-  allButton.setAttribute("data-focus-kind", "group");
-  allButton.setAttribute("data-focus-key", "all");
-  allButton.setAttribute("aria-pressed", String(activeGroupKey === null));
-  allButton.addEventListener("click", () => { requestFocus({kind: "group", key: "all"}); activeGroupKey = null; render(); });
-  groupsElement.append(allButton);
-  for (const [key, group] of Object.entries(groups).sort((a, b) => a[1].priority - b[1].priority)) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = group.label;
-    button.title = "このまとまりだけを表示する";
-    button.disabled = busy;
-    button.setAttribute("data-focus-kind", "group");
-    button.setAttribute("data-focus-key", key);
-    button.setAttribute("aria-pressed", String(activeGroupKey === key));
-    button.addEventListener("click", () => { requestFocus({kind: "group", key}); activeGroupKey = key; render(); });
-    groupsElement.append(button);
-  }
+  const entries = groupsElement.hidden ? [] : Object.entries(groups).sort((a, b) => a[1].priority - b[1].priority);
+  reconcileKeyedChildren(groupsElement, groupsElement.hidden ? [] : ["all", ...entries.map(([key]) => key)], key => key,
+    key => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.addEventListener("click", () => {
+        requestFocus({kind: "group", key});
+        activeGroupKey = key === "all" ? null : key;
+        render();
+      });
+      return button;
+    },
+    (button, key) => {
+      const group = key === "all" ? undefined : groups[key];
+      button.textContent = group?.label ?? "すべて表示";
+      button.title = key === "all" ? "すべての画像を表示する" : "このまとまりだけを表示する";
+      button.disabled = busy;
+      button.setAttribute("data-focus-kind", "group");
+      button.setAttribute("data-focus-key", key);
+      button.setAttribute("aria-pressed", String(key === "all" ? activeGroupKey === null : activeGroupKey === key));
+    });
 }
 
 function renderGroupSelections(groups: ImageGroups): void {
-  groupSelectionsElement.replaceChildren();
   groupSelectionsElement.hidden = Object.keys(groups).length === 0;
-  if (groupSelectionsElement.hidden) return;
-  for (const [key, group] of Object.entries(groups).sort((a, b) => a[1].priority - b[1].priority)) {
-    const urls = new Set(group.items);
-    const groupItems = images.filter(item => urls.has(item.url));
-    const selectedCount = groupItems.filter(item => item.selected).length;
-    const label = document.createElement("label");
-    label.className = "group-selection";
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = groupItems.length > 0 && selectedCount === groupItems.length;
-    checkbox.indeterminate = selectedCount > 0 && selectedCount < groupItems.length;
-    checkbox.disabled = busy;
-    checkbox.setAttribute("data-focus-kind", "pdf-group");
-    checkbox.setAttribute("data-focus-key", key);
-    checkbox.setAttribute("aria-label", `PDFに含める ${group.label}`);
-    checkbox.addEventListener("change", () => {
-      requestFocus({kind: "pdf-group", key});
-      for (const item of groupItems) item.selected = checkbox.checked;
-      render();
+  const entries = groupSelectionsElement.hidden ? [] : Object.entries(groups).sort((a, b) => a[1].priority - b[1].priority);
+  reconcileKeyedChildren(groupSelectionsElement, entries.map(([key]) => key), key => key,
+    key => {
+      const label = document.createElement("label");
+      label.className = "group-selection";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.addEventListener("change", () => {
+        const currentGroups = groupImages(images.map(item => item.url));
+        const currentGroup = currentGroups[key];
+        if (!currentGroup) return;
+        requestFocus({kind: "pdf-group", key});
+        const urls = new Set(currentGroup.items);
+        for (const item of images) if (urls.has(item.url)) item.selected = checkbox.checked;
+        render();
+      });
+      const name = document.createElement("span");
+      label.append(checkbox, name);
+      return label;
+    },
+    (label, key) => {
+      const group = groups[key];
+      if (!group) return;
+      const checkbox = label.children[0] as HTMLInputElement | undefined;
+      const name = label.children[1] as HTMLSpanElement | undefined;
+      if (!checkbox || !name) return;
+      const urls = new Set(group.items);
+      const groupItems = images.filter(item => urls.has(item.url));
+      const selectedCount = groupItems.filter(item => item.selected).length;
+      checkbox.checked = groupItems.length > 0 && selectedCount === groupItems.length;
+      checkbox.indeterminate = selectedCount > 0 && selectedCount < groupItems.length;
+      checkbox.disabled = busy;
+      checkbox.setAttribute("data-focus-kind", "pdf-group");
+      checkbox.setAttribute("data-focus-key", key);
+      checkbox.setAttribute("aria-label", `PDFに含める ${group.label}`);
+      name.textContent = group.label;
     });
-    const name = document.createElement("span");
-    name.textContent = group.label;
-    label.append(checkbox, name);
-    groupSelectionsElement.append(label);
-  }
 }
 
 function imageFilename(url: string): string {
@@ -292,102 +312,114 @@ function moveImage(visibleImages: readonly ImageItem[], source: ImageItem, targe
   render();
 }
 
-function renderImages(visibleImages: readonly ImageItem[]): void {
+function showInsertion(order: ImageItem[]): void {
+  const {rows} = imageView;
+  imageView.previewOrder = order;
+  animateLayoutChange([...rows.values()], () => {
+    order.forEach((item, index) => { rows.get(item.url)!.style.order = String(index); });
+  }, draggedImage ? rows.get(draggedImage.url) : undefined);
+}
+
+function previewInsertion(target: ImageItem, event: DragEvent): void {
+  const {rows} = imageView;
+  if (busy || !draggedImage || draggedImage === target) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  const row = rows.get(target.url);
+  if (!row) return;
+  const rect = row.getBoundingClientRect();
+  const isSingleColumn = [...rows.values()].every(value => Math.abs(value.getBoundingClientRect().left - rect.left) < 1);
+  const after = isSingleColumn ? event.clientY >= rect.top + rect.height / 2 : event.clientX >= rect.left + rect.width / 2;
+  const order = imageView.previewOrder.filter(item => item !== draggedImage);
+  order.splice(order.indexOf(target) + (after ? 1 : 0), 0, draggedImage);
+  if (order.some((item, index) => item !== imageView.previewOrder[index])) showInsertion(order);
+}
+
+function finishDrop(event: DragEvent): void {
+  if (!draggedImage || busy) return;
+  event.preventDefault();
+  const source = draggedImage;
+  const visibleSet = new Set(imageView.visibleImages);
+  let index = 0;
+  images = images.map(item => visibleSet.has(item) ? imageView.previewOrder[index++]! : item);
   draggedImage = null;
-  imagesElement.replaceChildren();
-  const rows = new Map<ImageItem, HTMLLIElement>();
-  let previewOrder = [...visibleImages];
-  function showInsertion(order: ImageItem[]): void {
-    const positions = new Map([...rows].map(([item, row]) => [item, row.getBoundingClientRect()]));
-    for (const row of rows.values()) row.getAnimations().forEach(animation => animation.cancel());
-    previewOrder = order;
-    order.forEach((item, index) => { rows.get(item)!.style.order = String(index); });
-    for (const [item, row] of rows) {
-      const before = positions.get(item)!;
-      const after = row.getBoundingClientRect();
-      const x = before.left - after.left;
-      const y = before.top - after.top;
-      if (item !== draggedImage && (x || y) && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        row.animate([{transform: `translate(${x}px, ${y}px)`}, {transform: "translate(0, 0)"}],
-          {duration: 180, easing: "ease-out"});
-      }
-    }
-  }
-  function previewInsertion(target: ImageItem, event: DragEvent): void {
-    if (busy || !draggedImage || draggedImage === target) return;
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-    const rect = rows.get(target)!.getBoundingClientRect();
-    const isSingleColumn = [...rows.values()].every(row => Math.abs(row.getBoundingClientRect().left - rect.left) < 1);
-    const after = isSingleColumn ? event.clientY >= rect.top + rect.height / 2 : event.clientX >= rect.left + rect.width / 2;
-    const order = previewOrder.filter(item => item !== draggedImage);
-    order.splice(order.indexOf(target) + (after ? 1 : 0), 0, draggedImage);
-    if (order.some((item, index) => item !== previewOrder[index])) showInsertion(order);
-  }
-  function finishDrop(event: DragEvent): void {
-    if (!draggedImage || busy) return;
-    event.preventDefault();
-    const source = draggedImage;
-    const visibleSet = new Set(visibleImages);
-    let index = 0;
-    images = images.map(item => visibleSet.has(item) ? previewOrder[index++]! : item);
-    draggedImage = null;
-    requestFocus({kind: "image", url: source.url, action: "drag"});
+  requestFocus({kind: "image", url: source.url, action: "drag"});
+  render();
+}
+
+function createImageRow(item: ImageItem): HTMLLIElement {
+  const row = document.createElement("li");
+  const preview = document.createElement("img");
+  preview.className = "preview";
+  preview.loading = "lazy";
+  preview.referrerPolicy = "no-referrer";
+  preview.draggable = false;
+  const body = document.createElement("div");
+  body.className = "item-body";
+  const order = document.createElement("span");
+  order.className = "item-order";
+  const name = document.createElement("span");
+  name.className = "item-title";
+  const selectedMark = document.createElement("span");
+  selectedMark.className = "item-selected";
+  selectedMark.textContent = "✓";
+  selectedMark.setAttribute("aria-hidden", "true");
+  body.append(order, name, selectedMark);
+  row.append(preview, body);
+  imageRowParts.set(row, {preview, order, name, selectedMark});
+  row.addEventListener("pointerdown", () => { suppressThumbnailClick = false; });
+  row.addEventListener("click", () => {
+    if (suppressThumbnailClick || draggedImage || busy) return;
+    item.selected = !item.selected;
+    requestFocus({kind: "image", url: item.url, action: "drag"});
     render();
-  }
-  imagesElement.ondragover = event => {
-    if (!draggedImage || busy) return;
-    event.preventDefault();
-    // Gaps between grid cells also accept insertion at the nearest thumbnail.
-    let nearest: ImageItem | null = null;
-    let distance = Infinity;
-    for (const [item, row] of rows) {
-      const rect = row.getBoundingClientRect();
-      const dx = Math.max(rect.left - event.clientX, 0, event.clientX - rect.right);
-      const dy = Math.max(rect.top - event.clientY, 0, event.clientY - rect.bottom);
-      if (dx * dx + dy * dy < distance) { nearest = item; distance = dx * dx + dy * dy; }
+  });
+  row.addEventListener("dragstart", event => {
+    if (busy) { event.preventDefault(); return; }
+    suppressThumbnailClick = true;
+    draggedImage = item;
+    if (event.dataTransfer) {
+      event.dataTransfer.setDragImage(preview, preview.width / 2, preview.height / 2);
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", "harvest-image");
     }
-    if (nearest) previewInsertion(nearest, event);
-  };
-  imagesElement.ondrop = finishDrop;
-  visibleImages.forEach((item, index) => {
+    row.classList.add("dragging");
+  });
+  row.addEventListener("dragover", event => previewInsertion(item, event));
+  row.addEventListener("drop", finishDrop);
+  row.addEventListener("dragend", () => {
+    if (!draggedImage) return;
+    draggedImage = null;
+    row.classList.remove("dragging");
+    showInsertion([...imageView.visibleImages]);
+  });
+  row.addEventListener("keydown", event => {
+    if (event.target !== row) return;
+    if (!event.altKey && ["Enter", " "].includes(event.key)) {
+      event.preventDefault();
+      if (!event.repeat && !draggedImage && !busy) { item.selected = !item.selected; requestFocus({kind: "image", url: item.url, action: "drag"}); render(); }
+      return;
+    }
+    if (!event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+    event.preventDefault();
+    const index = imageView.visibleImages.indexOf(item);
+    const target = imageView.visibleImages[index + (event.key === "ArrowUp" ? -1 : 1)];
+    if (target) moveImage(imageView.visibleImages, item, target);
+  });
+  return row;
+}
+
+function renderImages(visibleImages: readonly ImageItem[]): void {
+  imageView.visibleImages = visibleImages;
+  imageView.previewOrder = [...visibleImages];
+  imageView.rows = reconcileKeyedChildren(imagesElement, visibleImages, item => item.url, createImageRow, (row, item, index) => {
+    const parts = imageRowParts.get(row);
+    if (!parts) return;
     const overallIndex = images.indexOf(item);
-    const row = document.createElement("li");
-    rows.set(item, row);
     row.style.order = String(index);
-    if (!item.selected) row.classList.add("unselected");
-    const preview = document.createElement("img");
-    preview.className = "preview";
-    preview.src = item.url;
-    preview.alt = `画像 ${index + 1}`;
-    preview.loading = "lazy";
-    preview.referrerPolicy = "no-referrer";
-    const body = document.createElement("div");
-    body.className = "item-body";
-    const order = document.createElement("span");
-    order.className = "item-order";
-    order.textContent = `${overallIndex + 1}`;
-    order.setAttribute("aria-label", `全体の${overallIndex + 1}番目`);
-    const name = document.createElement("span");
-    name.className = "item-title";
-    name.textContent = imageFilename(item.url);
-    name.title = item.url;
-    const selectedMark = document.createElement("span");
-    selectedMark.className = "item-selected";
-    selectedMark.textContent = "✓";
-    selectedMark.hidden = !item.selected;
-    selectedMark.setAttribute("aria-hidden", "true");
-    const toggleSelection = () => {
-      if (busy) return;
-      item.selected = !item.selected;
-      requestFocus({kind: "image", url: item.url, action: "drag"});
-      render();
-    };
-    row.addEventListener("pointerdown", () => { suppressThumbnailClick = false; });
-    row.addEventListener("click", () => {
-      if (suppressThumbnailClick || draggedImage) return;
-      toggleSelection();
-    });
+    if (item.selected) row.classList.remove("unselected");
+    else row.classList.add("unselected");
+    if (draggedImage !== item) row.classList.remove("dragging");
     row.setAttribute("role", "button");
     row.setAttribute("aria-pressed", String(item.selected));
     row.setAttribute("aria-disabled", String(busy));
@@ -397,45 +429,29 @@ function renderImages(visibleImages: readonly ImageItem[]): void {
     row.setAttribute("data-focus-kind", "image");
     row.setAttribute("data-focus-url", item.url);
     row.setAttribute("data-focus-action", "drag");
-    row.setAttribute("aria-label", `${name.textContent}、${overallIndex + 1}番目。クリックでPDF選択、ドラッグまたはAltと上下矢印で並べ替え`);
-    preview.draggable = false;
-    row.addEventListener("dragstart", event => {
-      if (busy) {
-        event.preventDefault();
-        return;
-      }
-      suppressThumbnailClick = true;
-      draggedImage = item;
-      if (event.dataTransfer) event.dataTransfer.setDragImage(preview, preview.width / 2, preview.height / 2);
-      row.classList.add("dragging");
-      if (event.dataTransfer) {
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", "harvest-image");
-      }
-    });
-    row.addEventListener("dragover", event => previewInsertion(item, event));
-    row.addEventListener("drop", finishDrop);
-    row.addEventListener("dragend", () => {
-      if (!draggedImage) return;
-      draggedImage = null;
-      row.classList.remove("dragging");
-      showInsertion([...visibleImages]);
-    });
-    row.addEventListener("keydown", event => {
-      if (event.target === row && !event.altKey && ["Enter", " "].includes(event.key)) {
-        event.preventDefault();
-        if (!event.repeat && !draggedImage) toggleSelection();
-        return;
-      }
-      if (event.target !== row || !event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
-      event.preventDefault();
-      const target = visibleImages[index + (event.key === "ArrowUp" ? -1 : 1)];
-      if (target) moveImage(visibleImages, item, target);
-    });
-    body.append(order, name, selectedMark);
-    row.append(preview, body);
-    imagesElement.append(row);
+    row.setAttribute("aria-label", `${imageFilename(item.url)}、${overallIndex + 1}番目。クリックでPDF選択、ドラッグまたはAltと上下矢印で並べ替え`);
+    parts.preview.src = item.url;
+    parts.preview.alt = `画像 ${index + 1}`;
+    parts.order.textContent = `${overallIndex + 1}`;
+    parts.order.setAttribute("aria-label", `全体の${overallIndex + 1}番目`);
+    parts.name.textContent = imageFilename(item.url);
+    parts.name.title = item.url;
+    parts.selectedMark.hidden = false;
   });
+  imagesElement.ondragover = event => {
+    if (!draggedImage || busy) return;
+    event.preventDefault();
+    let nearest: ImageItem | null = null;
+    let distance = Infinity;
+    for (const [url, row] of imageView.rows) {
+      const rect = row.getBoundingClientRect();
+      const dx = Math.max(rect.left - event.clientX, 0, event.clientX - rect.right);
+      const dy = Math.max(rect.top - event.clientY, 0, event.clientY - rect.bottom);
+      if (dx * dx + dy * dy < distance) { nearest = images.find(item => item.url === url) ?? null; distance = dx * dx + dy * dy; }
+    }
+    if (nearest) previewInsertion(nearest, event);
+  };
+  imagesElement.ondrop = finishDrop;
 }
 
 function render(): void {
@@ -443,7 +459,7 @@ function render(): void {
   if (activeGroupKey !== null && !groups[activeGroupKey]) activeGroupKey = null;
   const visibleImages = filterImagesByGroup(images, activeGroupKey === null ? null : groups[activeGroupKey]!);
   const selectedCount = images.filter(item => item.selected).length;
-  countElement.textContent = `${selectedCount} / ${images.length}枚を選択${activeGroupKey === null ? "" : `・${visibleImages.length}枚を表示`}`;
+  setMotionText(countElement, `${selectedCount} / ${images.length}枚を選択${activeGroupKey === null ? "" : `・${visibleImages.length}枚を表示`}`);
   exportButton.textContent = selectedCount ? `PDFを保存（${selectedCount}枚）` : "PDFを保存";
   emptyElement.hidden = images.length > 0;
   emptyElement.textContent = scanState === "scanning"
@@ -520,6 +536,6 @@ resetButton.addEventListener("click", () => {
   setStatus("収集結果を消しました。", "info");
   render();
 });
-backToImagesButton.addEventListener("click", () => { completionElement.hidden = true; imagesElement.scrollIntoView({block: "start"}); });
+backToImagesButton.addEventListener("click", () => { completionElement.hidden = true; imagesElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"}); });
 
 render();

@@ -11,6 +11,8 @@
   --line: #dedede;
   --control-line: #929292;
   --radius: 6px;
+  --motion-duration: 240ms;
+  --motion-easing: cubic-bezier(.22, 1, .36, 1);
 }
 
 * { box-sizing: border-box; }
@@ -120,8 +122,7 @@ main { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 16px; sc
 .item-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #fff; text-shadow: 0 1px 3px rgb(0 0 0 / 85%); margin: 0 -9px -9px; border-radius: 0 0 5px 5px; padding: 18px 9px 9px; background: linear-gradient(transparent, rgb(0 0 0 / 28%)); }
 .item-selected { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 4px; background: rgb(32 32 32 / 65%); color: #fff; font-size: 16px; font-weight: 700; }
 .image-list li[draggable="true"] { cursor: grab; }
-.image-list li.dragging { border: 2px dashed var(--control-line); background: #e4e4e4; cursor: grabbing; }
-.image-list li.dragging > * { visibility: hidden; }
+.image-list li.dragging { border: 1px dashed var(--control-line); background: #e4e4e4; cursor: grabbing; }
 .image-list li.dragging::after { content: "ここに移動"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12px; font-weight: 600; }
 #empty { padding: 44px 12px; color: var(--muted); font-size: 13px; line-height: 1.9; text-align: center; white-space: pre-line; }
 .completion { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; padding: 10px 12px; border: 1px solid var(--ink); border-radius: var(--radius); background: var(--surface); }
@@ -139,4 +140,99 @@ main { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 16px; sc
   body { height: auto; min-height: 100vh; min-height: 100dvh; overflow: auto; }
   .app-header { max-height: none; overflow: visible; }
   main { flex: none; overflow: visible; }
+}
+
+/* Explicit properties keep focus indicators immediate and layout under JS control. */
+button, .source-row input, .group-selection, .image-list li {
+  transition: background-color var(--motion-duration) var(--motion-easing),
+    border-color var(--motion-duration) var(--motion-easing),
+    color var(--motion-duration) var(--motion-easing),
+    box-shadow var(--motion-duration) var(--motion-easing);
+}
+button:active:not(:disabled) { background-color: #dedede; }
+#scan:active:not(:disabled), #export:active:not(:disabled) { background-color: #555; }
+.group-selection:has(input:checked) { border-color: var(--control-line); }
+.item-selected {
+  transition: opacity var(--motion-duration) var(--motion-easing),
+    transform var(--motion-duration) var(--motion-easing);
+}
+.image-list li.unselected .item-selected { opacity: 0; transform: scale(.8); }
+.image-list li.dragging > * { visibility: visible; opacity: 0; }
+.preview, .item-body { transition: opacity var(--motion-duration) var(--motion-easing); }
+@media (prefers-reduced-motion: reduce) {
+  button, .source-row input, .group-selection, .image-list li,
+  .item-selected, .preview, .item-body { transition: none; }
+}
+
+/* Keep the native checkbox semantics while making checked/mixed changes continuous. */
+input[type="checkbox"] {
+  appearance: none;
+  position: relative;
+  border: 1px solid var(--control-line);
+  border-radius: 3px;
+  background: var(--surface);
+  transition: background-color var(--motion-duration) var(--motion-easing),
+    border-color var(--motion-duration) var(--motion-easing);
+}
+input[type="checkbox"]:checked, input[type="checkbox"]:indeterminate {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  opacity: 0;
+  transform: rotate(45deg) scale(.6);
+  transition: opacity var(--motion-duration) var(--motion-easing),
+    transform var(--motion-duration) var(--motion-easing);
+}
+input[type="checkbox"]:checked::before { opacity: 1; transform: rotate(45deg) scale(1); }
+input[type="checkbox"]:indeterminate::before {
+  left: 3px; top: 6px; width: 8px; height: 0;
+  border-width: 0 0 2px;
+  opacity: 1; transform: rotate(0) scale(1);
+}
+input[type="checkbox"]:disabled { opacity: .55; }
+@media (prefers-reduced-motion: reduce) {
+  input[type="checkbox"], input[type="checkbox"]::before { transition: none; }
+}
+@media (forced-colors: active) {
+  input[type="checkbox"] { appearance: auto; }
+  input[type="checkbox"]::before { display: none; }
+}
+
+/* Chrome keeps hidden elements in the render tree only for their exit transition. */
+#empty, #completion, .filter-bar, .selection-bar, #groups, #group-selections {
+  interpolate-size: allow-keywords;
+  height: auto;
+  opacity: 1;
+  transition: opacity var(--motion-duration) var(--motion-easing),
+    height var(--motion-duration) var(--motion-easing),
+    margin var(--motion-duration) var(--motion-easing),
+    padding var(--motion-duration) var(--motion-easing),
+    display var(--motion-duration) allow-discrete;
+}
+#empty[hidden], #completion[hidden], #groups[hidden], #group-selections[hidden],
+.filter-bar:has(.groups[hidden]) {
+  height: 0; opacity: 0; margin-block: 0; padding-block: 0; overflow: clip; pointer-events: none;
+}
+@starting-style {
+  #empty:not([hidden]), #completion:not([hidden]), #groups:not([hidden]), #group-selections:not([hidden]),
+  .filter-bar:has(.groups:not([hidden])) { height: 0; opacity: 0; }
+}
+#status {
+  transition: color var(--motion-duration) var(--motion-easing),
+    background-color var(--motion-duration) var(--motion-easing);
+}
+.motion-ghost-shell { position: fixed; inset: 0; pointer-events: none; display: block; z-index: 10; }
+.motion-ghost, .motion-ghost * { transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  #empty, #completion, .filter-bar, .selection-bar, #groups, #group-selections, #status { transition: none; }
+  .motion-ghost-shell { display: none; }
 }

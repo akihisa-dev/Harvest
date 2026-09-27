@@ -40,6 +40,7 @@ try {
   await copyFile(join(root, "app", "style.css"), join(stage, "app", "style.css"));
   await copyFile(join(stage, ".compiled", "extension", "app.js"), join(stage, "app", "index.js"));
   await copyFile(join(stage, ".compiled", "extension", "pdf-image.js"), join(stage, "app", "pdf-image.js"));
+  await copyFile(join(stage, ".compiled", "extension", "motion.js"), join(stage, "app", "motion.js"));
   await copyFile(join(stage, ".compiled", "core", "images.js"), join(stage, "core", "images.js"));
   await copyFile(join(stage, ".compiled", "core", "pdf.js"), join(stage, "core", "pdf.js"));
   for (const size of [16, 32, 48, 128]) {
