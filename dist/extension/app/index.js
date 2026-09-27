@@ -303,10 +303,77 @@ function moveImage(visibleImages, source, target) {
     render();
 }
 function renderImages(visibleImages) {
+    draggedImage = null;
     imagesElement.replaceChildren();
+    const rows = new Map();
+    let previewOrder = [...visibleImages];
+    function showInsertion(order) {
+        const positions = new Map([...rows].map(([item, row]) => [item, row.getBoundingClientRect()]));
+        for (const row of rows.values())
+            row.getAnimations().forEach(animation => animation.cancel());
+        previewOrder = order;
+        order.forEach((item, index) => { rows.get(item).style.order = String(index); });
+        for (const [item, row] of rows) {
+            const before = positions.get(item);
+            const after = row.getBoundingClientRect();
+            const x = before.left - after.left;
+            const y = before.top - after.top;
+            if (item !== draggedImage && (x || y) && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                row.animate([{ transform: `translate(${x}px, ${y}px)` }, { transform: "translate(0, 0)" }], { duration: 180, easing: "ease-out" });
+            }
+        }
+    }
+    function previewInsertion(target, event) {
+        if (busy || !draggedImage || draggedImage === target)
+            return;
+        event.preventDefault();
+        if (event.dataTransfer)
+            event.dataTransfer.dropEffect = "move";
+        const rect = rows.get(target).getBoundingClientRect();
+        const isSingleColumn = [...rows.values()].every(row => Math.abs(row.getBoundingClientRect().left - rect.left) < 1);
+        const after = isSingleColumn ? event.clientY >= rect.top + rect.height / 2 : event.clientX >= rect.left + rect.width / 2;
+        const order = previewOrder.filter(item => item !== draggedImage);
+        order.splice(order.indexOf(target) + (after ? 1 : 0), 0, draggedImage);
+        if (order.some((item, index) => item !== previewOrder[index]))
+            showInsertion(order);
+    }
+    function finishDrop(event) {
+        if (!draggedImage || busy)
+            return;
+        event.preventDefault();
+        const source = draggedImage;
+        const visibleSet = new Set(visibleImages);
+        let index = 0;
+        images = images.map(item => visibleSet.has(item) ? previewOrder[index++] : item);
+        draggedImage = null;
+        requestFocus({ kind: "image", url: source.url, action: "drag" });
+        render();
+    }
+    imagesElement.ondragover = event => {
+        if (!draggedImage || busy)
+            return;
+        event.preventDefault();
+        // Gaps between grid cells also accept insertion at the nearest thumbnail.
+        let nearest = null;
+        let distance = Infinity;
+        for (const [item, row] of rows) {
+            const rect = row.getBoundingClientRect();
+            const dx = Math.max(rect.left - event.clientX, 0, event.clientX - rect.right);
+            const dy = Math.max(rect.top - event.clientY, 0, event.clientY - rect.bottom);
+            if (dx * dx + dy * dy < distance) {
+                nearest = item;
+                distance = dx * dx + dy * dy;
+            }
+        }
+        if (nearest)
+            previewInsertion(nearest, event);
+    };
+    imagesElement.ondrop = finishDrop;
     visibleImages.forEach((item, index) => {
         const overallIndex = images.indexOf(item);
         const row = document.createElement("li");
+        rows.set(item, row);
+        row.style.order = String(index);
         if (!item.selected)
             row.classList.add("unselected");
         const preview = document.createElement("img");
@@ -357,34 +424,22 @@ function renderImages(visibleImages) {
                 return;
             }
             draggedImage = item;
+            if (event.dataTransfer)
+                event.dataTransfer.setDragImage(preview, preview.width / 2, preview.height / 2);
             row.classList.add("dragging");
             if (event.dataTransfer) {
                 event.dataTransfer.effectAllowed = "move";
                 event.dataTransfer.setData("text/plain", "harvest-image");
             }
         });
-        row.addEventListener("dragover", event => {
-            if (busy || !draggedImage || draggedImage === item)
-                return;
-            event.preventDefault();
-            if (event.dataTransfer)
-                event.dataTransfer.dropEffect = "move";
-            row.classList.add("drop-target");
-        });
-        row.addEventListener("dragleave", () => row.classList.remove("drop-target"));
-        row.addEventListener("drop", event => {
-            event.preventDefault();
-            row.classList.remove("drop-target");
-            const source = draggedImage;
-            draggedImage = null;
-            if (source)
-                moveImage(visibleImages, source, item);
-        });
+        row.addEventListener("dragover", event => previewInsertion(item, event));
+        row.addEventListener("drop", finishDrop);
         row.addEventListener("dragend", () => {
+            if (!draggedImage)
+                return;
             draggedImage = null;
             row.classList.remove("dragging");
-            for (const element of imagesElement.children)
-                element.classList.remove("drop-target");
+            showInsertion([...visibleImages]);
         });
         row.addEventListener("keydown", event => {
             if (event.target !== row || !event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key))

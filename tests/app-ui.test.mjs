@@ -15,6 +15,7 @@ class StubElement {
     this.children = [];
     this.listeners = new Map();
     this.className = "";
+    this.style = {order: ""};
     this.classList = {add: name => { this.className += this.className ? ` ${name}` : name; }, remove: name => { this.className = this.className.split(" ").filter(value => value !== name).join(" "); }};
   }
   addEventListener(name, callback) { this.listeners.set(name, callback); }
@@ -24,16 +25,34 @@ class StubElement {
   getAttribute(name) { return this.attributes.get(name) ?? null; }
   focus() { this.owner.activeElement = this; }
   scrollIntoView() {}
-  dispatch(name, event = {}) { return this.listeners.get(name)?.({preventDefault() {}, ...event}); }
+  getBoundingClientRect() {
+    const order = Number(this.style.order || 0);
+    return {left: 0, right: 150, top: order * 100, bottom: order * 100 + 100, width: 150, height: 100, x: 0, y: order * 100};
+  }
+  animate(keyframes, options) {
+    this.owner.animations.push({element: this, keyframes, options});
+    return {finished: Promise.resolve(), cancel() {}};
+  }
+  getAnimations() { return []; }
+  dispatch(name, event = {}) {
+    const dispatched = {preventDefault() {}, ...event};
+    this[`on${name}`]?.(dispatched);
+    return this.listeners.get(name)?.(dispatched);
+  }
 }
 
 function descendants(element) {
   return element.children.flatMap(child => child instanceof StubElement ? [child, ...descendants(child)] : []);
 }
 
+function visualRows(imagesElement) {
+  return [...imagesElement.children].sort((a, b) => Number(a.style.order || 0) - Number(b.style.order || 0));
+}
+
 test("画像操作後もフォーカス、件数、表示絞り込み、全体順序を保つ", async () => {
   const document = {
     activeElement: null,
+    animations: [],
     elements: new Map(),
     createElement(tagName) { return new StubElement(tagName, document); },
     createTextNode(text) { return {textContent: text}; },
@@ -66,7 +85,7 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
   let executionCount = 0;
   const createdUrls = [];
   globalThis.document = document;
-  globalThis.window = {setTimeout, clearTimeout};
+  globalThis.window = {setTimeout, clearTimeout, matchMedia: () => ({matches: false})};
   globalThis.chrome = {
     tabs: {
       query: async () => [{id: 7, url: "https://example.com/view"}],
@@ -133,12 +152,19 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     allButton.dispatch("click");
     const firstRow = document.querySelector("#images").children[0];
     const firstUrl = firstRow.children[0].src;
+    const initialOrder = document.querySelector("#images").children.map(row => row.children[0].src);
     assert.equal(firstRow.draggable, true);
     assert.equal(firstRow.children[0].draggable, false);
     assert.equal(descendants(firstRow).some(element => element.tagName === "button"), false);
     firstRow.dispatch("dragstart");
-    document.querySelector("#images").children[3].dispatch("dragover");
-    document.querySelector("#images").children[3].dispatch("drop");
+    assert.equal(firstRow.className.includes("dragging"), true);
+    const lastRowBeforeDrop = document.querySelector("#images").children[3];
+    lastRowBeforeDrop.dispatch("dragover", {clientX: 75, clientY: 350});
+    const imagesElement = document.querySelector("#images");
+    assert.deepEqual(imagesElement.children.map(row => row.children[0].src), initialOrder);
+    assert.deepEqual(visualRows(imagesElement).map(row => row.children[0].src), [resultImages[1], resultImages[2], resultImages[3], firstUrl]);
+    assert.ok(document.animations.length > 0);
+    lastRowBeforeDrop.dispatch("drop", {clientX: 75, clientY: 350});
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), [resultImages[1], resultImages[2], resultImages[3], firstUrl]);
     assert.equal(document.activeElement.getAttribute("data-focus-url"), firstUrl);
     assert.equal(document.activeElement.getAttribute("data-focus-action"), "drag");
@@ -147,10 +173,23 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     lastRow.dispatch("keydown", {target: lastRow, altKey: true, key: "ArrowUp"});
     assert.equal(document.querySelector("#images").children[2].children[0].src, firstUrl);
 
+    const beforeCancel = document.querySelector("#images").children.map(row => row.children[0].src);
+    const cancelSource = document.querySelector("#images").children[1];
+    cancelSource.dispatch("dragstart");
+    document.querySelector("#images").children[3].dispatch("dragover", {clientX: 75, clientY: 350});
+    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), beforeCancel);
+    cancelSource.dispatch("dragend");
+    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), beforeCancel);
+    assert.equal(cancelSource.className.includes("dragging"), false);
+
     coverButton.dispatch("click");
     const coverRows = document.querySelector("#images").children;
+    const hiddenUrl = resultImages[0];
+    assert.equal([...coverRows].some(row => row.children[0].src === hiddenUrl), false);
     coverRows[1].dispatch("dragstart");
-    coverRows[0].dispatch("drop");
+    coverRows[0].dispatch("dragover", {clientX: 75, clientY: 25});
+    assert.equal(document.querySelector("#status").dataset.state, "success");
+    coverRows[0].dispatch("drop", {clientX: 75, clientY: 25});
     allButton.dispatch("click");
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), [resultImages[1], resultImages[3], firstUrl, resultImages[2]]);
     const beforeExternalDrop = document.querySelector("#images").children.map(row => row.children[0].src);
@@ -162,6 +201,12 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     assert.equal(document.querySelector("#status").textContent, "画像を準備しています… 0 / 4");
     assert.equal(document.querySelector("#images").children.every(row => !row.draggable), true);
     assert.equal(document.querySelector("#status").dataset.state, "busy");
+    const busyOrder = document.querySelector("#images").children.map(row => row.children[0].src);
+    document.querySelector("#images").children[0].dispatch("dragstart");
+    document.querySelector("#images").children[1].dispatch("dragover", {clientX: 75, clientY: 150});
+    document.querySelector("#images").children[1].dispatch("drop", {clientX: 75, clientY: 150});
+    assert.equal(document.querySelector("#status").dataset.state, "busy");
+    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), busyOrder);
     await new Promise(resolve => setImmediate(resolve));
 
     for (;;) {
