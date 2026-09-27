@@ -134,9 +134,10 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     assert.equal(document.querySelector("#images").children.length, 2);
 
     const coverCheckbox = document.querySelector("#images").children[0].children[1].children[2].children[0].children[0];
-    const pdfMark = document.querySelector("#images").children[0].children[1].children[2].children[0].children[1];
-    assert.equal(pdfMark.textContent, "PDF");
-    assert.equal(pdfMark.getAttribute("aria-hidden"), "true");
+    const selectionLabel = document.querySelector("#images").children[0].children[1].children[2].children[0];
+    assert.equal(selectionLabel.children.length, 1);
+    assert.equal(selectionLabel.children[0], coverCheckbox);
+    assert.match(coverCheckbox.getAttribute("aria-label"), /^PDFに含める /);
     coverCheckbox.checked = false;
     coverCheckbox.dispatch("change");
     assert.equal(document.activeElement.getAttribute("data-focus-action"), "checkbox");

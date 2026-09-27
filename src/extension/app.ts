@@ -394,11 +394,7 @@ function renderImages(visibleImages: readonly ImageItem[]): void {
     checkbox.setAttribute("data-focus-action", "checkbox");
     checkbox.setAttribute("aria-label", `PDFに含める ${name.textContent}`);
     checkbox.addEventListener("change", () => { requestFocus({kind: "image", url: item.url, action: "checkbox"}); item.selected = checkbox.checked; render(); });
-    const pdfMark = document.createElement("span");
-    pdfMark.className = "pdf-mark";
-    pdfMark.setAttribute("aria-hidden", "true");
-    pdfMark.textContent = "PDF";
-    label.append(checkbox, pdfMark);
+    label.append(checkbox);
     actions.append(label);
     row.draggable = !busy;
     row.tabIndex = 0;
