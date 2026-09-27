@@ -139,19 +139,19 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
 .completion p { font-size: 12px; font-weight: 600; }
 .completion button { min-height: 30px; padding: 5px 8px; font-size: 12px; }
 .viewer { height: 100%; min-height: 0; }
-.viewer-page { height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(100px, 18vw, 180px); gap: 12px; }
-.viewer-primary { min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.viewer-navigation { width: 100%; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
-.viewer-zoom { display: flex; gap: 4px; margin-left: auto; }
-.viewer-zoom button { min-width: 36px; }
-#viewer-position { min-width: 5em; text-align: center; font-variant-numeric: tabular-nums; }
-.viewer-stage { position: relative; flex: 1; width: 100%; min-height: 0; overflow: hidden; background: #f2f2f2; touch-action: pan-y; }
+.viewer-page { height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(120px, 18vw, 180px); gap: 12px; }
+.viewer-sidebar { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.viewer-navigation { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.viewer-navigation button { min-width: 0; padding-inline: 2px; }
+#viewer-position { grid-column: 1 / -1; grid-row: 1; text-align: center; font-variant-numeric: tabular-nums; }
+.viewer-zoom { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
+.viewer-zoom button { min-width: 0; padding-inline: 1px; font-size: 11px; }
+.viewer-stage { position: relative; width: 100%; height: 100%; min-height: 0; overflow: hidden; background: #f2f2f2; touch-action: pan-y; }
 .viewer-stage[data-pannable="true"] { cursor: grab; touch-action: none; }
 .viewer-stage[data-panning="true"] { cursor: grabbing; }
 #viewer-image { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; transform-origin: center center; }
-#viewer-filename { max-width: 100%; overflow-wrap: anywhere; color: var(--muted); text-align: center; }
 #viewer-empty { padding: 44px 12px; color: var(--muted); text-align: center; }
-.viewer-thumbnails { min-width: 0; min-height: 0; overflow-y: auto; scrollbar-width: none; background: var(--surface); }
+.viewer-thumbnails { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; scrollbar-width: none; background: var(--surface); }
 .viewer-thumbnails::-webkit-scrollbar { display: none; }
 #viewer-thumbnails { display: flex; flex-direction: column; gap: 8px; list-style: none; margin: 0; padding: 0; }
 #viewer-thumbnails button { display: block; width: 100%; min-width: 0; padding: 5px; border-color: var(--line); text-align: center; }
@@ -173,7 +173,8 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
   .app-header { max-height: none; overflow: visible; }
   main, main:has(#viewer:not([hidden])) { flex: none; overflow: visible; }
   .viewer, .viewer-page { height: auto; }
-  .viewer-stage, .viewer-thumbnails { flex: none; height: 55vh; min-height: 260px; }
+  .viewer-stage { height: 55vh; min-height: 260px; }
+  .viewer-thumbnails { flex: none; height: 55vh; min-height: 260px; }
 }
 
 /* Explicit properties keep focus indicators immediate and layout under JS control. */
