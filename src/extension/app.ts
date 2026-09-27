@@ -8,6 +8,8 @@ import { formatCount, formatFailedAria, formatGroupLabel, formatPlural, localize
 
 const sourceUrl = required<HTMLInputElement>("#source-url");
 const sourceDrop = required<HTMLButtonElement>("#source-drop");
+const headerElement = required<HTMLDivElement>(".app-header");
+headerElement.dataset["dropLabel"] = t("dropUrl");
 const collectionButton = required<HTMLButtonElement>("#collection-toggle");
 const scanButton = required<HTMLButtonElement>("#scan");
 const exportButton = required<HTMLButtonElement>("#export");
@@ -57,7 +59,6 @@ let collectionSession: string | null = null;
 let collectionTabId: number | null = null;
 let collectionPort: HarvestPort | null = null;
 let collectionAnalyzedUrl: string | null = null;
-let pageWideUrlDropAvailable = true;
 
 function stopCollection(): void {
   collectionAnalyzedUrl = null;
@@ -90,7 +91,6 @@ chrome.runtime.onConnect?.addListener(port => {
 });
 
 async function toggleCollection(): Promise<void> {
-  pageWideUrlDropAvailable = false;
   if (collectionSession) { stopCollection(); return; }
   const session = "harvest-collection:" + crypto.randomUUID();
   collectionSessions.add(session);
@@ -228,7 +228,6 @@ function setBusy(value: boolean): void {
 
 async function startScan(collectionLink?: string): Promise<void> {
   if (busy) return;
-  pageWideUrlDropAvailable = false;
   const session = collectionSession;
   const enteredUrl = sourceUrl.value.trim();
   let targetUrl = "";
@@ -732,13 +731,18 @@ sourceUrl.addEventListener("input", updateSourceDrop);
 sourceUrl.addEventListener("blur", hideSourceInput);
 sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter") void startScan(); });
 function acceptsPageUrlDrop(target: EventTarget | null): boolean {
-  return pageWideUrlDropAvailable || target === sourceDrop || target === sourceUrl;
+  return pageWideUrlDropAvailable() || target === headerElement || target === sourceDrop || target === sourceUrl ||
+    (typeof Node !== "undefined" && target instanceof Node && headerElement.contains(target));
+}
+function pageWideUrlDropAvailable(): boolean {
+  return sourceUrl.value.trim() === "" && images.length === 0;
 }
 function isPageUrlDrag(event: DragEvent): boolean {
   return Boolean(event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain"));
 }
 function clearDropFeedback(): void {
   document.body.classList.remove("page-drop-ready");
+  headerElement.classList.remove("drag-over");
   sourceDrop.classList.remove("drag-over");
   sourceUrl.classList.remove("drag-over");
 }
@@ -759,7 +763,8 @@ document.addEventListener("dragover", event => {
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
   clearDropFeedback();
-  if (pageWideUrlDropAvailable) document.body.classList.add("page-drop-ready");
+  if (pageWideUrlDropAvailable()) document.body.classList.add("page-drop-ready");
+  else headerElement.classList.add("drag-over");
   if (event.target === sourceDrop) sourceDrop.classList.add("drag-over");
   if (event.target === sourceUrl) sourceUrl.classList.add("drag-over");
 });
@@ -829,7 +834,6 @@ resetOrderButton.addEventListener("click", () => {
 });
 resetButton.addEventListener("click", () => {
   if (busy) return;
-  pageWideUrlDropAvailable = false;
   clearSourceUrl();
   collectionAnalyzedUrl = null;
   images = [];

@@ -7,6 +7,8 @@ import { animateLayoutChange, prefersReducedMotion, reconcileKeyedChildren, setM
 import { formatCount, formatFailedAria, formatGroupLabel, formatPlural, localizeErrorMessage, t } from "./localization.js";
 const sourceUrl = required("#source-url");
 const sourceDrop = required("#source-drop");
+const headerElement = required(".app-header");
+headerElement.dataset["dropLabel"] = t("dropUrl");
 const collectionButton = required("#collection-toggle");
 const scanButton = required("#scan");
 const exportButton = required("#export");
@@ -55,7 +57,6 @@ let collectionSession = null;
 let collectionTabId = null;
 let collectionPort = null;
 let collectionAnalyzedUrl = null;
-let pageWideUrlDropAvailable = true;
 function stopCollection() {
     collectionAnalyzedUrl = null;
     collectionSession = null;
@@ -94,7 +95,6 @@ chrome.runtime.onConnect?.addListener(port => {
     });
 });
 async function toggleCollection() {
-    pageWideUrlDropAvailable = false;
     if (collectionSession) {
         stopCollection();
         return;
@@ -221,7 +221,6 @@ function setBusy(value) {
 async function startScan(collectionLink) {
     if (busy)
         return;
-    pageWideUrlDropAvailable = false;
     const session = collectionSession;
     const enteredUrl = sourceUrl.value.trim();
     let targetUrl = "";
@@ -779,13 +778,18 @@ sourceUrl.addEventListener("blur", hideSourceInput);
 sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter")
     void startScan(); });
 function acceptsPageUrlDrop(target) {
-    return pageWideUrlDropAvailable || target === sourceDrop || target === sourceUrl;
+    return pageWideUrlDropAvailable() || target === headerElement || target === sourceDrop || target === sourceUrl ||
+        (typeof Node !== "undefined" && target instanceof Node && headerElement.contains(target));
+}
+function pageWideUrlDropAvailable() {
+    return sourceUrl.value.trim() === "" && images.length === 0;
 }
 function isPageUrlDrag(event) {
     return Boolean(event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain"));
 }
 function clearDropFeedback() {
     document.body.classList.remove("page-drop-ready");
+    headerElement.classList.remove("drag-over");
     sourceDrop.classList.remove("drag-over");
     sourceUrl.classList.remove("drag-over");
 }
@@ -810,8 +814,10 @@ document.addEventListener("dragover", event => {
     if (event.dataTransfer)
         event.dataTransfer.dropEffect = "copy";
     clearDropFeedback();
-    if (pageWideUrlDropAvailable)
+    if (pageWideUrlDropAvailable())
         document.body.classList.add("page-drop-ready");
+    else
+        headerElement.classList.add("drag-over");
     if (event.target === sourceDrop)
         sourceDrop.classList.add("drag-over");
     if (event.target === sourceUrl)
@@ -902,7 +908,6 @@ resetOrderButton.addEventListener("click", () => {
 resetButton.addEventListener("click", () => {
     if (busy)
         return;
-    pageWideUrlDropAvailable = false;
     clearSourceUrl();
     collectionAnalyzedUrl = null;
     images = [];

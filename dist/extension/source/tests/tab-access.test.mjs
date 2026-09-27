@@ -98,7 +98,16 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
       target: element("#viewer"), dataTransfer: {types: ["text/uri-list"]},
       preventDefault() { prevented = true; },
     });
-    assert.equal(prevented, false);
+    assert.equal(prevented, true, "画像が見つからなければ画面全体で受け付ける");
+    assert.equal(element("body").classList.contains("page-drop-ready"), true);
+    element("#source-url").value = "https://example.com/entered";
+    listeners.get("#source-url:input")();
+    prevented = false;
+    documentListeners.get("dragover")({
+      target: element("#viewer"), dataTransfer: {types: ["text/uri-list"]},
+      preventDefault() { prevented = true; },
+    });
+    assert.equal(prevented, false, "URL入力後は画面下部で受け付けない");
     assert.equal(element("body").classList.contains("page-drop-ready"), false);
     documentListeners.get("drop")({
       target: element("#viewer"),
@@ -147,6 +156,14 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     assert.deepEqual(createdUrls, ["https://example.com/other", "https://example.com/manual"]);
     assert.deepEqual(scannedTabs, [7, 8, 8]);
 
+    prevented = false;
+    documentListeners.get("dragover")({
+      target: element(".app-header"), dataTransfer: {types: ["text/uri-list"]},
+      preventDefault() { prevented = true; },
+    });
+    assert.equal(prevented, true, "解析後は上部の余白もドロップ先になる");
+    assert.equal(element(".app-header").classList.contains("drag-over"), true);
+
     listeners.get("#reset:click")();
     prevented = false;
     documentListeners.get("drop")({
@@ -156,14 +173,7 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(prevented, true);
-    assert.deepEqual(createdUrls, ["https://example.com/other", "https://example.com/manual"]);
-    documentListeners.get("drop")({
-      target: element("#source-drop"),
-      dataTransfer: {getData: type => type === "text/uri-list" ? "https://example.com/after-clear" : ""},
-      preventDefault() {},
-    });
-    await new Promise(resolve => setImmediate(resolve));
-    assert.deepEqual(createdUrls, ["https://example.com/other", "https://example.com/manual", "https://example.com/after-clear"]);
+    assert.deepEqual(createdUrls, ["https://example.com/other", "https://example.com/manual", "https://example.com/after-clear"], "クリア後は画面下部へのドロップで解析する");
   } finally {
     globalThis.document = previousDocument;
     globalThis.chrome = previousChrome;
