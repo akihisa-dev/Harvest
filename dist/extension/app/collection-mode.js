@@ -9,42 +9,83 @@ export function captureCollectionLinks(session) {
     const onMessage = (message) => {
         if (typeof message === "object" && message !== null && "busy" in message) {
             const value = message.busy;
-            if (typeof value === "boolean")
+            if (typeof value === "boolean") {
                 busy = value;
+                if (busy)
+                    hideGlow();
+            }
         }
     };
-    const onClick = (event) => {
-        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-            return;
-        const path = typeof event.composedPath === "function" ? event.composedPath() : [];
-        const anchor = path.find((node) => {
+    const glow = document.createElement("div");
+    glow.setAttribute("aria-hidden", "true");
+    glow.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;display:none;border-radius:5px;box-shadow:0 0 5px 2px rgba(130,190,255,.45),0 0 14px 4px rgba(130,190,255,.22);background:transparent;";
+    document.documentElement.append(glow);
+    let hovered = null;
+    const hideGlow = () => { hovered = null; glow.style.display = "none"; };
+    const findLink = (event) => {
+        const anchor = event.composedPath().find((node) => {
             if (!node || typeof node !== "object")
                 return false;
             const element = node;
             return element.nodeType === 1 && element.tagName.toLowerCase() === "a" && element.hasAttribute("href");
         });
-        if (!anchor)
-            return;
-        const rawHref = anchor.getAttribute("href");
-        if (!rawHref)
-            return;
-        let url;
+        const href = anchor?.getAttribute("href");
+        if (!anchor || !href)
+            return null;
         try {
-            url = new URL(rawHref, document.baseURI || location.href);
+            const url = new URL(href, document.baseURI || location.href);
+            return url.protocol === "http:" || url.protocol === "https:" ? { anchor, url } : null;
         }
         catch {
+            return null;
+        }
+    };
+    const onHover = (event) => {
+        if (busy || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+            hideGlow();
             return;
         }
-        if (url.protocol !== "http:" && url.protocol !== "https:")
+        const link = findLink(event);
+        if (!link) {
+            hideGlow();
+            return;
+        }
+        const image = event.composedPath().find((node) => node instanceof Element && node.tagName.toLowerCase() === "img");
+        const target = image ?? link.anchor;
+        if (hovered === target)
+            return;
+        hovered = target;
+        const rect = target.getBoundingClientRect();
+        glow.style.left = `${rect.left}px`;
+        glow.style.top = `${rect.top}px`;
+        glow.style.width = `${rect.width}px`;
+        glow.style.height = `${rect.height}px`;
+        glow.style.display = "block";
+    };
+    const onClick = (event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+            return;
+        const link = findLink(event);
+        if (!link)
             return;
         event.preventDefault();
         event.stopImmediatePropagation();
+        hideGlow();
         if (!busy)
-            port.postMessage({ url: url.href });
+            port.postMessage({ url: link.url.href });
     };
     port.onMessage.addListener(onMessage);
     port.onDisconnect.addListener(() => {
         document.removeEventListener("click", onClick, true);
+        document.removeEventListener("pointermove", onHover, true);
+        document.removeEventListener("pointerout", hideGlow, true);
+        document.removeEventListener("scroll", hideGlow, true);
+        window.removeEventListener("resize", hideGlow);
+        glow.remove();
     });
     document.addEventListener("click", onClick, true);
+    document.addEventListener("pointermove", onHover, true);
+    document.addEventListener("pointerout", hideGlow, true);
+    document.addEventListener("scroll", hideGlow, true);
+    window.addEventListener("resize", hideGlow);
 }

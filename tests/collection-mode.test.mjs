@@ -4,12 +4,14 @@ import {captureCollectionLinks} from "../dist/extension/app/collection-mode.js";
 
 class Anchor {
   constructor(href) { this.href = href; this.nodeType = 1; this.tagName = "A"; }
+  getBoundingClientRect() { return {left: 10, top: 20, width: 100, height: 80}; }
   hasAttribute(name) { return name === "href"; }
   getAttribute(name) { return name === "href" ? this.href : null; }
 }
 
 function setup() {
-  const listeners = new Set();
+  const listeners = new Map();
+  const glow = {style: {}, setAttribute() {}, remove() { this.removed = true; }};
   const removed = [];
   const messages = [];
   let disconnected;
@@ -19,16 +21,22 @@ function setup() {
     onDisconnect: {addListener(listener) { disconnected = listener; }},
     messageListener: undefined,
   };
-  const previous = {chrome: globalThis.chrome, document: globalThis.document, location: globalThis.location};
+  const previous = {chrome: globalThis.chrome, document: globalThis.document, location: globalThis.location, window: globalThis.window, Element: globalThis.Element};
   globalThis.chrome = {runtime: {connect(options) { assert.deepEqual(options, {name: "test-session"}); return port; }}};
+  globalThis.Element = Anchor;
+  globalThis.window = {addEventListener() {}, removeEventListener() {}};
   globalThis.location = {href: "https://example.test/current"};
   globalThis.document = {
+    createElement() { return glow; },
+    documentElement: {append() {}},
     baseURI: "https://example.test/current",
-    addEventListener(type, listener, capture) { assert.equal(type, "click"); assert.equal(capture, true); listeners.add(listener); },
-    removeEventListener(type, listener, capture) { removed.push({type, listener, capture}); listeners.delete(listener); },
+    addEventListener(type, listener, capture) { assert.equal(capture, true); listeners.set(type, listener); },
+    removeEventListener(type, listener, capture) { removed.push({type, listener, capture}); listeners.delete(type); },
   };
   return {
-    port, messages, removed,
+    port, messages, removed, glow,
+    hover(anchor) { listeners.get("pointermove")?.({composedPath: () => [anchor]}); },
+    leave() { listeners.get("pointerout")?.(); },
     click(anchor, options = {}) {
       let prevented = 0;
       let stopped = 0;
@@ -38,7 +46,7 @@ function setup() {
         preventDefault() { prevented += 1; },
         stopImmediatePropagation() { stopped += 1; },
       };
-      for (const listener of listeners) listener(event);
+      listeners.get("click")?.(event);
       return {prevented, stopped};
     },
     disconnect() { disconnected(); },
@@ -84,10 +92,33 @@ test("切断後はリスナーを除去して遷移を復元する", () => {
   try {
     captureCollectionLinks("test-session");
     fixture.disconnect();
-    assert.equal(fixture.removed.length, 1);
+    assert.equal(fixture.removed.length, 4);
+    assert.equal(fixture.glow.removed, true);
     assert.equal(fixture.removed[0].type, "click");
     assert.equal(fixture.removed[0].capture, true);
     assert.deepEqual(fixture.click(new Anchor("https://example.test/after")), {prevented: 0, stopped: 0});
     assert.deepEqual(fixture.messages, []);
+  } finally { fixture.restore(); }
+});
+
+test("収集できるリンクだけ文字なしで発光し、離脱・解析中・解除で消える", () => {
+  const fixture = setup();
+  try {
+    captureCollectionLinks("test-session");
+    fixture.hover(new Anchor("/picked"));
+    assert.equal(fixture.glow.style.display, "block");
+    assert.equal(fixture.glow.style.width, "100px");
+    assert.equal(fixture.glow.textContent, undefined);
+    fixture.leave();
+    assert.equal(fixture.glow.style.display, "none");
+    fixture.hover(new Anchor("mailto:user@example.test"));
+    assert.equal(fixture.glow.style.display, "none");
+    fixture.hover(new Anchor("/picked"));
+    fixture.port.messageListener({busy: true});
+    assert.equal(fixture.glow.style.display, "none");
+    fixture.hover(new Anchor("/picked"));
+    assert.equal(fixture.glow.style.display, "none");
+    fixture.disconnect();
+    assert.equal(fixture.glow.removed, true);
   } finally { fixture.restore(); }
 });
