@@ -14,6 +14,9 @@ class FixtureElement {
     this.src = properties.src ?? this.attributesMap.get("src") ?? "";
     this.href = properties.href ?? this.attributesMap.get("href") ?? "";
     this.backgroundImage = properties.backgroundImage ?? "none";
+    this.rect = properties.rect;
+    this.display = properties.display;
+    this.visibility = properties.visibility;
     for (const child of children) this.appendChild(child);
   }
 
@@ -28,6 +31,15 @@ class FixtureElement {
 
   get attributes() {
     return [...this.attributesMap.entries()].map(([name, value]) => ({name, value}));
+  }
+
+  querySelector(selector) {
+    return this.querySelectorAll(selector)[0] ?? null;
+  }
+
+  getBoundingClientRect() {
+    if (!this.rect) return {top: 0, left: 0, width: 0, height: 0};
+    return this.rect;
   }
 
   querySelectorAll(selector) {
@@ -79,7 +91,11 @@ async function runWithFixture(document, observerClass, callback) {
   };
   globalThis.document = document;
   globalThis.location = {href: "https://example.test/viewer"};
-  globalThis.getComputedStyle = element => ({backgroundImage: element.backgroundImage});
+  globalThis.getComputedStyle = element => ({
+    backgroundImage: element.backgroundImage,
+    display: element.display,
+    visibility: element.visibility,
+  });
   globalThis.MutationObserver = observerClass;
   globalThis.setTimeout = callback => {
     callback();
@@ -146,9 +162,69 @@ test("srcsetの最大指定、属性内URL、背景、meta、リンクを収集�
   assert.equal(new Set(result.images).size, result.images.length);
 });
 
+test("表示位置を優先し、meta先行の重複URLと位置のない候補を補正する", async () => {
+  const topImage = new FixtureElement("img", {
+    src: "https://cdn.example.test/pages/top.jpg",
+  }, [], {rect: {top: 10, left: 20, width: 10, height: 10}});
+  const leftImage = new FixtureElement("img", {
+    src: "https://cdn.example.test/pages/left.jpg",
+  }, [], {rect: {top: 10, left: 5, width: 10, height: 10}});
+  const sharedMeta = new FixtureElement("meta", {
+    property: "og:image",
+    content: "https://cdn.example.test/pages/top.jpg",
+  });
+  const metadataOnly = new FixtureElement("meta", {
+    property: "og:image",
+    content: "https://cdn.example.test/pages/meta-only.jpg",
+  });
+  const root = new FixtureElement("html", {}, [sharedMeta, topImage, leftImage, metadataOnly]);
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+
+  assert.deepEqual(result.images, [
+    "https://cdn.example.test/pages/left.jpg",
+    "https://cdn.example.test/pages/top.jpg",
+    "https://cdn.example.test/pages/meta-only.jpg",
+  ]);
+});
+
+test("非表示の要素を後置し、同じ画像は表示中の位置を使う", async () => {
+  const url = "https://cdn.example.test/pages/shared.jpg";
+  const hidden = new FixtureElement("img", {src: url}, [], {
+    display: "none", rect: {top: 0, left: 0, width: 10, height: 10},
+  });
+  const visible = new FixtureElement("img", {src: url}, [], {
+    rect: {top: 20, left: 0, width: 10, height: 10},
+  });
+  const first = new FixtureElement("img", {src: "https://cdn.example.test/pages/first.jpg"}, [], {
+    rect: {top: 10, left: 0, width: 10, height: 10},
+  });
+  const hiddenOnly = new FixtureElement("img", {src: "https://cdn.example.test/pages/hidden.jpg"}, [], {
+    display: "none", rect: {top: 0, left: 0, width: 10, height: 10},
+  });
+  const zeroSize = new FixtureElement("img", {src: "https://cdn.example.test/pages/zero.jpg"}, [], {
+    rect: {top: 0, left: 0, width: 0, height: 0},
+  });
+  const samePosition = new FixtureElement("img", {src: "https://cdn.example.test/pages/same.jpg"}, [], {
+    rect: {top: 0, left: 0, width: 10, height: 10},
+  });
+  const root = new FixtureElement("html", {}, [hidden, first, visible, hiddenOnly, zeroSize, samePosition]);
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+  assert.deepEqual(result.images, [
+    "https://cdn.example.test/pages/same.jpg",
+    "https://cdn.example.test/pages/first.jpg", url,
+    "https://cdn.example.test/pages/hidden.jpg",
+    "https://cdn.example.test/pages/zero.jpg",
+  ]);
+});
+
 test("短い監視時間内に追加された画像を収集する", async () => {
   const root = new FixtureElement("html");
+  const initialImage = new FixtureElement("img", {src: "https://cdn.example.test/pages/initial.jpg"}, [], {
+    rect: {top: 100, left: 0, width: 10, height: 10},
+  });
+  root.appendChild(initialImage);
   const lateImage = new FixtureElement("img", {src: "https://cdn.example.test/pages/late.jpg"});
+  lateImage.rect = {top: 10, left: 0, width: 10, height: 10};
   let observer;
   class DelayedMutationObserver {
     constructor(callback) {
@@ -169,5 +245,9 @@ test("短い監視時間内に追加された画像を収集する", async () =>
     };
     return scanDocument();
   });
+  assert.deepEqual(result.images, [
+    "https://cdn.example.test/pages/late.jpg",
+    "https://cdn.example.test/pages/initial.jpg",
+  ]);
   assert.ok(result.images.includes("https://cdn.example.test/pages/late.jpg"));
 });

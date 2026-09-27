@@ -6,7 +6,8 @@
  * resolving an import or a module-level variable in the extension context.
  */
 export async function scanDocument() {
-    const candidates = new Set();
+    const candidates = new Map();
+    let nextDetectionOrder = 0;
     const imageAttributes = [
         "data-original",
         "data-full",
@@ -21,25 +22,40 @@ export async function scanDocument() {
     ];
     const imageSrcsetAttributes = ["data-srcset", "srcset"];
     const imageUrlPattern = /https?:\/\/[^\s"'\\<>]+?\.(?:jpe?g|png|webp|avif)(?:[?#][^\s"'\\<>]*)?/gi;
-    const add = (value) => {
+    const add = (value, element) => {
         const candidate = value?.trim();
         if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:"))
             return;
         try {
-            candidates.add(new URL(candidate, document.baseURI || location.href).href);
+            const url = new URL(candidate, document.baseURI || location.href).href;
+            const existing = candidates.get(url);
+            if (existing) {
+                if (element && !existing.elements.includes(element))
+                    existing.elements.push(element);
+            }
+            else {
+                candidates.set(url, { url, detectionOrder: nextDetectionOrder++, elements: element ? [element] : [] });
+            }
         }
         catch {
             // Keep malformed values for the core normalizer to reject consistently.
-            candidates.add(candidate);
+            const existing = candidates.get(candidate);
+            if (existing) {
+                if (element && !existing.elements.includes(element))
+                    existing.elements.push(element);
+            }
+            else {
+                candidates.set(candidate, { url: candidate, detectionOrder: nextDetectionOrder++, elements: element ? [element] : [] });
+            }
         }
     };
-    const scanText = (value) => {
+    const scanText = (value, element) => {
         if (!value)
             return;
         for (const match of value.matchAll(imageUrlPattern)) {
             const candidate = match[0];
             if (candidate)
-                add(candidate.replaceAll("&amp;", "&"));
+                add(candidate.replaceAll("&amp;", "&"), element);
         }
     };
     const parseSrcset = (value) => {
@@ -127,28 +143,104 @@ export async function scanDocument() {
         }
         const urlPattern = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/gi;
         for (const match of background.matchAll(urlPattern)) {
-            add(match[1] ?? match[2] ?? match[3]);
+            add(match[1] ?? match[2] ?? match[3], element);
         }
+    };
+    const orderedImages = () => {
+        const documentOrder = new Map();
+        for (const [index, element] of Array.from(document.querySelectorAll("*")).entries()) {
+            documentOrder.set(element, index);
+        }
+        const positionCache = new Map();
+        const positioned = (element) => {
+            if (positionCache.has(element))
+                return positionCache.get(element);
+            let result;
+            if (!documentOrder.has(element)) {
+                positionCache.set(element, result);
+                return result;
+            }
+            try {
+                for (let current = element; current; current = current.parentElement) {
+                    const style = getComputedStyle(current);
+                    if (style.display === "none" || style.visibility === "hidden") {
+                        positionCache.set(element, result);
+                        return result;
+                    }
+                }
+            }
+            catch {
+                // Detached or browser-owned elements may not have computed styles.
+            }
+            if (typeof element.getBoundingClientRect !== "function") {
+                positionCache.set(element, result);
+                return result;
+            }
+            try {
+                const rect = element.getBoundingClientRect();
+                if (!Number.isFinite(rect.top) || !Number.isFinite(rect.left)
+                    || (Number.isFinite(rect.width) && Number.isFinite(rect.height) && rect.width <= 0 && rect.height <= 0)) {
+                    positionCache.set(element, result);
+                    return result;
+                }
+                result = { top: rect.top, left: rect.left, order: documentOrder.get(element) ?? Number.MAX_SAFE_INTEGER };
+            }
+            catch {
+                result = undefined;
+            }
+            positionCache.set(element, result);
+            return result;
+        };
+        return [...candidates.values()]
+            .map(record => ({
+            record,
+            position: record.elements.map(positioned).filter((value) => Boolean(value))
+                .sort((a, b) => a.top - b.top || a.left - b.left || a.order - b.order)[0],
+        }))
+            .sort((a, b) => {
+            if (a.position && b.position) {
+                return a.position.top - b.position.top
+                    || a.position.left - b.position.left
+                    || a.position.order - b.position.order
+                    || a.record.detectionOrder - b.record.detectionOrder;
+            }
+            if (a.position)
+                return -1;
+            if (b.position)
+                return 1;
+            return a.record.detectionOrder - b.record.detectionOrder;
+        })
+            .map(({ record }) => record.url);
+    };
+    const imagePositionElement = (element) => {
+        if (element.tagName.toLowerCase() !== "source")
+            return element;
+        const parent = element.parentElement;
+        if (parent?.tagName.toLowerCase() === "picture" && typeof parent.querySelector === "function") {
+            return parent.querySelector("img") ?? element;
+        }
+        return element;
     };
     const collectElement = (element) => {
         const tagName = element.tagName.toLowerCase();
+        const positionElement = imagePositionElement(element);
         if (tagName === "img" || tagName === "source") {
             for (const attribute of imageAttributes)
-                add(element.getAttribute(attribute));
+                add(element.getAttribute(attribute), positionElement);
             for (const attribute of imageSrcsetAttributes) {
                 for (const candidate of srcsetImages(element.getAttribute(attribute)))
-                    add(candidate);
+                    add(candidate, positionElement);
             }
             if (tagName === "img") {
                 const image = element;
-                add(image.currentSrc || image.src);
+                add(image.currentSrc || image.src, positionElement);
             }
         }
         else if (tagName === "a") {
             const anchor = element;
             const href = anchor.href || element.getAttribute("href") || "";
             if (/\.(?:jpe?g|png|webp|avif|gif)(?:[?#]|$)/i.test(href))
-                add(href);
+                add(href, element);
         }
         else if (tagName === "meta") {
             const property = element.getAttribute("property")?.toLowerCase();
@@ -166,7 +258,10 @@ export async function scanDocument() {
                 continue;
             if (tagName === "meta" && name === "content" && (element.getAttribute("property") === "og:image" || element.getAttribute("name") === "twitter:image"))
                 continue;
-            scanText(attribute.value);
+            const textPositionElement = tagName === "meta" || tagName === "script" || tagName === "style"
+                ? undefined
+                : positionElement;
+            scanText(attribute.value, textPositionElement);
         }
         scanBackground(element);
     };
@@ -287,5 +382,5 @@ export async function scanDocument() {
     finally {
         finish();
     }
-    return { url: location.href, title: document.title, images: [...candidates] };
+    return { url: location.href, title: document.title, images: orderedImages() };
 }
