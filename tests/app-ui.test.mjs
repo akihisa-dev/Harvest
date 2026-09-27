@@ -333,7 +333,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     await waitUntil(() => document.querySelector("#failures").hidden === false);
     assert.equal(document.downloads.length, 0);
     assert.equal(document.querySelector("#failures").hidden, false);
-    assert.deepEqual(document.querySelector("#failed-images").children.map(row => row.textContent), ["3番 001.jpg"]);
+    assert.deepEqual(document.querySelector("#failed-images").children.map(row => row.textContent), ["3番 001.jpg — 画像を取得できませんでした。通信状態と画像URLを確認してください。"]);
     assert.equal(document.querySelector("#export").textContent, "失敗した1枚を再試行");
     assert.equal(document.querySelector("#images").children.find(row => row.children[0].src === failedUrl).className.includes("failed"), true);
     // Failed re-analysis must preserve both the user's work and prepared PDF pages.

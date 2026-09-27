@@ -1,6 +1,6 @@
 import { defaultSelectedImageGroups, filterImagesByGroup, groupImages, normalizeImageUrls, sortImageUrlsForSite, type ImageGroups, type ImageItem } from "../core/images.js";
 import { scanTab, scanUrl } from "./page-access.js";
-import { toPdfPage } from "./pdf-image.js";
+import { preparePdfImages, PdfImageError } from "./pdf-image.js";
 import { createPdf, type PdfImagePage } from "../core/pdf.js";
 import { animateLayoutChange, prefersReducedMotion, reconcileKeyedChildren, setMotionText } from "./motion.js";
 
@@ -53,9 +53,11 @@ const viewerThumbRows = new Map<string, HTMLLIElement>();
 let busy = false;
 let disposed = false;
 let scanController: AbortController | null = null;
+let exportController: AbortController | null = null;
 window.addEventListener?.("pagehide", () => {
   disposed = true;
   scanController?.abort();
+  exportController?.abort();
 });
 
 let collectionSource: readonly ImageItem[] | null = null;
@@ -72,7 +74,7 @@ function updateCollection(): void {
   collectionGroupItems = new Map(Object.entries(collectionGroups).map(([key, group]) =>
     [key, group.items.map(url => collectionByUrl.get(url)!)]));
 }
-let pendingExport: {selected: ImageItem[]; prepared: Map<ImageItem, PdfImagePage>; failed: Set<ImageItem>} | null = null;
+let pendingExport: {selected: ImageItem[]; prepared: Map<ImageItem, PdfImagePage>; failed: Map<ImageItem, string>} | null = null;
 type ScanState = "initial" | "scanning" | "results" | "empty" | "error";
 let scanState: ScanState = "initial";
 
@@ -580,7 +582,7 @@ function render(): void {
   failuresElement.hidden = !pendingExport?.failed.size;
   failedImagesElement.replaceChildren(...(pendingExport?.selected.filter(item => pendingExport!.failed.has(item)) ?? []).map(item => {
     const row = document.createElement("li");
-    row.textContent = `${collectionPositions.get(item)! + 1}番 ${imageFilename(item.url)}`;
+    row.textContent = `${collectionPositions.get(item)! + 1}番 ${imageFilename(item.url)} — ${pendingExport!.failed.get(item)}`;
     row.title = item.url;
     return row;
   }));
@@ -608,18 +610,23 @@ async function exportPdf(): Promise<void> {
   const selected = images.filter(item => item.selected);
   if (!selected.length) return;
   const retry = Boolean(pendingExport?.failed.size);
-  const work = pendingExport ?? {selected, prepared: new Map<ImageItem, PdfImagePage>(), failed: new Set<ImageItem>()};
+  const work = pendingExport ?? {selected, prepared: new Map<ImageItem, PdfImagePage>(), failed: new Map<ImageItem, string>()};
   const remaining = work.selected.filter(item => !work.prepared.has(item));
+  const controller = new AbortController();
+  exportController = controller;
   completionElement.hidden = true;
   setBusy(true);
   setStatus(`${retry ? "画像を再試行" : "画像を準備"}しています… 0 / ${remaining.length}`, "busy");
   try {
     work.failed.clear();
-    for (const [index, image] of remaining.entries()) {
-      try { work.prepared.set(image, await toPdfPage(image.url)); }
-      catch { work.failed.add(image); }
-      setStatus(`${retry ? "画像を再試行" : "画像を準備"}しています… ${index + 1} / ${remaining.length}`, "busy");
-    }
+    let completed = 0;
+    await preparePdfImages(remaining, (image, result) => {
+      if (result instanceof PdfImageError) work.failed.set(image, result.message);
+      else work.prepared.set(image, result);
+      completed += 1;
+      if (!disposed) setStatus(`${retry ? "画像を再試行" : "画像を準備"}しています… ${completed} / ${remaining.length}`, "busy");
+    }, {signal: controller.signal});
+    if (disposed || controller.signal.aborted) return;
     if (work.failed.size) {
       pendingExport = work;
       viewerMode = false;
@@ -641,11 +648,13 @@ async function exportPdf(): Promise<void> {
     setStatus(`${pages.length}枚のPDFを保存しました。`, "success");
     completionElement.hidden = false;
   } catch (error) {
+    if (disposed) return;
     pendingExport = work.prepared.size || work.failed.size ? work : null;
     setStatus(error instanceof Error ? error.message : "PDFを作成できませんでした。", "error");
   } finally {
-    setBusy(false);
-    if (pendingExport === work && work.failed.size) failuresElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"});
+    exportController = null;
+    if (!disposed) setBusy(false);
+    if (!disposed && pendingExport === work && work.failed.size) failuresElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"});
   }
 }
 

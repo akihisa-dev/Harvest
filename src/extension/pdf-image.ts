@@ -1,34 +1,414 @@
 import { getOriginalJpegPage, type PdfImagePage } from "../core/pdf.js";
 
-export async function toPdfPage(imageUrl: string): Promise<PdfImagePage> {
-  const response = await fetch(imageUrl, {credentials: "include"});
-  if (!response.ok) throw new Error(`画像の取得に失敗しました (${response.status})`);
-  const blob = await response.blob();
-  if (!blob.type.startsWith("image/")) throw new Error("画像以外のデータです。");
-  const original = getOriginalJpegPage(new Uint8Array(await blob.arrayBuffer()));
-  if (original) return original;
-  const bitmap = await createImageBitmap(blob);
+const DEFAULT_TIMEOUT_MS = 20_000;
+const DEFAULT_FETCH_CONCURRENCY = 3;
+const DEFAULT_PIXEL_CHUNK_PIXELS = 262_144;
+
+export type PdfImageErrorKind = "http" | "network" | "timeout" | "cancelled" | "invalid-image";
+
+/** A user-safe reason for an image that could not be included in the PDF. */
+export class PdfImageError extends Error {
+  readonly kind: PdfImageErrorKind;
+  readonly status?: number;
+
+  constructor(kind: PdfImageErrorKind, message: string, status?: number) {
+    super(message);
+    this.name = "PdfImageError";
+    this.kind = kind;
+    if (status !== undefined) this.status = status;
+  }
+}
+
+export interface PdfImageOptions {
+  /** The complete response and body must finish within this duration. */
+  readonly timeoutMs?: number;
+  /** Number of canvas rows read at once. Mainly useful for deterministic tests. */
+  readonly pixelRowsPerChunk?: number;
+  readonly signal?: AbortSignal;
+}
+
+export interface PdfImagePreparationOptions extends PdfImageOptions {
+  /** Number of simultaneous network requests. Pixel conversion remains sequential. */
+  readonly fetchConcurrency?: number;
+}
+
+export type PdfImagePreparationResult = PdfImagePage | PdfImageError;
+
+type FetchedImage =
+  | { readonly kind: "original"; readonly page: PdfImagePage }
+  | { readonly kind: "bitmap"; readonly blob: Blob };
+
+function invalidImage(message: string): PdfImageError {
+  return new PdfImageError("invalid-image", message);
+}
+
+function validatePositiveInteger(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError(`${name} must be a positive safe integer.`);
+  }
+  return value;
+}
+
+function timeoutValue(options: PdfImageOptions): number {
+  const value = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new RangeError("timeoutMs must be a positive finite number.");
+  }
+  return value;
+}
+
+function responseError(status: number): PdfImageError {
+  if (status === 401 || status === 403) {
+    return new PdfImageError("http", "画像へのアクセスが拒否されました。", status);
+  }
+  if (status === 404 || status === 410) {
+    return new PdfImageError("http", "画像が見つかりませんでした。", status);
+  }
+  if (status === 408 || status === 429 || status >= 500) {
+    return new PdfImageError("http", "画像サーバーが応答できませんでした。", status);
+  }
+  return new PdfImageError("http", "画像を取得できませんでした。", status);
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+async function cancelResponse(response: Response | undefined): Promise<void> {
   try {
-    if (bitmap.width < 1 || bitmap.height < 1) throw new Error("画像の大きさが不正です。");
-    const canvas = document.createElement("canvas");
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("画像を変換できませんでした。");
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(bitmap, 0, 0);
-    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-    const rgb = new Uint8Array(bitmap.width * bitmap.height * 3);
-    for (let source = 0, target = 0; source < pixels.length; source += 4) {
-      rgb[target++] = pixels[source]!;
-      rgb[target++] = pixels[source + 1]!;
-      rgb[target++] = pixels[source + 2]!;
+    if (response?.body && !response.bodyUsed) await response.body.cancel();
+  } catch {
+    // A response that has already been closed needs no further cleanup.
+  }
+}
+
+function checkCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new PdfImageError("cancelled", "画像の取得を中止しました。");
+}
+
+async function fetchImage(url: string, options: PdfImageOptions): Promise<FetchedImage> {
+  checkCancelled(options.signal);
+  const timeoutMs = timeoutValue(options);
+  const controller = new AbortController();
+  let response: Response | undefined;
+  let timedOut = false;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  let removeAbortListener: (() => void) | undefined;
+
+  const sourceSignal = options.signal;
+  let rejectAbort: ((error: Error) => void) | undefined;
+  const cancelled = new Promise<never>((_, reject) => { rejectAbort = reject; });
+  if (sourceSignal?.aborted) controller.abort();
+  else if (sourceSignal) {
+    const abort = () => {
+      controller.abort();
+      rejectAbort?.(new PdfImageError("cancelled", "画像の取得を中止しました。"));
+    };
+    sourceSignal.addEventListener("abort", abort, { once: true });
+    removeAbortListener = () => sourceSignal.removeEventListener("abort", abort);
+  }
+
+  const operation = (async (): Promise<FetchedImage> => {
+    try {
+      response = await fetch(url, { credentials: "include", signal: controller.signal });
+      if (!response.ok) {
+        const error = responseError(response.status);
+        void cancelResponse(response);
+        throw error;
+      }
+
+      const blob = await response.blob();
+      if (blob.type && !blob.type.toLowerCase().startsWith("image/")) {
+        throw invalidImage("画像データではありません。");
+      }
+
+      // Read the body while the response timeout is still active. This also lets
+      // us detect and retain a supported JPEG without decoding or re-encoding it.
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const original = getOriginalJpegPage(bytes);
+      if (original) return { kind: "original", page: original };
+      return { kind: "bitmap", blob };
+    } catch (error) {
+      void cancelResponse(response);
+      if (error instanceof PdfImageError) throw error;
+      if (sourceSignal?.aborted) {
+        throw new PdfImageError("cancelled", "画像の取得を中止しました。");
+      }
+      if (controller.signal.aborted || isAbortError(error)) {
+        // The timeout promise below wins the race when it caused the abort.
+        throw new PdfImageError("timeout", "画像の取得に時間がかかりすぎたため中止しました。");
+      }
+      throw new PdfImageError("network", "画像を取得できませんでした。通信状態と画像URLを確認してください。");
     }
-    const stream = new Blob([rgb.buffer]).stream().pipeThrough(new CompressionStream("deflate"));
-    const rgbFlate = new Uint8Array(await new Response(stream).arrayBuffer());
-    return {rgbFlate, width: bitmap.width, height: bitmap.height};
+  })();
+
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      void cancelResponse(response);
+      reject(new PdfImageError("timeout", "画像の取得に時間がかかりすぎたため中止しました。"));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([operation, timeout, cancelled]);
+  } catch (error) {
+    if (timedOut) {
+      throw new PdfImageError("timeout", "画像の取得に時間がかかりすぎたため中止しました。");
+    }
+    throw error;
+  } finally {
+    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+    removeAbortListener?.();
+    if (timedOut) void cancelResponse(response);
+  }
+}
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function decodeImage(fetched: FetchedImage, options: PdfImageOptions): Promise<PdfImagePage> {
+  checkCancelled(options.signal);
+  if (fetched.kind === "original") return fetched.page;
+
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(fetched.blob);
+  } catch {
+    throw invalidImage("画像を読み込めませんでした。形式が対応していないか、データが壊れています。");
+  }
+
+  let canvas: HTMLCanvasElement | undefined;
+  try {
+    checkCancelled(options.signal);
+    const width = bitmap.width;
+    const height = bitmap.height;
+    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
+      throw invalidImage("画像の大きさが不正です。");
+    }
+    const pixelCount = width * height;
+    if (!Number.isSafeInteger(pixelCount) || pixelCount > Number.MAX_SAFE_INTEGER / 3) {
+      throw invalidImage("画像が大きすぎてPDF用に変換できませんでした。");
+    }
+
+    canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    if (canvas.width !== width || canvas.height !== height) {
+      throw invalidImage("画像が大きすぎてPDF用に変換できませんでした。");
+    }
+    const context = canvas.getContext("2d");
+    if (!context) throw invalidImage("画像をPDF用に変換できませんでした。");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(bitmap, 0, 0);
+
+    const rgb = new Uint8Array(pixelCount * 3);
+    const requestedRows = options.pixelRowsPerChunk;
+    if (requestedRows !== undefined) validatePositiveInteger(requestedRows, "pixelRowsPerChunk");
+    const rowsPerChunk = requestedRows ?? Math.max(1, Math.floor(DEFAULT_PIXEL_CHUNK_PIXELS / width));
+    for (let y = 0; y < height; y += rowsPerChunk) {
+      checkCancelled(options.signal);
+      const rows = Math.min(rowsPerChunk, height - y);
+      let pixels: Uint8ClampedArray;
+      try {
+        pixels = context.getImageData(0, y, width, rows).data;
+      } catch {
+        throw invalidImage("画像をPDF用に変換できませんでした。");
+      }
+      const expectedLength = width * rows * 4;
+      if (pixels.length < expectedLength) {
+        throw invalidImage("画像をPDF用に変換できませんでした。");
+      }
+      const start = y * width * 3;
+      for (let source = 0, target = start; source < expectedLength; source += 4) {
+        rgb[target++] = pixels[source] ?? 0;
+        rgb[target++] = pixels[source + 1] ?? 0;
+        rgb[target++] = pixels[source + 2] ?? 0;
+      }
+      if (y + rows < height) await yieldToEventLoop();
+    }
+
+    try {
+      const stream = new Blob([rgb.buffer]).stream().pipeThrough(new CompressionStream("deflate"));
+      const rgbFlate = new Uint8Array(await new Response(stream).arrayBuffer());
+      return { rgbFlate, width, height };
+    } catch {
+      throw invalidImage("画像をPDF用に変換できませんでした。");
+    }
   } finally {
     bitmap.close();
+    // Release the browser's backing store as soon as the compressed page exists.
+    if (canvas) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
   }
+}
+
+/**
+ * Fetches and converts one image. Existing callers can continue using this
+ * helper; options are optional so the old API remains source compatible.
+ */
+export async function toPdfPage(imageUrl: string, options: PdfImageOptions = {}): Promise<PdfImagePage> {
+  const fetched = await fetchImage(imageUrl, options);
+  try {
+    return await decodeImage(fetched, options);
+  } catch (error) {
+    if (error instanceof PdfImageError) throw error;
+    throw invalidImage("画像をPDF用に変換できませんでした。");
+  }
+}
+
+class BoundedQueue<T> {
+  private readonly values: T[] = [];
+  private readonly readers: Array<(value: T | null) => void> = [];
+  private readonly writers: Array<{ value: T; resolve: () => void; reject: (error: unknown) => void }> = [];
+  private closed = false;
+  private closeError: unknown;
+
+  constructor(private readonly capacity: number) {}
+
+  async push(value: T): Promise<void> {
+    if (this.closed) throw this.closeError ?? new Error("queue closed");
+    const reader = this.readers.shift();
+    if (reader) {
+      reader(value);
+      return;
+    }
+    if (this.values.length < this.capacity) {
+      this.values.push(value);
+      return;
+    }
+    await new Promise<void>((resolve, reject) => this.writers.push({ value, resolve, reject }));
+  }
+
+  async pop(): Promise<T | null> {
+    const value = this.values.shift();
+    if (value !== undefined) {
+      this.releaseWriter();
+      return value;
+    }
+    const writer = this.writers.shift();
+    if (writer) {
+      writer.resolve();
+      return writer.value;
+    }
+    if (this.closed) return null;
+    return new Promise<T | null>((resolve) => this.readers.push(resolve));
+  }
+
+  close(error?: unknown): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.closeError = error;
+    while (this.readers.length) this.readers.shift()!(null);
+    while (this.writers.length) this.writers.shift()!.reject(error ?? new Error("queue closed"));
+  }
+
+  private releaseWriter(): void {
+    const writer = this.writers.shift();
+    if (!writer) return;
+    const reader = this.readers.shift();
+    if (reader) reader(writer.value);
+    else this.values.push(writer.value);
+    writer.resolve();
+  }
+}
+
+/**
+ * Prepares images with a small network concurrency limit and one pixel
+ * conversion at a time. Results are delivered in input order, so callers can
+ * retain successful pages and retry only the items reported as errors.
+ */
+export async function preparePdfImages<T extends { readonly url: string }>(
+  items: readonly T[],
+  onResult: (item: T, result: PdfImagePreparationResult) => void,
+  options: PdfImagePreparationOptions = {},
+): Promise<void> {
+  const requestedConcurrency = options.fetchConcurrency ?? DEFAULT_FETCH_CONCURRENCY;
+  validatePositiveInteger(requestedConcurrency, "fetchConcurrency");
+  if (items.length === 0) return;
+
+  const controller = new AbortController();
+  const abort = (): void => controller.abort();
+  if (options.signal?.aborted) controller.abort();
+  options.signal?.addEventListener("abort", abort, {once: true});
+  const operationOptions = {...options, signal: controller.signal};
+  const queue = new BoundedQueue<FetchedImage & { readonly index: number }>(1);
+  const results: Array<PdfImagePreparationResult | undefined> = new Array(items.length);
+  let nextIndex = 0;
+  let nextResult = 0;
+  let workersFinished = 0;
+  const workerCount = Math.min(requestedConcurrency, items.length);
+  let callbackError: unknown;
+
+  const setResult = (index: number, result: PdfImagePreparationResult): void => {
+    if (callbackError !== undefined) throw callbackError;
+    results[index] = result;
+    while (nextResult < items.length) {
+      const current = results[nextResult];
+      if (current === undefined) break;
+      results[nextResult] = undefined;
+      try {
+        onResult(items[nextResult]!, current);
+      } catch (error) {
+        callbackError = error;
+        controller.abort();
+        queue.close(error);
+        throw error;
+      }
+      nextResult += 1;
+    }
+  };
+
+  const worker = async (): Promise<void> => {
+    try {
+      while (true) {
+        checkCancelled(controller.signal);
+        const index = nextIndex++;
+        if (index >= items.length) return;
+        const item = items[index]!;
+        let fetched: FetchedImage;
+        try {
+          fetched = await fetchImage(item.url, operationOptions);
+        } catch (error) {
+          setResult(index, error instanceof PdfImageError ? error : new PdfImageError("network", "画像を取得できませんでした。通信状態と画像URLを確認してください。"));
+          continue;
+        }
+        if (fetched.kind === "original") {
+          setResult(index, fetched.page);
+          continue;
+        }
+        await queue.push({ ...fetched, index });
+      }
+    } finally {
+      workersFinished += 1;
+      if (workersFinished === workerCount) queue.close();
+    }
+  };
+
+  const workers = Array.from({ length: workerCount }, () => worker());
+  const converter = (async (): Promise<void> => {
+    while (true) {
+      const queued = await queue.pop();
+      if (queued === null) return;
+      let result: PdfImagePreparationResult;
+      try {
+        result = await decodeImage(queued, operationOptions);
+      } catch (error) {
+        result = error instanceof PdfImageError ? error : invalidImage("画像をPDF用に変換できませんでした。");
+      }
+      setResult(queued.index, result);
+    }
+  })();
+
+  const outcomes = await Promise.allSettled([...workers, converter]);
+  options.signal?.removeEventListener("abort", abort);
+  if (callbackError !== undefined) throw callbackError;
+  checkCancelled(controller.signal);
+  const rejected = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected");
+  if (rejected) throw rejected.reason;
 }
