@@ -748,16 +748,23 @@ sourceUrl.addEventListener("input", updateSourceDrop);
 sourceUrl.addEventListener("blur", hideSourceInput);
 sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter")
     void startScan(); });
-document.addEventListener("dragover", event => { if (event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain"))
-    event.preventDefault(); });
-document.addEventListener("drop", event => {
-    if (busy)
+function acceptsPageUrlDrop(target) {
+    return scanState === "initial" || target === sourceDrop || target === sourceUrl;
+}
+document.addEventListener("dragover", event => {
+    if (busy || !acceptsPageUrlDrop(event.target))
         return;
+    if (event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain"))
+        event.preventDefault();
+});
+document.addEventListener("drop", event => {
     const dropped = event.dataTransfer?.getData("text/uri-list") || event.dataTransfer?.getData("text/plain") || "";
     const url = dropped.split(/\r?\n/).find(line => line && !line.startsWith("#"))?.trim();
     if (!url || !isWebUrl(url))
         return;
     event.preventDefault();
+    if (busy || !acceptsPageUrlDrop(event.target))
+        return;
     sourceUrl.value = url;
     hideSourceInput();
     void startScan();

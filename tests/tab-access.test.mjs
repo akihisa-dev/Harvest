@@ -54,6 +54,12 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     assert.deepEqual(queries, []);
     assert.equal(element("#source-url").hidden, true);
     assert.equal(element("#source-drop").hidden, false);
+    let prevented = false;
+    documentListeners.get("dragover")({
+      target: element("#viewer"), dataTransfer: {types: ["text/uri-list"]},
+      preventDefault() { prevented = true; },
+    });
+    assert.equal(prevented, true);
     listeners.get("#source-drop:click")();
     assert.equal(element("#source-url").hidden, false);
     assert.equal(element("#source-drop").hidden, true);
@@ -67,7 +73,29 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     assert.deepEqual(scannedTabs, [7]);
     assert.deepEqual(createdUrls, []);
 
+    prevented = false;
+    documentListeners.get("dragover")({
+      target: element("#viewer"), dataTransfer: {types: ["text/uri-list"]},
+      preventDefault() { prevented = true; },
+    });
+    assert.equal(prevented, false);
     documentListeners.get("drop")({
+      target: element("#viewer"),
+      dataTransfer: {getData: () => "https://example.com/ignored"},
+      preventDefault() { prevented = true; },
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(prevented, true);
+    assert.deepEqual(createdUrls, []);
+
+    prevented = false;
+    documentListeners.get("dragover")({
+      target: element("#source-drop"), dataTransfer: {types: ["text/uri-list"]},
+      preventDefault() { prevented = true; },
+    });
+    assert.equal(prevented, true);
+    documentListeners.get("drop")({
+      target: element("#source-drop"),
       dataTransfer: {getData: type => type === "text/uri-list" ? "https://example.com/other" : ""},
       preventDefault() {},
     });
@@ -80,6 +108,12 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     assert.deepEqual(removedTabs, [8]);
 
     listeners.get("#source-drop:click")();
+    prevented = false;
+    documentListeners.get("dragover")({
+      target: element("#source-url"), dataTransfer: {types: ["text/uri-list"]},
+      preventDefault() { prevented = true; },
+    });
+    assert.equal(prevented, true);
     element("#source-url").value = "https://example.com/manual";
     listeners.get("#source-url:input")();
     listeners.get("#source-url:keydown")({key: "Enter"});
@@ -88,6 +122,17 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     assert.equal(element("#source-drop").textContent, "https://example.com/manual");
     assert.deepEqual(createdUrls, ["https://example.com/other", "https://example.com/manual"]);
     assert.deepEqual(scannedTabs, [7, 8, 8]);
+
+    listeners.get("#reset:click")();
+    prevented = false;
+    documentListeners.get("drop")({
+      target: element("#viewer"),
+      dataTransfer: {getData: type => type === "text/uri-list" ? "https://example.com/after-clear" : ""},
+      preventDefault() { prevented = true; },
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(prevented, true);
+    assert.deepEqual(createdUrls, ["https://example.com/other", "https://example.com/manual", "https://example.com/after-clear"]);
   } finally {
     globalThis.document = previousDocument;
     globalThis.chrome = previousChrome;
