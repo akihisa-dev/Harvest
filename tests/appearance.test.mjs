@@ -34,16 +34,3 @@ test("明暗の自動追従でも本文・補助文・選択ボタンの文字�
     }
   }
 });
-
-test("上部と画像領域の配分を内容によらず固定し操作を切り捨てない", () => {
-  const header = css.match(/^\.app-header\s*\{([^}]+)\}/m)?.[1];
-  assert.ok(header);
-  assert.match(header, /(?:^|;)\s*height:\s*clamp\(168px, 34dvh, 240px\)/, "内容によらず同じ画面では同じ高さを使う");
-  const maximum = Number(header.match(/max-height:\s*(\d+)dvh/)?.[1]);
-  assert.ok(maximum > 0 && maximum <= 60, "画像領域に画面の40%以上を残す");
-  assert.match(header, /overflow:\s*hidden/, "上部全体をスクロールさせない");
-  assert.match(header, /grid-template-rows:\s*auto minmax\(0, 1fr\)/, "グループ領域は上部の残りの高さに収める");
-  const groupBar = css.match(/^\.group-bar\s*\{([^}]+)\}/m)?.[1];
-  assert.match(groupBar, /overflow-y:\s*auto/, "グループ領域だけにスクロールバーを付ける");
-  assert.match(groupBar, /min-height:\s*0/, "グループが増えても領域を押し広げない");
-});

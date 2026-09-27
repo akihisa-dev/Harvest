@@ -485,6 +485,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(pdfSaveState.getAttribute("aria-label"), "未保存", "収集失敗時は既存の未保存状態を保つ");
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択");
     assert.match(document.querySelector("#status").textContent, /前の収集結果を保持/);
+    assert.equal(document.querySelector("#status").title, document.querySelector("#status").textContent, "画面で省略された状態文も全文を確認できる");
     assert.equal(document.querySelector("#export").textContent, "失敗した1枚を再試行");
     rejectScan = false;
     failOnce = false;

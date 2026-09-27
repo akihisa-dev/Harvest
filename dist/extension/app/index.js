@@ -211,6 +211,7 @@ function clearSourceUrl() {
 function setStatus(message, state = "info") {
     setMotionText(statusElement, message);
     statusElement.dataset["state"] = state;
+    statusElement.title = message;
 }
 function requestFocus(target) { focusTarget = target; }
 function restoreFocus() {
