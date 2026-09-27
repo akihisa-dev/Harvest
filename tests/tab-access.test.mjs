@@ -1,47 +1,60 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-test("タブの名前とURLは利用者が一覧表示を押すまで読まない", async () => {
+test("解析時に開いているページだけを調べ、URL指定時はそのURLを使う", async () => {
   const listeners = new Map();
   const elements = new Map();
   const element = selector => {
     if (!elements.has(selector)) {
       elements.set(selector, {
-        value: "",
-        options: [],
-        disabled: false,
-        textContent: "",
+        value: "", checked: true, disabled: false, hidden: false, textContent: "",
         addEventListener(name, callback) { listeners.set(`${selector}:${name}`, callback); },
-        replaceChildren() { this.options = []; this.value = ""; },
-        append(option) {
-          this.options.push(option);
-          if (option.selected || this.options.length === 1) this.value = option.value;
-        }
+        replaceChildren() {},
+        append() {}
       });
     }
     return elements.get(selector);
   };
   const previousDocument = globalThis.document;
   const previousChrome = globalThis.chrome;
+  const previousWindow = globalThis.window;
   const queries = [];
-  globalThis.document = {
-    querySelector: element,
-    addEventListener() {},
-    createElement() { return {value: "", selected: false, textContent: ""}; }
+  const scannedTabs = [];
+  const createdUrls = [];
+  const removedTabs = [];
+  globalThis.document = {querySelector: element, addEventListener() {}};
+  globalThis.window = {setTimeout, clearTimeout};
+  globalThis.chrome = {
+    tabs: {
+      query: async query => { queries.push(query); return [{id: 7, url: "https://example.com/page"}]; },
+      create: async ({url}) => { createdUrls.push(url); return {id: 8, url}; },
+      get: async () => ({status: "complete"}),
+      remove: async id => { removedTabs.push(id); },
+      onUpdated: {addListener() {}, removeListener() {}}
+    },
+    scripting: {executeScript: async ({target}) => {
+      scannedTabs.push(target.tabId);
+      return [{result: {url: "https://example.com/page", title: "ページ", images: [], links: []}}];
+    }}
   };
-  globalThis.chrome = {tabs: {query: async query => {
-    queries.push(query);
-    return [{id: 7, url: "https://example.com/page", title: "画像のページ"}];
-  }}};
   try {
     await import(`../dist/extension/app/index.js?tab-access=${Date.now()}`);
-    assert.equal(queries.length, 0);
-    await listeners.get("#load-tabs:click")();
-    assert.equal(queries.length, 2);
-    assert.equal(element("#source-tab").value, "7");
-    assert.equal(element("#source-tab").disabled, false);
+    assert.deepEqual(queries, []);
+    listeners.get("#scan:click")();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(queries, [{active: true, currentWindow: true}]);
+    assert.deepEqual(scannedTabs, [7]);
+
+    element("#source-url").value = "https://example.com/other";
+    listeners.get("#scan:click")();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(queries.length, 1);
+    assert.deepEqual(createdUrls, ["https://example.com/other"]);
+    assert.deepEqual(scannedTabs, [7, 8]);
+    assert.deepEqual(removedTabs, [8]);
   } finally {
     globalThis.document = previousDocument;
     globalThis.chrome = previousChrome;
+    globalThis.window = previousWindow;
   }
 });

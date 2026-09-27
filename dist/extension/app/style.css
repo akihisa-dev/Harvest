@@ -1,20 +1,24 @@
 :root { font-family: system-ui, sans-serif; color: #17253b; background: #f3f6fb; }
 * { box-sizing: border-box; }
-body { margin: 0; }
-button, select, input { font: inherit; }
+body { margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+button, input { font: inherit; }
 button { border: 1px solid #bac9dd; border-radius: 9px; background: white; color: #173d73; font-weight: 700; padding: 9px 13px; cursor: pointer; }
 button:hover:not(:disabled) { background: #eaf2ff; }
 button:disabled { opacity: .45; cursor: default; }
-button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #4c93e8; outline-offset: 2px; }
+button:focus-visible, input:focus-visible { outline: 3px solid #4c93e8; outline-offset: 2px; }
+.app-header { flex: none; background: #f3f6fb; }
 .topbar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; background: #173d73; color: white; padding: 14px 16px; }
 .topbar h1 { font-size: 23px; margin: 0; }
 .topbar span { font-size: 13px; opacity: .8; }
-main { display: grid; gap: 12px; padding: 12px; min-width: 0; }
+main { display: grid; gap: 12px; padding: 12px; min-width: 0; min-height: 0; overflow-y: auto; align-content: start; }
 section, aside { min-width: 0; background: white; border: 1px solid #d7e1ef; border-radius: 14px; padding: 14px; }
 h2 { font-size: 18px; margin: 0 0 14px; }
-.source-row { display: flex; align-items: stretch; flex-direction: column; gap: 8px; }
+.controls { margin: 12px 12px 0; }
+.controls h2 { margin-bottom: 4px; }
+.controls .hint { margin: 0 0 10px; }
+.source-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 .source-row label { font-size: 14px; font-weight: 700; white-space: nowrap; }
-.source-row select, .source-row input { width: 100%; min-width: 0; border: 1px solid #bac9dd; border-radius: 9px; background: white; padding: 9px; }
+.source-row input { width: 100%; min-width: 0; border: 1px solid #bac9dd; border-radius: 9px; background: white; padding: 9px; }
 #scan, #export { background: #1653b5; border-color: #1653b5; color: white; }
 #scan:hover:not(:disabled), #export:hover:not(:disabled) { background: #0d428f; }
 .hint, .export p { color: #52637c; font-size: 13px; line-height: 1.6; margin: 10px 0 0; }
@@ -30,11 +34,11 @@ h2 { font-size: 18px; margin: 0 0 14px; }
 .groups button { font-size: 12px; padding: 6px 9px; }
 .groups button.active { background: #dbeafe; border-color: #6098dd; }
 #empty { color: #667991; font-size: 14px; }
-.image-list { display: grid; gap: 10px; list-style: none; padding: 0; margin: 0; }
-.image-list li { display: flex; min-width: 0; border: 1px solid #d7e1ef; border-radius: 11px; overflow: hidden; background: #fff; }
-.image-list li.unselected { opacity: .48; }
-.preview { display: block; width: 86px; height: 86px; flex: none; object-fit: contain; background: #edf2f8; }
-.item-body { min-width: 0; flex: 1; padding: 9px; }
+.image-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; list-style: none; padding: 0; margin: 0; }
+.image-list li { display: flex; flex-direction: column; min-width: 0; border: 1px solid #d7e1ef; border-radius: 11px; overflow: hidden; background: #fff; }
+.image-list li.unselected { border-color: #b9c6d8; background: #f7f9fc; }
+.preview { display: block; width: 100%; aspect-ratio: 4 / 5; object-fit: contain; background: #edf2f8; }
+.item-body { min-width: 0; padding: 9px; }
 .item-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; margin-bottom: 8px; }
 .item-actions { display: flex; align-items: center; gap: 5px; }
 .item-actions label { display: flex; align-items: center; gap: 3px; font-size: 12px; flex: 1; }
@@ -44,4 +48,4 @@ h2 { font-size: 18px; margin: 0 0 14px; }
 #export { width: 100%; margin-top: 12px; }
 #status { min-height: 2em; overflow-wrap: anywhere; }
 #reset { width: 100%; }
-@media (max-width: 320px) { .preview { width: 64px; height: 80px; } .item-actions { flex-wrap: wrap; } }
+@media (max-width: 420px) { .source-row { grid-template-columns: minmax(0, 1fr) auto; } .source-row label { grid-column: 1 / -1; } }

@@ -1,7 +1,5 @@
 import { defaultSelectedImageGroups, galleryLinkScore, groupImages, normalizeImageUrls, sortImageUrlsForSite } from "../core/images.js";
 import { createPdf } from "../core/pdf.js";
-const source = required("#source-tab");
-const loadTabsButton = required("#load-tabs");
 const sourceUrl = required("#source-url");
 const scanButton = required("#scan");
 const exportButton = required("#export");
@@ -136,9 +134,7 @@ async function scanLink(url) {
 }
 function setBusy(value) {
     busy = value;
-    scanButton.disabled = value || (!source.value && !sourceUrl.value.trim());
-    source.disabled = value || source.options.length === 0;
-    loadTabsButton.disabled = value;
+    scanButton.disabled = value;
     sourceUrl.disabled = value;
     qualityInput.disabled = value;
     resetButton.disabled = value;
@@ -162,16 +158,24 @@ async function startScan() {
             return;
         }
     }
-    const tabId = Number(source.value);
-    if (!targetUrl && (!source.value || !Number.isInteger(tabId)))
-        return;
     images = [];
     links = [];
     completionElement.hidden = true;
     setBusy(true);
     setStatus("ページを調べています…");
     try {
-        const result = targetUrl ? await scanUrl(targetUrl) : await scanTab(tabId);
+        let result;
+        if (targetUrl) {
+            result = await scanUrl(targetUrl);
+        }
+        else {
+            const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (activeTab?.id === undefined || !isWebUrl(activeTab.url)) {
+                setStatus("開いているWebページを解析できません。URLを指定してください。");
+                return;
+            }
+            result = await scanTab(activeTab.id);
+        }
         pageTitle = result.title || "画像";
         rootPageUrl = result.url;
         addScan(result);
@@ -403,7 +407,6 @@ async function exportPdf() {
     }
 }
 scanButton.addEventListener("click", () => { void startScan(); });
-sourceUrl.addEventListener("input", () => { scanButton.disabled = busy || (!source.value && !sourceUrl.value.trim()); });
 sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter")
     void startScan(); });
 document.addEventListener("dragover", event => { if (event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain"))
@@ -434,30 +437,3 @@ resetButton.addEventListener("click", () => {
     render();
 });
 backToImagesButton.addEventListener("click", () => { completionElement.hidden = true; imagesElement.scrollIntoView({ block: "start" }); });
-loadTabsButton.addEventListener("click", async () => {
-    loadTabsButton.disabled = true;
-    try {
-        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        const tabs = (await chrome.tabs.query({})).filter(tab => tab.id !== undefined && isWebUrl(tab.url));
-        source.replaceChildren();
-        for (const tab of tabs) {
-            const option = document.createElement("option");
-            option.value = String(tab.id);
-            option.textContent = `${tab.title || tab.url} — ${new URL(tab.url).hostname}`;
-            if (tab.id === activeTab?.id)
-                option.selected = true;
-            source.append(option);
-        }
-        source.disabled = tabs.length === 0;
-        loadTabsButton.textContent = "タブ一覧を更新";
-        scanButton.disabled = !source.value && !sourceUrl.value.trim();
-        if (!tabs.length)
-            setStatus("収集できるWebページのタブがありません。URLを入力してください。");
-    }
-    catch {
-        setStatus("開いているページを取得できませんでした。");
-    }
-    finally {
-        loadTabsButton.disabled = false;
-    }
-});

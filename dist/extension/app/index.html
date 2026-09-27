@@ -8,28 +8,26 @@
     <script type="module" src="index.js" defer></script>
   </head>
   <body>
-    <header class="topbar"><h1>Harvest</h1><span>ページの画像からPDFを作成</span></header>
-    <main>
+    <div class="app-header">
+      <header class="topbar"><h1>Harvest</h1><span>ページの画像からPDFを作成</span></header>
       <section class="controls" aria-labelledby="source-heading">
-        <h2 id="source-heading">収集するページ</h2>
-        <p class="hint">開いているタブの名前とURLは、下のボタンを押したときに表示します。「画像を探す」を押すと指定ページの画像URLを読み取ります。画像とPDFは端末内で処理し、開発者のサーバーへ送りません。</p>
+        <h2 id="source-heading">ページを解析</h2>
+        <p class="hint">URLを指定しない場合は、開いているページを解析します。</p>
         <div class="source-row">
-          <label for="source-tab">開いているページ</label>
-          <button id="load-tabs" type="button">開いているタブを表示</button>
-          <select id="source-tab" disabled></select>
-          <label for="source-url">またはページのURL</label>
+          <label for="source-url">URL指定</label>
           <input id="source-url" type="url" inputmode="url" placeholder="https://example.com/" autocomplete="url">
-          <button id="scan" type="button">画像を探す</button>
+          <button id="scan" type="button">解析</button>
         </div>
-        <p class="hint">URLを入力した場合はそのページを調べます。URLをここへドラッグしても開始できます。画像一覧につながるリンクがあれば、その先も調べます。</p>
-        <div id="links" class="links" hidden></div>
       </section>
+    </div>
+    <main>
       <section class="results" aria-labelledby="images-heading">
         <div class="section-head"><h2 id="images-heading">画像</h2><span id="count">0枚</span></div>
         <div id="completion" class="completion" hidden><p>PDFの保存を開始しました。</p><button id="back-to-images" type="button">画像一覧に戻る</button></div>
         <div id="groups" class="groups" hidden></div>
         <div class="toolbar"><button id="select-all" type="button" disabled>すべて選択</button><button id="clear-all" type="button" disabled>選択を解除</button></div>
-        <p id="empty">ページを選んで「画像を探す」を押してください。</p>
+        <div id="links" class="links" hidden></div>
+        <p id="empty">「解析」を押すと、開いているページの画像を表示します。</p>
         <ol id="images" class="image-list"></ol>
       </section>
       <aside class="export" aria-labelledby="export-heading">
