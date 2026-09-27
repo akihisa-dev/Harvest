@@ -72,9 +72,9 @@ section, aside { min-width: 0; }
 .section-head h2 { font-size: 14px; }
 #count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .toolbar { gap: 4px; }
-.toolbar button, .quiet-button { min-height: 32px; padding: 5px 7px; background: transparent; border-color: transparent; font-size: 12px; font-weight: 500; }
-.toolbar button:disabled, .quiet-button:disabled { border-color: transparent; background: transparent; }
-.toolbar button:hover:not(:disabled), .quiet-button:hover:not(:disabled) { background: #f0f0f0; border-color: transparent; }
+.toolbar button { min-height: 32px; padding: 5px 7px; background: transparent; border-color: transparent; font-size: 12px; font-weight: 500; }
+.toolbar button:disabled { border-color: transparent; background: transparent; }
+.toolbar button:hover:not(:disabled) { background: #f0f0f0; border-color: transparent; }
 .filter-bar { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 .filter-bar > span { flex: none; font-size: 11px; color: var(--muted); }
 .filter-bar:has(.groups[hidden]) { display: none; }
@@ -104,17 +104,16 @@ section, aside { min-width: 0; }
 #viewer-toggle[aria-pressed="true"]:hover:not(:disabled) { background: #404040; }
 .viewer-meta {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: center;
-  gap: 4px 8px;
+  gap: 8px;
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
-#reset { margin-left: auto; flex: none; }
+#reset { min-width: 120px; }
 #export { min-height: 38px; }
-#status { flex: 1 1 160px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+#status { align-self: stretch; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 #status:empty { display: none; }
 #status[data-state="error"] { padding: 7px 9px; border-left: 3px solid var(--ink); background: #f2f2f2; color: var(--ink); }
 #status[data-state="busy"]::before { content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 6px 1px 0; border-radius: 50%; background: currentColor; }

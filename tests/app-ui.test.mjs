@@ -86,7 +86,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   };
   document.body = new StubElement("body", document);
   for (const selector of [
-    "#source-url", "#scan", "#export", "#select-all", "#clear-all", "#reset",
+    "#source-url", "#scan", "#export", "#select-all", "#clear-all", "#reset-order", "#reset",
     "#completion", "#back-to-images", "#failures", "#failed-images", "#images", "#groups", "#group-selections",
     "#count", "#empty", "#status", "#viewer-toggle", "#viewer", "#viewer-empty",
     "#viewer-page", "#viewer-previous", "#viewer-position", "#viewer-next", "#viewer-image",
@@ -139,6 +139,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#status").textContent, "");
     assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択");
     assert.equal(document.querySelector("#export").textContent, "PDFを保存（2枚）");
+    const resetOrder = document.querySelector("#reset-order");
+    assert.equal(resetOrder.disabled, true);
 
     const viewerToggle = document.querySelector("#viewer-toggle");
     const viewer = document.querySelector("#viewer");
@@ -262,6 +264,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.ok(document.animations.length > 0);
     lastRowBeforeDrop.dispatch("drop", {clientX: 75, clientY: 350});
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), [resultImages[1], resultImages[2], resultImages[3], firstUrl]);
+    assert.equal(resetOrder.disabled, false);
     document.querySelector("#images").children[3].dispatch("click");
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択");
     assert.equal(document.activeElement.getAttribute("data-focus-url"), firstUrl);
@@ -314,6 +317,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#status").textContent, "画像を準備しています… 0 / 4");
     assert.equal(document.querySelector("#images").children.every(row => !row.draggable), true);
     assert.equal(document.querySelector("#status").dataset.state, "busy");
+    assert.equal(resetOrder.disabled, true);
     document.querySelector("#images").children[0].dispatch("pointerdown");
     document.querySelector("#images").children[0].dispatch("click");
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択");
@@ -336,6 +340,15 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.deepEqual(document.downloads, ["ページ.pdf"]);
     assert.equal(document.querySelector("#failures").hidden, true);
     assert.equal(document.querySelector("#status").dataset.state, "success");
+
+    coverButton.dispatch("click");
+    assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
+    resetOrder.dispatch("click");
+    assert.equal(resetOrder.disabled, true);
+    assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
+    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), resultImages.slice(2));
+    allButton.dispatch("click");
+    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), resultImages);
 
     for (;;) {
       const selectedRow = document.querySelector("#images").children.find(row => row.getAttribute("aria-pressed") === "true");

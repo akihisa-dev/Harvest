@@ -23,6 +23,7 @@ const viewerZoomOutButton = required("#viewer-zoom-out");
 const viewerZoomResetButton = required("#viewer-zoom-reset");
 const selectAllButton = required("#select-all");
 const clearAllButton = required("#clear-all");
+const resetOrderButton = required("#reset-order");
 const resetButton = required("#reset");
 const completionElement = required("#completion");
 const failuresElement = required("#failures");
@@ -35,6 +36,7 @@ const countElement = required("#count");
 const emptyElement = required("#empty");
 const statusElement = required("#status");
 let images = [];
+let initialImageOrder = [];
 let pageTitle = "画像";
 let activeGroupKey = null;
 let viewerMode = false;
@@ -223,6 +225,7 @@ async function startScan() {
     }
     hideSourceInput();
     images = [];
+    initialImageOrder = [];
     pendingExport = null;
     activeGroupKey = null;
     viewerMode = false;
@@ -247,6 +250,7 @@ async function startScan() {
         }
         pageTitle = result.title || "画像";
         addScan(result);
+        initialImageOrder = [...images];
         const grouped = groupImages(images.map(item => item.url));
         const initiallySelected = defaultSelectedImageGroups(grouped);
         for (const [key, group] of Object.entries(grouped)) {
@@ -668,6 +672,7 @@ function render() {
                 : "ここに画像が並びます。\n「解析」を押して、画像を集めましょう。";
     selectAllButton.disabled = busy || images.length === 0;
     clearAllButton.disabled = busy || images.length === 0;
+    resetOrderButton.disabled = busy || images.every((item, index) => item === initialImageOrder[index]);
     exportButton.disabled = busy || !images.some(item => item.selected);
     renderGroups(groups);
     renderGroupSelections(groups);
@@ -829,8 +834,15 @@ selectAllButton.addEventListener("click", () => { for (const item of images)
     item.selected = true; render(); });
 clearAllButton.addEventListener("click", () => { for (const item of images)
     item.selected = false; render(); });
+resetOrderButton.addEventListener("click", () => {
+    if (busy || resetOrderButton.disabled)
+        return;
+    images = [...initialImageOrder];
+    render();
+});
 resetButton.addEventListener("click", () => {
     images = [];
+    initialImageOrder = [];
     pendingExport = null;
     activeGroupKey = null;
     viewerMode = false;
