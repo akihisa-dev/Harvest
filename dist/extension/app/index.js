@@ -56,6 +56,7 @@ const backToImagesButton = required("#back-to-images");
 const imagesElement = required("#images");
 const groupsElement = required("#groups");
 const countElement = required("#count");
+const scanOverlay = required("#scan-overlay");
 const emptyElement = required("#empty");
 const emptyLogoElement = required("#empty-logo");
 const emptyMessageElement = required("#empty-message");
@@ -208,8 +209,9 @@ function clearSourceUrl() {
     sourceUrl.value = "";
     hideSourceInput();
 }
-function setStatus(message, state = "info") {
-    setMotionText(statusElement, message);
+function setStatus(message, state = "info", progress = "") {
+    setMotionText(statusElement, state === "busy" ? progress : message);
+    statusElement.setAttribute("aria-label", state === "busy" ? message : "");
     statusElement.dataset["state"] = state;
     statusElement.title = message;
 }
@@ -776,11 +778,13 @@ function render() {
         row.title = item.url;
         return row;
     }));
+    scanOverlay.hidden = scanState !== "scanning";
     emptyElement.hidden = images.length > 0;
     emptyLogoElement.hidden = scanState !== "initial";
-    emptyMessageElement.hidden = scanState === "initial";
+    emptyElement.dataset["state"] = scanState;
+    emptyMessageElement.hidden = scanState === "initial" || scanState === "scanning";
     emptyMessageElement.textContent = scanState === "scanning"
-        ? t("imageBusy")
+        ? ""
         : scanState === "empty"
             ? t("scanEmpty")
             : scanState === "error"
@@ -808,7 +812,7 @@ async function exportPdf() {
     exportController = controller;
     completionElement.hidden = true;
     setBusy(true);
-    setStatus(t(retry ? "retryImages" : "prepareImages", { completed: 0, total: remaining.length }), "busy");
+    setStatus(t(retry ? "retryImages" : "prepareImages", { completed: 0, total: remaining.length }), "busy", `0 / ${remaining.length}`);
     try {
         work.failed.clear();
         let completed = 0;
@@ -819,7 +823,7 @@ async function exportPdf() {
                 work.prepared.set(image, result);
             completed += 1;
             if (!disposed)
-                setStatus(t(retry ? "retryImages" : "prepareImages", { completed, total: remaining.length }), "busy");
+                setStatus(t(retry ? "retryImages" : "prepareImages", { completed, total: remaining.length }), "busy", `${completed} / ${remaining.length}`);
         }, { signal: controller.signal });
         if (disposed || controller.signal.aborted)
             return;
@@ -830,7 +834,7 @@ async function exportPdf() {
             return;
         }
         const pages = work.selected.map(item => work.prepared.get(item));
-        setStatus(t("pdfCreating"), "busy");
+        setStatus(t("pdfCreating"), "busy", `${pages.length} / ${pages.length}`);
         const filename = pdfFilename();
         const blob = createPdf(pages, includeSourcePage.checked ? {
             heading: t("sourceHeading"), filename, url: work.selected[0].sourcePage,

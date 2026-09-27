@@ -117,6 +117,7 @@ test("real Chrome keeps the header stable and confines group scrolling across pa
           scripting: { executeScript: async () => {
             const fixture = window.__harvestScanFixture ?? { images: [], url: "https://source.example.test/gallery", title: "Fixture" };
             if (fixture.error) throw new Error(fixture.error);
+            if (fixture.pending) await new Promise(resolve => { window.__releaseScanFixture = resolve; });
             return [{ result: fixture }];
           } },
         };
@@ -135,7 +136,61 @@ test("real Chrome keeps the header stable and confines group scrolling across pa
           await page.locator("#images-heading").waitFor();
           assert.equal(await page.title(), locale === "ja-JP" ? "Harvest | 画像を集める" : "Harvest | Collect images", `${caseName}: document title should follow browser locale`);
           const empty = await inspectLayout(page, width, height, `${caseName} empty`);
-          await scan(page, imageFixture(4, 1));
+          const pendingFixture = {...imageFixture(4, 1), pending: true};
+          await page.evaluate(value => { window.__harvestScanFixture = value; }, pendingFixture);
+          await page.locator("#scan").click();
+          await page.waitForFunction(() => document.querySelector("#status").dataset.state === "busy");
+          const spinnerState = await page.evaluate(() => {
+            const status = document.querySelector("#status");
+            const empty = document.querySelector("#empty");
+            const ring = getComputedStyle(status, "::before");
+            return {
+              statusText: status.textContent,
+              statusLabel: status.getAttribute("aria-label"),
+              statusRingContent: ring.content,
+              statusRingWidth: ring.width,
+              statusRingAnimation: ring.animationName,
+              statusRingColor: ring.backgroundColor,
+              appInkColor: getComputedStyle(document.documentElement).color,
+              emptyState: empty.dataset.state,
+              emptyMessage: document.querySelector("#empty-message").textContent,
+              emptyLogoHidden: document.querySelector("#empty-logo").hidden,
+              scanOverlayHidden: document.querySelector("#scan-overlay").hidden,
+              overlayRingWidth: getComputedStyle(document.querySelector("#scan-overlay"), "::before").width,
+            };
+          });
+          assert.equal(spinnerState.statusText, "", `${caseName}: busy status should not render its message`);
+          assert.equal(spinnerState.statusLabel, locale === "ja-JP" ? "ページを調べています…" : "Analyzing the page…", `${caseName}: busy status should remain accessible`);
+          assert.notEqual(spinnerState.statusRingContent, "none", `${caseName}: busy status should show its spinner`);
+          assert.equal(spinnerState.statusRingWidth, "22px", `${caseName}: status spinner should be compact`);
+          assert.equal(spinnerState.statusRingColor, spinnerState.appInkColor, `${caseName}: spinner should follow the app ink color`);
+          assert.equal(spinnerState.statusRingAnimation, "none", `${caseName}: reduced motion should stop spinner animation`);
+          await page.emulateMedia({reducedMotion: "no-preference"});
+          const movingSpinner = await page.locator("#status").evaluate(element => {
+            const ring = getComputedStyle(element, "::before");
+            return {animationName: ring.animationName, animationDuration: ring.animationDuration};
+          });
+          assert.notEqual(movingSpinner.animationName, "none", `${caseName}: spinner should animate when motion is allowed`);
+          assert.equal(movingSpinner.animationDuration, "0.9s", `${caseName}: spinner should use the specified rotation interval`);
+          await page.emulateMedia({reducedMotion: "reduce"});
+          assert.equal(spinnerState.emptyState, "scanning", `${caseName}: empty results should expose scanning state`);
+          assert.equal(spinnerState.emptyMessage, "", `${caseName}: scanning should hide the empty message`);
+          assert.equal(spinnerState.emptyLogoHidden, true, `${caseName}: scanning should hide the logo`);
+          assert.equal(spinnerState.scanOverlayHidden, false, `${caseName}: overlay should be visible while scanning`);
+          assert.equal(spinnerState.overlayRingWidth, "64px", `${caseName}: scanning overlay ring should be large`);
+          await page.evaluate(() => window.__releaseScanFixture());
+          await page.waitForFunction(() => !document.querySelector("#scan").disabled);
+          await page.waitForTimeout(280);
+          const firstResultCount = await page.locator("#images img").count();
+          const secondPendingFixture = {...imageFixture(4, 1), pending: true};
+          await page.evaluate(value => { window.__harvestScanFixture = value; }, secondPendingFixture);
+          await page.locator("#scan").click();
+          await page.waitForFunction(() => document.querySelector("#status").dataset.state === "busy");
+          assert.equal(await page.locator("#scan-overlay").isHidden(), false, `${caseName}: overlay should cover thumbnails during re-analysis`);
+          assert.equal(await page.locator("#images img").count(), firstResultCount, `${caseName}: thumbnails should remain present under the overlay`);
+          await page.evaluate(() => window.__releaseScanFixture());
+          await page.waitForFunction(() => !document.querySelector("#scan").disabled);
+          assert.equal(await page.locator("#scan-overlay").isHidden(), true, `${caseName}: overlay should hide when re-analysis completes`);
           const sourceOption = page.locator(".source-page-option span");
           const originalOption = await sourceOption.textContent();
           await sourceOption.evaluate(element => { element.textContent = "出典ページの追加 Source page"; });

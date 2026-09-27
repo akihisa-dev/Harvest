@@ -95,7 +95,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   for (const selector of [
     "#source-url", "#scan", "#export", "#select-all", "#clear-all", "#reset-order", "#reset",
     "#completion", "#back-to-images", "#failures", "#failed-images", "#images", "#groups",
-    "#count", "#empty", "#empty-logo", "#empty-message", "#status", "#pdf-save-state", "#viewer-toggle", "#viewer", "#viewer-empty",
+    "#count", "#empty", "#empty-logo", "#empty-message", "#scan-overlay", "#status", "#pdf-save-state", "#viewer-toggle", "#viewer", "#viewer-empty",
     "#viewer-page", "#viewer-previous", "#viewer-position", "#viewer-next", "#viewer-image",
     "#viewer-filename", "#viewer-thumbnails", "#viewer-zoom-in", "#viewer-zoom-out",
     "#viewer-zoom-reset", "#viewer-stage",
@@ -241,12 +241,20 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(emptyLogo.hidden, false);
     assert.equal(emptyMessage.hidden, true);
 
+    const scanOverlay = document.querySelector("#scan-overlay");
+    const thumbnailsBeforeScan = document.querySelector("#images").children.map(row => row.children[0].src);
     document.querySelector("#scan").dispatch("click");
+    assert.equal(scanOverlay.hidden, false, "既存画像を表示中でも解析リングを重ねる");
+    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), thumbnailsBeforeScan, "解析中も既存画像を保持する");
     assert.equal(document.querySelector("#status").dataset.state, "busy");
+    assert.equal(document.querySelector("#status").textContent, "", "解析中は状態文を画面に出さない");
+    assert.equal(document.querySelector("#status").getAttribute("aria-label"), "ページを調べています…", "解析中の状態文は読み上げ用に残す");
+    assert.equal(empty.dataset.state, "scanning");
     assert.equal(emptyLogo.hidden, true);
-    assert.equal(emptyMessage.textContent, "画像を調べています…");
+    assert.equal(emptyMessage.textContent, "", "解析中は案内文を空にする");
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(empty.hidden, true);
+    assert.equal(scanOverlay.hidden, true, "解析完了後はリングを隠す");
     assert.equal(document.querySelector("#status").textContent, "");
     assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択・2枚を表示");
     assert.equal(pdfSaveState.getAttribute("aria-label"), "未保存", "新しい収集結果は未保存に戻す");
@@ -454,7 +462,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
       return {ok: true, blob: async () => new Blob([new Uint8Array([1])], {type: "image/png"})};
     };
     document.querySelector("#export").dispatch("click");
-    assert.equal(document.querySelector("#status").textContent, "画像を準備しています… 0 / 4");
+    assert.equal(document.querySelector("#status").textContent, "0 / 4", "PDF作成中も枚数の進捗を画面に表示する");
+    assert.equal(document.querySelector("#status").getAttribute("aria-label"), "画像を準備しています… 0 / 4", "PDF作成の状態と進捗を読み上げ用に残す");
     assert.equal(document.querySelector("#images").children.every(row => !row.draggable), true);
     assert.equal(document.querySelector("#status").dataset.state, "busy");
     assert.equal(resetOrder.disabled, true);
