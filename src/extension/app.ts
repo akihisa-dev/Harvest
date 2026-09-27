@@ -1,4 +1,5 @@
 import { defaultSelectedImageGroups, filterImagesByGroup, groupImages, normalizeImageUrls, sortImageUrlsForSite, type ImageGroups, type ImageItem } from "../core/images.js";
+import { toPdfPage } from "./pdf-image.js";
 import { createPdf, type PdfImagePage } from "../core/pdf.js";
 
 interface PageScan {
@@ -380,29 +381,6 @@ function render(): void {
   restoreFocus();
 }
 
-async function toPdfPage(imageUrl: string, highQuality: boolean): Promise<PdfImagePage> {
-  const response = await fetch(imageUrl, {credentials: "include"});
-  if (!response.ok) throw new Error(`画像の取得に失敗しました (${response.status})`);
-  const blob = await response.blob();
-  if (!blob.type.startsWith("image/")) throw new Error("画像以外のデータです。");
-  const bitmap = await createImageBitmap(blob);
-  try {
-    if (bitmap.width < 1 || bitmap.height < 1) throw new Error("画像の大きさが不正です。");
-    const canvas = document.createElement("canvas");
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("画像を変換できませんでした。");
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(bitmap, 0, 0);
-    const jpeg = await new Promise<Blob>((resolve, reject) => canvas.toBlob(result => result ? resolve(result) : reject(new Error("画像を変換できませんでした。")), "image/jpeg", highQuality ? 0.95 : 0.72));
-    return {jpeg: new Uint8Array(await jpeg.arrayBuffer()), width: bitmap.width, height: bitmap.height};
-  } finally {
-    bitmap.close();
-  }
-}
-
 async function exportPdf(): Promise<void> {
   const selected = images.filter(item => item.selected);
   if (!selected.length) return;
@@ -413,7 +391,7 @@ async function exportPdf(): Promise<void> {
   try {
     let next = 0;
     let completed = 0;
-    await Promise.all(Array.from({length: Math.min(3, selected.length)}, async () => {
+    await Promise.all(Array.from({length: Math.min(qualityInput.checked ? 1 : 3, selected.length)}, async () => {
       while (next < selected.length) {
         const index = next++;
         try { prepared[index] = await toPdfPage(selected[index]!.url, qualityInput.checked); }
