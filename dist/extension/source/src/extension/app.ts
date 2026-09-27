@@ -57,6 +57,7 @@ let collectionSession: string | null = null;
 let collectionTabId: number | null = null;
 let collectionPort: HarvestPort | null = null;
 let collectionAnalyzedUrl: string | null = null;
+let pageWideUrlDropAvailable = true;
 
 function stopCollection(): void {
   collectionAnalyzedUrl = null;
@@ -89,6 +90,7 @@ chrome.runtime.onConnect?.addListener(port => {
 });
 
 async function toggleCollection(): Promise<void> {
+  pageWideUrlDropAvailable = false;
   if (collectionSession) { stopCollection(); return; }
   const session = "harvest-collection:" + crypto.randomUUID();
   collectionSessions.add(session);
@@ -226,6 +228,7 @@ function setBusy(value: boolean): void {
 
 async function startScan(collectionLink?: string): Promise<void> {
   if (busy) return;
+  pageWideUrlDropAvailable = false;
   const session = collectionSession;
   const enteredUrl = sourceUrl.value.trim();
   let targetUrl = "";
@@ -729,7 +732,7 @@ sourceUrl.addEventListener("input", updateSourceDrop);
 sourceUrl.addEventListener("blur", hideSourceInput);
 sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter") void startScan(); });
 function acceptsPageUrlDrop(target: EventTarget | null): boolean {
-  return scanState === "initial" || target === sourceDrop || target === sourceUrl;
+  return pageWideUrlDropAvailable || target === sourceDrop || target === sourceUrl;
 }
 function isPageUrlDrag(event: DragEvent): boolean {
   return Boolean(event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain"));
@@ -756,7 +759,7 @@ document.addEventListener("dragover", event => {
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
   clearDropFeedback();
-  if (scanState === "initial") document.body.classList.add("page-drop-ready");
+  if (pageWideUrlDropAvailable) document.body.classList.add("page-drop-ready");
   if (event.target === sourceDrop) sourceDrop.classList.add("drag-over");
   if (event.target === sourceUrl) sourceUrl.classList.add("drag-over");
 });
@@ -826,6 +829,7 @@ resetOrderButton.addEventListener("click", () => {
 });
 resetButton.addEventListener("click", () => {
   if (busy) return;
+  pageWideUrlDropAvailable = false;
   clearSourceUrl();
   collectionAnalyzedUrl = null;
   images = [];

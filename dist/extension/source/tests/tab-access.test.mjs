@@ -156,6 +156,13 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(prevented, true);
+    assert.deepEqual(createdUrls, ["https://example.com/other", "https://example.com/manual"]);
+    documentListeners.get("drop")({
+      target: element("#source-drop"),
+      dataTransfer: {getData: type => type === "text/uri-list" ? "https://example.com/after-clear" : ""},
+      preventDefault() {},
+    });
+    await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(createdUrls, ["https://example.com/other", "https://example.com/manual", "https://example.com/after-clear"]);
   } finally {
     globalThis.document = previousDocument;

@@ -71,6 +71,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     animations: [],
     downloads: [],
     elements: new Map(),
+    listeners: new Map(),
     createElement(tagName) { return new StubElement(tagName, document); },
     createTextNode(text) { return {textContent: text}; },
     querySelector(selector) {
@@ -82,7 +83,13 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
       return [...document.elements.values()].flatMap(element => [element, ...descendants(element)])
         .filter(element => element.getAttribute?.("data-focus-kind"));
     },
-    addEventListener() {},
+    addEventListener(name, callback) { document.listeners.set(name, callback); },
+    dispatch(name, event = {}) {
+      let prevented = false;
+      const dispatched = {preventDefault() { prevented = true; }, target: document.body, ...event};
+      document.listeners.get(name)?.(dispatched);
+      return {prevented, event: dispatched};
+    },
   };
   document.body = new StubElement("body", document);
   for (const selector of [
@@ -142,9 +149,22 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   };
   try {
     await import(`../dist/extension/app/index.js?ui=${Date.now()}`);
+    const sourceDrop = document.querySelector("#source-drop");
+    const pageUrlDrag = {
+      types: ["text/uri-list"],
+      getData: type => type === "text/uri-list" ? "https://example.com/dropped" : "",
+    };
+    assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, true);
+    assert.equal(document.body.className.includes("page-drop-ready"), true, "初回操作前は画面全体でURLを受け付ける");
+    document.dispatch("dragleave", {dataTransfer: pageUrlDrag});
     const collection = document.querySelector("#collection-toggle");
     collection.dispatch("click");
     await waitUntil(() => capturedMessage);
+    assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, false);
+    assert.equal(document.body.className.includes("page-drop-ready"), false, "収集開始後は画面全体をドロップ先にしない");
+    assert.equal(document.dispatch("dragover", {target: sourceDrop, dataTransfer: pageUrlDrag}).prevented, true);
+    assert.equal(sourceDrop.className.includes("drag-over"), true, "収集開始後もURL欄はドロップ先になる");
+    document.dispatch("dragleave", {dataTransfer: pageUrlDrag});
     assert.equal(collection.getAttribute("aria-pressed"), "true");
     assert.equal(createdUrls.length, 0, "開始時には解析しない");
     capturedMessage({url: "https://example.com/linked"});
@@ -180,6 +200,9 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     document.querySelector("#reset").dispatch("click");
     assert.equal(document.querySelector("#source-url").value, "", "クリア時は入力したURLを消す");
     assert.equal(document.querySelector("#source-drop").dataset.hasUrl, "false");
+    assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, false, "クリア後も画面全体のドロップ受付には戻さない");
+    assert.equal(document.dispatch("dragover", {target: sourceDrop, dataTransfer: pageUrlDrag}).prevented, true);
+    document.dispatch("dragleave", {dataTransfer: pageUrlDrag});
     const empty = document.querySelector("#empty");
     assert.equal(empty.textContent, "ここに画像が並びます。\n「解析」を押して、画像を集めましょう。");
 
@@ -459,6 +482,11 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(empty.textContent, "画像が見つかりませんでした。");
     assert.equal(executionCount, 3);
     assert.deepEqual(createdUrls, []);
+    document.dispatch("drop", {target: document.body, dataTransfer: pageUrlDrag});
+    assert.deepEqual(createdUrls, [], "操作開始後はURL欄以外へのドロップでは解析しない");
+    document.dispatch("drop", {target: sourceDrop, dataTransfer: pageUrlDrag});
+    await waitUntil(() => !document.querySelector("#scan").disabled);
+    assert.deepEqual(createdUrls, ["https://example.com/dropped"]);
   } finally {
     globalThis.fetch = previousFetch;
     globalThis.createImageBitmap = previousCreateImageBitmap;

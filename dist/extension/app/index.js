@@ -55,6 +55,7 @@ let collectionSession = null;
 let collectionTabId = null;
 let collectionPort = null;
 let collectionAnalyzedUrl = null;
+let pageWideUrlDropAvailable = true;
 function stopCollection() {
     collectionAnalyzedUrl = null;
     collectionSession = null;
@@ -93,6 +94,7 @@ chrome.runtime.onConnect?.addListener(port => {
     });
 });
 async function toggleCollection() {
+    pageWideUrlDropAvailable = false;
     if (collectionSession) {
         stopCollection();
         return;
@@ -219,6 +221,7 @@ function setBusy(value) {
 async function startScan(collectionLink) {
     if (busy)
         return;
+    pageWideUrlDropAvailable = false;
     const session = collectionSession;
     const enteredUrl = sourceUrl.value.trim();
     let targetUrl = "";
@@ -776,7 +779,7 @@ sourceUrl.addEventListener("blur", hideSourceInput);
 sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter")
     void startScan(); });
 function acceptsPageUrlDrop(target) {
-    return scanState === "initial" || target === sourceDrop || target === sourceUrl;
+    return pageWideUrlDropAvailable || target === sourceDrop || target === sourceUrl;
 }
 function isPageUrlDrag(event) {
     return Boolean(event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain"));
@@ -807,7 +810,7 @@ document.addEventListener("dragover", event => {
     if (event.dataTransfer)
         event.dataTransfer.dropEffect = "copy";
     clearDropFeedback();
-    if (scanState === "initial")
+    if (pageWideUrlDropAvailable)
         document.body.classList.add("page-drop-ready");
     if (event.target === sourceDrop)
         sourceDrop.classList.add("drag-over");
@@ -899,6 +902,7 @@ resetOrderButton.addEventListener("click", () => {
 resetButton.addEventListener("click", () => {
     if (busy)
         return;
+    pageWideUrlDropAvailable = false;
     clearSourceUrl();
     collectionAnalyzedUrl = null;
     images = [];
