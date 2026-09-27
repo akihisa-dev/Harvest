@@ -10,6 +10,7 @@ interface PageScan {
 }
 
 const sourceUrl = required<HTMLInputElement>("#source-url");
+const sourceDrop = required<HTMLButtonElement>("#source-drop");
 const scanButton = required<HTMLButtonElement>("#scan");
 const exportButton = required<HTMLButtonElement>("#export");
 const selectAllButton = required<HTMLButtonElement>("#select-all");
@@ -58,6 +59,26 @@ function required<T extends Element>(selector: string): T {
 
 function isWebUrl(url: string | undefined): url is string {
   return url !== undefined && /^https?:\/\//i.test(url);
+}
+
+function updateSourceDrop(): void {
+  const url = sourceUrl.value.trim();
+  sourceDrop.textContent = url || "ページURLをドロップ、またはクリックして入力";
+  sourceDrop.dataset["hasUrl"] = String(Boolean(url));
+}
+
+function showSourceInput(): void {
+  if (busy) return;
+  sourceDrop.hidden = true;
+  sourceUrl.hidden = false;
+  sourceUrl.focus();
+  sourceUrl.select();
+}
+
+function hideSourceInput(): void {
+  sourceUrl.hidden = true;
+  sourceDrop.hidden = false;
+  updateSourceDrop();
 }
 
 function scanDocument(): PageScan {
@@ -169,6 +190,7 @@ async function scanUrl(url: string): Promise<PageScan> {
 function setBusy(value: boolean): void {
   busy = value;
   scanButton.disabled = value;
+  sourceDrop.disabled = value;
   sourceUrl.disabled = value;
   resetButton.disabled = value;
   exportButton.disabled = value || !images.some(item => item.selected);
@@ -186,9 +208,11 @@ async function startScan(): Promise<void> {
       targetUrl = parsed.href;
     } catch {
       setStatus("HTTPまたはHTTPSのページURLを入力してください。", "error");
+      showSourceInput();
       return;
     }
   }
+  hideSourceInput();
   images = [];
   activeGroupKey = null;
   scanState = "scanning";
@@ -513,6 +537,21 @@ async function exportPdf(): Promise<void> {
 }
 
 scanButton.addEventListener("click", () => { void startScan(); });
+sourceDrop.addEventListener("click", showSourceInput);
+sourceDrop.addEventListener("dragover", event => {
+  if (busy || !event.dataTransfer ||
+      !(event.dataTransfer.types.includes("text/uri-list") || event.dataTransfer.types.includes("text/plain"))) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
+  sourceDrop.classList.add("drag-over");
+});
+sourceDrop.addEventListener("dragleave", () => sourceDrop.classList.remove("drag-over"));
+sourceDrop.addEventListener("drop", event => {
+  sourceDrop.classList.remove("drag-over");
+  event.preventDefault();
+});
+sourceUrl.addEventListener("input", updateSourceDrop);
+sourceUrl.addEventListener("blur", hideSourceInput);
 sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter") void startScan(); });
 document.addEventListener("dragover", event => { if (event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain")) event.preventDefault(); });
 document.addEventListener("drop", event => {
@@ -522,6 +561,7 @@ document.addEventListener("drop", event => {
   if (!url || !isWebUrl(url)) return;
   event.preventDefault();
   sourceUrl.value = url;
+  hideSourceInput();
   void startScan();
 });
 exportButton.addEventListener("click", () => { void exportPdf(); });
@@ -538,4 +578,5 @@ resetButton.addEventListener("click", () => {
 });
 backToImagesButton.addEventListener("click", () => { completionElement.hidden = true; imagesElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"}); });
 
+updateSourceDrop();
 render();

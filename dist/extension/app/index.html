@@ -12,7 +12,8 @@
       <section class="controls" aria-labelledby="source-heading">
         <div class="visually-hidden"><h2 id="source-heading"><label for="source-url">ページURL</label></h2><span>任意</span></div>
         <div class="source-row">
-          <input id="source-url" type="url" inputmode="url" placeholder="ページURL（空欄なら現在のページ）" autocomplete="url" aria-describedby="source-hint">
+          <button id="source-drop" type="button">ページURLをドロップ、またはクリックして入力</button>
+          <input id="source-url" type="url" inputmode="url" placeholder="ページURLを入力" autocomplete="url" aria-describedby="source-hint" hidden>
           <button id="scan" type="button">解析</button>
         </div>
         <p id="source-hint" class="visually-hidden">空欄なら、開いているページを解析します。</p>

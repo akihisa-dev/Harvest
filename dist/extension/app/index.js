@@ -3,6 +3,7 @@ import { toPdfPage } from "./pdf-image.js";
 import { createPdf } from "../core/pdf.js";
 import { animateLayoutChange, prefersReducedMotion, reconcileKeyedChildren, setMotionText } from "./motion.js";
 const sourceUrl = required("#source-url");
+const sourceDrop = required("#source-drop");
 const scanButton = required("#scan");
 const exportButton = required("#export");
 const selectAllButton = required("#select-all");
@@ -36,6 +37,24 @@ function required(selector) {
 }
 function isWebUrl(url) {
     return url !== undefined && /^https?:\/\//i.test(url);
+}
+function updateSourceDrop() {
+    const url = sourceUrl.value.trim();
+    sourceDrop.textContent = url || "ページURLをドロップ、またはクリックして入力";
+    sourceDrop.dataset["hasUrl"] = String(Boolean(url));
+}
+function showSourceInput() {
+    if (busy)
+        return;
+    sourceDrop.hidden = true;
+    sourceUrl.hidden = false;
+    sourceUrl.focus();
+    sourceUrl.select();
+}
+function hideSourceInput() {
+    sourceUrl.hidden = true;
+    sourceDrop.hidden = false;
+    updateSourceDrop();
 }
 function scanDocument() {
     const candidates = [];
@@ -152,6 +171,7 @@ async function scanUrl(url) {
 function setBusy(value) {
     busy = value;
     scanButton.disabled = value;
+    sourceDrop.disabled = value;
     sourceUrl.disabled = value;
     resetButton.disabled = value;
     exportButton.disabled = value || !images.some(item => item.selected);
@@ -171,9 +191,11 @@ async function startScan() {
         }
         catch {
             setStatus("HTTPまたはHTTPSのページURLを入力してください。", "error");
+            showSourceInput();
             return;
         }
     }
+    hideSourceInput();
     images = [];
     activeGroupKey = null;
     scanState = "scanning";
@@ -533,6 +555,22 @@ async function exportPdf() {
     }
 }
 scanButton.addEventListener("click", () => { void startScan(); });
+sourceDrop.addEventListener("click", showSourceInput);
+sourceDrop.addEventListener("dragover", event => {
+    if (busy || !event.dataTransfer ||
+        !(event.dataTransfer.types.includes("text/uri-list") || event.dataTransfer.types.includes("text/plain")))
+        return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    sourceDrop.classList.add("drag-over");
+});
+sourceDrop.addEventListener("dragleave", () => sourceDrop.classList.remove("drag-over"));
+sourceDrop.addEventListener("drop", event => {
+    sourceDrop.classList.remove("drag-over");
+    event.preventDefault();
+});
+sourceUrl.addEventListener("input", updateSourceDrop);
+sourceUrl.addEventListener("blur", hideSourceInput);
 sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter")
     void startScan(); });
 document.addEventListener("dragover", event => { if (event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain"))
@@ -546,6 +584,7 @@ document.addEventListener("drop", event => {
         return;
     event.preventDefault();
     sourceUrl.value = url;
+    hideSourceInput();
     void startScan();
 });
 exportButton.addEventListener("click", () => { void exportPdf(); });
@@ -563,4 +602,5 @@ resetButton.addEventListener("click", () => {
     render();
 });
 backToImagesButton.addEventListener("click", () => { completionElement.hidden = true; imagesElement.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth" }); });
+updateSourceDrop();
 render();
