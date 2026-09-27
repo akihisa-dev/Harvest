@@ -8,7 +8,7 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
   const element = selector => {
     if (!elements.has(selector)) {
       elements.set(selector, {
-        value: "", checked: true, disabled: false, hidden: selector === "#source-url", textContent: "", dataset: {}, children: [],
+        value: "", checked: true, disabled: false, hidden: selector === "#source-url", textContent: "", dataset: {}, style: {}, children: [],
         classList: {add() {}, remove() {}},
         addEventListener(name, callback) { listeners.set(`${selector}:${name}`, callback); },
         setAttribute() {},

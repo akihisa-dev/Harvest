@@ -25,6 +25,8 @@ class StubElement {
   removeAttribute(name) { this.attributes.delete(name); }
   getAttribute(name) { return this.attributes.get(name) ?? null; }
   focus() { this.owner.activeElement = this; }
+  setPointerCapture() {}
+  releasePointerCapture() {}
   scrollIntoView() {}
   getBoundingClientRect() {
     const order = Number(this.style.order || 0);
@@ -36,7 +38,7 @@ class StubElement {
   }
   getAnimations() { return []; }
   dispatch(name, event = {}) {
-    const dispatched = {preventDefault() {}, ...event};
+    const dispatched = {preventDefault() {}, target: this, currentTarget: this, ...event};
     this[`on${name}`]?.(dispatched);
     return this.listeners.get(name)?.(dispatched);
   }
@@ -73,7 +75,8 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     "#completion", "#back-to-images", "#images", "#groups", "#group-selections",
     "#count", "#empty", "#status", "#viewer-toggle", "#viewer", "#viewer-empty",
     "#viewer-page", "#viewer-previous", "#viewer-position", "#viewer-next", "#viewer-image",
-    "#viewer-filename",
+    "#viewer-filename", "#viewer-thumbnails", "#viewer-zoom-in", "#viewer-zoom-out",
+    "#viewer-zoom-reset", "#viewer-stage",
   ]) document.querySelector(selector);
   const previousDocument = globalThis.document;
   const previousChrome = globalThis.chrome;
@@ -127,6 +130,11 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     const viewerNext = document.querySelector("#viewer-next");
     const viewerPosition = document.querySelector("#viewer-position");
     const viewerImage = document.querySelector("#viewer-image");
+    const viewerThumbnails = document.querySelector("#viewer-thumbnails");
+    const viewerZoomIn = document.querySelector("#viewer-zoom-in");
+    const viewerZoomOut = document.querySelector("#viewer-zoom-out");
+    const viewerZoomReset = document.querySelector("#viewer-zoom-reset");
+    const viewerStage = document.querySelector("#viewer-stage");
     assert.equal(viewerToggle.disabled, false);
     viewerToggle.dispatch("click");
     assert.equal(viewer.hidden, false);
@@ -135,6 +143,9 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     assert.equal(viewerEmpty.hidden, true);
     assert.equal(viewerImage.src, resultImages[0]);
     assert.equal(viewerPosition.textContent, "1 / 2");
+    assert.equal(viewerThumbnails.children.length, 2);
+    const firstThumbnail = descendants(viewerThumbnails).find(element => element.tagName === "button");
+    assert.ok(firstThumbnail);
     assert.equal(viewerPrevious.disabled, true);
     assert.equal(viewerNext.disabled, false);
     viewerNext.dispatch("click");
@@ -142,6 +153,27 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     assert.equal(viewerPosition.textContent, "2 / 2");
     assert.equal(viewerPrevious.disabled, false);
     assert.equal(viewerNext.disabled, true);
+    descendants(viewerThumbnails).filter(element => element.tagName === "button")[0].dispatch("click");
+    assert.equal(viewerImage.src, resultImages[0]);
+    assert.equal(viewerPosition.textContent, "1 / 2");
+
+    const initialTransform = viewerImage.style.transform;
+    viewerZoomIn.dispatch("click");
+    const zoomedTransform = viewerImage.style.transform;
+    assert.notEqual(zoomedTransform, initialTransform);
+    assert.match(zoomedTransform, /scale\(/);
+    viewerStage.dispatch("wheel", {deltaY: -120});
+    assert.notEqual(viewerImage.style.transform, zoomedTransform);
+    const wheeledTransform = viewerImage.style.transform;
+    viewerStage.dispatch("pointerdown", {clientX: 20, clientY: 30, pointerId: 1});
+    viewerStage.dispatch("pointermove", {clientX: 60, clientY: 80, pointerId: 1});
+    viewerStage.dispatch("pointerup", {clientX: 60, clientY: 80, pointerId: 1});
+    assert.notEqual(viewerImage.style.transform, wheeledTransform);
+    viewerZoomReset.dispatch("click");
+    assert.match(viewerImage.style.transform, /scale\(1\)/);
+    assert.equal(viewerZoomReset.textContent, "100%");
+    viewerZoomOut.dispatch("click");
+    assert.match(viewerImage.style.transform, /scale\(1\)/);
     viewerPrevious.dispatch("click");
     assert.equal(viewerImage.src, resultImages[0]);
     assert.equal(viewerPosition.textContent, "1 / 2");

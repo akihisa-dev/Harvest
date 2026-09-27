@@ -50,13 +50,25 @@
       <section id="viewer" class="viewer" aria-label="選択した画像のビュアー" hidden>
         <p id="viewer-empty">PDFに含める画像が選択されていません。</p>
         <div id="viewer-page" class="viewer-page" hidden>
-          <div class="viewer-navigation">
-            <button id="viewer-previous" type="button">前へ</button>
-            <span id="viewer-position" aria-live="polite"></span>
-            <button id="viewer-next" type="button">次へ</button>
+          <div class="viewer-primary">
+            <div class="viewer-navigation">
+              <button id="viewer-previous" type="button">前へ</button>
+              <span id="viewer-position" aria-live="polite"></span>
+              <button id="viewer-next" type="button">次へ</button>
+              <div class="viewer-zoom" role="group" aria-label="画像の拡大と縮小">
+                <button id="viewer-zoom-out" type="button" aria-label="縮小">−</button>
+                <button id="viewer-zoom-reset" type="button" aria-label="表示倍率を戻す">100%</button>
+                <button id="viewer-zoom-in" type="button" aria-label="拡大">＋</button>
+              </div>
+            </div>
+            <div id="viewer-stage" class="viewer-stage" aria-label="画像。ホイールで拡大縮小、拡大中はドラッグで移動">
+              <img id="viewer-image" alt="" referrerpolicy="no-referrer" draggable="false">
+            </div>
+            <p id="viewer-filename"></p>
           </div>
-          <img id="viewer-image" alt="" referrerpolicy="no-referrer">
-          <p id="viewer-filename"></p>
+          <aside class="viewer-thumbnails" aria-label="選択した画像のサムネイル">
+            <ol id="viewer-thumbnails"></ol>
+          </aside>
         </div>
       </section>
     </main>

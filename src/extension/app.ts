@@ -21,8 +21,13 @@ const viewerPageElement = required<HTMLDivElement>("#viewer-page");
 const viewerPreviousButton = required<HTMLButtonElement>("#viewer-previous");
 const viewerNextButton = required<HTMLButtonElement>("#viewer-next");
 const viewerPositionElement = required<HTMLSpanElement>("#viewer-position");
+const viewerStageElement = required<HTMLDivElement>("#viewer-stage");
 const viewerImageElement = required<HTMLImageElement>("#viewer-image");
 const viewerFilenameElement = required<HTMLParagraphElement>("#viewer-filename");
+const viewerThumbnailsElement = required<HTMLOListElement>("#viewer-thumbnails");
+const viewerZoomInButton = required<HTMLButtonElement>("#viewer-zoom-in");
+const viewerZoomOutButton = required<HTMLButtonElement>("#viewer-zoom-out");
+const viewerZoomResetButton = required<HTMLButtonElement>("#viewer-zoom-reset");
 const selectAllButton = required<HTMLButtonElement>("#select-all");
 const clearAllButton = required<HTMLButtonElement>("#clear-all");
 const resetButton = required<HTMLButtonElement>("#reset");
@@ -40,6 +45,12 @@ let pageTitle = "画像";
 let activeGroupKey: string | null = null;
 let viewerMode = false;
 let viewerImageUrl: string | null = null;
+let renderedViewerImageUrl: string | null = null;
+let viewerZoom = 1;
+let viewerPanX = 0;
+let viewerPanY = 0;
+let viewerPointer: {id: number; x: number; y: number; panX: number; panY: number} | null = null;
+const viewerThumbRows = new Map<string, HTMLLIElement>();
 let busy = false;
 type ScanState = "initial" | "scanning" | "results" | "empty" | "error";
 let scanState: ScanState = "initial";
@@ -492,6 +503,74 @@ function renderImages(visibleImages: readonly ImageItem[]): void {
   imagesElement.ondrop = finishDrop;
 }
 
+function updateViewerTransform(): void {
+  viewerImageElement.style.transform = `translate(${viewerPanX}px, ${viewerPanY}px) scale(${viewerZoom})`;
+  viewerZoomResetButton.textContent = `${Math.round(viewerZoom * 100)}%`;
+  viewerZoomOutButton.disabled = viewerZoom <= 1;
+  viewerZoomInButton.disabled = viewerZoom >= 8;
+  viewerZoomResetButton.disabled = viewerZoom === 1;
+  viewerStageElement.dataset["pannable"] = String(viewerZoom > 1);
+}
+
+function resetViewerTransform(): void {
+  viewerZoom = 1;
+  viewerPanX = 0;
+  viewerPanY = 0;
+  viewerPointer = null;
+  delete viewerStageElement.dataset["panning"];
+  updateViewerTransform();
+}
+
+function zoomViewer(factor: number, clientX?: number, clientY?: number): void {
+  if (!viewerMode || !viewerImageUrl) return;
+  const nextZoom = Math.min(8, Math.max(1, viewerZoom * factor));
+  if (nextZoom === viewerZoom) return;
+  const rect = viewerStageElement.getBoundingClientRect();
+  const x = clientX === undefined ? 0 : clientX - rect.left - rect.width / 2;
+  const y = clientY === undefined ? 0 : clientY - rect.top - rect.height / 2;
+  const ratio = nextZoom / viewerZoom;
+  viewerPanX = x - (x - viewerPanX) * ratio;
+  viewerPanY = y - (y - viewerPanY) * ratio;
+  viewerZoom = nextZoom;
+  if (viewerZoom === 1) { viewerPanX = 0; viewerPanY = 0; }
+  updateViewerTransform();
+}
+
+function renderViewerThumbnails(selected: readonly ImageItem[], currentUrl: string): void {
+  const selectedUrls = new Set(selected.map(item => item.url));
+  for (const url of viewerThumbRows.keys()) if (!selectedUrls.has(url)) viewerThumbRows.delete(url);
+  const rows = selected.map((item, index) => {
+    let row = viewerThumbRows.get(item.url);
+    if (!row) {
+      row = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      const thumbnail = document.createElement("img");
+      thumbnail.loading = "lazy";
+      thumbnail.referrerPolicy = "no-referrer";
+      thumbnail.draggable = false;
+      thumbnail.src = item.url;
+      const number = document.createElement("span");
+      number.className = "viewer-thumb-number";
+      button.append(thumbnail, number);
+      button.addEventListener("click", () => { viewerImageUrl = item.url; renderViewer(); });
+      row.append(button);
+      viewerThumbRows.set(item.url, row);
+    }
+    const button = row.children[0] as HTMLButtonElement;
+    const number = button.children[1] as HTMLSpanElement;
+    button.setAttribute("aria-current", String(item.url === currentUrl));
+    button.setAttribute("aria-label", `${index + 1}枚目: ${imageFilename(item.url)}を表示`);
+    number.textContent = String(index + 1);
+    return row;
+  });
+  viewerThumbnailsElement.replaceChildren(...rows);
+  if (renderedViewerImageUrl !== currentUrl) {
+    const active = viewerThumbRows.get(currentUrl)?.children[0] as HTMLButtonElement | undefined;
+    active?.scrollIntoView({block: "nearest"});
+  }
+}
+
 function renderViewer(): void {
   const selected = images.filter(item => item.selected);
   const index = selected.findIndex(item => item.url === viewerImageUrl);
@@ -506,13 +585,20 @@ function renderViewer(): void {
   viewerEmptyElement.hidden = !viewerMode || Boolean(current);
   viewerPageElement.hidden = !viewerMode || !current;
   if (!viewerMode || !current) {
+    renderedViewerImageUrl = null;
+    viewerThumbRows.clear();
+    viewerThumbnailsElement.replaceChildren();
+    resetViewerTransform();
     viewerImageElement.removeAttribute("src");
     viewerImageElement.alt = "";
     viewerPositionElement.textContent = "";
     viewerFilenameElement.textContent = "";
     return;
   }
-  viewerImageElement.src = current.url;
+  if (renderedViewerImageUrl !== current.url) resetViewerTransform();
+  renderViewerThumbnails(selected, current.url);
+  if (viewerImageElement.src !== current.url) viewerImageElement.src = current.url;
+  renderedViewerImageUrl = current.url;
   viewerImageElement.alt = `選択した画像 ${currentIndex + 1}`;
   viewerPositionElement.textContent = `${currentIndex + 1} / ${selected.length}`;
   viewerFilenameElement.textContent = imageFilename(current.url);
@@ -623,6 +709,35 @@ viewerNextButton.addEventListener("click", () => {
   const index = selected.findIndex(item => item.url === viewerImageUrl);
   if (index >= 0 && index < selected.length - 1) { viewerImageUrl = selected[index + 1]!.url; renderViewer(); }
 });
+viewerZoomInButton.addEventListener("click", () => zoomViewer(1.25));
+viewerZoomOutButton.addEventListener("click", () => zoomViewer(1 / 1.25));
+viewerZoomResetButton.addEventListener("click", resetViewerTransform);
+viewerStageElement.addEventListener("wheel", event => {
+  if (!viewerMode || !viewerImageUrl) return;
+  event.preventDefault();
+  zoomViewer(Math.exp(-event.deltaY * 0.001), event.clientX, event.clientY);
+}, {passive: false});
+viewerStageElement.addEventListener("pointerdown", event => {
+  if (!viewerMode || viewerZoom <= 1 || (event.button !== undefined && event.button !== 0)) return;
+  event.preventDefault();
+  viewerPointer = {id: event.pointerId, x: event.clientX, y: event.clientY, panX: viewerPanX, panY: viewerPanY};
+  viewerStageElement.setPointerCapture(event.pointerId);
+  viewerStageElement.dataset["panning"] = "true";
+});
+viewerStageElement.addEventListener("pointermove", event => {
+  if (!viewerPointer || viewerPointer.id !== event.pointerId) return;
+  viewerPanX = viewerPointer.panX + event.clientX - viewerPointer.x;
+  viewerPanY = viewerPointer.panY + event.clientY - viewerPointer.y;
+  updateViewerTransform();
+});
+const endViewerPan = (event: PointerEvent): void => {
+  if (!viewerPointer || viewerPointer.id !== event.pointerId) return;
+  viewerPointer = null;
+  viewerStageElement.releasePointerCapture(event.pointerId);
+  delete viewerStageElement.dataset["panning"];
+};
+viewerStageElement.addEventListener("pointerup", endViewerPan);
+viewerStageElement.addEventListener("pointercancel", endViewerPan);
 selectAllButton.addEventListener("click", () => { for (const item of images) item.selected = true; render(); });
 clearAllButton.addEventListener("click", () => { for (const item of images) item.selected = false; render(); });
 resetButton.addEventListener("click", () => {
