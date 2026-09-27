@@ -80,6 +80,9 @@ async function inspectLayout(page, width, height, label) {
   const rightColumnBottom = Math.max(result.status.bottom, result.clear.bottom, result.viewer.bottom);
   assert.ok(rightColumnBottom <= result.header.bottom + 1, `${label}: status, viewer, and clear controls must not be clipped`);
   assert.ok(result.groupBar.scrollWidth <= result.groupBar.clientWidth + 1, `${label}: group bar must not scroll horizontally`);
+  const sourceGap = result.heading.y - result.scan.bottom;
+  assert.ok(sourceGap >= 0 && sourceGap <= 9,
+    `${label}: image heading must start immediately below the URL controls (gap ${sourceGap}px)`);
   return result;
 }
 
@@ -133,6 +136,12 @@ test("real Chrome keeps the header stable and confines group scrolling across pa
           assert.equal(await page.title(), locale === "ja-JP" ? "Harvest | 画像を集める" : "Harvest | Collect images", `${caseName}: document title should follow browser locale`);
           const empty = await inspectLayout(page, width, height, `${caseName} empty`);
           await scan(page, imageFixture(4, 1));
+          const sourceOption = page.locator(".source-page-option span");
+          const originalOption = await sourceOption.textContent();
+          await sourceOption.evaluate(element => { element.textContent = "出典ページの追加 Source page"; });
+          const wrappedOption = await inspectLayout(page, width, height, `${caseName} wrapped source option`);
+          assert.equal(wrappedOption.heading.y, empty.heading.y, `${caseName}: right-side options must not push down the image heading`);
+          await sourceOption.evaluate((element, text) => { element.textContent = text; }, originalOption);
           const few = await inspectLayout(page, width, height, `${caseName} few images`);
           assert.equal(few.header.height, empty.header.height, `${caseName}: image results must not change header height`);
           assert.equal(few.groupCount, 1, `${caseName}: fixture should create one group`);

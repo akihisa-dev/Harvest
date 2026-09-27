@@ -78,8 +78,11 @@ section, aside { min-width: 0; }
 .app-header { flex: none; display: grid; grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: clamp(168px, 34dvh, 240px); max-height: 60dvh; min-height: 0; column-gap: clamp(8px, 2vw, 24px); overflow: hidden; background: var(--surface); border-bottom: 1px solid var(--line); }
 .app-header.drag-over { position: relative; }
 .app-header.drag-over::after { content: attr(data-drop-label); position: absolute; inset: 8px; z-index: 2; display: grid; place-items: center; border: 2px dashed var(--ink); border-radius: 10px; background: var(--overlay); color: var(--ink); font-size: 16px; font-weight: 700; pointer-events: none; }
-.controls { grid-column: 1; padding: 8px 0 8px 16px; }
-.save-area { grid-column: 2; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; padding: 8px 16px 8px 24px; border-left: 1px solid var(--line); }
+.header-input-column, .header-output-column { grid-row: 1 / span 2; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.header-input-column { grid-column: 1; }
+.header-output-column { grid-column: 2; }
+.controls { flex: none; padding: 8px 0 4px 16px; }
+.save-area { flex: none; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; padding: 8px 16px 8px 24px; border-left: 1px solid var(--line); }
 .save-area #export { width: 100%; }
 .export-control { position: relative; }
 .export-control #export { padding-inline: 28px; }
@@ -103,9 +106,9 @@ section, aside { min-width: 0; }
 #scan:disabled, #export:disabled { background: var(--line); border-color: var(--line); color: var(--disabled-ink); }
 
 .results-controls {
-  grid-column: 1 / -1;
+  flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   column-gap: clamp(8px, 2vw, 24px);
@@ -140,8 +143,8 @@ section, aside { min-width: 0; }
 .group-chip button:hover:not(:disabled) { border-color: transparent; }
 .group-chip input { flex: none; }
 .viewer-controls {
-  grid-column: 2;
-  grid-row: 1 / span 2;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   min-width: 0;
