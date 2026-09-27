@@ -16,7 +16,7 @@ export function captureCollectionLinks(session: string): void {
 
   const glow = document.createElement("div");
   glow.setAttribute("aria-hidden", "true");
-  glow.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;display:none;border-radius:5px;box-shadow:0 0 5px 2px rgba(130,190,255,.45),0 0 14px 4px rgba(130,190,255,.22);background:transparent;";
+  glow.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;display:none;border-radius:5px;box-shadow:inset 0 0 0 3px rgba(125,235,255,.95),0 0 0 2px rgba(125,235,255,.9),0 0 12px 5px rgba(70,210,255,.7),0 0 26px 8px rgba(70,210,255,.35);background:transparent;";
   document.documentElement.append(glow);
   let hovered: Element | null = null;
   const hideGlow = (): void => { hovered = null; glow.style.display = "none"; };
