@@ -18,6 +18,13 @@ export type PdfImagePage = PdfJpegImagePage | PdfRgbImagePage;
 /** @deprecated Use PdfImagePage. */
 export type PdfJpegImage = PdfJpegImagePage;
 
+/** Text shown on an optional final page that identifies the source document. */
+export interface PdfSourcePageOptions {
+  readonly heading: string;
+  readonly filename: string;
+  readonly url: string;
+}
+
 const textEncoder = new TextEncoder();
 const PDF_HEADER = new Uint8Array([
   0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x33, 0x0a,
@@ -26,6 +33,22 @@ const PDF_HEADER = new Uint8Array([
 
 function pdfText(value: string): Uint8Array {
   return textEncoder.encode(value);
+}
+
+function pdfHex(value: string): string {
+  let hex = "";
+  for (let index = 0; index < value.length; index += 1) {
+    hex += value.charCodeAt(index).toString(16).padStart(4, "0");
+  }
+  return `<${hex}>`;
+}
+
+function pdfAsciiHex(value: string): string {
+  let hex = "";
+  for (let index = 0; index < value.length; index += 1) {
+    hex += value.charCodeAt(index).toString(16).padStart(2, "0");
+  }
+  return `<${hex}>`;
 }
 
 function validateDimension(value: number, name: string): void {
@@ -54,6 +77,130 @@ function validateImage(image: PdfImagePage, index: number): { data: Uint8Array; 
   validateDimension(image.width, `Image ${index} width`);
   validateDimension(image.height, `Image ${index} height`);
   return { data, filter: hasJpeg ? "DCTDecode" : "FlateDecode" };
+}
+
+function validateSourcePage(source: PdfSourcePageOptions | undefined): PdfSourcePageOptions | undefined {
+  if (source === undefined) return undefined;
+  if (source === null || typeof source !== "object") {
+    throw new TypeError("Source page options must be an object.");
+  }
+  for (const name of ["heading", "filename", "url"] as const) {
+    if (typeof source[name] !== "string") {
+      throw new TypeError(`Source page ${name} must be a string.`);
+    }
+  }
+  return source;
+}
+
+const SOURCE_PAGE_WIDTH = 595;
+const SOURCE_PAGE_HEIGHT = 842;
+const SOURCE_PAGE_MARGIN = 48;
+
+function sourceCharacterWidth(character: string): number {
+  if (character.codePointAt(0)! <= 0x00ff) return 600;
+  return 1000;
+}
+
+function wrapSourceLine(value: string, maxWidth: number): string[] {
+  const output: string[] = [];
+  for (const paragraph of value.split(/\r\n|\r|\n/u)) {
+    let line = "";
+    let width = 0;
+    for (const character of paragraph) {
+      const characterWidth = sourceCharacterWidth(character);
+      if (line !== "" && width + characterWidth > maxWidth) {
+        output.push(line);
+        line = "";
+        width = 0;
+      }
+      line += character;
+      width += characterWidth;
+    }
+    output.push(line);
+  }
+  return output;
+}
+
+function sourceToUnicodeCMap(text: string): Uint8Array {
+  const codeUnits = new Set<number>();
+  for (let index = 0; index < text.length; index += 1) codeUnits.add(text.charCodeAt(index));
+  const mappings = [...codeUnits].sort((left, right) => left - right)
+    .map(codeUnit => `<${codeUnit.toString(16).padStart(4, "0")}> <${codeUnit.toString(16).padStart(4, "0")}>`)
+    .join("\n");
+  const cmap = [
+    "/CIDInit /ProcSet findresource begin",
+    "12 dict begin",
+    "begincmap",
+    "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+    "/CMapName /Adobe-Identity-UCS def",
+    "/CMapType 2 def",
+    "1 begincodespacerange",
+    "<0000> <FFFF>",
+    "endcodespacerange",
+    `${codeUnits.size} beginbfchar`,
+    mappings,
+    "endbfchar",
+    "endcmap",
+    "CMapName currentdict /CMap defineresource pop",
+    "end",
+    "end",
+    "",
+  ].join("\n");
+  return pdfText(cmap);
+}
+
+function sourcePageContent(source: PdfSourcePageOptions): { contents: Uint8Array; cmapText: string } {
+  const availableWidth = (SOURCE_PAGE_WIDTH - SOURCE_PAGE_MARGIN * 2) * 1000;
+  const headingLines = wrapSourceLine(source.heading, availableWidth / 18);
+  const filenameLines = wrapSourceLine(source.filename, availableWidth / 12);
+  const fixedHeight = headingLines.length * 25 + filenameLines.length * 18 + 20;
+  const availableHeight = Math.max(1, SOURCE_PAGE_HEIGHT - SOURCE_PAGE_MARGIN * 2 - fixedHeight);
+  const urlUnits = [...source.url].reduce((total, character) => total + sourceCharacterWidth(character), 0);
+  let urlSize = 10;
+  let urlLines = wrapSourceLine(source.url, availableWidth / urlSize);
+  while (urlSize > 0.25 && fixedHeight + urlLines.length * urlSize * 1.4 > availableHeight) {
+    urlSize -= 0.25;
+    urlLines = wrapSourceLine(source.url, availableWidth / urlSize);
+  }
+  if (fixedHeight + urlLines.length * urlSize * 1.4 > availableHeight) {
+    urlSize = Math.max(0.05, Math.sqrt((availableHeight * availableWidth) / Math.max(urlUnits, 1) / 1.4));
+    urlLines = wrapSourceLine(source.url, availableWidth / urlSize);
+  }
+  const lines = [...headingLines, ...filenameLines, ...urlLines];
+  const commands: string[] = ["BT"];
+  let y = SOURCE_PAGE_HEIGHT - SOURCE_PAGE_MARGIN;
+  const sections = [
+    { lines: headingLines, size: 18, leading: 25 },
+    { lines: filenameLines, size: 12, leading: 18 },
+    { lines: urlLines, size: urlSize, leading: urlSize * 1.4 },
+  ];
+  for (const section of sections) {
+    for (const line of section.lines) {
+      let x = SOURCE_PAGE_MARGIN;
+      let run = "";
+      let runFont: "F1" | "F2" | null = null;
+      const flush = (): void => {
+        if (runFont === null || run === "") return;
+        const encoded = runFont === "F1" ? pdfHex(run) : pdfAsciiHex(run);
+        commands.push(`/${runFont} ${section.size} Tf 1 0 0 1 ${x.toFixed(3)} ${y.toFixed(3)} Tm ${encoded} Tj`);
+        x += [...run].reduce((width, character) => width + sourceCharacterWidth(character), 0) * section.size / 1000;
+        run = "";
+      };
+      for (const character of line) {
+        const font: "F1" | "F2" = character.codePointAt(0)! <= 0xff ? "F2" : "F1";
+        if (runFont !== font) {
+          flush();
+          runFont = font;
+        }
+        run += character;
+      }
+      flush();
+      y -= section.leading;
+    }
+    y -= 10;
+  }
+  commands.push("ET\n");
+  return { contents: pdfText(commands.join("\n")), cmapText: lines.join("\n") };
 }
 
 /**
@@ -121,15 +268,20 @@ function joinChunks(chunks: readonly Uint8Array[], totalLength: number): Uint8Ar
  * Creates a PDF with one image per page, sized to the image dimensions.
  * The returned bytes are independent of the input arrays and safe to persist.
  */
-export function createPdfFromJpegs(images: readonly PdfImagePage[]): Uint8Array {
-  const objectCount = 2 + images.length * 3;
+export function createPdfFromJpegs(images: readonly PdfImagePage[], source?: PdfSourcePageOptions): Uint8Array {
+  const sourcePage = validateSourcePage(source);
+  const sourceObjectCount = sourcePage === undefined ? 0 : 6;
+  const objectCount = 2 + images.length * 3 + sourceObjectCount;
   const objects: Uint8Array[] = [];
   const offsets = new Array<number>(objectCount + 1).fill(0);
 
   objects.push(pdfText("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"));
 
-  const pageReferences = images.map((_, index) => `${3 + index * 3} 0 R`).join(" ");
-  objects.push(pdfText(`2 0 obj\n<< /Type /Pages /Kids [${pageReferences}] /Count ${images.length} >>\nendobj\n`));
+  const pageReferences = [
+    ...images.map((_, index) => `${3 + index * 3} 0 R`),
+    ...(sourcePage === undefined ? [] : [`${3 + images.length * 3} 0 R`]),
+  ].join(" ");
+  objects.push(pdfText(`2 0 obj\n<< /Type /Pages /Kids [${pageReferences}] /Count ${images.length + (sourcePage === undefined ? 0 : 1)} >>\nendobj\n`));
 
   for (const [index, image] of images.entries()) {
     const { data, filter } = validateImage(image, index);
@@ -168,6 +320,50 @@ export function createPdfFromJpegs(images: readonly PdfImagePage[]): Uint8Array 
     ));
   }
 
+  if (sourcePage !== undefined) {
+    const pageObject = 3 + images.length * 3;
+    const contentsObject = pageObject + 1;
+    const fontObject = pageObject + 2;
+    const descendantObject = pageObject + 3;
+    const toUnicodeObject = pageObject + 4;
+    const standardFontObject = pageObject + 5;
+    const { contents, cmapText } = sourcePageContent(sourcePage);
+    const toUnicode = sourceToUnicodeCMap(cmapText);
+
+    objects.push(pdfText(
+      `${pageObject} 0 obj\n` +
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${SOURCE_PAGE_WIDTH} ${SOURCE_PAGE_HEIGHT}] ` +
+      `/Resources << /Font << /F1 ${fontObject} 0 R /F2 ${standardFontObject} 0 R >> >> ` +
+      `/Contents ${contentsObject} 0 R >>\nendobj\n`,
+    ));
+    objects.push(joinChunks([
+      pdfText(`${contentsObject} 0 obj\n<< /Length ${contents.byteLength} >>\nstream\n`),
+      contents,
+      pdfText("endstream\nendobj\n"),
+    ], pdfText(`${contentsObject} 0 obj\n<< /Length ${contents.byteLength} >>\nstream\n`).byteLength + contents.byteLength + "endstream\nendobj\n".length));
+    objects.push(pdfText(
+      `${fontObject} 0 obj\n` +
+      `<< /Type /Font /Subtype /Type0 /BaseFont /HeiseiKakuGo-W5 ` +
+      `/Encoding /UniJIS-UTF16-H /DescendantFonts [${descendantObject} 0 R] ` +
+      `/ToUnicode ${toUnicodeObject} 0 R >>\nendobj\n`,
+    ));
+    objects.push(pdfText(
+      `${descendantObject} 0 obj\n` +
+      `<< /Type /Font /Subtype /CIDFontType0 /BaseFont /HeiseiKakuGo-W5 ` +
+      `/CIDSystemInfo << /Registry (Adobe) /Ordering (Japan1) /Supplement 6 >> ` +
+      `/DW 1000 >>\nendobj\n`,
+    ));
+    objects.push(joinChunks([
+      pdfText(`${toUnicodeObject} 0 obj\n<< /Length ${toUnicode.byteLength} >>\nstream\n`),
+      toUnicode,
+      pdfText("endstream\nendobj\n"),
+    ], pdfText(`${toUnicodeObject} 0 obj\n<< /Length ${toUnicode.byteLength} >>\nstream\n`).byteLength + toUnicode.byteLength + "endstream\nendobj\n".length));
+    objects.push(pdfText(
+      `${standardFontObject} 0 obj\n` +
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>\nendobj\n",
+    ));
+  }
+
   const chunks: Uint8Array[] = [PDF_HEADER];
   let totalLength = PDF_HEADER.byteLength;
   for (const object of objects) {
@@ -197,8 +393,8 @@ export function createPdfFromJpegs(images: readonly PdfImagePage[]): Uint8Array 
 }
 
 /** Creates a browser Blob containing the PDF generated by createPdfFromJpegs. */
-export function createPdf(images: readonly PdfImagePage[]): Blob {
-  const bytes = createPdfFromJpegs(images);
+export function createPdf(images: readonly PdfImagePage[], source?: PdfSourcePageOptions): Blob {
+  const bytes = createPdfFromJpegs(images, source);
   const blobBytes = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(blobBytes).set(bytes);
   return new Blob([blobBytes], { type: "application/pdf" });

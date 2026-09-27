@@ -12,6 +12,22 @@ headerElement.dataset["dropLabel"] = t("dropUrl");
 const collectionButton = required("#collection-toggle");
 const scanButton = required("#scan");
 const exportButton = required("#export");
+const includeSourcePage = required("#include-source-page");
+const sourcePagePreferenceKey = "harvest.includeSourcePage";
+try {
+    includeSourcePage.checked = localStorage.getItem(sourcePagePreferenceKey) === "true";
+}
+catch {
+    includeSourcePage.checked = false;
+}
+includeSourcePage.addEventListener("change", () => {
+    try {
+        localStorage.setItem(sourcePagePreferenceKey, String(includeSourcePage.checked));
+    }
+    catch {
+        setStatus(t("errorSavePreference"), "error");
+    }
+});
 const viewerToggleButton = required("#viewer-toggle");
 const viewerElement = required("#viewer");
 const resultsElement = required(".results");
@@ -214,6 +230,7 @@ function setBusy(value) {
     scanButton.disabled = value;
     sourceDrop.disabled = value;
     sourceUrl.disabled = value;
+    includeSourcePage.disabled = value;
     resetButton.disabled = value;
     exportButton.disabled = value || !images.some(item => item.selected);
     render();
@@ -742,11 +759,14 @@ async function exportPdf() {
         }
         const pages = work.selected.map(item => work.prepared.get(item));
         setStatus(t("pdfCreating"), "busy");
-        const blob = createPdf(pages);
+        const filename = `${pageTitle.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) || t("imageFallback")}.pdf`;
+        const blob = createPdf(pages, includeSourcePage.checked ? {
+            heading: t("sourceHeading"), filename, url: work.selected[0].sourcePage,
+        } : undefined);
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `${pageTitle.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) || t("imageFallback")}.pdf`;
+        link.download = filename;
         document.body.append(link);
         link.click();
         link.remove();

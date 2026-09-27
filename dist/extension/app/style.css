@@ -79,8 +79,9 @@ section, aside { min-width: 0; }
 .app-header.drag-over { position: relative; }
 .app-header.drag-over::after { content: attr(data-drop-label); position: absolute; inset: 8px; z-index: 2; display: grid; place-items: center; border: 2px dashed var(--ink); border-radius: 10px; background: var(--overlay); color: var(--ink); font-size: 16px; font-weight: 700; pointer-events: none; }
 .controls { grid-column: 1; padding: 8px 0 8px 16px; }
-.save-area { grid-column: 2; display: flex; align-items: center; padding: 8px 16px 8px 24px; border-left: 1px solid var(--line); }
+.save-area { grid-column: 2; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; padding: 8px 16px 8px 24px; border-left: 1px solid var(--line); }
 .save-area #export { width: 100%; }
+.source-page-option { display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; }
 .source-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; }
 .source-row input { width: 100%; min-width: 0; height: 36px; padding: 7px 10px; border: 1px solid var(--control-line); border-radius: var(--radius); color: var(--ink); background: var(--surface); }
 .source-row input::placeholder { color: var(--muted); }

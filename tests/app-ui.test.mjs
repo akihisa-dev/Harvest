@@ -105,6 +105,12 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   const previousWindow = globalThis.window;
   const previousFetch = globalThis.fetch;
   const previousCreateImageBitmap = globalThis.createImageBitmap;
+  const previousLocalStorage = globalThis.localStorage;
+  const savedPreferences = new Map([["harvest.includeSourcePage", "true"]]);
+  globalThis.localStorage = {
+    getItem: key => savedPreferences.get(key) ?? null,
+    setItem: (key, value) => { savedPreferences.set(key, value); },
+  };
   let resultImages = [
     "https://example.com/pages/001.jpg",
     "https://example.com/pages/002.jpg",
@@ -149,6 +155,14 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   };
   try {
     await import(`../dist/extension/app/index.js?ui=${Date.now()}`);
+    const includeSourcePage = document.querySelector("#include-source-page");
+    assert.equal(includeSourcePage.checked, true, "保存済みの設定を再び開いたパネルへ反映する");
+    includeSourcePage.checked = false;
+    includeSourcePage.dispatch("change");
+    assert.equal(savedPreferences.get("harvest.includeSourcePage"), "false");
+    includeSourcePage.checked = true;
+    includeSourcePage.dispatch("change");
+    assert.equal(savedPreferences.get("harvest.includeSourcePage"), "true");
     const sourceDrop = document.querySelector("#source-drop");
     const pageUrlDrag = {
       types: ["text/uri-list"],
@@ -452,6 +466,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#failures").hidden, true);
     assert.equal(document.querySelector("#status").dataset.state, "success");
     assert.equal(document.querySelector("#source-url").value, "", "再試行後に保存できたらURLを消す");
+    assert.equal(includeSourcePage.checked, true, "PDF保存後も出典ページの設定を保つ");
     assert.equal(document.querySelector("#source-drop").dataset.hasUrl, "false");
 
     coverButton.dispatch("click");
@@ -506,6 +521,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   } finally {
     globalThis.fetch = previousFetch;
     globalThis.createImageBitmap = previousCreateImageBitmap;
+    globalThis.localStorage = previousLocalStorage;
     globalThis.document = previousDocument;
     globalThis.chrome = previousChrome;
     globalThis.window = previousWindow;

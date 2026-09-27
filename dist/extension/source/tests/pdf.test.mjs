@@ -5,6 +5,38 @@ import { createPdf, createPdfFromJpegs, getOriginalJpegPage } from "../dist/exte
 const decode = (bytes) => new TextDecoder().decode(bytes);
 const ascii = (value) => new TextEncoder().encode(value);
 
+function utf16Hex(value) {
+  let hex = "";
+  for (let index = 0; index < value.length; index += 1) {
+    hex += value.charCodeAt(index).toString(16).padStart(4, "0");
+  }
+  return hex;
+}
+
+function asciiHex(value) {
+  let hex = "";
+  for (let index = 0; index < value.length; index += 1) {
+    hex += value.charCodeAt(index).toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+function decodeUtf16Hex(value) {
+  let output = "";
+  for (let index = 0; index < value.length; index += 4) {
+    output += String.fromCharCode(Number.parseInt(value.slice(index, index + 4), 16));
+  }
+  return output;
+}
+
+function decodeAsciiHex(value) {
+  let output = "";
+  for (let index = 0; index < value.length; index += 2) {
+    output += String.fromCharCode(Number.parseInt(value.slice(index, index + 2), 16));
+  }
+  return output;
+}
+
 function findBytes(bytes, needle, start = 0) {
   for (let index = start; index <= bytes.length - needle.length; index += 1) {
     if (needle.every((value, offset) => bytes[index + offset] === value)) return index;
@@ -65,6 +97,40 @@ test("creates an empty PDF and rejects malformed image dimensions", () => {
       RangeError,
     );
   }
+});
+
+test("appends an optional selectable Unicode source page and wraps long URLs", () => {
+  const heading = "Source";
+  const filename = "日本語📚éの資料.pdf";
+  const url = `https://example.test/${"長いパス/".repeat(80)}終端`;
+  const pdf = createPdfFromJpegs([
+    { jpeg: new Uint8Array([0xff, 0xd8, 0x01, 0xff, 0xd9]), width: 320, height: 240 },
+  ], { heading, filename, url });
+  const source = decode(pdf);
+
+  assert.match(source, /\/Count 2/);
+  assert.match(source, /\/MediaBox \[0 0 595 842\]/);
+  assert.match(source, /\/Subtype \/Type0/);
+  assert.match(source, /\/Encoding \/UniJIS-UTF16-H/);
+  assert.match(source, /\/ToUnicode \d+ 0 R/);
+
+  const contentStart = source.indexOf("BT\n");
+  const contentEnd = source.indexOf("\nET\n", contentStart);
+  assert.ok(contentStart >= 0 && contentEnd > contentStart, "source page has a text content stream");
+  const textParts = [...source.slice(contentStart, contentEnd).matchAll(/\/(F[12]) \S+ Tf 1 0 0 1 [^ ]+ [^ ]+ Tm <([0-9a-f]+)> Tj/g)]
+    .map(match => match[1] === "F1" ? decodeUtf16Hex(match[2]) : decodeAsciiHex(match[2]));
+  const displayed = textParts.join("");
+  assert.ok(displayed.includes(heading));
+  assert.ok(displayed.includes(filename));
+  assert.ok(displayed.includes(url), "the complete URL is present across wrapped lines");
+  assert.ok(source.includes(`<${asciiHex(heading)}>`));
+  assert.ok(source.includes(`<${utf16Hex("日本語📚")}>`));
+  assert.ok(source.includes(`<${utf16Hex("の資料")}>`));
+
+  const yPositions = [...source.slice(contentStart, contentEnd).matchAll(/1 0 0 1 48(?:\.000)? ([0-9.]+) Tm/g)]
+    .map(match => Number(match[1]));
+  assert.ok(yPositions.length > 3);
+  assert.ok(yPositions.every(y => y >= 48 && y <= 794), "wrapped source text remains inside the page");
 });
 
 test("embeds mixed JPEG and Flate RGB streams without changing payload bytes", () => {

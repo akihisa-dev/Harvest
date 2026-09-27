@@ -45,6 +45,7 @@ test("英語では件数・グループ名・既知エラーが英語になり�
     assert.equal(localization.localizeErrorMessage("The open page cannot be analyzed. Specify a URL.", "errorPageRead", true), "The open page cannot be analyzed. Specify a URL.");
     assert.equal(localization.localizeErrorMessage("internal detail", "errorPdfCreate", true), "Could not create the PDF.");
     assert.equal(localization.t("imageRowAria", {filename: "ページ画像.jpg", index: 1, failed: ""}), "ページ画像.jpg, number 1. Click to select for the PDF, drag or use Alt and the arrow keys to reorder");
+    assert.equal(localization.t("sourceHeading"), "Source");
   } finally {
     restore();
   }
@@ -166,6 +167,7 @@ test("英語画面で解析・分類・選択・エラー表示が翻訳され�
     assert.equal(root.querySelector("#count").textContent, "2 / 2 images selected · 2 displayed");
     assert.ok(descendants(root.querySelector("#groups")).some(button => button.textContent === "Series (2 images)"));
     assert.equal(root.querySelector("#export").textContent, "Save PDF (2 images)");
+    assert.equal((await import(`../dist/extension/app/localization.js?source=${Date.now()}`)).t("includeSourcePage"), "Add a source page at the end");
     const row = root.querySelector("#images").children[0];
     assert.match(row.getAttribute("aria-label"), /^001.jpg, number 1/);
     assert.equal(row.dataset.dropLabel, "Move here");

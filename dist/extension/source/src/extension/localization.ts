@@ -16,6 +16,8 @@ const english = {
   scan: "Analyze",
   sourceHint: "If left blank, the open page will be analyzed.",
   savePdf: "Save PDF",
+  includeSourcePage: "Add a source page at the end",
+  sourceHeading: "Source",
   imagesHeading: "Images",
   countInitial: "0 images",
   selectionToolbar: "Select and reorder images",
@@ -108,6 +110,7 @@ const english = {
   errorPdfTooLarge: "The image is too large to convert to a PDF.",
   errorPdfConvert: "Could not convert the image for the PDF.",
   errorPdfCreate: "Could not create the PDF.",
+  errorSavePreference: "Could not save the source page setting.",
 } as const;
 
 const japanese: {[K in keyof typeof english]: string} = {
@@ -122,6 +125,8 @@ const japanese: {[K in keyof typeof english]: string} = {
   scan: "解析",
   sourceHint: "空欄なら、開いているページを解析します。",
   savePdf: "PDFを保存",
+  includeSourcePage: "末尾に出典ページを追加",
+  sourceHeading: "Source",
   imagesHeading: "画像",
   countInitial: "0枚",
   selectionToolbar: "画像の選択と並び順",
@@ -214,6 +219,7 @@ const japanese: {[K in keyof typeof english]: string} = {
   errorPdfTooLarge: "画像が大きすぎてPDF用に変換できませんでした。",
   errorPdfConvert: "画像をPDF用に変換できませんでした。",
   errorPdfCreate: "PDFを作成できませんでした。",
+  errorSavePreference: "出典ページの設定を保存できませんでした。",
 };
 
 export const translations = {en: english, ja: japanese} as const;
