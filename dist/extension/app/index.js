@@ -6,6 +6,16 @@ const sourceUrl = required("#source-url");
 const sourceDrop = required("#source-drop");
 const scanButton = required("#scan");
 const exportButton = required("#export");
+const viewerToggleButton = required("#viewer-toggle");
+const viewerElement = required("#viewer");
+const resultsElement = required(".results");
+const viewerEmptyElement = required("#viewer-empty");
+const viewerPageElement = required("#viewer-page");
+const viewerPreviousButton = required("#viewer-previous");
+const viewerNextButton = required("#viewer-next");
+const viewerPositionElement = required("#viewer-position");
+const viewerImageElement = required("#viewer-image");
+const viewerFilenameElement = required("#viewer-filename");
 const selectAllButton = required("#select-all");
 const clearAllButton = required("#clear-all");
 const resetButton = required("#reset");
@@ -20,6 +30,8 @@ const statusElement = required("#status");
 let images = [];
 let pageTitle = "画像";
 let activeGroupKey = null;
+let viewerMode = false;
+let viewerImageUrl = null;
 let busy = false;
 let scanState = "initial";
 let focusTarget = null;
@@ -198,6 +210,8 @@ async function startScan() {
     hideSourceInput();
     images = [];
     activeGroupKey = null;
+    viewerMode = false;
+    viewerImageUrl = null;
     scanState = "scanning";
     completionElement.hidden = true;
     setBusy(true);
@@ -489,6 +503,33 @@ function renderImages(visibleImages) {
     };
     imagesElement.ondrop = finishDrop;
 }
+function renderViewer() {
+    const selected = images.filter(item => item.selected);
+    const index = selected.findIndex(item => item.url === viewerImageUrl);
+    const currentIndex = index < 0 ? 0 : index;
+    const current = selected[currentIndex];
+    viewerImageUrl = current?.url ?? null;
+    resultsElement.hidden = viewerMode;
+    viewerElement.hidden = !viewerMode;
+    viewerToggleButton.disabled = busy || images.length === 0;
+    viewerToggleButton.setAttribute("aria-pressed", String(viewerMode));
+    viewerToggleButton.textContent = viewerMode ? "画像一覧に戻る" : "ビュアーモード";
+    viewerEmptyElement.hidden = !viewerMode || Boolean(current);
+    viewerPageElement.hidden = !viewerMode || !current;
+    if (!viewerMode || !current) {
+        viewerImageElement.removeAttribute("src");
+        viewerImageElement.alt = "";
+        viewerPositionElement.textContent = "";
+        viewerFilenameElement.textContent = "";
+        return;
+    }
+    viewerImageElement.src = current.url;
+    viewerImageElement.alt = `選択した画像 ${currentIndex + 1}`;
+    viewerPositionElement.textContent = `${currentIndex + 1} / ${selected.length}`;
+    viewerFilenameElement.textContent = imageFilename(current.url);
+    viewerPreviousButton.disabled = busy || currentIndex === 0;
+    viewerNextButton.disabled = busy || currentIndex === selected.length - 1;
+}
 function render() {
     const groups = groupImages(images.map(item => item.url));
     if (activeGroupKey !== null && !groups[activeGroupKey])
@@ -511,6 +552,7 @@ function render() {
     renderGroups(groups);
     renderGroupSelections(groups);
     renderImages(visibleImages);
+    renderViewer();
     restoreFocus();
 }
 async function exportPdf() {
@@ -588,6 +630,28 @@ document.addEventListener("drop", event => {
     void startScan();
 });
 exportButton.addEventListener("click", () => { void exportPdf(); });
+viewerToggleButton.addEventListener("click", () => {
+    if (busy || images.length === 0)
+        return;
+    viewerMode = !viewerMode;
+    render();
+});
+viewerPreviousButton.addEventListener("click", () => {
+    const selected = images.filter(item => item.selected);
+    const index = selected.findIndex(item => item.url === viewerImageUrl);
+    if (index > 0) {
+        viewerImageUrl = selected[index - 1].url;
+        renderViewer();
+    }
+});
+viewerNextButton.addEventListener("click", () => {
+    const selected = images.filter(item => item.selected);
+    const index = selected.findIndex(item => item.url === viewerImageUrl);
+    if (index >= 0 && index < selected.length - 1) {
+        viewerImageUrl = selected[index + 1].url;
+        renderViewer();
+    }
+});
 selectAllButton.addEventListener("click", () => { for (const item of images)
     item.selected = true; render(); });
 clearAllButton.addEventListener("click", () => { for (const item of images)
@@ -595,6 +659,8 @@ clearAllButton.addEventListener("click", () => { for (const item of images)
 resetButton.addEventListener("click", () => {
     images = [];
     activeGroupKey = null;
+    viewerMode = false;
+    viewerImageUrl = null;
     scanState = "initial";
     pageTitle = "画像";
     completionElement.hidden = true;

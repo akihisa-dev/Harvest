@@ -11,6 +11,8 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
         value: "", checked: true, disabled: false, hidden: selector === "#source-url", textContent: "", dataset: {}, children: [],
         classList: {add() {}, remove() {}},
         addEventListener(name, callback) { listeners.set(`${selector}:${name}`, callback); },
+        setAttribute() {},
+        removeAttribute() {},
         focus() { globalThis.document.activeElement = this; },
         select() {},
         animate() { return {cancel() {}, finished: Promise.resolve()}; },

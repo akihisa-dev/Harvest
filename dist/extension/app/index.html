@@ -18,6 +18,10 @@
         </div>
         <p id="source-hint" class="visually-hidden">空欄なら、開いているページを解析します。</p>
       </section>
+      <aside class="save-area" aria-labelledby="export-heading">
+        <h2 id="export-heading" class="visually-hidden">PDFを保存</h2>
+        <button id="export" type="button" disabled>PDFを保存</button>
+      </aside>
       <div class="results-controls">
         <div class="results-heading">
           <div class="section-head"><h2 id="images-heading">画像</h2><span id="count">0枚</span></div>
@@ -28,12 +32,9 @@
         </div>
         <div class="filter-bar"><span>表示</span><div id="groups" class="groups" role="group" aria-label="表示する画像" hidden></div></div>
         <div class="selection-bar"><span>PDF</span><div id="group-selections" class="group-selections" role="group" aria-label="PDFに含める画像" hidden></div></div>
-        <aside class="export" aria-labelledby="export-heading">
-          <h2 id="export-heading" class="visually-hidden">PDFを保存</h2>
-          <div class="export-actions">
-            <button id="export" type="button" disabled>PDFを保存</button>
-          </div>
-          <div class="export-meta">
+        <aside class="viewer-controls" aria-label="ビュアーモード">
+          <button id="viewer-toggle" type="button" aria-pressed="false" disabled>ビュアーモード</button>
+          <div class="viewer-meta">
             <p id="status" role="status" aria-live="polite"></p>
             <button id="reset" type="button" class="quiet-button">結果を消す</button>
           </div>
@@ -45,6 +46,18 @@
         <div id="completion" class="completion" hidden><p>PDFの保存を開始しました。</p><button id="back-to-images" type="button">画像一覧に戻る</button></div>
         <p id="empty">ここに画像が並びます。<br>「解析」を押して、画像を集めましょう。</p>
         <ol id="images" class="image-list"></ol>
+      </section>
+      <section id="viewer" class="viewer" aria-label="選択した画像のビュアー" hidden>
+        <p id="viewer-empty">PDFに含める画像が選択されていません。</p>
+        <div id="viewer-page" class="viewer-page" hidden>
+          <div class="viewer-navigation">
+            <button id="viewer-previous" type="button">前へ</button>
+            <span id="viewer-position" aria-live="polite"></span>
+            <button id="viewer-next" type="button">次へ</button>
+          </div>
+          <img id="viewer-image" alt="" referrerpolicy="no-referrer">
+          <p id="viewer-filename"></p>
+        </div>
       </section>
     </main>
   </body>

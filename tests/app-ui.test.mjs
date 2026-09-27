@@ -22,6 +22,7 @@ class StubElement {
   append(...children) { this.children.push(...children.filter(Boolean)); }
   replaceChildren(...children) { this.children = children.filter(Boolean); }
   setAttribute(name, value) { this.attributes.set(name, String(value)); }
+  removeAttribute(name) { this.attributes.delete(name); }
   getAttribute(name) { return this.attributes.get(name) ?? null; }
   focus() { this.owner.activeElement = this; }
   scrollIntoView() {}
@@ -70,7 +71,9 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
   for (const selector of [
     "#source-url", "#scan", "#export", "#select-all", "#clear-all", "#reset",
     "#completion", "#back-to-images", "#images", "#groups", "#group-selections",
-    "#count", "#empty", "#status",
+    "#count", "#empty", "#status", "#viewer-toggle", "#viewer", "#viewer-empty",
+    "#viewer-page", "#viewer-previous", "#viewer-position", "#viewer-next", "#viewer-image",
+    "#viewer-filename",
   ]) document.querySelector(selector);
   const previousDocument = globalThis.document;
   const previousChrome = globalThis.chrome;
@@ -115,6 +118,48 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     assert.equal(empty.hidden, true);
     assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択");
     assert.equal(document.querySelector("#export").textContent, "PDFを保存（2枚）");
+
+    const viewerToggle = document.querySelector("#viewer-toggle");
+    const viewer = document.querySelector("#viewer");
+    const viewerEmpty = document.querySelector("#viewer-empty");
+    const viewerPage = document.querySelector("#viewer-page");
+    const viewerPrevious = document.querySelector("#viewer-previous");
+    const viewerNext = document.querySelector("#viewer-next");
+    const viewerPosition = document.querySelector("#viewer-position");
+    const viewerImage = document.querySelector("#viewer-image");
+    assert.equal(viewerToggle.disabled, false);
+    viewerToggle.dispatch("click");
+    assert.equal(viewer.hidden, false);
+    assert.equal(document.querySelector(".results").hidden, true);
+    assert.equal(viewerPage.hidden, false);
+    assert.equal(viewerEmpty.hidden, true);
+    assert.equal(viewerImage.src, resultImages[0]);
+    assert.equal(viewerPosition.textContent, "1 / 2");
+    assert.equal(viewerPrevious.disabled, true);
+    assert.equal(viewerNext.disabled, false);
+    viewerNext.dispatch("click");
+    assert.equal(viewerImage.src, resultImages[1]);
+    assert.equal(viewerPosition.textContent, "2 / 2");
+    assert.equal(viewerPrevious.disabled, false);
+    assert.equal(viewerNext.disabled, true);
+    viewerPrevious.dispatch("click");
+    assert.equal(viewerImage.src, resultImages[0]);
+    assert.equal(viewerPosition.textContent, "1 / 2");
+    assert.equal(viewerPrevious.disabled, true);
+    assert.equal(viewerNext.disabled, false);
+
+    document.querySelector("#clear-all").dispatch("click");
+    assert.equal(viewerEmpty.hidden, false);
+    assert.equal(viewerPage.hidden, true);
+    assert.equal(viewerPosition.textContent, "");
+    document.querySelector("#select-all").dispatch("click");
+    assert.equal(viewerEmpty.hidden, true);
+    assert.equal(viewerPage.hidden, false);
+    assert.equal(viewerImage.src, resultImages[0]);
+    assert.equal(viewerPosition.textContent, "1 / 4");
+    viewerToggle.dispatch("click");
+    assert.equal(viewer.hidden, true);
+    assert.equal(document.querySelector(".results").hidden, false);
 
     const getPdfGroupCheckbox = key => descendants(document.querySelector("#group-selections"))
       .find(input => input.getAttribute("data-focus-kind") === "pdf-group" && input.getAttribute("data-focus-key") === key);
