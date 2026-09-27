@@ -1,3 +1,12 @@
+interface HarvestPort {
+  name: string;
+  sender?: {tab?: HarvestTab};
+  postMessage(message: unknown): void;
+  disconnect(): void;
+  onMessage: {addListener(listener: (message: {url?: unknown; busy?: boolean}) => void): void};
+  onDisconnect: {addListener(listener: () => void): void};
+}
+
 interface HarvestTab {
   id?: number;
   url?: string;
@@ -15,6 +24,8 @@ declare const chrome: {
     setPanelBehavior(behavior: {openPanelOnActionClick: boolean}): Promise<void>;
   };
   runtime: {
+    connect(options: {name: string}): HarvestPort;
+    onConnect: {addListener(listener: (port: HarvestPort) => void): void};
     getURL(path: string): string;
     getManifest(): HarvestManifest;
   };
@@ -33,7 +44,7 @@ declare const chrome: {
     };
   };
   scripting: {
-    executeScript<T>(injection: {target: {tabId: number}; func: () => T}): Promise<Array<{result: Awaited<T>}>>;
+    executeScript<T, A extends unknown[]>(injection: {target: {tabId: number}; func: (...args: A) => T; args?: A}): Promise<Array<{result: Awaited<T>}>>;
   };
   permissions: {
     request(permissions: {origins: string[]}): Promise<boolean>;

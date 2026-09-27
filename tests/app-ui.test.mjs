@@ -110,7 +110,12 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   globalThis.document = document;
   globalThis.window = {setTimeout: (callback, delay) => setTimeout(callback, delay === 60000 ? 0 : delay), clearTimeout, matchMedia: () => ({matches: false})};
   globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {}});
+  let connected;
+  let capturedMessage;
+  let disconnected;
+  const port = {name: "", sender: {tab: {id: 7}}, postMessage() {}, disconnect() { disconnected?.(); }, onMessage: {addListener(listener) { capturedMessage = listener; }}, onDisconnect: {addListener(listener) { disconnected = listener; }}};
   globalThis.chrome = {
+    runtime: {onConnect: {addListener(listener) { connected = listener; }}},
     tabs: {
       query: async () => [{id: 7, url: "https://example.com/view"}],
       create: async ({url}) => { createdUrls.push(url); return {id: 8, url}; },
@@ -119,7 +124,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
       onUpdated: {addListener() {}, removeListener() {}},
       onRemoved: {addListener() {}, removeListener() {}},
     },
-    scripting: {executeScript: async () => {
+    scripting: {executeScript: async (injection) => {
+      if (injection.args) { port.name = injection.args[0]; connected(port); return [{result: undefined}]; }
       if (rejectScan) throw new Error("scan failed");
       executionCount += 1;
       return [{result: {
@@ -131,6 +137,23 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   };
   try {
     await import(`../dist/extension/app/index.js?ui=${Date.now()}`);
+    const collection = document.querySelector("#collection-toggle");
+    collection.dispatch("click");
+    await waitUntil(() => capturedMessage);
+    assert.equal(collection.getAttribute("aria-pressed"), "true");
+    assert.equal(createdUrls.length, 0, "開始時には解析しない");
+    capturedMessage({url: "https://example.com/linked"});
+    await waitUntil(() => !document.querySelector("#scan").disabled);
+    assert.equal(createdUrls.at(-1), "https://example.com/linked");
+    collection.dispatch("click");
+    assert.equal(collection.getAttribute("aria-pressed"), "false");
+    const scansAfterStop = executionCount;
+    capturedMessage({url: "https://example.com/ignored"});
+    assert.equal(executionCount, scansAfterStop);
+    createdUrls.length = 0;
+    executionCount = 0;
+    document.querySelector("#source-url").value = "";
+    document.querySelector("#reset").dispatch("click");
     const empty = document.querySelector("#empty");
     assert.equal(empty.textContent, "ここに画像が並びます。\n「解析」を押して、画像を集めましょう。");
 

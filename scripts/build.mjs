@@ -42,6 +42,7 @@ try {
   await copyFile(join(stage, ".compiled", "extension", "pdf-image.js"), join(stage, "app", "pdf-image.js"));
   await copyFile(join(stage, ".compiled", "extension", "motion.js"), join(stage, "app", "motion.js"));
   await copyFile(join(stage, ".compiled", "extension", "page-scan.js"), join(stage, "app", "page-scan.js"));
+  await copyFile(join(stage, ".compiled", "extension", "collection-mode.js"), join(stage, "app", "collection-mode.js"));
   await copyFile(join(stage, ".compiled", "extension", "page-access.js"), join(stage, "app", "page-access.js"));
   await copyFile(join(stage, ".compiled", "core", "images.js"), join(stage, "core", "images.js"));
   await copyFile(join(stage, ".compiled", "core", "pdf.js"), join(stage, "core", "pdf.js"));

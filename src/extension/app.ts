@@ -1,4 +1,5 @@
 import { defaultSelectedImageGroups, filterImagesByGroup, groupImages, normalizeImageUrls, sortImageUrlsForSite, type ImageGroups, type ImageItem } from "../core/images.js";
+import { captureCollectionLinks } from "./collection-mode.js";
 import { scanTab, scanUrl } from "./page-access.js";
 import { preparePdfImages, PdfImageError } from "./pdf-image.js";
 import { createPdf, type PdfImagePage } from "../core/pdf.js";
@@ -6,6 +7,7 @@ import { animateLayoutChange, prefersReducedMotion, reconcileKeyedChildren, setM
 
 const sourceUrl = required<HTMLInputElement>("#source-url");
 const sourceDrop = required<HTMLButtonElement>("#source-drop");
+const collectionButton = required<HTMLButtonElement>("#collection-toggle");
 const scanButton = required<HTMLButtonElement>("#scan");
 const exportButton = required<HTMLButtonElement>("#export");
 const viewerToggleButton = required<HTMLButtonElement>("#viewer-toggle");
@@ -50,12 +52,66 @@ let viewerPanX = 0;
 let viewerPanY = 0;
 let viewerPointer: {id: number; x: number; y: number; panX: number; panY: number} | null = null;
 const viewerThumbRows = new Map<string, HTMLLIElement>();
+const collectionSessions = new Set<string>();
+let collectionSession: string | null = null;
+let collectionTabId: number | null = null;
+let collectionPort: HarvestPort | null = null;
+
+function stopCollection(): void {
+  collectionSession = null;
+  collectionTabId = null;
+  const port = collectionPort;
+  collectionPort = null;
+  port?.disconnect();
+  collectionButton.textContent = "収集";
+  collectionButton.setAttribute("aria-pressed", "false");
+}
+
+chrome.runtime.onConnect?.addListener(port => {
+  if (!collectionSessions.delete(port.name)) return;
+  if (port.name !== collectionSession || port.sender?.tab?.id !== collectionTabId) { port.disconnect(); return; }
+  collectionPort?.disconnect();
+  collectionPort = port;
+  port.postMessage({busy});
+  port.onMessage.addListener(message => {
+    if (collectionPort !== port || !collectionSession || busy || disposed ||
+        typeof message.url !== "string" || !isWebUrl(message.url)) return;
+    sourceUrl.value = message.url;
+    updateSourceDrop();
+    void startScan();
+  });
+  port.onDisconnect.addListener(() => {
+    if (collectionPort === port) stopCollection();
+  });
+});
+
+async function toggleCollection(): Promise<void> {
+  if (collectionSession) { stopCollection(); return; }
+  const session = "harvest-collection:" + crypto.randomUUID();
+  collectionSessions.add(session);
+  collectionSession = session;
+  collectionButton.textContent = "停止";
+  collectionButton.setAttribute("aria-pressed", "true");
+  try {
+    const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
+    if (collectionSession !== session || disposed) return;
+    if (tab?.id === undefined || !isWebUrl(tab.url)) throw new Error("収集するWebページを開いてください。");
+    collectionTabId = tab.id;
+    await chrome.scripting.executeScript({target: {tabId: tab.id}, func: captureCollectionLinks, args: [session]});
+  } catch (error) {
+    if (collectionSession !== session) return;
+    stopCollection();
+    setStatus(error instanceof Error ? error.message : "収集モードを開始できませんでした。", "error");
+  }
+}
+
 let busy = false;
 let disposed = false;
 let scanController: AbortController | null = null;
 let exportController: AbortController | null = null;
 window.addEventListener?.("pagehide", () => {
   disposed = true;
+  stopCollection();
   scanController?.abort();
   exportController?.abort();
 });
@@ -152,6 +208,7 @@ function restoreFocus(): void {
 
 function setBusy(value: boolean): void {
   busy = value;
+  collectionPort?.postMessage({busy: value});
   scanButton.disabled = value;
   sourceDrop.disabled = value;
   sourceUrl.disabled = value;
@@ -658,6 +715,7 @@ async function exportPdf(): Promise<void> {
   }
 }
 
+collectionButton.addEventListener("click", () => { void toggleCollection(); });
 scanButton.addEventListener("click", () => { void startScan(); });
 sourceDrop.addEventListener("click", showSourceInput);
 sourceUrl.addEventListener("input", updateSourceDrop);

@@ -13,6 +13,7 @@ for (const path of [
   "../dist/extension/app/motion.js",
   "../dist/extension/app/page-scan.js",
   "../dist/extension/app/page-access.js",
+  "../dist/extension/app/collection-mode.js",
   "../dist/extension/app/style.css",
   "../dist/extension/core/images.js",
   "../dist/extension/core/pdf.js",
