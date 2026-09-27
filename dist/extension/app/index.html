@@ -9,28 +9,34 @@
   </head>
   <body>
     <div class="app-header">
-      <header class="topbar"><h1>Harvest</h1><span>ページの画像からPDFを作成</span></header>
+      <header class="topbar"><h1>Harvest</h1><span>画像を集めて、PDFに。</span></header>
       <section class="controls" aria-labelledby="source-heading">
-        <h2 id="source-heading">ページを解析</h2>
-        <p class="hint">URLを指定しない場合は、開いているページを解析します。</p>
+        <div class="source-heading"><h2 id="source-heading"><label for="source-url">ページURL</label></h2><span>任意</span></div>
         <div class="source-row">
-          <label for="source-url">URL指定</label>
-          <input id="source-url" type="url" inputmode="url" placeholder="https://example.com/" autocomplete="url">
+          <input id="source-url" type="url" inputmode="url" placeholder="https://example.com/" autocomplete="url" aria-describedby="source-hint">
           <button id="scan" type="button">解析</button>
         </div>
+        <p id="source-hint" class="hint">空欄なら、開いているページを解析します。</p>
       </section>
       <div class="results-controls">
-        <div class="section-head"><h2 id="images-heading">画像</h2><span id="count">0枚</span></div>
-        <div class="filter-bar"><span>表示する画像</span><div id="groups" class="groups" role="group" aria-label="表示する画像" hidden></div></div>
-        <div class="toolbar"><button id="select-all" type="button" disabled>すべて選択</button><button id="clear-all" type="button" disabled>選択を解除</button></div>
+        <div class="results-heading">
+          <div class="section-head"><h2 id="images-heading">画像</h2><span id="count">0枚</span></div>
+          <div class="toolbar" role="group" aria-label="収集した画像すべての選択">
+            <button id="select-all" type="button" title="表示していない画像も含めて、すべて選択" disabled>すべて選択</button>
+            <button id="clear-all" type="button" title="表示していない画像も含めて、選択を解除" disabled>選択を解除</button>
+          </div>
+        </div>
+        <div class="filter-bar"><span>表示</span><div id="groups" class="groups" role="group" aria-label="表示する画像" hidden></div></div>
         <aside class="export" aria-labelledby="export-heading">
-          <h2 id="export-heading">PDFを保存</h2>
+          <h2 id="export-heading" class="visually-hidden">PDFを保存</h2>
           <div class="export-actions">
             <label class="quality"><input id="high-quality" type="checkbox" checked> 高画質で保存</label>
-            <button id="export" type="button" disabled>選択した画像をPDFにする</button>
-            <button id="reset" type="button">結果を消す</button>
+            <button id="export" type="button" disabled>PDFを保存</button>
           </div>
-          <p id="status" role="status" aria-live="polite"></p>
+          <div class="export-meta">
+            <p id="status" role="status" aria-live="polite"></p>
+            <button id="reset" type="button" class="quiet-button">結果を消す</button>
+          </div>
         </aside>
       </div>
     </div>
@@ -38,7 +44,7 @@
       <section class="results" aria-labelledby="images-heading">
         <div id="completion" class="completion" hidden><p>PDFの保存を開始しました。</p><button id="back-to-images" type="button">画像一覧に戻る</button></div>
         <div id="links" class="links" hidden></div>
-        <p id="empty">「解析」を押すと、開いているページの画像を表示します。</p>
+        <p id="empty">ここに画像が並びます。<br>「解析」を押して、画像を集めましょう。</p>
         <ol id="images" class="image-list"></ol>
       </section>
     </main>
