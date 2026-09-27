@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import {readFile, readdir} from "node:fs/promises";
 import test from "node:test";
 
-async function pngSize(path) {
+async function pngSize(path, opaque = false) {
   const bytes = await readFile(new URL(path, import.meta.url));
   assert.deepEqual(bytes.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  if (opaque) assert.equal(bytes[25], 2, "掲載用スクリーンショットは透過のないRGB形式であること");
   return [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
 }
 
@@ -13,7 +14,8 @@ test("提出用のアイコンと掲載画像は指定されたPNG寸法であ�
     assert.deepEqual(await pngSize(`../dist/extension/icons/icon-${size}.png`), [size, size]);
   }
   assert.deepEqual(await pngSize("../store/assets/promo-small.png"), [440, 280]);
-  assert.deepEqual(await pngSize("../store/assets/screenshot-01.png"), [1280, 800]);
+  assert.deepEqual(await pngSize("../store/assets/screenshot-ja.png", true), [1280, 800]);
+  assert.deepEqual(await pngSize("../store/assets/screenshot-global.png", true), [1280, 800]);
 });
 
 test("配布物にライセンス、対応ソース、利用者向けの案内がある", async () => {
