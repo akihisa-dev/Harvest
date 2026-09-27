@@ -8,16 +8,33 @@ export function captureCollectionLinks(session: string): void {
   let busy = false;
   let pdfUrl: string | null = null;
   let canExport = false;
-  let lastHover: MouseEvent | null = null;
+  type HoverState = {anchor: HTMLAnchorElement; url: URL; target: Element; modifier: boolean};
+  type GlowState = {url: string; value: string; priority: string; applied: string};
+  let lastHover: HoverState | null = null;
+  const pendingClicks = new Map<string, Set<Element>>();
+  const analyzedLinks = new Map<string, Set<Element>>();
+  const markedTargets = new Map<Element, GlowState>();
 
   const onMessage = (message: unknown): void => {
     if (typeof message !== "object" || message === null) return;
     if ("busy" in message && typeof message.busy === "boolean") busy = message.busy;
     if ("pdfUrl" in message) pdfUrl = typeof message.pdfUrl === "string" ? message.pdfUrl : null;
     if ("canExport" in message && typeof message.canExport === "boolean") canExport = message.canExport;
+    if (!busy && typeof pdfUrl === "string") {
+      const targets = pendingClicks.get(pdfUrl) ?? analyzedLinks.get(pdfUrl);
+      if (targets) {
+        const analyzed = analyzedLinks.get(pdfUrl) ?? new Set<Element>();
+        for (const target of targets) {
+          analyzed.add(target);
+          markTarget(target, pdfUrl);
+        }
+        analyzedLinks.set(pdfUrl, analyzed);
+      }
+    }
+    redrawMarkedTargets();
     hovered = null;
     if (busy) hideGlow();
-    else if (lastHover) onHover(lastHover);
+    else redrawHover();
   };
 
   const glow = document.createElement("div");
@@ -26,6 +43,39 @@ export function captureCollectionLinks(session: string): void {
   document.documentElement.append(glow);
   let hovered: Element | null = null;
   const hideGlow = (): void => { hovered = null; glow.style.display = "none"; };
+
+  const cyanGlow = "inset 0 0 0 3px rgba(125,235,255,.95),0 0 0 2px rgba(125,235,255,.9),0 0 12px 5px rgba(70,210,255,.7),0 0 26px 8px rgba(70,210,255,.35)";
+  const goldGlow = "inset 0 0 0 4px rgba(255,235,140,1),0 0 0 3px rgba(255,205,65,1),0 0 16px 7px rgba(255,190,40,.9),0 0 34px 12px rgba(255,170,20,.55)";
+  const desiredGlow = (url: string): string => canExport && url === pdfUrl ? goldGlow : cyanGlow;
+
+  const markTarget = (target: Element, url: string): void => {
+    const desired = desiredGlow(url);
+    if (!markedTargets.has(target)) {
+      const style = (target as HTMLElement).style;
+      markedTargets.set(target, {
+        url,
+        value: style.getPropertyValue("box-shadow"),
+        priority: style.getPropertyPriority("box-shadow"),
+        applied: desired,
+      });
+    } else {
+      const state = markedTargets.get(target)!;
+      state.url = url;
+      state.applied = desired;
+    }
+    const style = (target as HTMLElement).style;
+    style.setProperty("box-shadow", desired, "important");
+    markedTargets.get(target)!.applied = style.getPropertyValue("box-shadow");
+  };
+
+  const redrawMarkedTargets = (): void => {
+    for (const [target, state] of markedTargets) {
+      state.applied = desiredGlow(state.url);
+      const style = (target as HTMLElement).style;
+      style.setProperty("box-shadow", state.applied, "important");
+      state.applied = style.getPropertyValue("box-shadow");
+    }
+  };
 
   const findLink = (event: MouseEvent): {anchor: HTMLAnchorElement; url: URL} | null => {
     const anchor = event.composedPath().find((node): node is HTMLAnchorElement => {
@@ -42,24 +92,42 @@ export function captureCollectionLinks(session: string): void {
   };
 
   const onHover = (event: MouseEvent): void => {
-    lastHover = event;
-    if (busy || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) { hideGlow(); return; }
+    if (busy || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      lastHover = null;
+      hideGlow();
+      return;
+    }
     const link = findLink(event);
-    if (!link) { hideGlow(); return; }
+    if (!link) {
+      lastHover = null;
+      hideGlow();
+      return;
+    }
     const image = event.composedPath().find((node): node is Element =>
       node instanceof Element && node.tagName.toLowerCase() === "img");
     const target = image ?? link.anchor;
+    lastHover = {anchor: link.anchor, url: link.url, target, modifier: false};
+    drawHover(lastHover);
+  };
+
+  const drawHover = (state: HoverState): void => {
+    if (busy || state.modifier) { hideGlow(); return; }
+    const {target, url} = state;
     if (hovered === target) return;
     hovered = target;
-    glow.style.boxShadow = canExport && link.url.href === pdfUrl
-      ? "inset 0 0 0 4px rgba(255,235,140,1),0 0 0 3px rgba(255,205,65,1),0 0 16px 7px rgba(255,190,40,.9),0 0 34px 12px rgba(255,170,20,.55)"
-      : "inset 0 0 0 3px rgba(125,235,255,.95),0 0 0 2px rgba(125,235,255,.9),0 0 12px 5px rgba(70,210,255,.7),0 0 26px 8px rgba(70,210,255,.35)";
+    glow.style.boxShadow = desiredGlow(url.href);
     const rect = target.getBoundingClientRect();
     glow.style.left = `${rect.left}px`;
     glow.style.top = `${rect.top}px`;
     glow.style.width = `${rect.width}px`;
     glow.style.height = `${rect.height}px`;
     glow.style.display = "block";
+  };
+
+  const redrawHover = (): void => {
+    if (!lastHover) return;
+    hovered = null;
+    drawHover(lastHover);
   };
 
   const onLeave = (): void => { lastHover = null; hideGlow(); };
@@ -71,7 +139,14 @@ export function captureCollectionLinks(session: string): void {
     event.preventDefault();
     event.stopImmediatePropagation();
     hideGlow();
-    if (!busy) port.postMessage({url: link.url.href});
+    if (!busy) {
+      const image = event.composedPath().find((node): node is Element =>
+        node instanceof Element && node.tagName.toLowerCase() === "img");
+      const targets = pendingClicks.get(link.url.href) ?? new Set<Element>();
+      targets.add(image ?? link.anchor);
+      pendingClicks.set(link.url.href, targets);
+      port.postMessage({url: link.url.href});
+    }
   };
 
   port.onMessage.addListener(onMessage);
@@ -81,6 +156,12 @@ export function captureCollectionLinks(session: string): void {
     document.removeEventListener("pointerout", onLeave, true);
     document.removeEventListener("scroll", onLeave, true);
     window.removeEventListener("resize", onLeave);
+    for (const [target, state] of markedTargets) {
+      const style = (target as HTMLElement).style;
+      if (style.getPropertyValue("box-shadow") !== state.applied || style.getPropertyPriority("box-shadow") !== "important") continue;
+      if (state.value || state.priority) style.setProperty("box-shadow", state.value, state.priority);
+      else style.removeProperty("box-shadow");
+    }
     glow.remove();
   });
   document.addEventListener("click", onClick, true);

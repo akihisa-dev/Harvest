@@ -3,15 +3,26 @@ import test from "node:test";
 import {captureCollectionLinks} from "../dist/extension/app/collection-mode.js";
 
 class Anchor {
-  constructor(href) { this.href = href; this.nodeType = 1; this.tagName = "A"; }
+  constructor(href, style = makeStyle()) { this.href = href; this.nodeType = 1; this.tagName = "A"; this.style = style; }
   getBoundingClientRect() { return {left: 10, top: 20, width: 100, height: 80}; }
   hasAttribute(name) { return name === "href"; }
   getAttribute(name) { return name === "href" ? this.href : null; }
 }
 
+function makeStyle(initial = "", initialPriority = "") {
+  const values = new Map(initial ? [["box-shadow", initial]] : []);
+  const priorities = new Map(initial ? [["box-shadow", initialPriority]] : []);
+  return {
+    setProperty(name, value, priority = "") { values.set(name, value); priorities.set(name, priority); this[name.replaceAll("-", "")] = value; },
+    getPropertyValue(name) { return values.get(name) ?? ""; },
+    getPropertyPriority(name) { return priorities.get(name) ?? ""; },
+    removeProperty(name) { const old = values.get(name) ?? ""; values.delete(name); priorities.delete(name); delete this[name.replaceAll("-", "")]; return old; },
+  };
+}
+
 function setup() {
   const listeners = new Map();
-  const glow = {style: {}, setAttribute() {}, remove() { this.removed = true; }};
+  const glow = {style: makeStyle(), setAttribute() {}, remove() { this.removed = true; }};
   const removed = [];
   const messages = [];
   let disconnected;
@@ -24,7 +35,8 @@ function setup() {
   const previous = {chrome: globalThis.chrome, document: globalThis.document, location: globalThis.location, window: globalThis.window, Element: globalThis.Element};
   globalThis.chrome = {runtime: {connect(options) { assert.deepEqual(options, {name: "test-session"}); return port; }}};
   globalThis.Element = Anchor;
-  globalThis.window = {addEventListener() {}, removeEventListener() {}};
+  const windowListeners = new Map();
+  globalThis.window = {addEventListener(type, listener) { windowListeners.set(type, listener); }, removeEventListener() {}};
   globalThis.location = {href: "https://example.test/current"};
   globalThis.document = {
     createElement() { return glow; },
@@ -35,8 +47,14 @@ function setup() {
   };
   return {
     port, messages, removed, glow,
-    hover(anchor) { listeners.get("pointermove")?.({composedPath: () => [anchor]}); },
+    hover(anchor) {
+      const event = {path: [anchor], composedPath() { return this.path; }};
+      listeners.get("pointermove")?.(event);
+      return event;
+    },
     leave() { listeners.get("pointerout")?.(); },
+    scroll() { listeners.get("scroll")?.(); },
+    resize() { windowListeners.get("resize")?.(); },
     click(anchor, options = {}) {
       let prevented = 0;
       let stopped = 0;
@@ -127,8 +145,10 @@ test("解析リンクは水色、PDF保存リンクだけ強い金色になり�
   const fixture = setup();
   try {
     captureCollectionLinks("test-session");
-    fixture.hover(new Anchor("/picked"));
+    const picked = new Anchor("/picked");
+    fixture.hover(picked);
     const scanGlow = fixture.glow.style.boxShadow;
+    fixture.click(picked);
     fixture.port.messageListener({busy: true, pdfUrl: null, canExport: false});
     assert.equal(fixture.glow.style.display, "none");
     fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/picked", canExport: true});
@@ -144,5 +164,68 @@ test("解析リンクは水色、PDF保存リンクだけ強い金色になり�
     assert.equal(fixture.glow.style.boxShadow, scanGlow);
     fixture.port.messageListener({pdfUrl: null, canExport: true});
     assert.equal(fixture.glow.style.boxShadow, scanGlow);
+  } finally { fixture.restore(); }
+});
+
+test("成功したクリック対象だけが離脱・スクロール・サイズ変更後も発光し切断時に復元される", () => {
+  const fixture = setup();
+  const original = makeStyle("original-shadow", "important");
+  const otherOriginal = makeStyle("other-shadow");
+  const picked = new Anchor("/picked", original);
+  const other = new Anchor("/other", otherOriginal);
+  const failed = new Anchor("/failed");
+  try {
+    captureCollectionLinks("test-session");
+    fixture.click(picked);
+    fixture.click(other);
+    fixture.click(failed);
+    fixture.port.messageListener({busy: true, pdfUrl: "https://example.test/picked", canExport: true});
+    assert.equal(original.getPropertyValue("box-shadow"), "original-shadow");
+    fixture.port.messageListener({busy: false, pdfUrl: null, canExport: true});
+    assert.equal(failed.style.getPropertyValue("box-shadow"), "");
+    fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/picked", canExport: true});
+    assert.ok(original.getPropertyValue("box-shadow").includes("255,235,140"));
+    fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/other", canExport: true});
+    assert.ok(original.getPropertyValue("box-shadow").includes("125,235,255"));
+    assert.ok(otherOriginal.getPropertyValue("box-shadow").includes("255,235,140"));
+    fixture.leave();
+    fixture.scroll();
+    fixture.resize();
+    assert.ok(original.getPropertyValue("box-shadow").includes("125,235,255"));
+    assert.ok(otherOriginal.getPropertyValue("box-shadow").includes("255,235,140"));
+    fixture.disconnect();
+    assert.equal(original.getPropertyValue("box-shadow"), "original-shadow");
+    assert.equal(original.getPropertyPriority("box-shadow"), "important");
+    assert.equal(otherOriginal.getPropertyValue("box-shadow"), "other-shadow");
+  } finally { fixture.restore(); }
+});
+
+test("メッセージ受信時は保存済みの対象を再描画する", () => {
+  const fixture = setup();
+  try {
+    captureCollectionLinks("test-session");
+    const picked = new Anchor("/picked");
+    const event = fixture.hover(picked);
+    fixture.click(picked);
+    event.path = [];
+    fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/picked", canExport: true});
+    assert.equal(fixture.glow.style.display, "block");
+  } finally { fixture.restore(); }
+});
+
+test("ブラウザーが影の色表記を正規化しても停止時に元へ戻す", () => {
+  const fixture = setup();
+  const style = makeStyle("0 1px 2px black", "important");
+  const setProperty = style.setProperty;
+  style.setProperty = function(name, value, priority) {
+    setProperty.call(this, name, value.replaceAll(",", ", "), priority);
+  };
+  try {
+    captureCollectionLinks("test-session");
+    fixture.click(new Anchor("/picked", style));
+    fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/picked", canExport: true});
+    fixture.disconnect();
+    assert.equal(style.getPropertyValue("box-shadow"), "0 1px 2px black");
+    assert.equal(style.getPropertyPriority("box-shadow"), "important");
   } finally { fixture.restore(); }
 });
