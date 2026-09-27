@@ -29,6 +29,10 @@ declare const chrome: {
     getURL(path: string): string;
     getManifest(): HarvestManifest;
   };
+  windows: {
+    create(options: {url: string; focused: boolean; state: "minimized"; type: "normal"}): Promise<{id?: number; tabs?: HarvestTab[]} | undefined>;
+    remove(windowId: number): Promise<void>;
+  };
   tabs: {
     query(queryInfo: Record<string, unknown>): Promise<HarvestTab[]>;
     create(createProperties: {url: string; active?: boolean}): Promise<HarvestTab>;
