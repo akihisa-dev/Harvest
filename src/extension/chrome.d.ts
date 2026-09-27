@@ -20,6 +20,9 @@ interface HarvestManifest {
 }
 
 declare const chrome: {
+  i18n: {
+    getUILanguage(): string;
+  };
   sidePanel: {
     setPanelBehavior(behavior: {openPanelOnActionClick: boolean}): Promise<void>;
   };

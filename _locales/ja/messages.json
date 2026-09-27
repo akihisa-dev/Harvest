@@ -1,4 +1,11 @@
 {
-  "extensionName": { "message": "Harvest" },
-  "extensionDescription": { "message": "Webページの画像をサイドパネルで集め、選択してPDFに保存します。" }
+  "extensionName": {
+    "message": "Harvest"
+  },
+  "extensionDescription": {
+    "message": "Webページの画像をサイドパネルで集め、選択してPDFに保存します。"
+  },
+  "openHarvest": {
+    "message": "Harvestを開く"
+  }
 }

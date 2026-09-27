@@ -119,6 +119,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
       create: async ({url}) => { createdUrls.push(url); return {id: 17, tabs: [{id: 8, url}]}; },
       remove: async () => {},
     },
+    i18n: {getUILanguage: () => "ja"},
     runtime: {onConnect: {addListener(listener) { connected = listener; }}},
     tabs: {
       query: async () => [{id: 7, url: "https://example.com/view"}],

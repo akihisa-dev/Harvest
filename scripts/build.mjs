@@ -34,13 +34,14 @@ try {
   await mkdir(join(stage, "app"), { recursive: true });
   await mkdir(join(stage, "core"), { recursive: true });
   await mkdir(join(stage, "icons"), { recursive: true });
-  await mkdir(join(stage, "_locales", "ja"), { recursive: true });
+  for (const locale of ["ja", "en"]) await mkdir(join(stage, "_locales", locale), { recursive: true });
   await copyFile(join(stage, ".compiled", "extension", "background.js"), join(stage, "background.js"));
   await copyFile(join(root, "app", "index.html"), join(stage, "app", "index.html"));
   await copyFile(join(root, "app", "style.css"), join(stage, "app", "style.css"));
   await copyFile(join(stage, ".compiled", "extension", "app.js"), join(stage, "app", "index.js"));
   await copyFile(join(stage, ".compiled", "extension", "pdf-image.js"), join(stage, "app", "pdf-image.js"));
   await copyFile(join(stage, ".compiled", "extension", "motion.js"), join(stage, "app", "motion.js"));
+  await copyFile(join(stage, ".compiled", "extension", "localization.js"), join(stage, "app", "localization.js"));
   await copyFile(join(stage, ".compiled", "extension", "page-scan.js"), join(stage, "app", "page-scan.js"));
   await copyFile(join(stage, ".compiled", "extension", "collection-mode.js"), join(stage, "app", "collection-mode.js"));
   await copyFile(join(stage, ".compiled", "extension", "page-access.js"), join(stage, "app", "page-access.js"));
@@ -49,7 +50,9 @@ try {
   for (const size of [16, 32, 48, 128]) {
     await copyFile(join(root, "assets", "icons", `icon-${size}.png`), join(stage, "icons", `icon-${size}.png`));
   }
-  await copyFile(join(root, "_locales", "ja", "messages.json"), join(stage, "_locales", "ja", "messages.json"));
+  for (const locale of ["ja", "en"]) {
+    await copyFile(join(root, "_locales", locale, "messages.json"), join(stage, "_locales", locale, "messages.json"));
+  }
   await writeFile(join(stage, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   await rm(join(stage, ".compiled"), { recursive: true, force: true });
 

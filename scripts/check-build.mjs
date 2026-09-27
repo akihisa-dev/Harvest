@@ -11,6 +11,7 @@ for (const path of [
   "../dist/extension/app/index.js",
   "../dist/extension/app/pdf-image.js",
   "../dist/extension/app/motion.js",
+  "../dist/extension/app/localization.js",
   "../dist/extension/app/page-scan.js",
   "../dist/extension/app/page-access.js",
   "../dist/extension/app/collection-mode.js",
@@ -21,7 +22,8 @@ for (const path of [
   "../dist/extension/icons/icon-32.png",
   "../dist/extension/icons/icon-48.png",
   "../dist/extension/icons/icon-128.png",
-  "../dist/extension/_locales/ja/messages.json"
+  "../dist/extension/_locales/ja/messages.json",
+  "../dist/extension/_locales/en/messages.json"
 ]) {
   await access(new URL(path, import.meta.url));
 }

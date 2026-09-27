@@ -4,6 +4,7 @@ import { scanTab, scanUrl } from "./page-access.js";
 import { preparePdfImages, PdfImageError } from "./pdf-image.js";
 import { createPdf } from "../core/pdf.js";
 import { animateLayoutChange, prefersReducedMotion, reconcileKeyedChildren, setMotionText } from "./motion.js";
+import { formatCount, formatFailedAria, formatGroupLabel, formatPlural, localizeErrorMessage, t } from "./localization.js";
 const sourceUrl = required("#source-url");
 const sourceDrop = required("#source-drop");
 const collectionButton = required("#collection-toggle");
@@ -40,7 +41,7 @@ const emptyElement = required("#empty");
 const statusElement = required("#status");
 let images = [];
 let initialImageOrder = [];
-let pageTitle = "画像";
+let pageTitle = t("imageFallback");
 let activeGroupKey = null;
 let viewerMode = false;
 let viewerImageUrl = null;
@@ -62,7 +63,7 @@ function stopCollection() {
     const port = collectionPort;
     collectionPort = null;
     port?.disconnect();
-    collectionButton.textContent = "収集";
+    collectionButton.textContent = t("collectionStart");
     collectionButton.setAttribute("aria-pressed", "false");
 }
 chrome.runtime.onConnect?.addListener(port => {
@@ -100,14 +101,14 @@ async function toggleCollection() {
     const session = "harvest-collection:" + crypto.randomUUID();
     collectionSessions.add(session);
     collectionSession = session;
-    collectionButton.textContent = "停止";
+    collectionButton.textContent = t("collectionStop");
     collectionButton.setAttribute("aria-pressed", "true");
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (collectionSession !== session || disposed)
             return;
         if (tab?.id === undefined || !isWebUrl(tab.url))
-            throw new Error("収集するWebページを開いてください。");
+            throw new Error(t("errorCollectionPage"));
         collectionTabId = tab.id;
         await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: captureCollectionLinks, args: [session] });
     }
@@ -115,7 +116,7 @@ async function toggleCollection() {
         if (collectionSession !== session)
             return;
         stopCollection();
-        setStatus(error instanceof Error ? error.message : "収集モードを開始できませんでした。", "error");
+        setStatus(error instanceof Error ? localizeErrorMessage(error.message, "errorCollectionStart", true) : t("errorCollectionStart"), "error");
     }
 }
 let busy = false;
@@ -162,7 +163,7 @@ function isWebUrl(url) {
 }
 function updateSourceDrop() {
     const url = sourceUrl.value.trim();
-    sourceDrop.textContent = url || "ページURLをドロップ、またはクリックして入力";
+    sourceDrop.textContent = url || t("sourceDrop");
     sourceDrop.dataset["hasUrl"] = String(Boolean(url));
 }
 function showSourceInput() {
@@ -226,7 +227,7 @@ async function startScan(collectionLink) {
             targetUrl = parsed.href;
         }
         catch {
-            setStatus("HTTPまたはHTTPSのページURLを入力してください。", "error");
+            setStatus(t("errorInvalidUrl"), "error");
             showSourceInput();
             return;
         }
@@ -237,7 +238,7 @@ async function startScan(collectionLink) {
     scanController = controller;
     scanState = "scanning";
     setBusy(true);
-    setStatus("ページを調べています…", "busy");
+    setStatus(t("scanBusy"), "busy");
     try {
         let result;
         if (targetUrl) {
@@ -246,7 +247,7 @@ async function startScan(collectionLink) {
         else {
             const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
             if (activeTab?.id === undefined || !isWebUrl(activeTab.url)) {
-                throw new Error("開いているWebページを解析できません。URLを指定してください。");
+                throw new Error(t("errorNoActivePage"));
             }
             result = await scanTab(activeTab.id, controller.signal);
         }
@@ -261,21 +262,21 @@ async function startScan(collectionLink) {
         images = nextImages;
         collectionAnalyzedUrl = collectionLink && session !== null && session === collectionSession ? collectionLink : null;
         initialImageOrder = [...images];
-        pageTitle = result.title || "画像";
+        pageTitle = result.title || t("imageFallback");
         pendingExport = null;
         activeGroupKey = defaultDisplayedImageGroup(grouped);
         viewerMode = false;
         viewerImageUrl = null;
         completionElement.hidden = true;
         scanState = images.length ? "results" : "empty";
-        setStatus(images.length ? "" : "画像が見つかりませんでした。", "info");
+        setStatus(images.length ? "" : t("scanEmpty"), "info");
     }
     catch (error) {
         if (disposed || controller.signal.aborted || scanController !== controller)
             return;
         scanState = images.length ? "results" : "error";
-        const reason = error instanceof Error ? error.message : "このページを読み取れませんでした。";
-        setStatus(reason + (images.length ? " 前の収集結果を保持しています。" : ""), "error");
+        const reason = error instanceof Error ? localizeErrorMessage(error.message, "errorPageRead", true) : t("errorPageRead");
+        setStatus(reason + (images.length ? t("previousResults") : ""), "error");
     }
     finally {
         if (scanController === controller) {
@@ -299,8 +300,8 @@ function renderGroups(groups) {
         return button;
     }, (button, key) => {
         const group = key === "all" ? undefined : groups[key];
-        button.textContent = group?.label ?? "すべて表示";
-        button.title = key === "all" ? "すべての画像を表示する" : "このまとまりだけを表示する";
+        button.textContent = key === "all" ? t("showAll") : formatGroupLabel(group?.label ?? "");
+        button.title = key === "all" ? t("allImages") : t("oneGroup");
         button.disabled = busy;
         button.setAttribute("data-focus-kind", "group");
         button.setAttribute("data-focus-key", key);
@@ -346,8 +347,9 @@ function renderGroupSelections(groups) {
         checkbox.disabled = busy;
         checkbox.setAttribute("data-focus-kind", "pdf-group");
         checkbox.setAttribute("data-focus-key", key);
-        checkbox.setAttribute("aria-label", `PDFに含める ${group.label}`);
-        name.textContent = group.label;
+        const groupLabel = formatGroupLabel(group.label);
+        checkbox.setAttribute("aria-label", t("includeGroup", { label: groupLabel }));
+        name.textContent = groupLabel;
     });
 }
 function imageFilename(url) {
@@ -431,7 +433,7 @@ function createImageRow(initialItem) {
     selectedMark.setAttribute("aria-hidden", "true");
     const failedMark = document.createElement("span");
     failedMark.className = "item-failed";
-    failedMark.textContent = "取得失敗";
+    failedMark.textContent = t("imageFailed");
     body.append(order, name, selectedMark, failedMark);
     row.append(preview, body);
     imageRowParts.set(row, { preview, order, name, selectedMark, failedMark });
@@ -516,16 +518,19 @@ function renderImages(visibleImages) {
         row.setAttribute("aria-disabled", String(busy));
         row.draggable = !busy;
         row.tabIndex = 0;
-        row.title = "クリックでPDF選択、ドラッグで並べ替え（キーボード: Enter / Spaceで選択、Alt + ↑ / ↓で移動）";
+        row.title = t("imageRowTitle");
+        row.dataset["dropLabel"] = t("dropImage");
         row.setAttribute("data-focus-kind", "image");
         row.setAttribute("data-focus-url", item.url);
         row.setAttribute("data-focus-action", "drag");
-        row.setAttribute("aria-label", `${imageFilename(item.url)}、${overallIndex + 1}番目。${failed ? "取得失敗。" : ""}クリックでPDF選択、ドラッグまたはAltと上下矢印で並べ替え`);
+        row.setAttribute("aria-label", t("imageRowAria", {
+            filename: imageFilename(item.url), index: overallIndex + 1, failed: formatFailedAria(failed),
+        }));
         if (parts.preview.src !== item.url)
             parts.preview.src = item.url;
-        parts.preview.alt = `画像 ${index + 1}`;
+        parts.preview.alt = t("imageAlt", { index: index + 1 });
         parts.order.textContent = `${overallIndex + 1}`;
-        parts.order.setAttribute("aria-label", `全体の${overallIndex + 1}番目`);
+        parts.order.setAttribute("aria-label", t("imagePosition", { index: overallIndex + 1 }));
         parts.name.textContent = imageFilename(item.url);
         parts.name.title = item.url;
         parts.selectedMark.hidden = false;
@@ -612,7 +617,7 @@ function renderViewerThumbnails(selected, currentUrl) {
         const button = row.children[0];
         const number = button.children[1];
         button.setAttribute("aria-current", String(item.url === currentUrl));
-        button.setAttribute("aria-label", `${index + 1}枚目: ${imageFilename(item.url)}を表示`);
+        button.setAttribute("aria-label", t("thumbnailAria", { index: index + 1, filename: imageFilename(item.url) }));
         number.textContent = String(index + 1);
         return row;
     });
@@ -632,7 +637,7 @@ function renderViewer() {
     viewerElement.hidden = !viewerMode;
     viewerToggleButton.disabled = busy || images.length === 0;
     viewerToggleButton.setAttribute("aria-pressed", String(viewerMode));
-    viewerToggleButton.textContent = viewerMode ? "画像一覧に戻る" : "ビュアーモード";
+    viewerToggleButton.textContent = viewerMode ? t("backToImages") : t("viewerMode");
     viewerEmptyElement.hidden = !viewerMode || Boolean(current);
     viewerPageElement.hidden = !viewerMode || !current;
     if (!viewerMode || !current) {
@@ -652,7 +657,7 @@ function renderViewer() {
     if (viewerImageElement.src !== current.url)
         viewerImageElement.src = current.url;
     renderedViewerImageUrl = current.url;
-    viewerImageElement.alt = `選択した画像 ${currentIndex + 1}`;
+    viewerImageElement.alt = t("selectedImageAlt", { index: currentIndex + 1 });
     viewerPositionElement.textContent = `${currentIndex + 1} / ${selected.length}`;
     viewerFilenameElement.textContent = imageFilename(current.url);
     viewerPreviousButton.disabled = busy || currentIndex === 0;
@@ -666,32 +671,36 @@ function render() {
         selected.some((item, index) => item !== pendingExport.selected[index]))) {
         pendingExport = null;
         if (!busy)
-            setStatus("選択や順序が変わりました。PDFを保存してください。", "info");
+            setStatus(t("selectionChanged"), "info");
     }
     const groups = collectionGroups;
     if (activeGroupKey !== null && !groups[activeGroupKey])
         activeGroupKey = null;
     const visibleImages = filterImagesByGroup(images, activeGroupKey === null ? null : groups[activeGroupKey]);
     const selectedCount = selected.length;
-    setMotionText(countElement, `${selectedCount} / ${images.length}枚を選択${activeGroupKey === null ? "" : `・${visibleImages.length}枚を表示`}`);
+    setMotionText(countElement, formatCount(selectedCount, images.length, activeGroupKey === null ? undefined : visibleImages.length));
     exportButton.textContent = pendingExport?.failed.size
-        ? `失敗した${pendingExport.failed.size}枚を再試行`
-        : selectedCount ? `PDFを保存（${selectedCount}枚）` : "PDFを保存";
+        ? t("exportRetry", { count: pendingExport.failed.size, plural: formatPlural(pendingExport.failed.size) })
+        : selectedCount ? t("exportCount", { count: selectedCount, plural: formatPlural(selectedCount) }) : t("savePdf");
     failuresElement.hidden = !pendingExport?.failed.size;
     failedImagesElement.replaceChildren(...(pendingExport?.selected.filter(item => pendingExport.failed.has(item)) ?? []).map(item => {
         const row = document.createElement("li");
-        row.textContent = `${collectionPositions.get(item) + 1}番 ${imageFilename(item.url)} — ${pendingExport.failed.get(item)}`;
+        row.textContent = t("failedRow", {
+            index: collectionPositions.get(item) + 1,
+            filename: imageFilename(item.url),
+            reason: localizeErrorMessage(pendingExport.failed.get(item) ?? t("errorPdfFetch")),
+        });
         row.title = item.url;
         return row;
     }));
     emptyElement.hidden = images.length > 0;
     emptyElement.textContent = scanState === "scanning"
-        ? "画像を調べています…"
+        ? t("imageBusy")
         : scanState === "empty"
-            ? "画像が見つかりませんでした。"
+            ? t("scanEmpty")
             : scanState === "error"
-                ? "解析できませんでした。ページURLを確認して、もう一度お試しください。"
-                : "ここに画像が並びます。\n「解析」を押して、画像を集めましょう。";
+                ? t("scanErrorEmpty")
+                : `${t("initialFirst")}\n${t("initialSecond")}`;
     selectAllButton.disabled = busy || images.length === 0;
     clearAllButton.disabled = busy || images.length === 0;
     resetOrderButton.disabled = busy || images.every((item, index) => item === initialImageOrder[index]);
@@ -715,7 +724,7 @@ async function exportPdf() {
     exportController = controller;
     completionElement.hidden = true;
     setBusy(true);
-    setStatus(`${retry ? "画像を再試行" : "画像を準備"}しています… 0 / ${remaining.length}`, "busy");
+    setStatus(t(retry ? "retryImages" : "prepareImages", { completed: 0, total: remaining.length }), "busy");
     try {
         work.failed.clear();
         let completed = 0;
@@ -726,36 +735,36 @@ async function exportPdf() {
                 work.prepared.set(image, result);
             completed += 1;
             if (!disposed)
-                setStatus(`${retry ? "画像を再試行" : "画像を準備"}しています… ${completed} / ${remaining.length}`, "busy");
+                setStatus(t(retry ? "retryImages" : "prepareImages", { completed, total: remaining.length }), "busy");
         }, { signal: controller.signal });
         if (disposed || controller.signal.aborted)
             return;
         if (work.failed.size) {
             pendingExport = work;
             viewerMode = false;
-            setStatus(`${work.failed.size}枚を取得できませんでした。画像を確認して再試行してください。`, "error");
+            setStatus(t("failedSummary", { count: work.failed.size, plural: formatPlural(work.failed.size) }), "error");
             return;
         }
         const pages = work.selected.map(item => work.prepared.get(item));
-        setStatus("PDFを作成しています…", "busy");
+        setStatus(t("pdfCreating"), "busy");
         const blob = createPdf(pages);
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `${pageTitle.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) || "画像"}.pdf`;
+        link.download = `${pageTitle.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) || t("imageFallback")}.pdf`;
         document.body.append(link);
         link.click();
         link.remove();
         window.setTimeout(() => URL.revokeObjectURL(url), 60000);
         pendingExport = null;
-        setStatus(`${pages.length}枚のPDFを保存しました。`, "success");
+        setStatus(t("pdfSaved", { count: pages.length, plural: formatPlural(pages.length) }), "success");
         completionElement.hidden = false;
     }
     catch (error) {
         if (disposed)
             return;
         pendingExport = work.prepared.size || work.failed.size ? work : null;
-        setStatus(error instanceof Error ? error.message : "PDFを作成できませんでした。", "error");
+        setStatus(error instanceof Error ? localizeErrorMessage(error.message, "errorPdfCreate", true) : t("errorPdfCreate"), "error");
     }
     finally {
         exportController = null;
@@ -904,7 +913,7 @@ resetButton.addEventListener("click", () => {
     viewerMode = false;
     viewerImageUrl = null;
     scanState = "initial";
-    pageTitle = "画像";
+    pageTitle = t("imageFallback");
     completionElement.hidden = true;
     setStatus("", "info");
     render();

@@ -30,9 +30,15 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
   const scannedTabs = [];
   const createdUrls = [];
   const removedTabs = [];
-  globalThis.document = {body: element("body"), querySelector: element, addEventListener(name, callback) { documentListeners.set(name, callback); }};
+  globalThis.document = {
+    body: element("body"),
+    querySelector: element,
+    querySelectorAll() { return []; },
+    addEventListener(name, callback) { documentListeners.set(name, callback); },
+  };
   globalThis.window = {setTimeout, clearTimeout};
   globalThis.chrome = {
+    i18n: {getUILanguage: () => "ja"},
     windows: {
       create: async ({url}) => { createdUrls.push(url); return {id: 17, tabs: [{id: 8, url}]}; },
       remove: async () => { removedTabs.push(8); },

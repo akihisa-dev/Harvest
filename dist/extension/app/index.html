@@ -3,72 +3,73 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Harvest | 画像を集める</title>
+    <meta name="color-scheme" content="light dark">
+    <title data-i18n="documentTitle">Harvest | 画像を集める</title>
     <link rel="stylesheet" href="style.css">
     <script type="module" src="index.js" defer></script>
   </head>
   <body>
     <div class="app-header">
       <section class="controls" aria-labelledby="source-heading">
-        <div class="visually-hidden"><h2 id="source-heading"><label for="source-url">ページURL</label></h2><span>任意</span></div>
+        <div class="visually-hidden"><h2 id="source-heading"><label for="source-url" data-i18n="pageUrl">ページURL</label></h2><span data-i18n="optional">任意</span></div>
         <div class="source-row">
-          <button id="collection-toggle" type="button" aria-pressed="false" title="収集中はページ内のリンクをクリックすると、移動せずリンク先を解析します">収集</button>
-          <button id="source-drop" type="button">ページURLをドロップ、またはクリックして入力</button>
-          <input id="source-url" type="url" inputmode="url" placeholder="ページURLを入力" autocomplete="url" aria-describedby="source-hint" hidden>
-          <button id="scan" type="button">解析</button>
+          <button id="collection-toggle" type="button" aria-pressed="false" data-i18n-title="collectionTitle" title="収集中はページ内のリンクをクリックすると、移動せずリンク先を解析します" data-i18n="collectionStart">収集</button>
+          <button id="source-drop" type="button" data-i18n="sourceDrop">ページURLをドロップ、またはクリックして入力</button>
+          <input id="source-url" type="url" inputmode="url" data-i18n-placeholder="sourcePlaceholder" placeholder="ページURLを入力" autocomplete="url" aria-describedby="source-hint" hidden>
+          <button id="scan" type="button" data-i18n="scan">解析</button>
         </div>
-        <p id="source-hint" class="visually-hidden">空欄なら、開いているページを解析します。</p>
+        <p id="source-hint" class="visually-hidden" data-i18n="sourceHint">空欄なら、開いているページを解析します。</p>
       </section>
       <aside class="save-area" aria-labelledby="export-heading">
-        <h2 id="export-heading" class="visually-hidden">PDFを保存</h2>
-        <button id="export" type="button" disabled>PDFを保存</button>
+        <h2 id="export-heading" class="visually-hidden" data-i18n="savePdf">PDFを保存</h2>
+        <button id="export" type="button" disabled data-i18n="savePdf">PDFを保存</button>
       </aside>
       <div class="results-controls">
         <div class="results-heading">
-          <div class="section-head"><h2 id="images-heading">画像</h2><span id="count">0枚</span></div>
-          <div class="toolbar" role="group" aria-label="画像の選択と並び順">
-            <button id="select-all" type="button" title="表示していない画像も含めて、すべて選択" disabled>すべて選択</button>
-            <button id="clear-all" type="button" title="表示していない画像も含めて、選択を解除" disabled>選択を解除</button>
-            <button id="reset-order" type="button" title="解析直後の並び順に戻す" disabled>並び順を戻す</button>
+          <div class="section-head"><h2 id="images-heading" data-i18n="imagesHeading">画像</h2><span id="count" data-i18n="countInitial">0枚</span></div>
+          <div class="toolbar" role="group" data-i18n-aria-label="selectionToolbar" aria-label="画像の選択と並び順">
+            <button id="select-all" type="button" data-i18n-title="selectAllTitle" title="表示していない画像も含めて、すべて選択" data-i18n="selectAll" disabled>すべて選択</button>
+            <button id="clear-all" type="button" data-i18n-title="clearAllTitle" title="表示していない画像も含めて、選択を解除" data-i18n="clearAll" disabled>選択を解除</button>
+            <button id="reset-order" type="button" data-i18n-title="resetOrderTitle" title="解析直後の並び順に戻す" data-i18n="resetOrder" disabled>並び順を戻す</button>
           </div>
         </div>
-        <div class="filter-bar"><span>表示</span><div id="groups" class="groups" role="group" aria-label="表示する画像" hidden></div></div>
-        <div class="selection-bar"><span>PDF</span><div id="group-selections" class="group-selections" role="group" aria-label="PDFに含める画像" hidden></div></div>
-        <aside class="viewer-controls" aria-label="ビュアーモード">
-          <button id="viewer-toggle" type="button" aria-pressed="false" disabled>ビュアーモード</button>
+        <div class="filter-bar"><span data-i18n="display">表示</span><div id="groups" class="groups" role="group" data-i18n-aria-label="displayImages" aria-label="表示する画像" hidden></div></div>
+        <div class="selection-bar"><span data-i18n="pdf">PDF</span><div id="group-selections" class="group-selections" role="group" data-i18n-aria-label="pdfImages" aria-label="PDFに含める画像" hidden></div></div>
+        <aside class="viewer-controls" data-i18n-aria-label="viewerMode" aria-label="ビュアーモード">
+          <button id="viewer-toggle" type="button" aria-pressed="false" data-i18n="viewerMode" disabled>ビュアーモード</button>
           <div class="viewer-meta">
             <p id="status" role="status" aria-live="polite"></p>
-            <button id="reset" type="button" aria-label="収集結果と選択をクリア" title="収集結果と選択をクリア">クリア</button>
+            <button id="reset" type="button" data-i18n-aria-label="clearTitle" data-i18n-title="clearTitle" aria-label="収集結果と選択をクリア" title="収集結果と選択をクリア" data-i18n="clear">クリア</button>
           </div>
         </aside>
       </div>
     </div>
     <main>
       <section class="results" aria-labelledby="images-heading">
-        <div id="completion" class="completion" hidden><p>PDFの保存を開始しました。</p><button id="back-to-images" type="button">画像一覧に戻る</button></div>
+        <div id="completion" class="completion" hidden><p data-i18n="completionStarted">PDFの保存を開始しました。</p><button id="back-to-images" type="button" data-i18n="backToImages">画像一覧に戻る</button></div>
         <section id="failures" class="failures" aria-labelledby="failures-heading" hidden>
-          <h3 id="failures-heading">取得できなかった画像</h3>
+          <h3 id="failures-heading" data-i18n="failuresHeading">取得できなかった画像</h3>
           <ul id="failed-images"></ul>
         </section>
-        <p id="empty">ここに画像が並びます。<br>「解析」を押して、画像を集めましょう。</p>
+        <p id="empty"><span data-i18n="initialFirst">ここに画像が並びます。</span><br><span data-i18n="initialSecond">「解析」を押して、画像を集めましょう。</span></p>
         <ol id="images" class="image-list"></ol>
       </section>
-      <section id="viewer" class="viewer" aria-label="選択した画像のビュアー" hidden>
-        <p id="viewer-empty">PDFに含める画像が選択されていません。</p>
+      <section id="viewer" class="viewer" data-i18n-aria-label="viewer" aria-label="選択した画像のビュアー" hidden>
+        <p id="viewer-empty" data-i18n="viewerEmpty">PDFに含める画像が選択されていません。</p>
         <div id="viewer-page" class="viewer-page" hidden>
-          <div id="viewer-stage" class="viewer-stage" aria-label="画像。ホイールで拡大縮小、拡大中はドラッグで移動">
+          <div id="viewer-stage" class="viewer-stage" data-i18n-aria-label="viewerStage" aria-label="画像。ホイールで拡大縮小、拡大中はドラッグで移動">
             <img id="viewer-image" alt="" referrerpolicy="no-referrer" draggable="false">
           </div>
-          <aside class="viewer-sidebar" aria-label="ビュアー操作と選択した画像のサムネイル">
+          <aside class="viewer-sidebar" data-i18n-aria-label="viewerControls" aria-label="ビュアー操作と選択した画像のサムネイル">
             <div class="viewer-navigation">
-              <button id="viewer-previous" type="button">前へ</button>
+              <button id="viewer-previous" type="button" data-i18n="previous">前へ</button>
               <span id="viewer-position" aria-live="polite"></span>
-              <button id="viewer-next" type="button">次へ</button>
+              <button id="viewer-next" type="button" data-i18n="next">次へ</button>
             </div>
-            <div class="viewer-zoom" role="group" aria-label="画像の拡大と縮小">
-              <button id="viewer-zoom-out" type="button" aria-label="縮小">−</button>
-              <button id="viewer-zoom-reset" type="button" aria-label="表示倍率を戻す">100%</button>
-              <button id="viewer-zoom-in" type="button" aria-label="拡大">＋</button>
+            <div class="viewer-zoom" role="group" data-i18n-aria-label="zoomGroup" aria-label="画像の拡大と縮小">
+              <button id="viewer-zoom-out" type="button" data-i18n-aria-label="zoomOut" aria-label="縮小">−</button>
+              <button id="viewer-zoom-reset" type="button" data-i18n-aria-label="zoomReset" aria-label="表示倍率を戻す">100%</button>
+              <button id="viewer-zoom-in" type="button" data-i18n-aria-label="zoomIn" aria-label="拡大">＋</button>
             </div>
             <div class="viewer-thumbnails"><ol id="viewer-thumbnails"></ol></div>
             <p id="viewer-filename" class="visually-hidden"></p>

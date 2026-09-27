@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 
 const manifest = JSON.parse(await readFile(new URL("../manifest.template.json", import.meta.url), "utf8"));
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
@@ -21,5 +21,12 @@ for (const size of [16, 32, 48, 128]) {
     throw new Error(`${size}pxのアイコン設定が不足しています。`);
   }
 }
-await access(new URL("../_locales/ja/messages.json", import.meta.url));
+if (manifest.default_locale !== "en") throw new Error("未対応言語の既定表示は英語にしてください。");
+for (const locale of ["ja", "en"]) {
+  const messages = JSON.parse(await readFile(new URL(`../_locales/${locale}/messages.json`, import.meta.url), "utf8"));
+  for (const value of [manifest.name, manifest.description, manifest.action.default_title]) {
+    const key = /^__MSG_(\w+)__$/.exec(value)?.[1];
+    if (!key || !messages[key]?.message) throw new Error(`${locale}のmanifest翻訳が不足しています。`);
+  }
+}
 console.log("Manifest template is valid.");
