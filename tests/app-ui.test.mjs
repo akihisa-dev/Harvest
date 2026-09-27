@@ -163,6 +163,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     includeSourcePage.checked = true;
     includeSourcePage.dispatch("change");
     assert.equal(savedPreferences.get("harvest.includeSourcePage"), "true");
+    includeSourcePage.checked = false;
+    includeSourcePage.dispatch("change");
     const sourceDrop = document.querySelector("#source-drop");
     const pageUrlDrag = {
       types: ["text/uri-list"],
@@ -273,6 +275,22 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(viewerImage.src, resultImages[0]);
     assert.equal(viewerPosition.textContent, "1 / 2");
     assert.equal(viewerThumbnails.children.length, 2);
+    includeSourcePage.checked = true;
+    includeSourcePage.dispatch("change");
+    assert.equal(viewerThumbnails.children.length, 3, "オンならSourceページを末尾へ表示する");
+    assert.equal(document.querySelector("#images").children.at(-1).className, "source-preview");
+    const sourceThumbnail = viewerThumbnails.children[2].children[0];
+    sourceThumbnail.dispatch("click");
+    assert.equal(viewerPosition.textContent, "3 / 3");
+    assert.equal(viewerNext.disabled, true);
+    const sourceSvg = decodeURIComponent(viewerImage.src.split(",")[1]);
+    assert.match(sourceSvg, /Source/);
+    assert.match(sourceSvg, /ページ\.pdf/);
+    assert.match(sourceSvg, /https:\/\/example.com\/view/);
+    includeSourcePage.checked = false;
+    includeSourcePage.dispatch("change");
+    assert.equal(viewerThumbnails.children.length, 2, "オフならSourceページを除去する");
+    assert.equal(viewerPosition.textContent, "1 / 2");
     const firstThumbnail = descendants(viewerThumbnails).find(element => element.tagName === "button");
     assert.ok(firstThumbnail);
     assert.equal(viewerPrevious.disabled, true);
@@ -470,7 +488,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#failures").hidden, true);
     assert.equal(document.querySelector("#status").dataset.state, "success");
     assert.equal(document.querySelector("#source-url").value, "", "再試行後に保存できたらURLを消す");
-    assert.equal(includeSourcePage.checked, true, "PDF保存後も出典ページの設定を保つ");
+    assert.equal(includeSourcePage.checked, false, "PDF保存後も出典ページの設定を保つ");
     assert.equal(document.querySelector("#source-drop").dataset.hasUrl, "false");
 
     coverButton.dispatch("click");

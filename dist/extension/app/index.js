@@ -27,6 +27,7 @@ includeSourcePage.addEventListener("change", () => {
     catch {
         setStatus(t("errorSavePreference"), "error");
     }
+    render();
 });
 const viewerToggleButton = required("#viewer-toggle");
 const viewerElement = required("#viewer");
@@ -508,6 +509,46 @@ function createImageRow(initialItem) {
     });
     return row;
 }
+function pdfFilename() {
+    return `${pageTitle.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) || t("imageFallback")}.pdf`;
+}
+/** A local preview only; the PDF itself continues to contain selectable text. */
+function sourcePreview() {
+    const first = images.find(item => item.selected);
+    if (!includeSourcePage.checked || !first)
+        return null;
+    const escape = (value) => value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[character]);
+    const wrap = (value) => {
+        const lines = [];
+        let line = "";
+        let width = 0;
+        for (const character of value) {
+            const advance = character.codePointAt(0) < 256 ? 1 : 2;
+            if (width + advance > 65) {
+                lines.push(line);
+                line = "";
+                width = 0;
+            }
+            line += character;
+            width += advance;
+        }
+        lines.push(line);
+        return lines;
+    };
+    const lines = [...wrap(pdfFilename()), "", ...wrap(first.sourcePage)];
+    const size = Math.min(12, 670 / Math.max(lines.length, 1) / 1.5);
+    const text = lines.map((line, index) => `<text x="48" y="${100 + index * size * 1.5}" font-size="${size}">${escape(line)}</text>`).join("");
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="595" height="842"><rect width="595" height="842" fill="white"/><g fill="black" font-family="monospace"><text x="48" y="65" font-size="18">Source</text>${text}</g></svg>`;
+    return { url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, sourcePage: first.sourcePage, selected: true };
+}
+function viewerPages() {
+    const selected = images.filter(item => item.selected);
+    const source = sourcePreview();
+    return source ? [...selected, source] : selected;
+}
+function previewName(item) {
+    return item.url.startsWith("data:image/svg+xml;") ? "Source" : imageFilename(item.url);
+}
 function renderImages(visibleImages) {
     imageView.visibleImages = visibleImages;
     imageView.previewOrder = [...visibleImages];
@@ -551,6 +592,21 @@ function renderImages(visibleImages) {
         parts.selectedMark.hidden = false;
         parts.failedMark.hidden = !failed;
     });
+    const source = sourcePreview();
+    if (source) {
+        const row = document.createElement("li");
+        row.className = "source-preview";
+        row.style.order = String(visibleImages.length);
+        const preview = document.createElement("img");
+        preview.className = "preview";
+        preview.src = source.url;
+        preview.alt = "Source";
+        const name = document.createElement("div");
+        name.className = "item-body";
+        name.textContent = "Source";
+        row.append(preview, name);
+        imagesElement.append(row);
+    }
     imagesElement.ondragover = event => {
         if (!draggedImage || busy)
             return;
@@ -632,7 +688,7 @@ function renderViewerThumbnails(selected, currentUrl) {
         const button = row.children[0];
         const number = button.children[1];
         button.setAttribute("aria-current", String(item.url === currentUrl));
-        button.setAttribute("aria-label", t("thumbnailAria", { index: index + 1, filename: imageFilename(item.url) }));
+        button.setAttribute("aria-label", t("thumbnailAria", { index: index + 1, filename: previewName(item) }));
         number.textContent = String(index + 1);
         return row;
     });
@@ -643,7 +699,7 @@ function renderViewerThumbnails(selected, currentUrl) {
     }
 }
 function renderViewer() {
-    const selected = images.filter(item => item.selected);
+    const selected = viewerPages();
     const index = selected.findIndex(item => item.url === viewerImageUrl);
     const currentIndex = index < 0 ? 0 : index;
     const current = selected[currentIndex];
@@ -674,7 +730,7 @@ function renderViewer() {
     renderedViewerImageUrl = current.url;
     viewerImageElement.alt = t("selectedImageAlt", { index: currentIndex + 1 });
     viewerPositionElement.textContent = `${currentIndex + 1} / ${selected.length}`;
-    viewerFilenameElement.textContent = imageFilename(current.url);
+    viewerFilenameElement.textContent = previewName(current);
     viewerPreviousButton.disabled = busy || currentIndex === 0;
     viewerNextButton.disabled = busy || currentIndex === selected.length - 1;
 }
@@ -763,7 +819,7 @@ async function exportPdf() {
         }
         const pages = work.selected.map(item => work.prepared.get(item));
         setStatus(t("pdfCreating"), "busy");
-        const filename = `${pageTitle.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) || t("imageFallback")}.pdf`;
+        const filename = pdfFilename();
         const blob = createPdf(pages, includeSourcePage.checked ? {
             heading: t("sourceHeading"), filename, url: work.selected[0].sourcePage,
         } : undefined);
@@ -869,7 +925,7 @@ viewerToggleButton.addEventListener("click", () => {
     render();
 });
 viewerPreviousButton.addEventListener("click", () => {
-    const selected = images.filter(item => item.selected);
+    const selected = viewerPages();
     const index = selected.findIndex(item => item.url === viewerImageUrl);
     if (index > 0) {
         viewerImageUrl = selected[index - 1].url;
@@ -877,7 +933,7 @@ viewerPreviousButton.addEventListener("click", () => {
     }
 });
 viewerNextButton.addEventListener("click", () => {
-    const selected = images.filter(item => item.selected);
+    const selected = viewerPages();
     const index = selected.findIndex(item => item.url === viewerImageUrl);
     if (index >= 0 && index < selected.length - 1) {
         viewerImageUrl = selected[index + 1].url;
