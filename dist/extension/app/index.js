@@ -12,6 +12,7 @@ headerElement.dataset["dropLabel"] = t("dropUrl");
 const collectionButton = required("#collection-toggle");
 const scanButton = required("#scan");
 const exportButton = required("#export");
+const pdfSaveStateElement = required("#pdf-save-state");
 const includeSourcePage = required("#include-source-page");
 const sourcePagePreferenceKey = "harvest.includeSourcePage";
 try {
@@ -62,6 +63,10 @@ const statusElement = required("#status");
 let images = [];
 let initialImageOrder = [];
 let pageTitle = t("imageFallback");
+let savedPdfSignature = null;
+function pdfSignature() {
+    return JSON.stringify([pageTitle, includeSourcePage.checked, images.filter(item => item.selected).map(item => [item.url, item.sourcePage])]);
+}
 let activeGroupKey = null;
 let viewerMode = false;
 let viewerImageUrl = null;
@@ -285,6 +290,7 @@ async function startScan(collectionLink) {
         const nextImages = urls.map(url => ({ url, sourcePage: result.url, selected: selectedUrls.has(url) }));
         // Publish only a complete scan. A rejected scan keeps the previous working set.
         images = nextImages;
+        savedPdfSignature = null;
         collectionAnalyzedUrl = collectionLink && session !== null && session === collectionSession ? collectionLink : null;
         initialImageOrder = [...images];
         pageTitle = result.title || t("imageFallback");
@@ -749,6 +755,11 @@ function render() {
         activeGroupKey = null;
     const visibleImages = filterImagesByGroup(images, activeGroupKey === null ? null : groups[activeGroupKey]);
     const selectedCount = selected.length;
+    const saved = savedPdfSignature !== null && savedPdfSignature === pdfSignature();
+    pdfSaveStateElement.hidden = images.length === 0;
+    pdfSaveStateElement.dataset["state"] = saved ? "saved" : savedPdfSignature === null ? "unsaved" : "changed";
+    pdfSaveStateElement.textContent = t(saved ? "pdfSaveStarted" : savedPdfSignature === null ? "pdfUnsaved" : "pdfSaveChanged");
+    pdfSaveStateElement.title = saved ? t("pdfSaveStartedHelp") : "";
     setMotionText(countElement, formatCount(selectedCount, images.length, activeGroupKey === null ? undefined : visibleImages.length));
     exportButton.textContent = pendingExport?.failed.size
         ? t("exportRetry", { count: pendingExport.failed.size, plural: formatPlural(pendingExport.failed.size) })
@@ -831,6 +842,7 @@ async function exportPdf() {
         link.click();
         link.remove();
         window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+        savedPdfSignature = pdfSignature();
         clearSourceUrl();
         pendingExport = null;
         setStatus(t("pdfSaved", { count: pages.length, plural: formatPlural(pages.length) }), "success");
@@ -991,6 +1003,7 @@ resetButton.addEventListener("click", () => {
     clearSourceUrl();
     collectionAnalyzedUrl = null;
     images = [];
+    savedPdfSignature = null;
     initialImageOrder = [];
     pendingExport = null;
     activeGroupKey = null;
