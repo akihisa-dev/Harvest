@@ -82,16 +82,13 @@ export function groupImages(images: readonly string[]): ImageGroups {
     const [pathPart = "", prefixPart = "numeric", resolution = ""] = key.split("|");
     const lowerPath = pathPart.toLowerCase();
     const isMangaBody = lowerPath.includes("/fanzine") || lowerPath.includes("/pages") || lowerPath.includes("/storage") || lowerPath.includes("/viewer") || items.length >= 10;
-    let label = "画像セット";
+    let label = prefixPart === "numeric" ? "シリーズ" : "セット";
     let priority = 5;
     if (isMangaBody) {
-      label = `漫画本編 [${prefixPart === "numeric" ? "連番" : prefixPart.slice(0, 10)}]`;
       priority = 1;
     } else if (lowerPath.includes("cover") || lowerPath.includes("thumb")) {
       label = "表紙・サムネイル";
       priority = 2;
-    } else {
-      label = `画像セット [${prefixPart === "numeric" ? "連番" : prefixPart.slice(0, 10)}]`;
     }
     if (resolution) label += ` (${resolution})`;
     groups[`${priority}_${key}`] = {label: `${label} (${items.length}枚)`, priority, items, isMangaBody};

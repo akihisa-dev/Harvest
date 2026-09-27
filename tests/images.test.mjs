@@ -73,7 +73,7 @@ test("画像を漫画本文・表紙・単発のまとまりへ分類し、本�
   ]);
   const manga = Object.entries(groups).find(([, group]) => group.isMangaBody);
   const cover = Object.entries(groups).find(([, group]) => group.label.startsWith("表紙"));
-  assert.equal(manga?.[1].label, "漫画本編 [連番] (2枚)");
+  assert.equal(manga?.[1].label, "シリーズ (2枚)");
   assert.equal(cover?.[1].label, "表紙・サムネイル (2枚)");
   assert.equal(defaultSelectedImageGroups(groups)[manga[0]], true);
   assert.equal(defaultSelectedImageGroups(groups)[cover[0]], false);
@@ -97,4 +97,18 @@ test("特定サイトだけファイル名の数値順に並べる", () => {
   assert.deepEqual(sortImageUrlsForSite(images, "https://momon-ga.com/book"), [images[2], images[1], images[0]]);
   assert.deepEqual(sortImageUrlsForSite(images, "https://example.com/book"), images);
   assert.deepEqual(sortImageUrlsForSite(images, "https://not-momon-ga.com/book?from=momon-ga.com"), images);
+});
+
+test("数字で始まるまとまりはシリーズ、それ以外はセットと表示する", () => {
+  const groups = groupImages([
+    "https://example.com/gallery/001.jpg",
+    "https://example.com/gallery/002.jpg",
+    "https://example.com/gallery/photo-001.jpg",
+    "https://example.com/gallery/photo-002.jpg",
+    "https://example.com/pages/body-001.jpg",
+    "https://example.com/pages/body-002.jpg",
+  ]);
+  assert.deepEqual(Object.values(groups).map(group => group.label), [
+    "シリーズ (2枚)", "セット (2枚)", "セット (2枚)",
+  ]);
 });
