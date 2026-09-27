@@ -59,3 +59,5 @@ Chrome ウェブストアへの提出には[提出手順](store/submit.md)と[�
 GNU Affero General Public License version 3 only（AGPL-3.0-only）。詳細はLICENSEを参照してください。
 
 ストアへ提出するZIPには、ライセンス全文、同じ版をビルドするためのソースコードと手順を含めます。拡張機能の「ライセンスとソース」から案内を開けます。
+
+初期画面の中央には、`assets/brand/harvest-geometric-logo.svg`を表示します。ビルド時にこのロゴを拡張機能の`brand/`と同梱ソースへコピーします。

@@ -47,7 +47,9 @@ const backToImagesButton = required<HTMLButtonElement>("#back-to-images");
 const imagesElement = required<HTMLOListElement>("#images");
 const groupsElement = required<HTMLDivElement>("#groups");
 const countElement = required<HTMLSpanElement>("#count");
-const emptyElement = required<HTMLParagraphElement>("#empty");
+const emptyElement = required<HTMLElement>("#empty");
+const emptyLogoElement = required<HTMLImageElement>("#empty-logo");
+const emptyMessageElement = required<HTMLParagraphElement>("#empty-message");
 const statusElement = required<HTMLParagraphElement>("#status");
 
 let images: ImageItem[] = [];
@@ -662,13 +664,15 @@ function render(): void {
     return row;
   }));
   emptyElement.hidden = images.length > 0;
-  emptyElement.textContent = scanState === "scanning"
+  emptyLogoElement.hidden = scanState !== "initial";
+  emptyMessageElement.hidden = scanState === "initial";
+  emptyMessageElement.textContent = scanState === "scanning"
     ? t("imageBusy")
     : scanState === "empty"
       ? t("scanEmpty")
       : scanState === "error"
         ? t("scanErrorEmpty")
-        : `${t("initialFirst")}\n${t("initialSecond")}`;
+        : "";
   selectAllButton.disabled = busy || images.length === 0;
   clearAllButton.disabled = busy || images.length === 0;
   resetOrderButton.disabled = busy || images.every((item, index) => item === initialImageOrder[index]);

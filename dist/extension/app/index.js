@@ -55,6 +55,8 @@ const imagesElement = required("#images");
 const groupsElement = required("#groups");
 const countElement = required("#count");
 const emptyElement = required("#empty");
+const emptyLogoElement = required("#empty-logo");
+const emptyMessageElement = required("#empty-message");
 const statusElement = required("#status");
 let images = [];
 let initialImageOrder = [];
@@ -707,13 +709,15 @@ function render() {
         return row;
     }));
     emptyElement.hidden = images.length > 0;
-    emptyElement.textContent = scanState === "scanning"
+    emptyLogoElement.hidden = scanState !== "initial";
+    emptyMessageElement.hidden = scanState === "initial";
+    emptyMessageElement.textContent = scanState === "scanning"
         ? t("imageBusy")
         : scanState === "empty"
             ? t("scanEmpty")
             : scanState === "error"
                 ? t("scanErrorEmpty")
-                : `${t("initialFirst")}\n${t("initialSecond")}`;
+                : "";
     selectAllButton.disabled = busy || images.length === 0;
     clearAllButton.disabled = busy || images.length === 0;
     resetOrderButton.disabled = busy || images.every((item, index) => item === initialImageOrder[index]);

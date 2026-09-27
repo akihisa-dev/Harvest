@@ -16,6 +16,7 @@ for (const path of [
   "../dist/extension/app/page-access.js",
   "../dist/extension/app/collection-mode.js",
   "../dist/extension/app/style.css",
+  "../dist/extension/brand/harvest-geometric-logo.svg",
   "../dist/extension/core/images.js",
   "../dist/extension/core/pdf.js",
   "../dist/extension/icons/icon-16.png",

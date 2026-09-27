@@ -34,6 +34,7 @@ try {
   await mkdir(join(stage, "app"), { recursive: true });
   await mkdir(join(stage, "core"), { recursive: true });
   await mkdir(join(stage, "icons"), { recursive: true });
+  await mkdir(join(stage, "brand"), { recursive: true });
   await mkdir(join(stage, "source", "assets", "brand"), { recursive: true });
   await mkdir(join(stage, "source", "assets", "icons"), { recursive: true });
   await mkdir(join(stage, "source", "app"), { recursive: true });
@@ -46,6 +47,7 @@ try {
   await copyFile(join(root, "app", "index.html"), join(stage, "app", "index.html"));
   await copyFile(join(root, "app", "style.css"), join(stage, "app", "style.css"));
   await copyFile(join(root, "app", "legal.html"), join(stage, "app", "legal.html"));
+  await copyFile(join(root, "assets", "brand", "harvest-geometric-logo.svg"), join(stage, "brand", "harvest-geometric-logo.svg"));
   await copyFile(join(stage, ".compiled", "extension", "app.js"), join(stage, "app", "index.js"));
   await copyFile(join(stage, ".compiled", "extension", "pdf-image.js"), join(stage, "app", "pdf-image.js"));
   await copyFile(join(stage, ".compiled", "extension", "motion.js"), join(stage, "app", "motion.js"));
@@ -84,6 +86,7 @@ try {
     }
   }
   await copyFile(join(root, "assets", "brand", "harvest-logo-master.png"), join(stage, "source", "assets", "brand", "harvest-logo-master.png"));
+  await copyFile(join(root, "assets", "brand", "harvest-geometric-logo.svg"), join(stage, "source", "assets", "brand", "harvest-geometric-logo.svg"));
   for (const size of [16, 32, 48, 128]) {
     await copyFile(join(root, "assets", "icons", `icon-${size}.png`), join(stage, "source", "assets", "icons", `icon-${size}.png`));
   }

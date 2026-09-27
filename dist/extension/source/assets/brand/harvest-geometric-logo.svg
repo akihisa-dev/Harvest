@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Harvest geometric logo</title>
+  <desc id="desc">A grain head built from six angular leaves and a central stem.</desc>
+  <g fill="#202020">
+    <path d="M256 100l35 48-35 45-35-45z"/>
+    <path d="M151 168l67 11 27 46-62-9z"/>
+    <path d="M361 168l-67 11-27 46 62-9z"/>
+    <path d="M151 233l67 11 27 46-62-9z"/>
+    <path d="M361 233l-67 11-27 46 62-9z"/>
+    <path d="M172 300l54 10 19 35-51-8z"/>
+    <path d="M340 300l-54 10-19 35 51-8z"/>
+    <path d="M248 190h16v204h-16z"/>
+  </g>
+</svg>

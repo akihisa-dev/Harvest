@@ -158,11 +158,11 @@ section, aside { min-width: 0; }
 #status[data-state="error"] { padding: 7px 9px; border-left: 3px solid var(--ink); background: var(--subtle); color: var(--ink); }
 #status[data-state="busy"]::before { content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 6px 1px 0; border-radius: 50%; background: currentColor; }
 
-main { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 16px; scrollbar-gutter: stable; }
+main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; padding: 16px; scrollbar-gutter: stable; }
 .legal-footer { flex: none; padding: 3px 12px; border-top: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 11px; text-align: right; }
 .legal-footer a { color: inherit; }
 main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
-.results { min-height: 100%; }
+.results { min-height: 100%; display: flex; flex-direction: column; }
 .image-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(135px, 100%), 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0; }
 .image-list li { position: relative; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--ink); border-radius: var(--radius); background: var(--surface); }
 .image-list li.unselected { border-color: var(--line); }
@@ -180,7 +180,11 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
 .image-list li[draggable="true"] { cursor: grab; }
 .image-list li.dragging { border: 1px dashed var(--control-line); background: var(--subtle); cursor: grabbing; }
 .image-list li.dragging::after { content: attr(data-drop-label); position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12px; font-weight: 600; }
-#empty { padding: 44px 12px; color: var(--muted); font-size: 13px; line-height: 1.9; text-align: center; white-space: pre-line; }
+#empty { flex: 1; display: grid; place-items: center; padding: 44px 12px; color: var(--muted); font-size: 13px; line-height: 1.9; text-align: center; white-space: pre-line; }
+#empty-logo { display: block; width: clamp(120px, 18vw, 220px); max-width: 60%; height: auto; }
+@media (prefers-color-scheme: dark) {
+  #empty-logo { filter: invert(1); }
+}
 .completion { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; padding: 10px 12px; border: 1px solid var(--ink); border-radius: var(--radius); background: var(--surface); }
 .completion p { font-size: 12px; font-weight: 600; }
 .completion button { min-height: 30px; padding: 5px 8px; font-size: 12px; }

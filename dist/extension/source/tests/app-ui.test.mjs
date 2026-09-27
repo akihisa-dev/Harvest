@@ -95,7 +95,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   for (const selector of [
     "#source-url", "#scan", "#export", "#select-all", "#clear-all", "#reset-order", "#reset",
     "#completion", "#back-to-images", "#failures", "#failed-images", "#images", "#groups",
-    "#count", "#empty", "#status", "#viewer-toggle", "#viewer", "#viewer-empty",
+    "#count", "#empty", "#empty-logo", "#empty-message", "#status", "#viewer-toggle", "#viewer", "#viewer-empty",
     "#viewer-page", "#viewer-previous", "#viewer-position", "#viewer-next", "#viewer-image",
     "#viewer-filename", "#viewer-thumbnails", "#viewer-zoom-in", "#viewer-zoom-out",
     "#viewer-zoom-reset", "#viewer-stage",
@@ -231,11 +231,15 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.dispatch("dragover", {target: sourceDrop, dataTransfer: pageUrlDrag}).prevented, true);
     document.dispatch("dragleave", {dataTransfer: pageUrlDrag});
     const empty = document.querySelector("#empty");
-    assert.equal(empty.textContent, "ここに画像が並びます。\n「解析」を押して、画像を集めましょう。");
+    const emptyLogo = document.querySelector("#empty-logo");
+    const emptyMessage = document.querySelector("#empty-message");
+    assert.equal(emptyLogo.hidden, false);
+    assert.equal(emptyMessage.hidden, true);
 
     document.querySelector("#scan").dispatch("click");
     assert.equal(document.querySelector("#status").dataset.state, "busy");
-    assert.equal(empty.textContent, "画像を調べています…");
+    assert.equal(emptyLogo.hidden, true);
+    assert.equal(emptyMessage.textContent, "画像を調べています…");
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(empty.hidden, true);
     assert.equal(document.querySelector("#status").textContent, "");
@@ -501,13 +505,15 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     document.querySelector("#reset").dispatch("click");
     assert.equal(empty.hidden, false);
     assert.equal(document.querySelector("#status").textContent, "");
-    assert.equal(empty.textContent, "ここに画像が並びます。\n「解析」を押して、画像を集めましょう。");
+    assert.equal(emptyLogo.hidden, false);
+    assert.equal(emptyMessage.hidden, true);
     resultImages = [];
     globalThis.fetch = previousFetch;
     document.querySelector("#scan").dispatch("click");
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(empty.hidden, false);
-    assert.equal(empty.textContent, "画像が見つかりませんでした。");
+    assert.equal(emptyLogo.hidden, true);
+    assert.equal(emptyMessage.textContent, "画像が見つかりませんでした。");
     assert.equal(executionCount, 3);
     assert.deepEqual(createdUrls, []);
     assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, true, "解析結果が空なら画面全体で受け付ける");
