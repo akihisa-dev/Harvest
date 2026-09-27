@@ -15,7 +15,7 @@ class StubElement {
     this.children = [];
     this.listeners = new Map();
     this.className = "";
-    this.classList = {add: name => { this.className += this.className ? ` ${name}` : name; }};
+    this.classList = {add: name => { this.className += this.className ? ` ${name}` : name; }, remove: name => { this.className = this.className.split(" ").filter(value => value !== name).join(" "); }};
   }
   addEventListener(name, callback) { this.listeners.set(name, callback); }
   append(...children) { this.children.push(...children.filter(Boolean)); }
@@ -24,7 +24,7 @@ class StubElement {
   getAttribute(name) { return this.attributes.get(name) ?? null; }
   focus() { this.owner.activeElement = this; }
   scrollIntoView() {}
-  dispatch(name) { return this.listeners.get(name)?.({}); }
+  dispatch(name, event = {}) { return this.listeners.get(name)?.({preventDefault() {}, ...event}); }
 }
 
 function descendants(element) {
@@ -132,22 +132,35 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     const allButton = groups.children.find(button => button.textContent === "すべて表示");
     allButton.dispatch("click");
     const firstRow = document.querySelector("#images").children[0];
-    const firstMoveDown = firstRow.children[1].children[2].children[2];
     const firstUrl = firstRow.children[0].src;
-    firstMoveDown.dispatch("click");
+    assert.equal(firstRow.draggable, true);
+    assert.equal(firstRow.children[0].draggable, false);
+    assert.equal(descendants(firstRow).some(element => element.tagName === "button"), false);
+    firstRow.dispatch("dragstart");
+    document.querySelector("#images").children[3].dispatch("dragover");
+    document.querySelector("#images").children[3].dispatch("drop");
+    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), [resultImages[1], resultImages[2], resultImages[3], firstUrl]);
     assert.equal(document.activeElement.getAttribute("data-focus-url"), firstUrl);
-    assert.equal(document.querySelector("#images").children[1].children[1].children[0].textContent, "2");
-    assert.equal(document.querySelector("#images").children[1].children[0].src, firstUrl);
-    const secondMoveDown = document.querySelector("#images").children[1].children[1].children[2].children[2];
-    secondMoveDown.dispatch("click");
-    const terminalMoveDown = document.querySelector("#images").children[2].children[1].children[2].children[2];
-    terminalMoveDown.dispatch("click");
-    assert.equal(document.activeElement.getAttribute("data-focus-url"), firstUrl);
-    assert.equal(document.activeElement.getAttribute("data-focus-action"), "checkbox");
+    assert.equal(document.activeElement.getAttribute("data-focus-action"), "drag");
+    assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択");
+    const lastRow = document.querySelector("#images").children[3];
+    lastRow.dispatch("keydown", {target: lastRow, altKey: true, key: "ArrowUp"});
+    assert.equal(document.querySelector("#images").children[2].children[0].src, firstUrl);
+
+    coverButton.dispatch("click");
+    const coverRows = document.querySelector("#images").children;
+    coverRows[1].dispatch("dragstart");
+    coverRows[0].dispatch("drop");
+    allButton.dispatch("click");
+    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), [resultImages[1], resultImages[3], firstUrl, resultImages[2]]);
+    const beforeExternalDrop = document.querySelector("#images").children.map(row => row.children[0].src);
+    document.querySelector("#images").children[0].dispatch("drop");
+    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), beforeExternalDrop);
 
     globalThis.fetch = async () => { throw new Error("test"); };
     document.querySelector("#export").dispatch("click");
     assert.equal(document.querySelector("#status").textContent, "画像を準備しています… 0 / 4");
+    assert.equal(document.querySelector("#images").children.every(row => !row.draggable), true);
     assert.equal(document.querySelector("#status").dataset.state, "busy");
     await new Promise(resolve => setImmediate(resolve));
 

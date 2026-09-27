@@ -34,8 +34,9 @@ type StatusState = "info" | "busy" | "success" | "error";
 type FocusTarget =
   | {kind: "group"; key: string}
   | {kind: "pdf-group"; key: string}
-  | {kind: "image"; url: string; action: "checkbox" | "move-up" | "move-down"};
+  | {kind: "image"; url: string; action: "checkbox" | "drag"};
 let focusTarget: FocusTarget | null = null;
+let draggedImage: ImageItem | null = null;
 
 function required<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -286,6 +287,21 @@ function imageFilename(url: string): string {
   catch { return url; }
 }
 
+function moveImage(visibleImages: readonly ImageItem[], source: ImageItem, target: ImageItem): void {
+  if (busy || source === target) return;
+  const reordered = [...visibleImages];
+  const from = reordered.indexOf(source);
+  const to = reordered.indexOf(target);
+  if (from < 0 || to < 0) return;
+  reordered.splice(from, 1);
+  reordered.splice(to, 0, source);
+  const visibleSet = new Set(visibleImages);
+  let index = 0;
+  images = images.map(item => visibleSet.has(item) ? reordered[index++]! : item);
+  requestFocus({kind: "image", url: source.url, action: "drag"});
+  render();
+}
+
 function renderImages(visibleImages: readonly ImageItem[]): void {
   imagesElement.replaceChildren();
   visibleImages.forEach((item, index) => {
@@ -326,29 +342,51 @@ function renderImages(visibleImages: readonly ImageItem[]): void {
     pdfMark.textContent = "PDF";
     label.append(checkbox, pdfMark);
     actions.append(label);
-    for (const [text, delta] of [["↑", -1], ["↓", 1]] as const) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = text;
-      button.title = delta < 0 ? "上へ移動" : "下へ移動";
-      const action = delta < 0 ? "move-up" : "move-down";
-      button.setAttribute("data-focus-kind", "image");
-      button.setAttribute("data-focus-url", item.url);
-      button.setAttribute("data-focus-action", action);
-      button.setAttribute("aria-label", `${name.textContent}を${delta < 0 ? "上" : "下"}へ移動`);
-      button.disabled = busy || index + delta < 0 || index + delta >= visibleImages.length;
-      button.addEventListener("click", () => {
-        const other = visibleImages[index + delta];
-        if (!other) return;
-        requestFocus({kind: "image", url: item.url, action});
-        const itemIndex = images.indexOf(item);
-        const otherIndex = images.indexOf(other);
-        images[itemIndex] = other;
-        images[otherIndex] = item;
-        render();
-      });
-      actions.append(button);
-    }
+    row.draggable = !busy;
+    row.tabIndex = 0;
+    row.title = "ドラッグで並べ替え（キーボード: Alt + ↑ / ↓）";
+    row.setAttribute("data-focus-kind", "image");
+    row.setAttribute("data-focus-url", item.url);
+    row.setAttribute("data-focus-action", "drag");
+    row.setAttribute("aria-label", `${name.textContent}、${overallIndex + 1}番目。ドラッグまたはAltと上下矢印で並べ替え`);
+    preview.draggable = false;
+    row.addEventListener("dragstart", event => {
+      if (busy || (event.target && event.target instanceof Element && event.target.closest(".item-actions"))) {
+        event.preventDefault();
+        return;
+      }
+      draggedImage = item;
+      row.classList.add("dragging");
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", "harvest-image");
+      }
+    });
+    row.addEventListener("dragover", event => {
+      if (busy || !draggedImage || draggedImage === item) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      row.classList.add("drop-target");
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("drop-target"));
+    row.addEventListener("drop", event => {
+      event.preventDefault();
+      row.classList.remove("drop-target");
+      const source = draggedImage;
+      draggedImage = null;
+      if (source) moveImage(visibleImages, source, item);
+    });
+    row.addEventListener("dragend", () => {
+      draggedImage = null;
+      row.classList.remove("dragging");
+      for (const element of imagesElement.children) element.classList.remove("drop-target");
+    });
+    row.addEventListener("keydown", event => {
+      if (event.target !== row || !event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+      event.preventDefault();
+      const target = visibleImages[index + (event.key === "ArrowUp" ? -1 : 1)];
+      if (target) moveImage(visibleImages, item, target);
+    });
     body.append(order, name, actions);
     row.append(preview, body);
     imagesElement.append(row);
