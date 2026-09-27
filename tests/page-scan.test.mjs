@@ -88,6 +88,7 @@ async function runWithFixture(document, observerClass, callback) {
     getComputedStyle: globalThis.getComputedStyle,
     MutationObserver: globalThis.MutationObserver,
     setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout,
   };
   globalThis.document = document;
   globalThis.location = {href: "https://example.test/viewer"};
@@ -101,6 +102,7 @@ async function runWithFixture(document, observerClass, callback) {
     callback();
     return 0;
   };
+  globalThis.clearTimeout = () => {};
   try {
     return await callback();
   } finally {
@@ -110,6 +112,116 @@ async function runWithFixture(document, observerClass, callback) {
     }
   }
 }
+
+test("期限切れでは部分結果を返さずMutationObserverを解放する", async () => {
+  const root = new FixtureElement("html", {}, [new FixtureElement("img", {src: "https://cdn.example.test/pages/first.jpg"})]);
+  let disconnected = false;
+  let now = 0;
+  class TrackingObserver {
+    constructor() {}
+    observe() {}
+    disconnect() { disconnected = true; }
+  }
+  const document = new FixtureDocument(root);
+  const previousPerformance = globalThis.performance;
+  try {
+    await runWithFixture(document, TrackingObserver, async () => {
+      Object.defineProperty(globalThis, "performance", {
+        configurable: true,
+        value: {now: () => now},
+      });
+      const image = root.children[0];
+      const getAttribute = image.getAttribute.bind(image);
+      image.getAttribute = name => {
+        now = 20_001;
+        return getAttribute(name);
+      };
+      await assert.rejects(scanDocument(), /20 second deadline/);
+    });
+  } finally {
+    Object.defineProperty(globalThis, "performance", {configurable: true, value: previousPerformance});
+  }
+  assert.equal(disconnected, true);
+});
+
+test("yieldから戻った時点で期限切れなら走査を終了する", async () => {
+  const root = new FixtureElement("html", {}, Array.from({length: 251}, () => new FixtureElement("div")));
+  let now = 0;
+  const previousPerformance = globalThis.performance;
+  try {
+    await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, async () => {
+      Object.defineProperty(globalThis, "performance", {configurable: true, value: {now: () => now}});
+      globalThis.setTimeout = (callback, delay) => {
+        if (delay === 800 || delay === 250) return 1;
+        now = 20_001;
+        callback();
+        return 0;
+      };
+      await assert.rejects(scanDocument(), /20 second deadline/);
+    });
+  } finally {
+    Object.defineProperty(globalThis, "performance", {configurable: true, value: previousPerformance});
+  }
+});
+
+test("位置評価中の期限切れでは結果を返さず監視を解放する", async () => {
+  const image = new FixtureElement("img", {src: "https://cdn.example.test/pages/position.jpg"}, [], {
+    rect: {top: 1, left: 1, width: 10, height: 10},
+  });
+  const root = new FixtureElement("html", {}, [image]);
+  let now = 0;
+  let disconnected = false;
+  class TrackingObserver extends EmptyMutationObserver { disconnect() { disconnected = true; } }
+  const previousPerformance = globalThis.performance;
+  try {
+    await runWithFixture(new FixtureDocument(root), TrackingObserver, async () => {
+      Object.defineProperty(globalThis, "performance", {configurable: true, value: {now: () => now}});
+      globalThis.setTimeout = callback => { callback(); return 0; };
+      image.getBoundingClientRect = () => { now = 20_001; return image.rect; };
+      await assert.rejects(scanDocument(), /20 second deadline/);
+    });
+  } finally {
+    Object.defineProperty(globalThis, "performance", {configurable: true, value: previousPerformance});
+  }
+  assert.equal(disconnected, true);
+});
+
+test("追加要素の走査期限切れをrejectし、次の走査は正常に完了する", async () => {
+  const root = new FixtureElement("html");
+  let observerCallback;
+  let now = 0;
+  let quietTimerCount = 0;
+  const added = new FixtureElement("img", {src: "https://cdn.example.test/pages/added.jpg"});
+  const getAttribute = added.getAttribute.bind(added);
+  added.getAttribute = name => { now = 20_001; return getAttribute(name); };
+  class TrackingObserver extends EmptyMutationObserver {
+    constructor(callback) { super(); observerCallback = callback; }
+  }
+  const previousPerformance = globalThis.performance;
+  try {
+    const document = new FixtureDocument(root);
+    await runWithFixture(document, TrackingObserver, async () => {
+      Object.defineProperty(globalThis, "performance", {configurable: true, value: {now: () => now}});
+      globalThis.setTimeout = (callback, delay) => {
+        if (delay === 800) return 1;
+        if (delay === 250 && quietTimerCount++ === 0) {
+          root.appendChild(added);
+          observerCallback([{type: "childList", addedNodes: [added]}]);
+          return 1;
+        }
+        callback();
+        return 0;
+      };
+      await assert.rejects(scanDocument(), /20 second deadline/);
+      now = 0;
+      added.getAttribute = getAttribute;
+      globalThis.setTimeout = callback => { callback(); return 0; };
+      assert.deepEqual((await scanDocument()).images, ["https://cdn.example.test/pages/added.jpg"]);
+    });
+  } finally {
+    Object.defineProperty(globalThis, "performance", {configurable: true, value: previousPerformance});
+  }
+});
 
 class EmptyMutationObserver {
   constructor() {}

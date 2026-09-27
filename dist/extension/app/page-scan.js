@@ -6,6 +6,11 @@
  * resolving an import or a module-level variable in the extension context.
  */
 export async function scanDocument() {
+    const deadline = performance.now() + 20_000;
+    const checkDeadline = () => {
+        if (performance.now() >= deadline)
+            throw new Error("Page scan exceeded its 20 second deadline");
+    };
     const candidates = new Map();
     let nextDetectionOrder = 0;
     const imageAttributes = [
@@ -23,6 +28,7 @@ export async function scanDocument() {
     const imageSrcsetAttributes = ["data-srcset", "srcset"];
     const imageUrlPattern = /https?:\/\/[^\s"'\\<>]+?\.(?:jpe?g|png|webp|avif)(?:[?#][^\s"'\\<>]*)?/gi;
     const add = (value, element) => {
+        checkDeadline();
         const candidate = value?.trim();
         if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:"))
             return;
@@ -53,23 +59,31 @@ export async function scanDocument() {
         if (!value)
             return;
         for (const match of value.matchAll(imageUrlPattern)) {
+            checkDeadline();
             const candidate = match[0];
             if (candidate)
                 add(candidate.replaceAll("&amp;", "&"), element);
         }
+        checkDeadline();
     };
     const parseSrcset = (value) => {
         const entries = [];
         let index = 0;
         while (index < value.length) {
-            while (index < value.length && (value[index] === "," || /\s/.test(value[index] ?? "")))
+            checkDeadline();
+            while (index < value.length && (value[index] === "," || /\s/.test(value[index] ?? ""))) {
+                if (index % 256 === 0)
+                    checkDeadline();
                 index += 1;
+            }
             if (index >= value.length)
                 break;
             const start = index;
             let whitespace = -1;
             let commaSeparator = -1;
             while (index < value.length) {
+                if (index % 256 === 0)
+                    checkDeadline();
                 if (/\s/.test(value[index] ?? "")) {
                     whitespace = index;
                     break;
@@ -134,6 +148,7 @@ export async function scanDocument() {
         return [best.url];
     };
     const scanBackground = (element) => {
+        checkDeadline();
         let background = "";
         try {
             background = getComputedStyle(element).backgroundImage;
@@ -143,16 +158,19 @@ export async function scanDocument() {
         }
         const urlPattern = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/gi;
         for (const match of background.matchAll(urlPattern)) {
+            checkDeadline();
             add(match[1] ?? match[2] ?? match[3], element);
         }
     };
     const orderedImages = () => {
         const documentOrder = new Map();
         for (const [index, element] of Array.from(document.querySelectorAll("*")).entries()) {
+            checkDeadline();
             documentOrder.set(element, index);
         }
         const positionCache = new Map();
         const positioned = (element) => {
+            checkDeadline();
             if (positionCache.has(element))
                 return positionCache.get(element);
             let result;
@@ -160,18 +178,22 @@ export async function scanDocument() {
                 positionCache.set(element, result);
                 return result;
             }
-            try {
-                for (let current = element; current; current = current.parentElement) {
-                    const style = getComputedStyle(current);
-                    if (style.display === "none" || style.visibility === "hidden") {
-                        positionCache.set(element, result);
-                        return result;
-                    }
+            for (let current = element; current; current = current.parentElement) {
+                checkDeadline();
+                let style;
+                try {
+                    style = getComputedStyle(current);
+                }
+                catch {
+                    // Detached or browser-owned elements may not have computed styles.
+                }
+                checkDeadline();
+                if (style && (style.display === "none" || style.visibility === "hidden")) {
+                    positionCache.set(element, result);
+                    return result;
                 }
             }
-            catch {
-                // Detached or browser-owned elements may not have computed styles.
-            }
+            checkDeadline();
             if (typeof element.getBoundingClientRect !== "function") {
                 positionCache.set(element, result);
                 return result;
@@ -188,16 +210,18 @@ export async function scanDocument() {
             catch {
                 result = undefined;
             }
+            checkDeadline();
             positionCache.set(element, result);
             return result;
         };
-        return [...candidates.values()]
+        const ordered = [...candidates.values()]
             .map(record => ({
             record,
             position: record.elements.map(positioned).filter((value) => Boolean(value))
-                .sort((a, b) => a.top - b.top || a.left - b.left || a.order - b.order)[0],
+                .sort((a, b) => { checkDeadline(); return a.top - b.top || a.left - b.left || a.order - b.order; })[0],
         }))
             .sort((a, b) => {
+            checkDeadline();
             if (a.position && b.position) {
                 return a.position.top - b.position.top
                     || a.position.left - b.position.left
@@ -211,6 +235,8 @@ export async function scanDocument() {
             return a.record.detectionOrder - b.record.detectionOrder;
         })
             .map(({ record }) => record.url);
+        checkDeadline();
+        return ordered;
     };
     const imagePositionElement = (element) => {
         if (element.tagName.toLowerCase() !== "source")
@@ -222,6 +248,7 @@ export async function scanDocument() {
         return element;
     };
     const collectElement = (element) => {
+        checkDeadline();
         const tagName = element.tagName.toLowerCase();
         const positionElement = imagePositionElement(element);
         if (tagName === "img" || tagName === "source") {
@@ -266,7 +293,9 @@ export async function scanDocument() {
         scanBackground(element);
     };
     const yieldToPage = async () => {
+        checkDeadline();
         await new Promise(resolve => setTimeout(resolve, 0));
+        checkDeadline();
     };
     const root = document.documentElement;
     const chunkSize = 250;
@@ -307,6 +336,7 @@ export async function scanDocument() {
                 pendingElements.clear();
                 for (const element of batch) {
                     const tree = [element, ...Array.from(element.querySelectorAll("*"))];
+                    checkDeadline();
                     for (let start = 0; start < tree.length; start += chunkSize) {
                         for (const node of tree.slice(start, start + chunkSize))
                             collectElement(node);
@@ -321,22 +351,38 @@ export async function scanDocument() {
     };
     const queueMutationElements = (mutations) => {
         for (const mutation of mutations) {
+            if (performance.now() >= deadline)
+                return false;
             if (mutation.type === "attributes") {
                 if (mutation.target.nodeType === 1)
                     pendingElements.add(mutation.target);
                 continue;
             }
             for (const node of Array.from(mutation.addedNodes)) {
+                if (performance.now() >= deadline)
+                    return false;
                 if (node.nodeType === 1)
                     pendingElements.add(node);
             }
         }
+        return true;
     };
     let waitPromise;
     if (root && typeof MutationObserver !== "undefined") {
         waitPromise = new Promise(resolve => { resolveWait = resolve; });
         observer = new MutationObserver(mutations => {
-            queueMutationElements(mutations);
+            if (performance.now() >= deadline) {
+                finish();
+                return;
+            }
+            if (!queueMutationElements(mutations)) {
+                finish();
+                return;
+            }
+            if (performance.now() >= deadline) {
+                finish();
+                return;
+            }
             if (mutations.length > 0)
                 waitForQuiet();
         });
@@ -349,6 +395,7 @@ export async function scanDocument() {
         maxTimer = setTimeout(finish, maxWaitMs);
     }
     try {
+        checkDeadline();
         const elements = Array.from(document.querySelectorAll("*"));
         for (let start = 0; start < elements.length; start += chunkSize) {
             for (const element of elements.slice(start, start + chunkSize))
@@ -357,6 +404,7 @@ export async function scanDocument() {
                 await yieldToPage();
         }
         for (const node of Array.from(document.querySelectorAll("script, style"))) {
+            checkDeadline();
             scanText(node.textContent);
         }
         if (root && typeof document.createTreeWalker === "function") {
@@ -364,6 +412,7 @@ export async function scanDocument() {
             let textNode = walker.nextNode();
             let textCount = 0;
             while (textNode) {
+                checkDeadline();
                 scanText(textNode.textContent);
                 textCount += 1;
                 if (textCount % chunkSize === 0)
@@ -372,15 +421,21 @@ export async function scanDocument() {
             }
         }
         await flushPending();
+        checkDeadline();
         if (waitPromise && !settled) {
             quietStarted = true;
             waitForQuiet();
         }
         await waitPromise;
+        checkDeadline();
         await flushPending();
+        checkDeadline();
     }
     finally {
         finish();
     }
-    return { url: location.href, title: document.title, images: orderedImages() };
+    checkDeadline();
+    const images = orderedImages();
+    checkDeadline();
+    return { url: location.href, title: document.title, images };
 }
