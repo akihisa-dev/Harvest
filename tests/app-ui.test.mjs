@@ -133,14 +133,13 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
     assert.equal(document.querySelector("#images").children.length, 2);
 
-    const coverCheckbox = document.querySelector("#images").children[0].children[1].children[2].children[0].children[0];
-    const selectionLabel = document.querySelector("#images").children[0].children[1].children[2].children[0];
-    assert.equal(selectionLabel.children.length, 1);
-    assert.equal(selectionLabel.children[0], coverCheckbox);
-    assert.match(coverCheckbox.getAttribute("aria-label"), /^PDFに含める /);
-    coverCheckbox.checked = false;
-    coverCheckbox.dispatch("change");
-    assert.equal(document.activeElement.getAttribute("data-focus-action"), "checkbox");
+    const coverRow = document.querySelector("#images").children[0];
+    assert.equal(descendants(coverRow).some(element => element.tagName === "input"), false);
+    assert.equal(coverRow.getAttribute("aria-pressed"), "true");
+    coverRow.dispatch("pointerdown");
+    coverRow.dispatch("click");
+    assert.equal(document.activeElement.getAttribute("data-focus-action"), "drag");
+    assert.equal(document.querySelector("#images").children[0].getAttribute("aria-pressed"), "false");
     assert.equal(document.querySelector("#count").textContent, "3 / 4枚を選択・2枚を表示");
     const mixedCoverCheckbox = getPdfGroupCheckbox(coverButton.getAttribute("data-focus-key"));
     assert.equal(mixedCoverCheckbox.indeterminate, true);
@@ -157,6 +156,7 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     assert.equal(firstRow.draggable, true);
     assert.equal(firstRow.children[0].draggable, false);
     assert.equal(descendants(firstRow).some(element => element.tagName === "button"), false);
+    firstRow.dispatch("pointerdown");
     firstRow.dispatch("dragstart");
     assert.equal(firstRow.className.includes("dragging"), true);
     const lastRowBeforeDrop = document.querySelector("#images").children[3];
@@ -167,6 +167,8 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     assert.ok(document.animations.length > 0);
     lastRowBeforeDrop.dispatch("drop", {clientX: 75, clientY: 350});
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), [resultImages[1], resultImages[2], resultImages[3], firstUrl]);
+    document.querySelector("#images").children[3].dispatch("click");
+    assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択");
     assert.equal(document.activeElement.getAttribute("data-focus-url"), firstUrl);
     assert.equal(document.activeElement.getAttribute("data-focus-action"), "drag");
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択");
@@ -182,6 +184,14 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     cancelSource.dispatch("dragend");
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), beforeCancel);
     assert.equal(cancelSource.className.includes("dragging"), false);
+    cancelSource.dispatch("click");
+    assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択");
+    cancelSource.dispatch("pointerdown");
+    cancelSource.dispatch("click");
+    assert.equal(document.querySelector("#count").textContent, "3 / 4枚を選択");
+    const keyboardRow = document.querySelector("#images").children[1];
+    keyboardRow.dispatch("keydown", {target: keyboardRow, key: " "});
+    assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択");
 
     coverButton.dispatch("click");
     const coverRows = document.querySelector("#images").children;
@@ -202,6 +212,9 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     assert.equal(document.querySelector("#status").textContent, "画像を準備しています… 0 / 4");
     assert.equal(document.querySelector("#images").children.every(row => !row.draggable), true);
     assert.equal(document.querySelector("#status").dataset.state, "busy");
+    document.querySelector("#images").children[0].dispatch("pointerdown");
+    document.querySelector("#images").children[0].dispatch("click");
+    assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択");
     const busyOrder = document.querySelector("#images").children.map(row => row.children[0].src);
     document.querySelector("#images").children[0].dispatch("dragstart");
     document.querySelector("#images").children[1].dispatch("dragover", {clientX: 75, clientY: 150});
@@ -211,12 +224,10 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     await new Promise(resolve => setImmediate(resolve));
 
     for (;;) {
-      const checkbox = [...document.querySelector("#images").children]
-        .map(row => row.children[1].children[2].children[0].children[0])
-        .find(input => input.checked);
-      if (!checkbox) break;
-      checkbox.checked = false;
-      checkbox.dispatch("change");
+      const selectedRow = document.querySelector("#images").children.find(row => row.getAttribute("aria-pressed") === "true");
+      if (!selectedRow) break;
+      selectedRow.dispatch("pointerdown");
+      selectedRow.dispatch("click");
     }
     assert.equal(document.querySelector("#export").disabled, true);
     assert.equal(document.querySelector("#export").textContent, "PDFを保存");

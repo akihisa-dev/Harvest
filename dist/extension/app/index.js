@@ -22,6 +22,7 @@ let busy = false;
 let scanState = "initial";
 let focusTarget = null;
 let draggedImage = null;
+let suppressThumbnailClick = false;
 function required(selector) {
     const element = document.querySelector(selector);
     if (!element)
@@ -94,19 +95,8 @@ function restoreFocus() {
         else if (element.getAttribute("data-focus-url") !== target.url ||
             element.getAttribute("data-focus-action") !== target.action)
             continue;
-        const disabled = "disabled" in element && Boolean(element.disabled);
-        if (!disabled || target.kind !== "image" || target.action === "checkbox") {
-            element.focus();
-            return;
-        }
-        for (const fallback of document.querySelectorAll("[data-focus-kind]")) {
-            if (fallback.getAttribute("data-focus-kind") === "image" &&
-                fallback.getAttribute("data-focus-url") === target.url &&
-                fallback.getAttribute("data-focus-action") === "checkbox") {
-                fallback.focus();
-                return;
-            }
-        }
+        element.focus();
+        return;
     }
 }
 function addScan(result) {
@@ -392,33 +382,41 @@ function renderImages(visibleImages) {
         name.className = "item-title";
         name.textContent = imageFilename(item.url);
         name.title = item.url;
-        const actions = document.createElement("div");
-        actions.className = "item-actions";
-        const label = document.createElement("label");
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = item.selected;
-        checkbox.disabled = busy;
-        checkbox.setAttribute("data-focus-kind", "image");
-        checkbox.setAttribute("data-focus-url", item.url);
-        checkbox.setAttribute("data-focus-action", "checkbox");
-        checkbox.setAttribute("aria-label", `PDFに含める ${name.textContent}`);
-        checkbox.addEventListener("change", () => { requestFocus({ kind: "image", url: item.url, action: "checkbox" }); item.selected = checkbox.checked; render(); });
-        label.append(checkbox);
-        actions.append(label);
+        const selectedMark = document.createElement("span");
+        selectedMark.className = "item-selected";
+        selectedMark.textContent = "✓";
+        selectedMark.hidden = !item.selected;
+        selectedMark.setAttribute("aria-hidden", "true");
+        const toggleSelection = () => {
+            if (busy)
+                return;
+            item.selected = !item.selected;
+            requestFocus({ kind: "image", url: item.url, action: "drag" });
+            render();
+        };
+        row.addEventListener("pointerdown", () => { suppressThumbnailClick = false; });
+        row.addEventListener("click", () => {
+            if (suppressThumbnailClick || draggedImage)
+                return;
+            toggleSelection();
+        });
+        row.setAttribute("role", "button");
+        row.setAttribute("aria-pressed", String(item.selected));
+        row.setAttribute("aria-disabled", String(busy));
         row.draggable = !busy;
         row.tabIndex = 0;
-        row.title = "ドラッグで並べ替え（キーボード: Alt + ↑ / ↓）";
+        row.title = "クリックでPDF選択、ドラッグで並べ替え（キーボード: Enter / Spaceで選択、Alt + ↑ / ↓で移動）";
         row.setAttribute("data-focus-kind", "image");
         row.setAttribute("data-focus-url", item.url);
         row.setAttribute("data-focus-action", "drag");
-        row.setAttribute("aria-label", `${name.textContent}、${overallIndex + 1}番目。ドラッグまたはAltと上下矢印で並べ替え`);
+        row.setAttribute("aria-label", `${name.textContent}、${overallIndex + 1}番目。クリックでPDF選択、ドラッグまたはAltと上下矢印で並べ替え`);
         preview.draggable = false;
         row.addEventListener("dragstart", event => {
-            if (busy || (event.target && event.target instanceof Element && event.target.closest(".item-actions"))) {
+            if (busy) {
                 event.preventDefault();
                 return;
             }
+            suppressThumbnailClick = true;
             draggedImage = item;
             if (event.dataTransfer)
                 event.dataTransfer.setDragImage(preview, preview.width / 2, preview.height / 2);
@@ -438,6 +436,12 @@ function renderImages(visibleImages) {
             showInsertion([...visibleImages]);
         });
         row.addEventListener("keydown", event => {
+            if (event.target === row && !event.altKey && ["Enter", " "].includes(event.key)) {
+                event.preventDefault();
+                if (!event.repeat && !draggedImage)
+                    toggleSelection();
+                return;
+            }
             if (event.target !== row || !event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key))
                 return;
             event.preventDefault();
@@ -445,7 +449,7 @@ function renderImages(visibleImages) {
             if (target)
                 moveImage(visibleImages, item, target);
         });
-        body.append(order, name, actions);
+        body.append(order, name, selectedMark);
         row.append(preview, body);
         imagesElement.append(row);
     });
