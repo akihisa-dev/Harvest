@@ -11,7 +11,8 @@ Harvestの公開リポジトリは [akihisa-dev/Harvest](https://github.com/akih
 
 ## セキュリティ
 
-- Private vulnerability reporting、Dependabot alertsとsecurity updates、Secret scanningとpush protectionを有効にする。
+- Private vulnerability reporting、Secret scanningとpush protectionを有効にする。
+- Dependabotによる依存パッケージの自動更新PRは使わない。定期更新用の設定ファイルを追加しない。
 - GitHub Actionsは使わない。公開先の設定でActionsも無効にする。
 - 公開前に脆弱性報告の連絡経路と対応担当を確定する。
 
