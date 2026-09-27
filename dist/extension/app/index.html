@@ -9,14 +9,13 @@
   </head>
   <body>
     <div class="app-header">
-      <header class="topbar"><h1>Harvest</h1><span>画像を集めて、PDFに。</span></header>
       <section class="controls" aria-labelledby="source-heading">
-        <div class="source-heading"><h2 id="source-heading"><label for="source-url">ページURL</label></h2><span>任意</span></div>
+        <div class="visually-hidden"><h2 id="source-heading"><label for="source-url">ページURL</label></h2><span>任意</span></div>
         <div class="source-row">
-          <input id="source-url" type="url" inputmode="url" placeholder="https://example.com/" autocomplete="url" aria-describedby="source-hint">
+          <input id="source-url" type="url" inputmode="url" placeholder="ページURL（空欄なら現在のページ）" autocomplete="url" aria-describedby="source-hint">
           <button id="scan" type="button">解析</button>
         </div>
-        <p id="source-hint" class="hint">空欄なら、開いているページを解析します。</p>
+        <p id="source-hint" class="visually-hidden">空欄なら、開いているページを解析します。</p>
       </section>
       <div class="results-controls">
         <div class="results-heading">

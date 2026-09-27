@@ -39,17 +39,11 @@ section, aside { min-width: 0; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 .app-header { flex: none; max-height: 65%; overflow-y: auto; background: var(--surface); border-bottom: 1px solid var(--line); }
-.topbar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 14px 16px 0; }
-.topbar h1 { font-size: 20px; font-weight: 650; letter-spacing: -.6px; }
-.topbar span { font-size: 11px; color: var(--muted); }
-.controls { padding: 12px 16px 14px; }
-.source-heading { display: flex; align-items: baseline; gap: 7px; margin-bottom: 6px; }
-.source-heading > span { font-size: 11px; color: var(--muted); }
+.controls { padding: 8px 16px; }
 .source-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .source-row input { width: 100%; min-width: 0; height: 36px; padding: 7px 10px; border: 1px solid var(--control-line); border-radius: var(--radius); color: var(--ink); background: var(--surface); }
 .source-row input::placeholder { color: #767676; }
 .source-row input:disabled { background: #f4f4f4; color: var(--muted); }
-.hint { margin-top: 6px; font-size: 11px; color: var(--muted); }
 #scan, #export { color: #fff; background: var(--ink); border-color: var(--ink); }
 #scan { min-width: 64px; }
 #scan:hover:not(:disabled), #export:hover:not(:disabled) { background: #404040; border-color: #404040; }
@@ -147,15 +141,8 @@ main { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 16px; sc
   }
 }
 
-@media (min-width: 560px) {
-  .topbar { padding-top: 12px; }
-  .controls { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0 12px; padding-top: 10px; }
-  .source-heading { margin: 0; }
-  .hint { grid-column: 2; }
-}
-
 @media (max-width: 359px) {
-  .topbar, .controls, .results-controls { padding-left: 12px; padding-right: 12px; }
+  .controls, .results-controls { padding-left: 12px; padding-right: 12px; }
   main { padding: 12px; }
   .image-list { grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr)); gap: 10px; }
 }
