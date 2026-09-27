@@ -35,12 +35,12 @@ test("明暗の自動追従でも本文・補助文・選択ボタンの文字�
   }
 });
 
-test("上部の内容が増えても操作を切り捨てず画像領域の高さを残す", () => {
+test("上部と画像領域の配分を内容によらず固定し操作を切り捨てない", () => {
   const header = css.match(/^\.app-header\s*\{([^}]+)\}/m)?.[1];
   assert.ok(header);
-  assert.doesNotMatch(header, /(?:^|;)\s*height\s*:/, "上部を固定高に閉じ込めない");
+  assert.match(header, /(?:^|;)\s*height:\s*clamp\(168px, 34dvh, 240px\)/, "内容によらず同じ画面では同じ高さを使う");
   const maximum = Number(header.match(/max-height:\s*(\d+)dvh/)?.[1]);
   assert.ok(maximum > 0 && maximum <= 60, "画像領域に画面の40%以上を残す");
   assert.match(header, /overflow-y:\s*auto/, "上部の操作はスクロールで到達できる");
-  assert.doesNotMatch(css, /\.app-header\s*\{[^}]*\bheight:\s*clamp/, "低い画面でも固定高に戻さない");
+  assert.match(header, /grid-template-rows:\s*max-content max-content/, "固定領域の中で内容を圧縮せずスクロールさせる");
 });
