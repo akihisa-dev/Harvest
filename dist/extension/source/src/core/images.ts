@@ -1,0 +1,130 @@
+export interface ImageItem {
+  url: string;
+  sourcePage: string;
+  selected: boolean;
+}
+
+export interface ImageGroup {
+  readonly label: string;
+  readonly priority: number;
+  readonly items: readonly string[];
+  readonly isMangaBody: boolean;
+}
+
+export type ImageGroups = Record<string, ImageGroup>;
+
+export function filterImagesByGroup<T extends {url: string}>(images: readonly T[], group: ImageGroup | null): T[] {
+  if (!group) return [...images];
+  const urls = new Set(group.items);
+  return images.filter(item => urls.has(item.url));
+}
+
+export function normalizeImageUrls(candidates: readonly string[], pageUrl: string): string[] {
+  const found = new Set<string>();
+  for (const candidate of candidates) {
+    try {
+      // Candidates are URLs; srcset descriptors are parsed at collection time.
+      const cleaned = candidate.trim();
+      if (!cleaned) continue;
+      const url = new URL(cleaned, pageUrl);
+      if (url.protocol !== "http:" && url.protocol !== "https:") continue;
+      url.hash = "";
+      const lower = url.href.toLowerCase();
+      const contentPath = ["/fanzine/", "/covers/", "/pages/", "/storage/", "/uploads/", "/viewer/"]
+        .some(marker => lower.includes(marker));
+      const excluded = ["avatar", "logo", "icon", "button", "advert", "tracking", "pixel", "analytics", "banner", "/theme", "/plugins/", "/wp-includes/", "loading"]
+        .some(marker => lower.includes(marker)) || /\.(?:svg|gif|ico|php|cgi)$/i.test(url.pathname);
+      if (excluded && !contentPath) continue;
+      found.add(url.href);
+    } catch {
+      // A malformed candidate cannot be fetched or exported.
+    }
+  }
+  return [...found];
+}
+
+export function groupImages(images: readonly string[]): ImageGroups {
+  const raw = new Map<string, string[]>();
+  for (const image of images) {
+    if (image.startsWith("data:")) {
+      const items = raw.get("uploaded") ?? [];
+      items.push(image);
+      raw.set("uploaded", items);
+      continue;
+    }
+    try {
+      const url = new URL(image);
+      const parts = url.pathname.split("/").filter(Boolean);
+      const directory = parts.length > 1 ? parts[parts.length - 2] : "root";
+      const { prefix, resolution } = filenamePattern(url.pathname);
+      const key = `${url.hostname}/${directory}|${prefix}|${resolution}`;
+      const items = raw.get(key) ?? [];
+      items.push(image);
+      raw.set(key, items);
+    } catch {
+      const items = raw.get("unknown") ?? [];
+      items.push(image);
+      raw.set("unknown", items);
+    }
+  }
+
+  const groups: ImageGroups = {};
+  const others: string[] = [];
+  for (const [key, items] of raw) {
+    if (key === "uploaded") {
+      groups["0_uploaded"] = {label: `アップロード済み (${items.length}枚)`, priority: 0, items, isMangaBody: false};
+      continue;
+    }
+    if (items.length < 2) {
+      others.push(...items);
+      continue;
+    }
+    const [pathPart = "", prefixPart = "numeric", resolution = ""] = key.split("|");
+    const lowerPath = pathPart.toLowerCase();
+    const isMangaBody = lowerPath.includes("/fanzine") || lowerPath.includes("/pages") || lowerPath.includes("/storage") || lowerPath.includes("/viewer") || items.length >= 10;
+    let label = prefixPart === "numeric" ? "シリーズ" : "セット";
+    let priority = prefixPart === "numeric" ? 1 : 2;
+    if (!isMangaBody && (lowerPath.includes("cover") || lowerPath.includes("thumb"))) {
+      label = "表紙・サムネイル";
+      priority = 3;
+    }
+    if (resolution) label += ` (${resolution})`;
+    groups[`${priority}_${key}`] = {label: `${label} (${items.length}枚)`, priority, items, isMangaBody};
+  }
+  if (others.length) groups["99_others"] = {label: `その他 (${others.length}枚)`, priority: 99, items: others, isMangaBody: false};
+  return groups;
+}
+
+export function defaultDisplayedImageGroup(groups: ImageGroups): string | null {
+  const entries = Object.entries(groups).sort((a, b) =>
+    a[1].priority - b[1].priority || b[1].items.length - a[1].items.length);
+  return entries[0]?.[0] ?? null;
+}
+
+export function defaultSelectedImageGroups(groups: ImageGroups): Record<string, boolean> {
+  const preferred = defaultDisplayedImageGroup(groups);
+  return Object.fromEntries(Object.keys(groups).map(key => [key, key === preferred]));
+}
+
+export function imageGroupLabel(imageUrl: string): string {
+  const url = new URL(imageUrl);
+  const path = url.pathname.split("/").filter(Boolean);
+  const folder = path.length > 1 ? path[path.length - 2] : "";
+  return folder ? `${url.hostname} / ${decodeURIComponentSafe(folder)}` : url.hostname;
+}
+
+function decodeURIComponentSafe(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function filenamePattern(pathname: string): {prefix: string; resolution: string} {
+  const filename = pathname.split("/").pop() || "";
+  const match = filename.match(/([0-9]{3,4})x([0-9]{3,4})/i);
+  const resolution = match ? `${Math.round(Number(match[1]) / 10) * 10}x${Math.round(Number(match[2]) / 10) * 10}` : "";
+  const prefix = filename.match(/^([^0-9]+)/)?.[1] || "numeric";
+  return {prefix, resolution};
+}

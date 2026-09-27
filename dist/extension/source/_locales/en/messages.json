@@ -1,0 +1,11 @@
+{
+  "extensionName": {
+    "message": "Harvest"
+  },
+  "extensionDescription": {
+    "message": "Collect images from web pages in the side panel and save selected images as a PDF."
+  },
+  "openHarvest": {
+    "message": "Open Harvest"
+  }
+}

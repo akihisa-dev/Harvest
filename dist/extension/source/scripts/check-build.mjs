@@ -1,0 +1,30 @@
+import assert from "node:assert/strict";
+import { access, readFile } from "node:fs/promises";
+
+const expected = JSON.parse(await readFile(new URL("../manifest.template.json", import.meta.url), "utf8"));
+const actual = JSON.parse(await readFile(new URL("../dist/extension/manifest.json", import.meta.url), "utf8"));
+assert.deepEqual(actual, expected, "生成manifestがtemplateと一致しません。");
+
+for (const path of [
+  "../dist/extension/background.js",
+  "../dist/extension/app/index.html",
+  "../dist/extension/app/index.js",
+  "../dist/extension/app/pdf-image.js",
+  "../dist/extension/app/motion.js",
+  "../dist/extension/app/localization.js",
+  "../dist/extension/app/page-scan.js",
+  "../dist/extension/app/page-access.js",
+  "../dist/extension/app/collection-mode.js",
+  "../dist/extension/app/style.css",
+  "../dist/extension/core/images.js",
+  "../dist/extension/core/pdf.js",
+  "../dist/extension/icons/icon-16.png",
+  "../dist/extension/icons/icon-32.png",
+  "../dist/extension/icons/icon-48.png",
+  "../dist/extension/icons/icon-128.png",
+  "../dist/extension/_locales/ja/messages.json",
+  "../dist/extension/_locales/en/messages.json"
+]) {
+  await access(new URL(path, import.meta.url));
+}
+console.log("Extension build output is complete.");
