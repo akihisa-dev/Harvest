@@ -271,7 +271,7 @@ async function startScan(): Promise<void> {
     }
     render();
     scanState = images.length ? "results" : "empty";
-    setStatus(images.length ? `${images.length}枚の画像が見つかりました。` : "画像が見つかりませんでした。", images.length ? "success" : "info");
+    setStatus(images.length ? "" : "画像が見つかりませんでした。", "info");
   } catch {
     scanState = "error";
     setStatus("このページを読み取れませんでした。Chromeで開けるWebページを指定してください。", "error");
@@ -788,7 +788,7 @@ resetButton.addEventListener("click", () => {
   scanState = "initial";
   pageTitle = "画像";
   completionElement.hidden = true;
-  setStatus("収集結果を消しました。", "info");
+  setStatus("", "info");
   render();
 });
 backToImagesButton.addEventListener("click", () => { completionElement.hidden = true; imagesElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"}); });

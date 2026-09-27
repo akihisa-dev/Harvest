@@ -136,6 +136,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(empty.textContent, "画像を調べています…");
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(empty.hidden, true);
+    assert.equal(document.querySelector("#status").textContent, "");
     assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択");
     assert.equal(document.querySelector("#export").textContent, "PDFを保存（2枚）");
 
@@ -293,7 +294,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal([...coverRows].some(row => row.children[0].src === hiddenUrl), false);
     coverRows[1].dispatch("dragstart");
     coverRows[0].dispatch("dragover", {clientX: 75, clientY: 25});
-    assert.equal(document.querySelector("#status").dataset.state, "success");
+    assert.equal(document.querySelector("#status").textContent, "");
     coverRows[0].dispatch("drop", {clientX: 75, clientY: 25});
     allButton.dispatch("click");
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), [resultImages[1], resultImages[3], firstUrl, resultImages[2]]);
@@ -346,6 +347,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#export").textContent, "PDFを保存");
     document.querySelector("#reset").dispatch("click");
     assert.equal(empty.hidden, false);
+    assert.equal(document.querySelector("#status").textContent, "");
     assert.equal(empty.textContent, "ここに画像が並びます。\n「解析」を押して、画像を集めましょう。");
     resultImages = [];
     globalThis.fetch = previousFetch;
