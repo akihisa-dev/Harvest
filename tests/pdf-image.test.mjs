@@ -3,7 +3,7 @@ import test from "node:test";
 import { inflateSync } from "node:zlib";
 import { toPdfPage } from "../dist/extension/app/pdf-image.js";
 
-test("最高画質は元の画素と寸法を保ち、通常保存だけJPEGへ変換する", async () => {
+test("設定なしで元の画素と寸法を保ち、JPEGへ再圧縮しない", async () => {
   const previous = { fetch: globalThis.fetch, document: globalThis.document, createImageBitmap: globalThis.createImageBitmap };
   let closed = 0;
   let jpegConversions = 0;
@@ -21,15 +21,12 @@ test("最高画質は元の画素と寸法を保ち、通常保存だけJPEGへ�
   globalThis.document = {createElement: () => canvas};
   globalThis.createImageBitmap = async () => ({width: 2, height: 1, close() { closed++; }});
   try {
-    const page = await toPdfPage("https://example.com/image.png", true);
+    const page = await toPdfPage("https://example.com/image.png");
     assert.equal(page.width, 2);
     assert.equal(page.height, 1);
     assert.deepEqual([...inflateSync(page.rgbFlate)], [12, 34, 56, 78, 90, 123]);
     assert.equal(jpegConversions, 0);
-    const normal = await toPdfPage("https://example.com/image.png", false);
-    assert.deepEqual([...normal.jpeg], [1, 2, 3]);
-    assert.equal(jpegConversions, 1);
-    assert.equal(closed, 2);
+    assert.equal(closed, 1);
   } finally {
     Object.assign(globalThis, previous);
   }

@@ -50,7 +50,7 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
   };
   for (const selector of [
     "#source-url", "#scan", "#export", "#select-all", "#clear-all", "#reset",
-    "#completion", "#back-to-images", "#high-quality", "#images", "#groups", "#group-selections",
+    "#completion", "#back-to-images", "#images", "#groups", "#group-selections",
     "#count", "#empty", "#status",
   ]) document.querySelector(selector);
   const previousDocument = globalThis.document;

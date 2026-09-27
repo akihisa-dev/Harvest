@@ -16,7 +16,6 @@ const clearAllButton = required<HTMLButtonElement>("#clear-all");
 const resetButton = required<HTMLButtonElement>("#reset");
 const completionElement = required<HTMLDivElement>("#completion");
 const backToImagesButton = required<HTMLButtonElement>("#back-to-images");
-const qualityInput = required<HTMLInputElement>("#high-quality");
 const imagesElement = required<HTMLOListElement>("#images");
 const groupsElement = required<HTMLDivElement>("#groups");
 const groupSelectionsElement = required<HTMLDivElement>("#group-selections");
@@ -169,7 +168,6 @@ function setBusy(value: boolean): void {
   busy = value;
   scanButton.disabled = value;
   sourceUrl.disabled = value;
-  qualityInput.disabled = value;
   resetButton.disabled = value;
   exportButton.disabled = value || !images.some(item => item.selected);
   render();
@@ -389,17 +387,11 @@ async function exportPdf(): Promise<void> {
   let failed = 0;
   setStatus(`画像を準備しています… 0 / ${selected.length}`, "busy");
   try {
-    let next = 0;
-    let completed = 0;
-    await Promise.all(Array.from({length: Math.min(qualityInput.checked ? 1 : 3, selected.length)}, async () => {
-      while (next < selected.length) {
-        const index = next++;
-        try { prepared[index] = await toPdfPage(selected[index]!.url, qualityInput.checked); }
-        catch { failed += 1; }
-        completed += 1;
-        setStatus(`画像を準備しています… ${completed} / ${selected.length}`, "busy");
-      }
-    }));
+    for (const [index, image] of selected.entries()) {
+      try { prepared[index] = await toPdfPage(image.url); }
+      catch { failed += 1; }
+      setStatus(`画像を準備しています… ${index + 1} / ${selected.length}`, "busy");
+    }
     const pages = prepared.filter((page): page is PdfImagePage => page !== null);
     if (!pages.length) throw new Error("画像を取得できませんでした。画像のあるページを開いて再度お試しください。");
     setStatus("PDFを作成しています…", "busy");
