@@ -736,19 +736,6 @@ async function exportPdf() {
 }
 scanButton.addEventListener("click", () => { void startScan(); });
 sourceDrop.addEventListener("click", showSourceInput);
-sourceDrop.addEventListener("dragover", event => {
-    if (busy || !event.dataTransfer ||
-        !(event.dataTransfer.types.includes("text/uri-list") || event.dataTransfer.types.includes("text/plain")))
-        return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    sourceDrop.classList.add("drag-over");
-});
-sourceDrop.addEventListener("dragleave", () => sourceDrop.classList.remove("drag-over"));
-sourceDrop.addEventListener("drop", event => {
-    sourceDrop.classList.remove("drag-over");
-    event.preventDefault();
-});
 sourceUrl.addEventListener("input", updateSourceDrop);
 sourceUrl.addEventListener("blur", hideSourceInput);
 sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter")
@@ -756,13 +743,45 @@ sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter")
 function acceptsPageUrlDrop(target) {
     return scanState === "initial" || target === sourceDrop || target === sourceUrl;
 }
-document.addEventListener("dragover", event => {
-    if (busy || !acceptsPageUrlDrop(event.target))
+function isPageUrlDrag(event) {
+    return Boolean(event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain"));
+}
+function clearDropFeedback() {
+    document.body.classList.remove("page-drop-ready");
+    sourceDrop.classList.remove("drag-over");
+    sourceUrl.classList.remove("drag-over");
+}
+let urlDragDepth = 0;
+document.addEventListener("dragenter", event => {
+    if (isPageUrlDrag(event) && !draggedImage)
+        urlDragDepth += 1;
+});
+document.addEventListener("dragleave", event => {
+    if (!isPageUrlDrag(event) && urlDragDepth === 0)
         return;
-    if (event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain"))
-        event.preventDefault();
+    urlDragDepth = Math.max(0, urlDragDepth - 1);
+    if (urlDragDepth === 0)
+        clearDropFeedback();
+});
+document.addEventListener("dragover", event => {
+    if (busy || draggedImage || !isPageUrlDrag(event) || !acceptsPageUrlDrop(event.target)) {
+        clearDropFeedback();
+        return;
+    }
+    event.preventDefault();
+    if (event.dataTransfer)
+        event.dataTransfer.dropEffect = "copy";
+    clearDropFeedback();
+    if (scanState === "initial")
+        document.body.classList.add("page-drop-ready");
+    if (event.target === sourceDrop)
+        sourceDrop.classList.add("drag-over");
+    if (event.target === sourceUrl)
+        sourceUrl.classList.add("drag-over");
 });
 document.addEventListener("drop", event => {
+    urlDragDepth = 0;
+    clearDropFeedback();
     const dropped = event.dataTransfer?.getData("text/uri-list") || event.dataTransfer?.getData("text/plain") || "";
     const url = dropped.split(/\r?\n/).find(line => line && !line.startsWith("#"))?.trim();
     if (!url || !isWebUrl(url))

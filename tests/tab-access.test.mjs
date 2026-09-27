@@ -7,9 +7,10 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
   const elements = new Map();
   const element = selector => {
     if (!elements.has(selector)) {
+      const classes = new Set();
       elements.set(selector, {
         value: "", checked: true, disabled: false, hidden: selector === "#source-url", textContent: "", dataset: {}, style: {}, children: [],
-        classList: {add() {}, remove() {}},
+        classList: {add(name) { classes.add(name); }, remove(name) { classes.delete(name); }, contains(name) { return classes.has(name); }},
         addEventListener(name, callback) { listeners.set(`${selector}:${name}`, callback); },
         setAttribute() {},
         removeAttribute() {},
@@ -29,7 +30,7 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
   const scannedTabs = [];
   const createdUrls = [];
   const removedTabs = [];
-  globalThis.document = {querySelector: element, addEventListener(name, callback) { documentListeners.set(name, callback); }};
+  globalThis.document = {body: element("body"), querySelector: element, addEventListener(name, callback) { documentListeners.set(name, callback); }};
   globalThis.window = {setTimeout, clearTimeout};
   globalThis.chrome = {
     tabs: {
@@ -55,11 +56,18 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     assert.equal(element("#source-url").hidden, true);
     assert.equal(element("#source-drop").hidden, false);
     let prevented = false;
+    documentListeners.get("dragenter")({dataTransfer: {types: ["text/uri-list"]}});
+    documentListeners.get("dragenter")({dataTransfer: {types: ["text/uri-list"]}});
     documentListeners.get("dragover")({
       target: element("#viewer"), dataTransfer: {types: ["text/uri-list"]},
       preventDefault() { prevented = true; },
     });
     assert.equal(prevented, true);
+    assert.equal(element("body").classList.contains("page-drop-ready"), true);
+    documentListeners.get("dragleave")({dataTransfer: {types: ["text/uri-list"]}});
+    assert.equal(element("body").classList.contains("page-drop-ready"), true);
+    documentListeners.get("dragleave")({dataTransfer: {types: ["text/uri-list"]}});
+    assert.equal(element("body").classList.contains("page-drop-ready"), false);
     listeners.get("#source-drop:click")();
     assert.equal(element("#source-url").hidden, false);
     assert.equal(element("#source-drop").hidden, true);
@@ -79,6 +87,7 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
       preventDefault() { prevented = true; },
     });
     assert.equal(prevented, false);
+    assert.equal(element("body").classList.contains("page-drop-ready"), false);
     documentListeners.get("drop")({
       target: element("#viewer"),
       dataTransfer: {getData: () => "https://example.com/ignored"},
@@ -94,12 +103,14 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
       preventDefault() { prevented = true; },
     });
     assert.equal(prevented, true);
+    assert.equal(element("#source-drop").classList.contains("drag-over"), true);
     documentListeners.get("drop")({
       target: element("#source-drop"),
       dataTransfer: {getData: type => type === "text/uri-list" ? "https://example.com/other" : ""},
       preventDefault() {},
     });
     await new Promise(resolve => setImmediate(resolve));
+    assert.equal(element("#source-drop").classList.contains("drag-over"), false);
     assert.equal(element("#source-drop").textContent, "https://example.com/other");
     assert.equal(element("#source-url").hidden, true);
     assert.equal(queries.length, 1);
@@ -114,6 +125,7 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
       preventDefault() { prevented = true; },
     });
     assert.equal(prevented, true);
+    assert.equal(element("#source-url").classList.contains("drag-over"), true);
     element("#source-url").value = "https://example.com/manual";
     listeners.get("#source-url:input")();
     listeners.get("#source-url:keydown")({key: "Enter"});

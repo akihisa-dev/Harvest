@@ -18,6 +18,7 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+body.page-drop-ready::after { content: "URLをドロップして解析"; position: fixed; inset: 8px; z-index: 20; display: grid; place-items: center; border: 2px dashed var(--ink); border-radius: 10px; background: rgb(255 255 255 / 80%); color: var(--ink); font-size: 16px; font-weight: 700; pointer-events: none; }
 button, input { font: inherit; }
 button {
   min-height: 36px;
@@ -50,7 +51,7 @@ section, aside { min-width: 0; }
 .source-row input:disabled { background: #f4f4f4; color: var(--muted); }
 #source-drop { width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; color: var(--muted); background: var(--surface); border-style: dashed; font-weight: 400; }
 #source-drop[data-has-url="true"] { color: var(--ink); }
-#source-drop.drag-over { border-color: var(--ink); border-style: solid; background: #eeeeee; }
+#source-drop.drag-over, .source-row input.drag-over { border: 2px dashed var(--ink); background: #eeeeee; color: var(--ink); }
 #source-drop:disabled { color: #858585; background: #f4f4f4; border-color: var(--line); }
 #scan, #export { color: #fff; background: var(--ink); border-color: var(--ink); }
 #scan { min-width: 64px; }
@@ -62,12 +63,13 @@ section, aside { min-width: 0; }
   display: grid;
   grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr);
   column-gap: clamp(8px, 2vw, 24px);
-  padding: 14px 16px 18px;
+  padding: 14px 0 18px;
   border-top: 1px solid var(--line);
 }
 .results-heading, .section-head, .toolbar { display: flex; align-items: center; flex-wrap: wrap; }
 .results-heading { justify-content: space-between; gap: 2px 12px; }
 .results-heading, .filter-bar, .selection-bar { grid-column: 1; }
+.results-heading, .filter-bar, .selection-bar { padding-left: 16px; }
 .section-head { gap: 4px 10px; min-width: 0; }
 .section-head h2 { font-size: 14px; }
 #count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
@@ -96,7 +98,7 @@ section, aside { min-width: 0; }
   flex-direction: column;
   min-width: 0;
   margin: 0;
-  padding: 10px 0 0 24px;
+  padding: 10px 16px 0 24px;
   border-left: 1px solid var(--line);
 }
 #viewer-toggle { width: 100%; min-height: 38px; }
@@ -111,7 +113,7 @@ section, aside { min-width: 0; }
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
-#reset { min-width: 120px; }
+#reset { width: 100%; }
 #export { min-height: 38px; }
 #status { align-self: stretch; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 #status:empty { display: none; }
@@ -166,7 +168,8 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
 @media (max-width: 359px) {
   .controls { padding-left: 12px; }
   .save-area { padding-right: 12px; }
-  .results-controls { padding-left: 12px; padding-right: 12px; }
+  .results-heading, .filter-bar, .selection-bar { padding-left: 12px; }
+  .viewer-controls { padding-right: 12px; }
   main { padding: 12px; }
   .image-list { grid-template-columns: repeat(auto-fill, minmax(min(115px, 100%), 1fr)); gap: 10px; }
 }
