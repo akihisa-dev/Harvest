@@ -102,8 +102,8 @@ section, aside { min-width: 0; }
 }
 .results-heading, .section-head, .toolbar { display: flex; align-items: center; flex-wrap: wrap; }
 .results-heading { justify-content: space-between; gap: 2px 12px; }
-.results-heading, .filter-bar, .selection-bar { grid-column: 1; }
-.results-heading, .filter-bar, .selection-bar { padding-left: 16px; }
+.results-heading, .group-bar { grid-column: 1; }
+.results-heading, .group-bar { padding-left: 16px; }
 .section-head { gap: 4px 10px; min-width: 0; }
 .section-head h2 { font-size: 14px; }
 #count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
@@ -111,23 +111,22 @@ section, aside { min-width: 0; }
 .toolbar button { min-height: 32px; padding: 5px 7px; background: transparent; border-color: transparent; font-size: 12px; font-weight: 500; }
 .toolbar button:disabled { border-color: transparent; background: transparent; }
 .toolbar button:hover:not(:disabled) { background: var(--hover); border-color: transparent; }
-.filter-bar { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-.filter-bar > span { flex: none; font-size: 11px; color: var(--muted); }
-.filter-bar:has(.groups[hidden]) { display: none; }
+.group-bar { margin-top: 12px; }
+.group-bar:has(.groups[hidden]) { display: none; }
 .groups { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .groups button { min-height: 30px; max-width: 100%; padding: 5px 9px; font-size: 11px; font-weight: 500; overflow-wrap: anywhere; border-color: var(--line); }
 .groups button[aria-pressed="true"] { color: var(--pressed-ink); background: var(--ink); border-color: var(--ink); }
 .groups button[aria-pressed="true"]:hover:not(:disabled) { background: var(--pressed-hover); }
 .groups button[aria-pressed="true"]:disabled { color: var(--pressed-ink); background: var(--pressed-disabled); border-color: var(--pressed-disabled); }
-.selection-bar { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.selection-bar > span { flex: none; font-size: 11px; color: var(--muted); }
-.group-selections { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.group-selection { display: flex; align-items: center; gap: 6px; min-height: 30px; max-width: 100%; padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 11px; overflow-wrap: anywhere; cursor: pointer; }
-.group-selection:has(input:disabled) { color: var(--muted); cursor: default; }
-.group-selection span { min-width: 0; }
+.group-chip { display: flex; align-items: center; gap: 4px; min-height: 30px; max-width: 100%; padding: 0 4px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 11px; overflow-wrap: anywhere; }
+.group-chip:has(input:disabled) { color: var(--muted); }
+.group-chip:focus-within { outline: 2px solid var(--ink); outline-offset: 2px; }
+.group-chip button { min-width: 0; padding: 4px 5px; border-color: transparent; }
+.group-chip button:hover:not(:disabled) { border-color: transparent; }
+.group-chip input { flex: none; }
 .viewer-controls {
   grid-column: 2;
-  grid-row: 1 / span 3;
+  grid-row: 1 / span 2;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -204,7 +203,7 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
 @media (max-width: 359px) {
   .controls { padding-left: 12px; }
   .save-area { padding-right: 12px; }
-  .results-heading, .filter-bar, .selection-bar { padding-left: 12px; }
+  .results-heading, .group-bar { padding-left: 12px; }
   .viewer-controls { padding-right: 12px; }
   main { padding: 12px; }
   .image-list { grid-template-columns: repeat(auto-fill, minmax(min(115px, 100%), 1fr)); gap: 10px; }
@@ -221,7 +220,7 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
 }
 
 /* Explicit properties keep focus indicators immediate and layout under JS control. */
-button, .source-row input, .group-selection, .image-list li {
+button, .source-row input, .group-chip, .image-list li {
   transition: background-color var(--motion-duration) var(--motion-easing),
     border-color var(--motion-duration) var(--motion-easing),
     color var(--motion-duration) var(--motion-easing),
@@ -229,7 +228,7 @@ button, .source-row input, .group-selection, .image-list li {
 }
 button:active:not(:disabled) { background-color: var(--line); }
 #scan:active:not(:disabled), #export:active:not(:disabled) { background-color: var(--pressed-active); }
-.group-selection:has(input:checked) { border-color: var(--control-line); }
+.group-chip:has(input:checked) { border-color: var(--control-line); }
 .item-selected {
   transition: opacity var(--motion-duration) var(--motion-easing),
     transform var(--motion-duration) var(--motion-easing);
@@ -238,7 +237,7 @@ button:active:not(:disabled) { background-color: var(--line); }
 .image-list li.dragging > * { visibility: visible; opacity: 0; }
 .preview, .item-body { transition: opacity var(--motion-duration) var(--motion-easing); }
 @media (prefers-reduced-motion: reduce) {
-  button, .source-row input, .group-selection, .image-list li,
+  button, .source-row input, .group-chip, .image-list li,
   .item-selected, .preview, .item-body { transition: none; }
 }
 
@@ -286,7 +285,7 @@ input[type="checkbox"]:disabled { opacity: .55; }
 }
 
 /* Chrome keeps hidden elements in the render tree only for their exit transition. */
-#empty, #completion, .filter-bar, .selection-bar, #groups, #group-selections {
+#empty, #completion, .group-bar, #groups {
   interpolate-size: allow-keywords;
   height: auto;
   opacity: 1;
@@ -296,13 +295,13 @@ input[type="checkbox"]:disabled { opacity: .55; }
     padding var(--motion-duration) var(--motion-easing),
     display var(--motion-duration) allow-discrete;
 }
-#empty[hidden], #completion[hidden], #groups[hidden], #group-selections[hidden],
-.filter-bar:has(.groups[hidden]) {
+#empty[hidden], #completion[hidden], #groups[hidden],
+.group-bar:has(.groups[hidden]) {
   height: 0; opacity: 0; margin-block: 0; padding-block: 0; overflow: clip; pointer-events: none;
 }
 @starting-style {
-  #empty:not([hidden]), #completion:not([hidden]), #groups:not([hidden]), #group-selections:not([hidden]),
-  .filter-bar:has(.groups:not([hidden])) { height: 0; opacity: 0; }
+  #empty:not([hidden]), #completion:not([hidden]), #groups:not([hidden]),
+  .group-bar:has(.groups:not([hidden])) { height: 0; opacity: 0; }
 }
 #status {
   transition: color var(--motion-duration) var(--motion-easing),
@@ -311,7 +310,7 @@ input[type="checkbox"]:disabled { opacity: .55; }
 .motion-ghost-shell { position: fixed; inset: 0; pointer-events: none; display: block; z-index: 10; }
 .motion-ghost, .motion-ghost * { transition: none !important; }
 @media (prefers-reduced-motion: reduce) {
-  #empty, #completion, .filter-bar, .selection-bar, #groups, #group-selections, #status { transition: none; }
+  #empty, #completion, .group-bar, #groups, #status { transition: none; }
   .motion-ghost-shell { display: none; }
 }
 

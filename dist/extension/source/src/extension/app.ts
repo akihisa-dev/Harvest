@@ -36,7 +36,6 @@ const failedImagesElement = required<HTMLUListElement>("#failed-images");
 const backToImagesButton = required<HTMLButtonElement>("#back-to-images");
 const imagesElement = required<HTMLOListElement>("#images");
 const groupsElement = required<HTMLDivElement>("#groups");
-const groupSelectionsElement = required<HTMLDivElement>("#group-selections");
 const countElement = required<HTMLSpanElement>("#count");
 const emptyElement = required<HTMLParagraphElement>("#empty");
 const statusElement = required<HTMLParagraphElement>("#status");
@@ -297,26 +296,8 @@ function renderGroups(groups: ImageGroups): void {
         activeGroupKey = key === "all" ? null : key;
         render();
       });
-      return button;
-    },
-    (button, key) => {
-      const group = key === "all" ? undefined : groups[key];
-      button.textContent = key === "all" ? t("showAll") : formatGroupLabel(group?.label ?? "");
-      button.title = key === "all" ? t("allImages") : t("oneGroup");
-      button.disabled = busy;
-      button.setAttribute("data-focus-kind", "group");
-      button.setAttribute("data-focus-key", key);
-      button.setAttribute("aria-pressed", String(key === "all" ? activeGroupKey === null : activeGroupKey === key));
-    });
-}
+      if (key === "all") return button;
 
-function renderGroupSelections(groups: ImageGroups): void {
-  groupSelectionsElement.hidden = Object.keys(groups).length === 0;
-  const entries = groupSelectionsElement.hidden ? [] : Object.entries(groups).sort((a, b) => a[1].priority - b[1].priority);
-  reconcileKeyedChildren(groupSelectionsElement, entries.map(([key]) => key), key => key,
-    key => {
-      const label = document.createElement("label");
-      label.className = "group-selection";
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.addEventListener("change", () => {
@@ -328,16 +309,23 @@ function renderGroupSelections(groups: ImageGroups): void {
         for (const item of images) if (urls.has(item.url)) item.selected = checkbox.checked;
         render();
       });
-      const name = document.createElement("span");
-      label.append(checkbox, name);
-      return label;
+      const chip = document.createElement("div");
+      chip.className = "group-chip";
+      chip.append(button, checkbox);
+      return chip;
     },
-    (label, key) => {
-      const group = groups[key];
+    (element, key) => {
+      const button = (key === "all" ? element : element.children[0]) as HTMLButtonElement;
+      const group = key === "all" ? undefined : groups[key];
+      button.textContent = key === "all" ? t("showAll") : formatGroupLabel(group?.label ?? "");
+      button.title = key === "all" ? t("allImages") : t("oneGroup");
+      button.disabled = busy;
+      button.setAttribute("data-focus-kind", "group");
+      button.setAttribute("data-focus-key", key);
+      button.setAttribute("aria-pressed", String(key === "all" ? activeGroupKey === null : activeGroupKey === key));
+      if (key === "all") return;
       if (!group) return;
-      const checkbox = label.children[0] as HTMLInputElement | undefined;
-      const name = label.children[1] as HTMLSpanElement | undefined;
-      if (!checkbox || !name) return;
+      const checkbox = element.children[1] as HTMLInputElement;
       const groupItems = collectionGroupItems.get(key) ?? [];
       const selectedCount = groupItems.filter(item => item.selected).length;
       checkbox.checked = groupItems.length > 0 && selectedCount === groupItems.length;
@@ -347,7 +335,6 @@ function renderGroupSelections(groups: ImageGroups): void {
       checkbox.setAttribute("data-focus-key", key);
       const groupLabel = formatGroupLabel(group.label);
       checkbox.setAttribute("aria-label", t("includeGroup", {label: groupLabel}));
-      name.textContent = groupLabel;
     });
 }
 
@@ -671,7 +658,6 @@ function render(): void {
   resetOrderButton.disabled = busy || images.every((item, index) => item === initialImageOrder[index]);
   exportButton.disabled = busy || !images.some(item => item.selected);
   renderGroups(groups);
-  renderGroupSelections(groups);
   renderImages(visibleImages);
   renderViewer();
   restoreFocus();

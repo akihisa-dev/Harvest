@@ -87,7 +87,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   document.body = new StubElement("body", document);
   for (const selector of [
     "#source-url", "#scan", "#export", "#select-all", "#clear-all", "#reset-order", "#reset",
-    "#completion", "#back-to-images", "#failures", "#failed-images", "#images", "#groups", "#group-selections",
+    "#completion", "#back-to-images", "#failures", "#failed-images", "#images", "#groups",
     "#count", "#empty", "#status", "#viewer-toggle", "#viewer", "#viewer-empty",
     "#viewer-page", "#viewer-previous", "#viewer-position", "#viewer-next", "#viewer-image",
     "#viewer-filename", "#viewer-thumbnails", "#viewer-zoom-in", "#viewer-zoom-out",
@@ -187,7 +187,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#status").textContent, "");
     assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択・2枚を表示");
     assert.equal(document.querySelector("#images").children.length, 2);
-    assert.equal(document.querySelector("#groups").children.find(button => button.getAttribute("aria-pressed") === "true").textContent, "シリーズ (2枚)");
+    assert.equal(descendants(document.querySelector("#groups")).find(button => button.getAttribute("aria-pressed") === "true").textContent, "シリーズ (2枚)");
     document.querySelector("#groups").children.find(button => button.textContent === "すべて表示").dispatch("click");
     assert.equal(document.querySelector("#export").textContent, "PDFを保存（2枚）");
     const resetOrder = document.querySelector("#reset-order");
@@ -264,10 +264,14 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(viewer.hidden, true);
     assert.equal(document.querySelector(".results").hidden, false);
 
-    const getPdfGroupCheckbox = key => descendants(document.querySelector("#group-selections"))
+    const getPdfGroupCheckbox = key => descendants(document.querySelector("#groups"))
       .find(input => input.getAttribute("data-focus-kind") === "pdf-group" && input.getAttribute("data-focus-key") === key);
-    const coverFilter = document.querySelector("#groups").children.find(button => button.textContent.startsWith("表紙"));
+    const groupChips = document.querySelector("#groups").children.filter(element => element.className === "group-chip");
+    assert.ok(groupChips.length > 0);
+    assert.equal(groupChips.every(chip => chip.children.length === 2 && chip.children[0].tagName === "button" && chip.children[1].tagName === "input"), true);
+    const coverFilter = descendants(document.querySelector("#groups")).find(button => button.tagName === "button" && button.textContent.startsWith("表紙"));
     const coverPdfCheckbox = getPdfGroupCheckbox(coverFilter.getAttribute("data-focus-key"));
+    assert.match(coverPdfCheckbox.getAttribute("aria-label"), /PDFに含める 表紙/);
     coverPdfCheckbox.checked = true;
     coverPdfCheckbox.dispatch("change");
     assert.equal(document.activeElement.getAttribute("data-focus-kind"), "pdf-group");
@@ -275,7 +279,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#images").children.length, 4);
 
     const groups = document.querySelector("#groups");
-    const coverButton = groups.children.find(button => button.textContent.startsWith("表紙"));
+    const coverButton = descendants(groups).find(button => button.tagName === "button" && button.textContent.startsWith("表紙"));
     coverButton.dispatch("click");
     assert.equal(document.activeElement.getAttribute("data-focus-key"), coverButton.getAttribute("data-focus-key"));
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
@@ -418,7 +422,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     await waitUntil(() => !document.querySelector("#scan").disabled);
     assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択・2枚を表示");
     assert.equal(document.querySelector("#images").children.length, 2);
-    assert.equal(document.querySelector("#groups").children.find(button => button.getAttribute("aria-pressed") === "true").textContent, "シリーズ (2枚)");
+    assert.equal(descendants(document.querySelector("#groups")).find(button => button.getAttribute("aria-pressed") === "true").textContent, "シリーズ (2枚)");
     document.querySelector("#groups").children.find(button => button.textContent === "すべて表示").dispatch("click");
     const rescannedRow = document.querySelector("#images").children[0];
     rescannedRow.dispatch("pointerdown");
