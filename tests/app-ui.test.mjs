@@ -236,7 +236,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     const emptyLogo = document.querySelector("#empty-logo");
     const emptyMessage = document.querySelector("#empty-message");
     const pdfSaveState = document.querySelector("#pdf-save-state");
-    assert.equal(pdfSaveState.textContent, "未保存", "初期状態は未保存と表示する");
+    assert.equal(pdfSaveState.getAttribute("aria-label"), "未保存", "初期状態は未保存と表示する");
     assert.equal(pdfSaveState.hidden, true, "画像がない間はPDF状態を隠す");
     assert.equal(emptyLogo.hidden, false);
     assert.equal(emptyMessage.hidden, true);
@@ -249,8 +249,10 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(empty.hidden, true);
     assert.equal(document.querySelector("#status").textContent, "");
     assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択・2枚を表示");
-    assert.equal(pdfSaveState.textContent, "未保存", "新しい収集結果は未保存に戻す");
+    assert.equal(pdfSaveState.getAttribute("aria-label"), "未保存", "新しい収集結果は未保存に戻す");
     assert.equal(pdfSaveState.hidden, false, "画像があるときはPDF状態を表示する");
+    assert.equal(pdfSaveState.textContent, "", "状態は文字を表示せず印だけで示す");
+    assert.equal(pdfSaveState.dataset.state, "unsaved");
     assert.equal(document.querySelector("#images").children.length, 2);
     assert.equal(descendants(document.querySelector("#groups")).find(button => button.getAttribute("aria-pressed") === "true").textContent, "シリーズ (2枚)");
     document.querySelector("#groups").children.find(button => button.textContent === "すべて表示").dispatch("click");
@@ -480,7 +482,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     document.querySelector("#images").children[0].dispatch("keydown", {altKey: true, key: "ArrowDown"});
     await waitUntil(() => !document.querySelector("#scan").disabled);
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), busyOrder);
-    assert.equal(pdfSaveState.textContent, "未保存", "収集失敗時は既存の未保存状態を保つ");
+    assert.equal(pdfSaveState.getAttribute("aria-label"), "未保存", "収集失敗時は既存の未保存状態を保つ");
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択");
     assert.match(document.querySelector("#status").textContent, /前の収集結果を保持/);
     assert.equal(document.querySelector("#export").textContent, "失敗した1枚を再試行");
@@ -493,35 +495,37 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.deepEqual(document.downloads, ["ページ.pdf"]);
     assert.equal(document.querySelector("#failures").hidden, true);
     assert.equal(document.querySelector("#status").dataset.state, "success");
-    assert.equal(pdfSaveState.textContent, "PDF保存開始済み", "PDF保存開始後に状態を表示する");
+    assert.equal(pdfSaveState.getAttribute("aria-label"), "保存を開始しました", "PDF保存開始後に状態を表示する");
+    assert.equal(pdfSaveState.textContent, "");
+    assert.equal(pdfSaveState.dataset.state, "saved");
     assert.equal(document.querySelector("#source-url").value, "", "再試行後に保存できたらURLを消す");
     assert.equal(includeSourcePage.checked, false, "PDF保存後も出典ページの設定を保つ");
     assert.equal(document.querySelector("#source-drop").dataset.hasUrl, "false");
 
     includeSourcePage.checked = true;
     includeSourcePage.dispatch("change");
-    assert.equal(pdfSaveState.textContent, "変更あり・再保存が必要", "出典ページ設定の変更を表示する");
+    assert.equal(pdfSaveState.getAttribute("aria-label"), "変更あり・要保存", "出典ページ設定の変更を表示する");
     includeSourcePage.checked = false;
     includeSourcePage.dispatch("change");
-    assert.equal(pdfSaveState.textContent, "PDF保存開始済み", "出典ページ設定を保存時の値へ戻すと保存済み状態へ戻る");
+    assert.equal(pdfSaveState.getAttribute("aria-label"), "保存を開始しました", "出典ページ設定を保存時の値へ戻すと保存済み状態へ戻る");
     const savedSelection = document.querySelector("#images").children.find(row => row.getAttribute("aria-pressed") === "true");
     savedSelection.dispatch("pointerdown");
     savedSelection.dispatch("click");
-    assert.equal(pdfSaveState.textContent, "変更あり・再保存が必要", "選択内容の変更を表示する");
+    assert.equal(pdfSaveState.getAttribute("aria-label"), "変更あり・要保存", "選択内容の変更を表示する");
     savedSelection.dispatch("pointerdown");
     savedSelection.dispatch("click");
-    assert.equal(pdfSaveState.textContent, "PDF保存開始済み", "選択内容を保存時の値へ戻すと保存済み状態へ戻る");
+    assert.equal(pdfSaveState.getAttribute("aria-label"), "保存を開始しました", "選択内容を保存時の値へ戻すと保存済み状態へ戻る");
     rejectScan = true;
     document.querySelector("#scan").dispatch("click");
     await waitUntil(() => !document.querySelector("#scan").disabled);
-    assert.equal(pdfSaveState.textContent, "PDF保存開始済み", "収集失敗時は保存済み状態を保つ");
+    assert.equal(pdfSaveState.getAttribute("aria-label"), "保存を開始しました", "収集失敗時は保存済み状態を保つ");
     rejectScan = false;
 
     coverButton.dispatch("click");
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
     resetOrder.dispatch("click");
     assert.equal(resetOrder.disabled, true);
-    assert.equal(pdfSaveState.textContent, "変更あり・再保存が必要", "選択順序の変更を表示する");
+    assert.equal(pdfSaveState.getAttribute("aria-label"), "変更あり・要保存", "選択順序の変更を表示する");
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), resultImages.slice(2));
     allButton.dispatch("click");
@@ -530,7 +534,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     // Reusing a row after a successful scan of the same URLs must target the new items.
     document.querySelector("#scan").dispatch("click");
     await waitUntil(() => !document.querySelector("#scan").disabled);
-    assert.equal(pdfSaveState.textContent, "未保存", "再収集成功後は未保存へ戻す");
+    assert.equal(pdfSaveState.getAttribute("aria-label"), "未保存", "再収集成功後は未保存へ戻す");
     assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択・2枚を表示");
     assert.equal(document.querySelector("#images").children.length, 2);
     assert.equal(descendants(document.querySelector("#groups")).find(button => button.getAttribute("aria-pressed") === "true").textContent, "シリーズ (2枚)");
@@ -560,7 +564,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(empty.hidden, false);
     assert.equal(emptyLogo.hidden, true);
     assert.equal(emptyMessage.textContent, "画像が見つかりませんでした。");
-    assert.equal(pdfSaveState.textContent, "未保存", "画像がない収集結果も未保存を保持する");
+    assert.equal(pdfSaveState.getAttribute("aria-label"), "未保存", "画像がない収集結果も未保存を保持する");
     assert.equal(pdfSaveState.hidden, true, "画像が空ならPDF状態を隠す");
     assert.equal(executionCount, 3);
     assert.deepEqual(createdUrls, []);

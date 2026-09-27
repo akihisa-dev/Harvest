@@ -13,7 +13,7 @@ headerElement.dataset["dropLabel"] = t("dropUrl");
 const collectionButton = required<HTMLButtonElement>("#collection-toggle");
 const scanButton = required<HTMLButtonElement>("#scan");
 const exportButton = required<HTMLButtonElement>("#export");
-const pdfSaveStateElement = required<HTMLParagraphElement>("#pdf-save-state");
+const pdfSaveStateElement = required<HTMLSpanElement>("#pdf-save-state");
 const includeSourcePage = required<HTMLInputElement>("#include-source-page");
 const sourcePagePreferenceKey = "harvest.includeSourcePage";
 try { includeSourcePage.checked = localStorage.getItem(sourcePagePreferenceKey) === "true"; }
@@ -714,7 +714,7 @@ function render(): void {
   const saved = savedPdfSignature !== null && savedPdfSignature === pdfSignature();
   pdfSaveStateElement.hidden = images.length === 0;
   pdfSaveStateElement.dataset["state"] = saved ? "saved" : savedPdfSignature === null ? "unsaved" : "changed";
-  pdfSaveStateElement.textContent = t(saved ? "pdfSaveStarted" : savedPdfSignature === null ? "pdfUnsaved" : "pdfSaveChanged");
+  pdfSaveStateElement.setAttribute("aria-label", t(saved ? "pdfSaveStarted" : savedPdfSignature === null ? "pdfUnsaved" : "pdfSaveChanged"));
   pdfSaveStateElement.title = saved ? t("pdfSaveStartedHelp") : "";
   setMotionText(countElement, formatCount(selectedCount, images.length, activeGroupKey === null ? undefined : visibleImages.length));
   exportButton.textContent = pendingExport?.failed.size
