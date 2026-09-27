@@ -122,3 +122,27 @@ test("収集できるリンクだけ文字なしで発光し、離脱・解析�
     assert.equal(fixture.glow.removed, true);
   } finally { fixture.restore(); }
 });
+
+test("解析リンクは水色、PDF保存リンクだけ強い金色になり状態変更はその場で反映する", () => {
+  const fixture = setup();
+  try {
+    captureCollectionLinks("test-session");
+    fixture.hover(new Anchor("/picked"));
+    const scanGlow = fixture.glow.style.boxShadow;
+    fixture.port.messageListener({busy: true, pdfUrl: null, canExport: false});
+    assert.equal(fixture.glow.style.display, "none");
+    fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/picked", canExport: true});
+    const pdfGlow = fixture.glow.style.boxShadow;
+    assert.notEqual(pdfGlow, scanGlow);
+    assert.ok(pdfGlow.includes("255,235,140"));
+    assert.equal(fixture.glow.style.display, "block");
+    fixture.hover(new Anchor("/different"));
+    assert.equal(fixture.glow.style.boxShadow, scanGlow);
+    fixture.hover(new Anchor("/picked"));
+    assert.equal(fixture.glow.style.boxShadow, pdfGlow);
+    fixture.port.messageListener({canExport: false});
+    assert.equal(fixture.glow.style.boxShadow, scanGlow);
+    fixture.port.messageListener({pdfUrl: null, canExport: true});
+    assert.equal(fixture.glow.style.boxShadow, scanGlow);
+  } finally { fixture.restore(); }
+});

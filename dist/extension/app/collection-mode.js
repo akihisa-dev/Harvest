@@ -6,15 +6,23 @@
 export function captureCollectionLinks(session) {
     const port = chrome.runtime.connect({ name: session });
     let busy = false;
+    let pdfUrl = null;
+    let canExport = false;
+    let lastHover = null;
     const onMessage = (message) => {
-        if (typeof message === "object" && message !== null && "busy" in message) {
-            const value = message.busy;
-            if (typeof value === "boolean") {
-                busy = value;
-                if (busy)
-                    hideGlow();
-            }
-        }
+        if (typeof message !== "object" || message === null)
+            return;
+        if ("busy" in message && typeof message.busy === "boolean")
+            busy = message.busy;
+        if ("pdfUrl" in message)
+            pdfUrl = typeof message.pdfUrl === "string" ? message.pdfUrl : null;
+        if ("canExport" in message && typeof message.canExport === "boolean")
+            canExport = message.canExport;
+        hovered = null;
+        if (busy)
+            hideGlow();
+        else if (lastHover)
+            onHover(lastHover);
     };
     const glow = document.createElement("div");
     glow.setAttribute("aria-hidden", "true");
@@ -41,6 +49,7 @@ export function captureCollectionLinks(session) {
         }
     };
     const onHover = (event) => {
+        lastHover = event;
         if (busy || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
             hideGlow();
             return;
@@ -55,6 +64,9 @@ export function captureCollectionLinks(session) {
         if (hovered === target)
             return;
         hovered = target;
+        glow.style.boxShadow = canExport && link.url.href === pdfUrl
+            ? "inset 0 0 0 4px rgba(255,235,140,1),0 0 0 3px rgba(255,205,65,1),0 0 16px 7px rgba(255,190,40,.9),0 0 34px 12px rgba(255,170,20,.55)"
+            : "inset 0 0 0 3px rgba(125,235,255,.95),0 0 0 2px rgba(125,235,255,.9),0 0 12px 5px rgba(70,210,255,.7),0 0 26px 8px rgba(70,210,255,.35)";
         const rect = target.getBoundingClientRect();
         glow.style.left = `${rect.left}px`;
         glow.style.top = `${rect.top}px`;
@@ -62,6 +74,7 @@ export function captureCollectionLinks(session) {
         glow.style.height = `${rect.height}px`;
         glow.style.display = "block";
     };
+    const onLeave = () => { lastHover = null; hideGlow(); };
     const onClick = (event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
             return;
@@ -78,14 +91,14 @@ export function captureCollectionLinks(session) {
     port.onDisconnect.addListener(() => {
         document.removeEventListener("click", onClick, true);
         document.removeEventListener("pointermove", onHover, true);
-        document.removeEventListener("pointerout", hideGlow, true);
-        document.removeEventListener("scroll", hideGlow, true);
-        window.removeEventListener("resize", hideGlow);
+        document.removeEventListener("pointerout", onLeave, true);
+        document.removeEventListener("scroll", onLeave, true);
+        window.removeEventListener("resize", onLeave);
         glow.remove();
     });
     document.addEventListener("click", onClick, true);
     document.addEventListener("pointermove", onHover, true);
-    document.addEventListener("pointerout", hideGlow, true);
-    document.addEventListener("scroll", hideGlow, true);
-    window.addEventListener("resize", hideGlow);
+    document.addEventListener("pointerout", onLeave, true);
+    document.addEventListener("scroll", onLeave, true);
+    window.addEventListener("resize", onLeave);
 }

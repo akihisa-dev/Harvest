@@ -74,7 +74,7 @@ chrome.runtime.onConnect?.addListener(port => {
     }
     collectionPort?.disconnect();
     collectionPort = port;
-    port.postMessage({ busy });
+    port.postMessage({ busy, pdfUrl: collectionAnalyzedUrl, canExport: images.some(item => item.selected) });
     port.onMessage.addListener(message => {
         if (collectionPort !== port || !collectionSession || busy || disposed ||
             typeof message.url !== "string" || !isWebUrl(message.url))
@@ -205,7 +205,6 @@ function restoreFocus() {
 }
 function setBusy(value) {
     busy = value;
-    collectionPort?.postMessage({ busy: value });
     scanButton.disabled = value;
     sourceDrop.disabled = value;
     sourceUrl.disabled = value;
@@ -660,6 +659,7 @@ function renderViewer() {
     viewerNextButton.disabled = busy || currentIndex === selected.length - 1;
 }
 function render() {
+    collectionPort?.postMessage({ busy, pdfUrl: collectionAnalyzedUrl, canExport: images.some(item => item.selected) });
     updateCollection();
     const selected = images.filter(item => item.selected);
     if (pendingExport && (selected.length !== pendingExport.selected.length ||
