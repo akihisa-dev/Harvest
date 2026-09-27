@@ -11,6 +11,7 @@ const backToImagesButton = required("#back-to-images");
 const qualityInput = required("#high-quality");
 const imagesElement = required("#images");
 const groupsElement = required("#groups");
+const groupSelectionsElement = required("#group-selections");
 const linksElement = required("#links");
 const countElement = required("#count");
 const emptyElement = required("#empty");
@@ -92,7 +93,7 @@ function restoreFocus() {
     for (const element of document.querySelectorAll("[data-focus-kind]")) {
         if (element.getAttribute("data-focus-kind") !== target.kind)
             continue;
-        if (target.kind === "group") {
+        if (target.kind === "group" || target.kind === "pdf-group") {
             if (element.getAttribute("data-focus-key") !== target.key)
                 continue;
         }
@@ -319,6 +320,37 @@ function renderGroups(groups) {
         groupsElement.append(button);
     }
 }
+function renderGroupSelections(groups) {
+    groupSelectionsElement.replaceChildren();
+    groupSelectionsElement.hidden = Object.keys(groups).length === 0;
+    if (groupSelectionsElement.hidden)
+        return;
+    for (const [key, group] of Object.entries(groups).sort((a, b) => a[1].priority - b[1].priority)) {
+        const urls = new Set(group.items);
+        const groupItems = images.filter(item => urls.has(item.url));
+        const selectedCount = groupItems.filter(item => item.selected).length;
+        const label = document.createElement("label");
+        label.className = "group-selection";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = groupItems.length > 0 && selectedCount === groupItems.length;
+        checkbox.indeterminate = selectedCount > 0 && selectedCount < groupItems.length;
+        checkbox.disabled = busy;
+        checkbox.setAttribute("data-focus-kind", "pdf-group");
+        checkbox.setAttribute("data-focus-key", key);
+        checkbox.setAttribute("aria-label", `PDFに含める ${group.label}`);
+        checkbox.addEventListener("change", () => {
+            requestFocus({ kind: "pdf-group", key });
+            for (const item of groupItems)
+                item.selected = checkbox.checked;
+            render();
+        });
+        const name = document.createElement("span");
+        name.textContent = group.label;
+        label.append(checkbox, name);
+        groupSelectionsElement.append(label);
+    }
+}
 function imageFilename(url) {
     try {
         return decodeURIComponent(new URL(url).pathname.split("/").pop() || url);
@@ -362,7 +394,11 @@ function renderImages(visibleImages) {
         checkbox.setAttribute("data-focus-action", "checkbox");
         checkbox.setAttribute("aria-label", `PDFに含める ${name.textContent}`);
         checkbox.addEventListener("change", () => { requestFocus({ kind: "image", url: item.url, action: "checkbox" }); item.selected = checkbox.checked; render(); });
-        label.append(checkbox, document.createTextNode("PDFに含める"));
+        const pdfMark = document.createElement("span");
+        pdfMark.className = "pdf-mark";
+        pdfMark.setAttribute("aria-hidden", "true");
+        pdfMark.textContent = "PDF";
+        label.append(checkbox, pdfMark);
         actions.append(label);
         for (const [text, delta] of [["↑", -1], ["↓", 1]]) {
             const button = document.createElement("button");
@@ -413,6 +449,7 @@ function render() {
     clearAllButton.disabled = busy || images.length === 0;
     exportButton.disabled = busy || !images.some(item => item.selected);
     renderGroups(groups);
+    renderGroupSelections(groups);
     renderLinks();
     renderImages(visibleImages);
     restoreFocus();

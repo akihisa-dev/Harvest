@@ -50,7 +50,7 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
   };
   for (const selector of [
     "#source-url", "#scan", "#export", "#select-all", "#clear-all", "#reset",
-    "#completion", "#back-to-images", "#high-quality", "#images", "#groups",
+    "#completion", "#back-to-images", "#high-quality", "#images", "#groups", "#group-selections",
     "#links", "#count", "#empty", "#status",
   ]) document.querySelector(selector);
   const previousDocument = globalThis.document;
@@ -98,17 +98,37 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
     assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択");
     assert.equal(document.querySelector("#export").textContent, "PDFを保存（2枚）");
 
+    const getPdfGroupCheckbox = key => descendants(document.querySelector("#group-selections"))
+      .find(input => input.getAttribute("data-focus-kind") === "pdf-group" && input.getAttribute("data-focus-key") === key);
+    const coverFilter = document.querySelector("#groups").children.find(button => button.textContent.startsWith("表紙"));
+    const coverPdfCheckbox = getPdfGroupCheckbox(coverFilter.getAttribute("data-focus-key"));
+    coverPdfCheckbox.checked = true;
+    coverPdfCheckbox.dispatch("change");
+    assert.equal(document.activeElement.getAttribute("data-focus-kind"), "pdf-group");
+    assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択");
+    assert.equal(document.querySelector("#images").children.length, 4);
+
     const groups = document.querySelector("#groups");
     const coverButton = groups.children.find(button => button.textContent.startsWith("表紙"));
     coverButton.dispatch("click");
     assert.equal(document.activeElement.getAttribute("data-focus-key"), coverButton.getAttribute("data-focus-key"));
-    assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択・2枚を表示");
+    assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
+    assert.equal(document.querySelector("#images").children.length, 2);
 
     const coverCheckbox = document.querySelector("#images").children[0].children[1].children[2].children[0].children[0];
-    coverCheckbox.checked = true;
+    const pdfMark = document.querySelector("#images").children[0].children[1].children[2].children[0].children[1];
+    assert.equal(pdfMark.textContent, "PDF");
+    assert.equal(pdfMark.getAttribute("aria-hidden"), "true");
+    coverCheckbox.checked = false;
     coverCheckbox.dispatch("change");
     assert.equal(document.activeElement.getAttribute("data-focus-action"), "checkbox");
     assert.equal(document.querySelector("#count").textContent, "3 / 4枚を選択・2枚を表示");
+    const mixedCoverCheckbox = getPdfGroupCheckbox(coverButton.getAttribute("data-focus-key"));
+    assert.equal(mixedCoverCheckbox.indeterminate, true);
+    mixedCoverCheckbox.checked = true;
+    mixedCoverCheckbox.dispatch("change");
+    assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
+    assert.equal(document.querySelector("#images").children.length, 2);
 
     const allButton = groups.children.find(button => button.textContent === "すべて表示");
     allButton.dispatch("click");
@@ -128,7 +148,7 @@ test("画像操作後もフォーカス、件数、表示絞り込み、全体�
 
     globalThis.fetch = async () => { throw new Error("test"); };
     document.querySelector("#export").dispatch("click");
-    assert.equal(document.querySelector("#status").textContent, "画像を準備しています… 0 / 3");
+    assert.equal(document.querySelector("#status").textContent, "画像を準備しています… 0 / 4");
     assert.equal(document.querySelector("#status").dataset.state, "busy");
     await new Promise(resolve => setImmediate(resolve));
 
