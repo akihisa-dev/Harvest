@@ -13,6 +13,12 @@ export interface ImageGroup {
 
 export type ImageGroups = Record<string, ImageGroup>;
 
+export function filterImagesByGroup<T extends {url: string}>(images: readonly T[], group: ImageGroup | null): T[] {
+  if (!group) return [...images];
+  const urls = new Set(group.items);
+  return images.filter(item => urls.has(item.url));
+}
+
 export function normalizeImageUrls(candidates: readonly string[], pageUrl: string): string[] {
   const found = new Set<string>();
   for (const candidate of candidates) {

@@ -19,13 +19,15 @@
           <button id="scan" type="button">解析</button>
         </div>
       </section>
+      <div class="results-controls">
+        <div class="section-head"><h2 id="images-heading">画像</h2><span id="count">0枚</span></div>
+        <div class="filter-bar"><span>表示する画像</span><div id="groups" class="groups" role="group" aria-label="表示する画像" hidden></div></div>
+        <div class="toolbar"><button id="select-all" type="button" disabled>すべて選択</button><button id="clear-all" type="button" disabled>選択を解除</button></div>
+      </div>
     </div>
     <main>
       <section class="results" aria-labelledby="images-heading">
-        <div class="section-head"><h2 id="images-heading">画像</h2><span id="count">0枚</span></div>
         <div id="completion" class="completion" hidden><p>PDFの保存を開始しました。</p><button id="back-to-images" type="button">画像一覧に戻る</button></div>
-        <div id="groups" class="groups" hidden></div>
-        <div class="toolbar"><button id="select-all" type="button" disabled>すべて選択</button><button id="clear-all" type="button" disabled>選択を解除</button></div>
         <div id="links" class="links" hidden></div>
         <p id="empty">「解析」を押すと、開いているページの画像を表示します。</p>
         <ol id="images" class="image-list"></ol>

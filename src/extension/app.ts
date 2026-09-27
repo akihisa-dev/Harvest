@@ -1,4 +1,4 @@
-import { defaultSelectedImageGroups, galleryLinkScore, groupImages, normalizeImageUrls, sortImageUrlsForSite, type ImageItem } from "../core/images.js";
+import { defaultSelectedImageGroups, filterImagesByGroup, galleryLinkScore, groupImages, normalizeImageUrls, sortImageUrlsForSite, type ImageGroups, type ImageItem } from "../core/images.js";
 import { createPdf, type PdfImagePage } from "../core/pdf.js";
 
 interface PageScan {
@@ -28,6 +28,7 @@ let images: ImageItem[] = [];
 let links: PageScan["links"] = [];
 let pageTitle = "画像";
 let rootPageUrl = "";
+let activeGroupKey: string | null = null;
 let busy = false;
 
 function required<T extends Element>(selector: string): T {
@@ -166,6 +167,7 @@ async function startScan(): Promise<void> {
   }
   images = [];
   links = [];
+  activeGroupKey = null;
   completionElement.hidden = true;
   setBusy(true);
   setStatus("ページを調べています…");
@@ -235,23 +237,25 @@ function renderLinks(): void {
   }
 }
 
-function renderGroups(): void {
+function renderGroups(groups: ImageGroups): void {
   groupsElement.replaceChildren();
-  const groups = groupImages(images.map(item => item.url));
   groupsElement.hidden = Object.keys(groups).length === 0;
-  for (const group of Object.values(groups).sort((a, b) => a.priority - b.priority)) {
+  if (groupsElement.hidden) return;
+  const allButton = document.createElement("button");
+  allButton.type = "button";
+  allButton.textContent = "すべて表示";
+  allButton.disabled = busy;
+  allButton.setAttribute("aria-pressed", String(activeGroupKey === null));
+  allButton.addEventListener("click", () => { activeGroupKey = null; render(); });
+  groupsElement.append(allButton);
+  for (const [key, group] of Object.entries(groups).sort((a, b) => a[1].priority - b[1].priority)) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = group.label;
-    button.title = "このまとまりの選択を切り替える";
+    button.title = "このまとまりだけを表示する";
     button.disabled = busy;
-    button.addEventListener("click", () => {
-      const members = images.filter(item => group.items.includes(item.url));
-      const select = !members.every(item => item.selected);
-      for (const item of members) item.selected = select;
-      render();
-    });
-    if (images.some(item => group.items.includes(item.url) && item.selected)) button.classList.add("active");
+    button.setAttribute("aria-pressed", String(activeGroupKey === key));
+    button.addEventListener("click", () => { activeGroupKey = key; render(); });
     groupsElement.append(button);
   }
 }
@@ -261,9 +265,9 @@ function imageFilename(url: string): string {
   catch { return url; }
 }
 
-function renderImages(): void {
+function renderImages(visibleImages: readonly ImageItem[]): void {
   imagesElement.replaceChildren();
-  images.forEach((item, index) => {
+  visibleImages.forEach((item, index) => {
     const row = document.createElement("li");
     if (!item.selected) row.classList.add("unselected");
     const preview = document.createElement("img");
@@ -293,12 +297,14 @@ function renderImages(): void {
       button.type = "button";
       button.textContent = text;
       button.title = delta < 0 ? "上へ移動" : "下へ移動";
-      button.disabled = busy || index + delta < 0 || index + delta >= images.length;
+      button.disabled = busy || index + delta < 0 || index + delta >= visibleImages.length;
       button.addEventListener("click", () => {
-        const other = images[index + delta];
+        const other = visibleImages[index + delta];
         if (!other) return;
-        images[index + delta] = item;
-        images[index] = other;
+        const itemIndex = images.indexOf(item);
+        const otherIndex = images.indexOf(other);
+        images[itemIndex] = other;
+        images[otherIndex] = item;
         render();
       });
       actions.append(button);
@@ -310,14 +316,17 @@ function renderImages(): void {
 }
 
 function render(): void {
-  countElement.textContent = `${images.filter(item => item.selected).length} / ${images.length}枚を選択`;
+  const groups = groupImages(images.map(item => item.url));
+  if (activeGroupKey !== null && !groups[activeGroupKey]) activeGroupKey = null;
+  const visibleImages = filterImagesByGroup(images, activeGroupKey === null ? null : groups[activeGroupKey]!);
+  countElement.textContent = `${images.filter(item => item.selected).length} / ${images.length}枚を選択${activeGroupKey === null ? "" : `・${visibleImages.length}枚を表示`}`;
   emptyElement.hidden = images.length > 0;
   selectAllButton.disabled = busy || images.length === 0;
   clearAllButton.disabled = busy || images.length === 0;
   exportButton.disabled = busy || !images.some(item => item.selected);
-  renderGroups();
+  renderGroups(groups);
   renderLinks();
-  renderImages();
+  renderImages(visibleImages);
 }
 
 async function toPdfPage(imageUrl: string, highQuality: boolean): Promise<PdfImagePage> {
@@ -400,6 +409,7 @@ clearAllButton.addEventListener("click", () => { for (const item of images) item
 resetButton.addEventListener("click", () => {
   images = [];
   links = [];
+  activeGroupKey = null;
   pageTitle = "画像";
   rootPageUrl = "";
   completionElement.hidden = true;

@@ -1,3 +1,9 @@
+export function filterImagesByGroup(images, group) {
+    if (!group)
+        return [...images];
+    const urls = new Set(group.items);
+    return images.filter(item => urls.has(item.url));
+}
 export function normalizeImageUrls(candidates, pageUrl) {
     const found = new Set();
     for (const candidate of candidates) {

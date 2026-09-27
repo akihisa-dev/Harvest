@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defaultSelectedImageGroups, galleryLinkScore, groupImages, imageGroupLabel, normalizeImageUrls, sortImageUrlsForSite } from "../dist/extension/core/images.js";
+import { defaultSelectedImageGroups, filterImagesByGroup, galleryLinkScore, groupImages, imageGroupLabel, normalizeImageUrls, sortImageUrlsForSite } from "../dist/extension/core/images.js";
 
 test("画像候補を元ページから解決し、重複と実行できないURLを除く", () => {
   assert.deepEqual(normalizeImageUrls([
@@ -73,6 +73,19 @@ test("画像を漫画本文・表紙・単発のまとまりへ分類し、本�
   assert.equal(cover?.[1].label, "表紙・サムネイル (2枚)");
   assert.equal(defaultSelectedImageGroups(groups)[manga[0]], true);
   assert.equal(defaultSelectedImageGroups(groups)[cover[0]], false);
+});
+
+test("表紙・サムネイルで表示を絞っても、選択状態と元の一覧を変えない", () => {
+  const images = [
+    {url: "https://example.com/pages/001.jpg", selected: true},
+    {url: "https://example.com/cover/001.jpg", selected: false},
+    {url: "https://example.com/cover/002.jpg", selected: true},
+  ];
+  const cover = Object.values(groupImages(images.map(item => item.url))).find(group => group.label.startsWith("表紙"));
+  assert.ok(cover);
+  assert.deepEqual(filterImagesByGroup(images, cover), [images[1], images[2]]);
+  assert.deepEqual(images.map(item => item.selected), [true, false, true]);
+  assert.deepEqual(filterImagesByGroup(images, null), images);
 });
 
 test("特定サイトだけファイル名の数値順に並べる", () => {
