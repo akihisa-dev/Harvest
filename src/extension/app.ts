@@ -1,4 +1,4 @@
-import { defaultDisplayedImageGroup, defaultSelectedImageGroups, filterImagesByGroup, groupImages, normalizeImageUrls, sortImageUrlsForSite, type ImageGroups, type ImageItem } from "../core/images.js";
+import { defaultDisplayedImageGroup, defaultSelectedImageGroups, filterImagesByGroup, groupImages, normalizeImageUrls, type ImageGroups, type ImageItem } from "../core/images.js";
 import { captureCollectionLinks } from "./collection-mode.js";
 import { scanTab, scanUrl } from "./page-access.js";
 import { preparePdfImages, PdfImageError } from "./pdf-image.js";
@@ -255,7 +255,7 @@ async function startScan(collectionLink?: string): Promise<void> {
       result = await scanTab(activeTab.id, controller.signal);
     }
     if (disposed || controller.signal.aborted || scanController !== controller) return;
-    const urls = sortImageUrlsForSite(normalizeImageUrls(result.images, result.url), result.url);
+    const urls = normalizeImageUrls(result.images, result.url);
     const grouped = groupImages(urls);
     const selectedGroups = defaultSelectedImageGroups(grouped);
     const selectedUrls = new Set(Object.entries(grouped).flatMap(([key, group]) => selectedGroups[key] ? group.items : []));

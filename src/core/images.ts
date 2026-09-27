@@ -106,17 +106,6 @@ export function defaultSelectedImageGroups(groups: ImageGroups): Record<string, 
   return Object.fromEntries(Object.keys(groups).map(key => [key, key === preferred]));
 }
 
-export function sortImageUrlsForSite(images: readonly string[], pageUrl: string): string[] {
-  let hostname = "";
-  try {
-    hostname = new URL(pageUrl).hostname.toLowerCase();
-  } catch {
-    return [...images];
-  }
-  if (hostname !== "momon-ga.com") return [...images];
-  return [...images].sort((a, b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: "base"}));
-}
-
 export function imageGroupLabel(imageUrl: string): string {
   const url = new URL(imageUrl);
   const path = url.pathname.split("/").filter(Boolean);

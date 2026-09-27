@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defaultDisplayedImageGroup, defaultSelectedImageGroups, filterImagesByGroup, groupImages, imageGroupLabel, normalizeImageUrls, sortImageUrlsForSite } from "../dist/extension/core/images.js";
+import { defaultDisplayedImageGroup, defaultSelectedImageGroups, filterImagesByGroup, groupImages, imageGroupLabel, normalizeImageUrls } from "../dist/extension/core/images.js";
 
 test("画像候補を元ページから解決し、重複と実行できないURLを除く", () => {
   assert.deepEqual(normalizeImageUrls([
@@ -93,11 +93,16 @@ test("表紙・サムネイルで表示を絞っても、選択状態と元の�
   assert.deepEqual(filterImagesByGroup(images, null), images);
 });
 
-test("特定サイトだけファイル名の数値順に並べる", () => {
-  const images = ["https://momon-ga.com/pages/10.jpg", "https://momon-ga.com/pages/2.jpg", "https://momon-ga.com/pages/1.jpg"];
-  assert.deepEqual(sortImageUrlsForSite(images, "https://momon-ga.com/book"), [images[2], images[1], images[0]]);
-  assert.deepEqual(sortImageUrlsForSite(images, "https://example.com/book"), images);
-  assert.deepEqual(sortImageUrlsForSite(images, "https://not-momon-ga.com/book?from=momon-ga.com"), images);
+test("画像はサイトによらず検出順を保ち、重複だけを除く", () => {
+  for (const pageUrl of ["https://example.com/book", "https://gallery.example.test/book"]) {
+    assert.deepEqual(normalizeImageUrls([
+      "/pages/10.jpg", "/pages/2.jpg", "/pages/1.jpg", "/pages/2.jpg",
+    ], pageUrl), [
+      new URL("/pages/10.jpg", pageUrl).href,
+      new URL("/pages/2.jpg", pageUrl).href,
+      new URL("/pages/1.jpg", pageUrl).href,
+    ]);
+  }
 });
 
 test("数字で始まるまとまりはシリーズ、それ以外はセットと表示する", () => {
