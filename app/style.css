@@ -109,7 +109,7 @@ section, aside { min-width: 0; }
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   column-gap: clamp(8px, 2vw, 24px);
-  padding: 14px 0 18px;
+  padding: 4px 0;
   border-top: 1px solid var(--line);
 }
 .results-heading, .section-head, .toolbar { display: flex; align-items: center; flex-wrap: wrap; }
@@ -123,7 +123,7 @@ section, aside { min-width: 0; }
 .toolbar button { min-height: 32px; padding: 5px 7px; background: transparent; border-color: transparent; font-size: 12px; font-weight: 500; }
 .toolbar button:disabled { border-color: transparent; background: transparent; }
 .toolbar button:hover:not(:disabled) { background: var(--hover); border-color: transparent; }
-.group-bar { min-height: 0; margin-top: 12px; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+.group-bar { min-height: 0; margin-top: 4px; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
 .group-bar::-webkit-scrollbar { width: 10px; }
 .group-bar::-webkit-scrollbar-track { background: var(--subtle); }
 .group-bar::-webkit-scrollbar-thumb { background: var(--muted); border: 2px solid var(--subtle); border-radius: 5px; }
