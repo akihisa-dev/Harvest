@@ -93,7 +93,7 @@ export function groupImages(images: readonly string[]): ImageGroups {
     if (resolution) label += ` (${resolution})`;
     groups[`${priority}_${key}`] = {label: `${label} (${items.length}枚)`, priority, items, isMangaBody};
   }
-  if (others.length) groups["99_others"] = {label: `その他・単発画像 (${others.length}枚)`, priority: 99, items: others, isMangaBody: false};
+  if (others.length) groups["99_others"] = {label: `その他 (${others.length}枚)`, priority: 99, items: others, isMangaBody: false};
   return groups;
 }
 

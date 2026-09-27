@@ -71,6 +71,7 @@ test("画像を漫画本文・表紙・単発のまとまりへ分類し、本�
     "https://example.com/cover/002.jpg",
     "https://example.com/one.png",
   ]);
+  assert.equal(groups["99_others"].label, "その他 (1枚)");
   const manga = Object.entries(groups).find(([, group]) => group.isMangaBody);
   const cover = Object.entries(groups).find(([, group]) => group.label.startsWith("表紙"));
   assert.equal(manga?.[1].label, "シリーズ (2枚)");
