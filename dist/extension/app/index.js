@@ -1,4 +1,4 @@
-import { defaultSelectedImageGroups, filterImagesByGroup, groupImages, normalizeImageUrls, sortImageUrlsForSite } from "../core/images.js";
+import { defaultDisplayedImageGroup, defaultSelectedImageGroups, filterImagesByGroup, groupImages, normalizeImageUrls, sortImageUrlsForSite } from "../core/images.js";
 import { captureCollectionLinks } from "./collection-mode.js";
 import { scanTab, scanUrl } from "./page-access.js";
 import { preparePdfImages, PdfImageError } from "./pdf-image.js";
@@ -255,7 +255,7 @@ async function startScan() {
         initialImageOrder = [...images];
         pageTitle = result.title || "画像";
         pendingExport = null;
-        activeGroupKey = null;
+        activeGroupKey = defaultDisplayedImageGroup(grouped);
         viewerMode = false;
         viewerImageUrl = null;
         completionElement.hidden = true;

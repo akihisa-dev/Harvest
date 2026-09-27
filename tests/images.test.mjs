@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defaultSelectedImageGroups, filterImagesByGroup, groupImages, imageGroupLabel, normalizeImageUrls, sortImageUrlsForSite } from "../dist/extension/core/images.js";
+import { defaultDisplayedImageGroup, defaultSelectedImageGroups, filterImagesByGroup, groupImages, imageGroupLabel, normalizeImageUrls, sortImageUrlsForSite } from "../dist/extension/core/images.js";
 
 test("画像候補を元ページから解決し、重複と実行できないURLを除く", () => {
   assert.deepEqual(normalizeImageUrls([
@@ -112,4 +112,27 @@ test("数字で始まるまとまりはシリーズ、それ以外はセット�
   assert.deepEqual(Object.values(groups).map(group => group.label), [
     "シリーズ (2枚)", "セット (2枚)", "セット (2枚)",
   ]);
+});
+
+test("解析後の表示とPDF選択はシリーズを優先し、同順位では枚数で選ぶ", () => {
+  const groups = groupImages([
+    "https://example.com/pages/body-001.jpg", "https://example.com/pages/body-002.jpg",
+    "https://example.com/gallery/001.jpg", "https://example.com/gallery/002.jpg",
+    "https://example.com/larger/001.jpg", "https://example.com/larger/002.jpg", "https://example.com/larger/003.jpg",
+    "https://example.com/one.jpg",
+  ]);
+  const key = defaultDisplayedImageGroup(groups);
+  assert.equal(groups[key].label, "シリーズ (3枚)");
+  assert.deepEqual(Object.entries(defaultSelectedImageGroups(groups)).filter(([, selected]) => selected).map(([key]) => key), [key]);
+  const fallbacks = [
+    ["https://example.com/gallery/photo-01.jpg", "https://example.com/gallery/photo-02.jpg"],
+    ["https://example.com/cover/01.jpg", "https://example.com/cover/02.jpg"],
+    ["https://example.com/one.jpg"],
+  ];
+  for (let index = 0; index < fallbacks.length; index++) {
+    const fallbackGroups = groupImages(fallbacks.slice(index).flat());
+    assert.equal(fallbackGroups[defaultDisplayedImageGroup(fallbackGroups)].label, ["セット (2枚)", "表紙・サムネイル (2枚)", "その他 (1枚)"][index]);
+  }
+  assert.equal(defaultDisplayedImageGroup({}), null);
+  assert.deepEqual(defaultSelectedImageGroups({}), {});
 });

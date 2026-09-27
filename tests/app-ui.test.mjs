@@ -163,7 +163,10 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(empty.hidden, true);
     assert.equal(document.querySelector("#status").textContent, "");
-    assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択");
+    assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択・2枚を表示");
+    assert.equal(document.querySelector("#images").children.length, 2);
+    assert.equal(document.querySelector("#groups").children.find(button => button.getAttribute("aria-pressed") === "true").textContent, "シリーズ (2枚)");
+    document.querySelector("#groups").children.find(button => button.textContent === "すべて表示").dispatch("click");
     assert.equal(document.querySelector("#export").textContent, "PDFを保存（2枚）");
     const resetOrder = document.querySelector("#reset-order");
     assert.equal(resetOrder.disabled, true);
@@ -391,7 +394,10 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     // Reusing a row after a successful scan of the same URLs must target the new items.
     document.querySelector("#scan").dispatch("click");
     await waitUntil(() => !document.querySelector("#scan").disabled);
-    assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択");
+    assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択・2枚を表示");
+    assert.equal(document.querySelector("#images").children.length, 2);
+    assert.equal(document.querySelector("#groups").children.find(button => button.getAttribute("aria-pressed") === "true").textContent, "シリーズ (2枚)");
+    document.querySelector("#groups").children.find(button => button.textContent === "すべて表示").dispatch("click");
     const rescannedRow = document.querySelector("#images").children[0];
     rescannedRow.dispatch("pointerdown");
     rescannedRow.dispatch("click");

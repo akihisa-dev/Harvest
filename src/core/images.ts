@@ -83,12 +83,10 @@ export function groupImages(images: readonly string[]): ImageGroups {
     const lowerPath = pathPart.toLowerCase();
     const isMangaBody = lowerPath.includes("/fanzine") || lowerPath.includes("/pages") || lowerPath.includes("/storage") || lowerPath.includes("/viewer") || items.length >= 10;
     let label = prefixPart === "numeric" ? "シリーズ" : "セット";
-    let priority = 5;
-    if (isMangaBody) {
-      priority = 1;
-    } else if (lowerPath.includes("cover") || lowerPath.includes("thumb")) {
+    let priority = prefixPart === "numeric" ? 1 : 2;
+    if (!isMangaBody && (lowerPath.includes("cover") || lowerPath.includes("thumb"))) {
       label = "表紙・サムネイル";
-      priority = 2;
+      priority = 3;
     }
     if (resolution) label += ` (${resolution})`;
     groups[`${priority}_${key}`] = {label: `${label} (${items.length}枚)`, priority, items, isMangaBody};
@@ -97,10 +95,15 @@ export function groupImages(images: readonly string[]): ImageGroups {
   return groups;
 }
 
+export function defaultDisplayedImageGroup(groups: ImageGroups): string | null {
+  const entries = Object.entries(groups).sort((a, b) =>
+    a[1].priority - b[1].priority || b[1].items.length - a[1].items.length);
+  return entries[0]?.[0] ?? null;
+}
+
 export function defaultSelectedImageGroups(groups: ImageGroups): Record<string, boolean> {
-  const entries = Object.entries(groups);
-  const hasMangaBody = entries.some(([, group]) => group.isMangaBody);
-  return Object.fromEntries(entries.map(([key, group]) => [key, hasMangaBody ? group.isMangaBody : true]));
+  const preferred = defaultDisplayedImageGroup(groups);
+  return Object.fromEntries(Object.keys(groups).map(key => [key, key === preferred]));
 }
 
 export function sortImageUrlsForSite(images: readonly string[], pageUrl: string): string[] {
