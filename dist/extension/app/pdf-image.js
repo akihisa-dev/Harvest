@@ -170,7 +170,7 @@ async function decodeImage(fetched, options) {
         if (canvas.width !== width || canvas.height !== height) {
             throw invalidImage("画像が大きすぎてPDF用に変換できませんでした。");
         }
-        const context = canvas.getContext("2d");
+        const context = canvas.getContext("2d", { willReadFrequently: true });
         if (!context)
             throw invalidImage("画像をPDF用に変換できませんでした。");
         context.fillStyle = "#ffffff";

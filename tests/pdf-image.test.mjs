@@ -23,7 +23,11 @@ test("設定なしで元の画素と寸法を保ち、JPEGへ再圧縮しない"
   let jpegConversions = 0;
   const canvas = {
     width: 0, height: 0,
-    getContext: () => ({fillRect() {}, drawImage() {}, getImageData: () => ({data: new Uint8ClampedArray([12, 34, 56, 255, 78, 90, 123, 255])})}),
+    getContext: (type, options) => {
+      assert.equal(type, "2d");
+      assert.deepEqual(options, {willReadFrequently: true});
+      return {fillRect() {}, drawImage() {}, getImageData: () => ({data: new Uint8ClampedArray([12, 34, 56, 255, 78, 90, 123, 255])})};
+    },
     toBlob(callback, type, quality) {
       jpegConversions++;
       assert.equal(type, "image/jpeg");
