@@ -23,6 +23,24 @@ class MotionParent extends MotionElement {
   replaceChildren(...children) { this.children = children; }
 }
 
+test("選択表示だけの更新では要素を切り離さずフォーカスを保つ", async () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = {matchMedia: () => ({matches: true})};
+  try {
+    const {reconcileKeyedChildren} = await import("../dist/extension/app/motion.js");
+    const parent = new MotionParent();
+    let focused = null;
+    parent.replaceChildren = (...children) => { focused = null; parent.children = children; };
+    const update = (element, item) => { element.selected = item.selected; };
+    reconcileKeyedChildren(parent, [{id: "a", selected: true}], item => item.id, () => new MotionElement(), update);
+    focused = parent.children[0];
+    const original = focused;
+    reconcileKeyedChildren(parent, [{id: "a", selected: false}], item => item.id, () => new MotionElement(), update);
+    assert.equal(focused, original);
+    assert.equal(focused.selected, false);
+  } finally { globalThis.window = previousWindow; }
+});
+
 test("キー付き要素を再利用し、並び替えだけを滑らかに動かす", async () => {
   globalThis.window = {matchMedia: () => ({matches: false})};
   const {reconcileKeyedChildren} = await import("../dist/extension/app/motion.js?test=" + Date.now());

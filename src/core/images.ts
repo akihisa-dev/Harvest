@@ -23,10 +23,8 @@ export function normalizeImageUrls(candidates: readonly string[], pageUrl: strin
   const found = new Set<string>();
   for (const candidate of candidates) {
     try {
-      let cleaned = candidate.trim().split(/\s+|%20|%2520/)[0] ?? "";
-      if (cleaned.includes(",")) cleaned = cleaned.split(",")[0] ?? "";
-      if (cleaned.includes("%2C")) cleaned = cleaned.split("%2C")[0] ?? "";
-      if (cleaned.includes("%252C")) cleaned = cleaned.split("%252C")[0] ?? "";
+      // Candidates are URLs; srcset descriptors are parsed at collection time.
+      const cleaned = candidate.trim();
       if (!cleaned) continue;
       const url = new URL(cleaned, pageUrl);
       if (url.protocol !== "http:" && url.protocol !== "https:") continue;
@@ -109,7 +107,13 @@ export function defaultSelectedImageGroups(groups: ImageGroups): Record<string, 
 }
 
 export function sortImageUrlsForSite(images: readonly string[], pageUrl: string): string[] {
-  if (!pageUrl.includes("momon-ga.com")) return [...images];
+  let hostname = "";
+  try {
+    hostname = new URL(pageUrl).hostname.toLowerCase();
+  } catch {
+    return [...images];
+  }
+  if (hostname !== "momon-ga.com") return [...images];
   return [...images].sort((a, b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: "base"}));
 }
 

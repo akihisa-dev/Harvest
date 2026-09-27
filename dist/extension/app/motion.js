@@ -69,7 +69,12 @@ export function reconcileKeyedChildren(parent, items, keyOf, create, update, opt
         if (!next.has(key))
             fadeRemoved(element, before.get(key), motion);
     }
-    parent.replaceChildren(...next.values());
+    const nextChildren = [...next.values()];
+    const currentChildren = Array.from(parent.children);
+    // Keep focus and image layout intact when only selection/text has changed.
+    if (currentChildren.length !== nextChildren.length || currentChildren.some((child, index) => child !== nextChildren[index])) {
+        parent.replaceChildren(...nextChildren);
+    }
     if (prefersReducedMotion())
         return next;
     for (const [key, element] of next) {

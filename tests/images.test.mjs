@@ -17,21 +17,32 @@ test("画像候補を元ページから解決し、重複と実行できないUR
   ]);
 });
 
-test("抽出結果のsrcset表記とプロトコル相対URLを実際に正規化する", () => {
+test("抽出済みURLとプロトコル相対URLを正規化する", () => {
   assert.deepEqual(normalizeImageUrls([
-    "//cdn.example.com/pages/001.jpg 1000w",
-    "https://example.com/pages/002.jpg%20 1200w",
-    "https://example.com/pages/003.jpg%2520 1400w",
+    "//cdn.example.com/pages/001.jpg",
+    "https://example.com/pages/002.jpg%20",
+    "https://example.com/pages/003.jpg%2520",
     "https://example.com/pages/004.jpg,https://example.com/pages/ignore.jpg",
     "https://example.com/pages/005.jpg%2Chttps://example.com/pages/ignore.jpg",
     "https://example.com/pages/006.jpg%252Chttps://example.com/pages/ignore.jpg",
   ], "https://example.com/viewer/index"), [
     "https://cdn.example.com/pages/001.jpg",
-    "https://example.com/pages/002.jpg",
-    "https://example.com/pages/003.jpg",
-    "https://example.com/pages/004.jpg",
-    "https://example.com/pages/005.jpg",
-    "https://example.com/pages/006.jpg",
+    "https://example.com/pages/002.jpg%20",
+    "https://example.com/pages/003.jpg%2520",
+    "https://example.com/pages/004.jpg,https://example.com/pages/ignore.jpg",
+    "https://example.com/pages/005.jpg%2Chttps://example.com/pages/ignore.jpg",
+    "https://example.com/pages/006.jpg%252Chttps://example.com/pages/ignore.jpg",
+  ]);
+});
+
+test("URL内の空白とカンマを候補の区切りとして扱わない", () => {
+  assert.deepEqual(normalizeImageUrls([
+    "https://example.com/pages/name with space.jpg",
+    "https://example.com/pages/name%20with%20space.jpg",
+    "https://example.com/pages/name,part.jpg 2x",
+  ], "https://example.com/viewer/index"), [
+    "https://example.com/pages/name%20with%20space.jpg",
+    "https://example.com/pages/name,part.jpg%202x",
   ]);
 });
 
@@ -85,4 +96,5 @@ test("特定サイトだけファイル名の数値順に並べる", () => {
   const images = ["https://momon-ga.com/pages/10.jpg", "https://momon-ga.com/pages/2.jpg", "https://momon-ga.com/pages/1.jpg"];
   assert.deepEqual(sortImageUrlsForSite(images, "https://momon-ga.com/book"), [images[2], images[1], images[0]]);
   assert.deepEqual(sortImageUrlsForSite(images, "https://example.com/book"), images);
+  assert.deepEqual(sortImageUrlsForSite(images, "https://not-momon-ga.com/book?from=momon-ga.com"), images);
 });

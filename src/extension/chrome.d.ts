@@ -27,9 +27,13 @@ declare const chrome: {
       addListener(listener: (tabId: number, changeInfo: {status?: string}) => void): void;
       removeListener(listener: (tabId: number, changeInfo: {status?: string}) => void): void;
     };
+    onRemoved: {
+      addListener(listener: (tabId: number) => void): void;
+      removeListener(listener: (tabId: number) => void): void;
+    };
   };
   scripting: {
-    executeScript<T>(injection: {target: {tabId: number}; func: () => T}): Promise<Array<{result: T}>>;
+    executeScript<T>(injection: {target: {tabId: number}; func: () => T}): Promise<Array<{result: Awaited<T>}>>;
   };
   permissions: {
     request(permissions: {origins: string[]}): Promise<boolean>;

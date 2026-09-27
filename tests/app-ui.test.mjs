@@ -105,6 +105,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     "https://example.com/cover/002.jpg",
   ];
   let executionCount = 0;
+  let rejectScan = false;
   const createdUrls = [];
   globalThis.document = document;
   globalThis.window = {setTimeout: (callback, delay) => setTimeout(callback, delay === 60000 ? 0 : delay), clearTimeout, matchMedia: () => ({matches: false})};
@@ -116,13 +117,15 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
       get: async () => ({status: "complete"}),
       remove: async () => {},
       onUpdated: {addListener() {}, removeListener() {}},
+      onRemoved: {addListener() {}, removeListener() {}},
     },
     scripting: {executeScript: async () => {
+      if (rejectScan) throw new Error("scan failed");
       executionCount += 1;
       return [{result: {
         url: "https://example.com/view", title: "ページ",
         links: [{url: "https://example.com/pages/gallery", label: "一覧"}],
-        images: executionCount === 3 ? [] : resultImages,
+        images: resultImages,
       }}];
     }},
   };
@@ -333,6 +336,18 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.deepEqual(document.querySelector("#failed-images").children.map(row => row.textContent), ["3番 001.jpg"]);
     assert.equal(document.querySelector("#export").textContent, "失敗した1枚を再試行");
     assert.equal(document.querySelector("#images").children.find(row => row.children[0].src === failedUrl).className.includes("failed"), true);
+    // Failed re-analysis must preserve both the user's work and prepared PDF pages.
+    rejectScan = true;
+    document.querySelector("#scan").dispatch("click");
+    document.querySelector("#reset").dispatch("click");
+    document.querySelector("#clear-all").dispatch("click");
+    document.querySelector("#images").children[0].dispatch("keydown", {altKey: true, key: "ArrowDown"});
+    await waitUntil(() => !document.querySelector("#scan").disabled);
+    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), busyOrder);
+    assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択");
+    assert.match(document.querySelector("#status").textContent, /前の収集結果を保持/);
+    assert.equal(document.querySelector("#export").textContent, "失敗した1枚を再試行");
+    rejectScan = false;
     failOnce = false;
     document.querySelector("#export").dispatch("click");
     await waitUntil(() => document.downloads.length === 1);
@@ -349,6 +364,15 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), resultImages.slice(2));
     allButton.dispatch("click");
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), resultImages);
+
+    // Reusing a row after a successful scan of the same URLs must target the new items.
+    document.querySelector("#scan").dispatch("click");
+    await waitUntil(() => !document.querySelector("#scan").disabled);
+    assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択");
+    const rescannedRow = document.querySelector("#images").children[0];
+    rescannedRow.dispatch("pointerdown");
+    rescannedRow.dispatch("click");
+    assert.equal(document.querySelector("#count").textContent, "1 / 4枚を選択");
 
     for (;;) {
       const selectedRow = document.querySelector("#images").children.find(row => row.getAttribute("aria-pressed") === "true");
@@ -368,7 +392,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(empty.hidden, false);
     assert.equal(empty.textContent, "画像が見つかりませんでした。");
-    assert.equal(executionCount, 2);
+    assert.equal(executionCount, 3);
     assert.deepEqual(createdUrls, []);
   } finally {
     globalThis.fetch = previousFetch;

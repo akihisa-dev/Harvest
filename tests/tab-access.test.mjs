@@ -38,7 +38,8 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
       create: async ({url}) => { createdUrls.push(url); return {id: 8, url}; },
       get: async () => ({status: "complete"}),
       remove: async id => { removedTabs.push(id); },
-      onUpdated: {addListener() {}, removeListener() {}}
+      onUpdated: {addListener() {}, removeListener() {}},
+      onRemoved: {addListener() {}, removeListener() {}}
     },
     scripting: {executeScript: async ({target}) => {
       scannedTabs.push(target.tabId);

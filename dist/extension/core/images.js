@@ -8,13 +8,8 @@ export function normalizeImageUrls(candidates, pageUrl) {
     const found = new Set();
     for (const candidate of candidates) {
         try {
-            let cleaned = candidate.trim().split(/\s+|%20|%2520/)[0] ?? "";
-            if (cleaned.includes(","))
-                cleaned = cleaned.split(",")[0] ?? "";
-            if (cleaned.includes("%2C"))
-                cleaned = cleaned.split("%2C")[0] ?? "";
-            if (cleaned.includes("%252C"))
-                cleaned = cleaned.split("%252C")[0] ?? "";
+            // Candidates are URLs; srcset descriptors are parsed at collection time.
+            const cleaned = candidate.trim();
             if (!cleaned)
                 continue;
             const url = new URL(cleaned, pageUrl);
@@ -102,7 +97,14 @@ export function defaultSelectedImageGroups(groups) {
     return Object.fromEntries(entries.map(([key, group]) => [key, hasMangaBody ? group.isMangaBody : true]));
 }
 export function sortImageUrlsForSite(images, pageUrl) {
-    if (!pageUrl.includes("momon-ga.com"))
+    let hostname = "";
+    try {
+        hostname = new URL(pageUrl).hostname.toLowerCase();
+    }
+    catch {
+        return [...images];
+    }
+    if (hostname !== "momon-ga.com")
         return [...images];
     return [...images].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
 }

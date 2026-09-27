@@ -1,13 +1,8 @@
 import { defaultSelectedImageGroups, filterImagesByGroup, groupImages, normalizeImageUrls, sortImageUrlsForSite, type ImageGroups, type ImageItem } from "../core/images.js";
+import { scanTab, scanUrl } from "./page-access.js";
 import { toPdfPage } from "./pdf-image.js";
 import { createPdf, type PdfImagePage } from "../core/pdf.js";
 import { animateLayoutChange, prefersReducedMotion, reconcileKeyedChildren, setMotionText } from "./motion.js";
-
-interface PageScan {
-  url: string;
-  title: string;
-  images: string[];
-}
 
 const sourceUrl = required<HTMLInputElement>("#source-url");
 const sourceDrop = required<HTMLButtonElement>("#source-drop");
@@ -56,6 +51,27 @@ let viewerPanY = 0;
 let viewerPointer: {id: number; x: number; y: number; panX: number; panY: number} | null = null;
 const viewerThumbRows = new Map<string, HTMLLIElement>();
 let busy = false;
+let disposed = false;
+let scanController: AbortController | null = null;
+window.addEventListener?.("pagehide", () => {
+  disposed = true;
+  scanController?.abort();
+});
+
+let collectionSource: readonly ImageItem[] | null = null;
+let collectionGroups: ImageGroups = {};
+let collectionByUrl = new Map<string, ImageItem>();
+let collectionPositions = new Map<ImageItem, number>();
+let collectionGroupItems = new Map<string, ImageItem[]>();
+function updateCollection(): void {
+  if (collectionSource === images) return;
+  collectionSource = images;
+  collectionGroups = groupImages(images.map(item => item.url));
+  collectionByUrl = new Map(images.map(item => [item.url, item]));
+  collectionPositions = new Map(images.map((item, index) => [item, index]));
+  collectionGroupItems = new Map(Object.entries(collectionGroups).map(([key, group]) =>
+    [key, group.items.map(url => collectionByUrl.get(url)!)]));
+}
 let pendingExport: {selected: ImageItem[]; prepared: Map<ImageItem, PdfImagePage>; failed: Set<ImageItem>} | null = null;
 type ScanState = "initial" | "scanning" | "results" | "empty" | "error";
 let scanState: ScanState = "initial";
@@ -110,48 +126,6 @@ function hideSourceInput(): void {
   updateSourceDrop();
 }
 
-function scanDocument(): PageScan {
-  const candidates: string[] = [];
-  const add = (value: string | null | undefined): void => {
-    if (value && !value.startsWith("data:") && !value.startsWith("blob:")) candidates.push(value);
-  };
-  const lastSrcset = (value: string | null): string | undefined =>
-    value?.split(",").map(part => part.trim().split(/\s+/)[0]).filter(Boolean).at(-1);
-
-  for (const img of document.images) {
-    add(img.getAttribute("data-original"));
-    add(img.getAttribute("data-full"));
-    add(img.getAttribute("data-high-res"));
-    add(img.getAttribute("data-lib-src"));
-    add(img.getAttribute("data-lazyload"));
-    add(lastSrcset(img.getAttribute("data-srcset")));
-    add(lastSrcset(img.getAttribute("srcset")));
-    add(img.getAttribute("data-src"));
-    add(img.getAttribute("data-lazy-src"));
-    add(img.currentSrc || img.src);
-  }
-  for (const picture of document.querySelectorAll("picture source")) {
-    add(lastSrcset(picture.getAttribute("srcset")));
-  }
-  for (const meta of document.querySelectorAll('meta[property="og:image"], meta[name="twitter:image"]')) {
-    add(meta.getAttribute("content"));
-  }
-  for (const match of document.documentElement.outerHTML.matchAll(/https?:\/\/[^\s"'\\<>]+?\.(?:jpe?g|png|webp|avif)(?:\?[^\s"'\\<>]*)?/gi)) {
-    add(match[0].replaceAll("&amp;", "&"));
-  }
-  for (const anchor of document.querySelectorAll<HTMLAnchorElement>("a[href]")) {
-    const href = anchor.href;
-    if (/\.(?:jpe?g|png|webp|avif|gif)(?:[?#]|$)/i.test(href)) add(href);
-  }
-  let inspectedBackgrounds = 0;
-  for (const element of document.querySelectorAll<HTMLElement>("*")) {
-    if (++inspectedBackgrounds > 5000) break;
-    const background = getComputedStyle(element).backgroundImage;
-    for (const match of background.matchAll(/url\(["']?([^"')]+)["']?\)/g)) add(match[1]);
-  }
-  return {url: location.href, title: document.title, images: candidates};
-}
-
 function setStatus(message: string, state: StatusState = "info"): void {
   setMotionText(statusElement, message);
   statusElement.dataset["state"] = state;
@@ -169,50 +143,8 @@ function restoreFocus(): void {
       if (element.getAttribute("data-focus-key") !== target.key) continue;
     } else if (element.getAttribute("data-focus-url") !== target.url ||
                element.getAttribute("data-focus-action") !== target.action) continue;
-    element.focus();
+    if (document.activeElement !== element) element.focus();
     return;
-  }
-}
-
-function addScan(result: PageScan): void {
-  const existing = new Set(images.map(item => item.url));
-  for (const url of sortImageUrlsForSite(normalizeImageUrls(result.images, result.url), result.url)) {
-    if (existing.has(url)) continue;
-    images.push({url, sourcePage: result.url, selected: true});
-    existing.add(url);
-  }
-  render();
-}
-
-async function scanTab(tabId: number): Promise<PageScan> {
-  const [injection] = await chrome.scripting.executeScript({target: {tabId}, func: scanDocument});
-  if (!injection?.result) throw new Error("ページを読み取れませんでした。");
-  return injection.result;
-}
-
-async function scanUrl(url: string): Promise<PageScan> {
-  const tab = await chrome.tabs.create({url, active: false});
-  if (tab.id === undefined) throw new Error("指定したページを開けませんでした。");
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const timer = window.setTimeout(() => {
-        chrome.tabs.onUpdated.removeListener(listener);
-        reject(new Error("指定したページの読み込みが時間切れになりました。"));
-      }, 20000);
-      const listener = (tabId: number, change: {status?: string}): void => {
-        if (tabId !== tab.id || change.status !== "complete") return;
-        window.clearTimeout(timer);
-        chrome.tabs.onUpdated.removeListener(listener);
-        resolve();
-      };
-      chrome.tabs.onUpdated.addListener(listener);
-      void chrome.tabs.get(tab.id!).then(current => {
-        if (current.status === "complete") listener(tab.id!, {status: "complete"});
-      }).catch(() => undefined);
-    });
-    return await scanTab(tab.id);
-  } finally {
-    await chrome.tabs.remove(tab.id).catch(() => undefined);
   }
 }
 
@@ -242,45 +174,49 @@ async function startScan(): Promise<void> {
     }
   }
   hideSourceInput();
-  images = [];
-  initialImageOrder = [];
-  pendingExport = null;
-  activeGroupKey = null;
-  viewerMode = false;
-  viewerImageUrl = null;
+  const controller = new AbortController();
+  scanController = controller;
   scanState = "scanning";
-  completionElement.hidden = true;
   setBusy(true);
   setStatus("ページを調べています…", "busy");
   try {
-    let result: PageScan;
+    let result;
     if (targetUrl) {
-      result = await scanUrl(targetUrl);
+      result = await scanUrl(targetUrl, controller.signal);
     } else {
       const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
       if (activeTab?.id === undefined || !isWebUrl(activeTab.url)) {
-        scanState = "error";
-        setStatus("開いているWebページを解析できません。URLを指定してください。", "error");
-        return;
+        throw new Error("開いているWebページを解析できません。URLを指定してください。");
       }
-      result = await scanTab(activeTab.id);
+      result = await scanTab(activeTab.id, controller.signal);
     }
-    pageTitle = result.title || "画像";
-    addScan(result);
+    if (disposed || controller.signal.aborted || scanController !== controller) return;
+    const urls = sortImageUrlsForSite(normalizeImageUrls(result.images, result.url), result.url);
+    const grouped = groupImages(urls);
+    const selectedGroups = defaultSelectedImageGroups(grouped);
+    const selectedUrls = new Set(Object.entries(grouped).flatMap(([key, group]) => selectedGroups[key] ? group.items : []));
+    const nextImages = urls.map(url => ({url, sourcePage: result.url, selected: selectedUrls.has(url)}));
+    // Publish only a complete scan. A rejected scan keeps the previous working set.
+    images = nextImages;
     initialImageOrder = [...images];
-    const grouped = groupImages(images.map(item => item.url));
-    const initiallySelected = defaultSelectedImageGroups(grouped);
-    for (const [key, group] of Object.entries(grouped)) {
-      for (const item of images) if (group.items.includes(item.url)) item.selected = initiallySelected[key] ?? true;
-    }
-    render();
+    pageTitle = result.title || "画像";
+    pendingExport = null;
+    activeGroupKey = null;
+    viewerMode = false;
+    viewerImageUrl = null;
+    completionElement.hidden = true;
     scanState = images.length ? "results" : "empty";
     setStatus(images.length ? "" : "画像が見つかりませんでした。", "info");
-  } catch {
-    scanState = "error";
-    setStatus("このページを読み取れませんでした。Chromeで開けるWebページを指定してください。", "error");
+  } catch (error) {
+    if (disposed || controller.signal.aborted || scanController !== controller) return;
+    scanState = images.length ? "results" : "error";
+    const reason = error instanceof Error ? error.message : "このページを読み取れませんでした。";
+    setStatus(reason + (images.length ? " 前の収集結果を保持しています。" : ""), "error");
   } finally {
-    setBusy(false);
+    if (scanController === controller) {
+      scanController = null;
+      if (!disposed) setBusy(false);
+    }
   }
 }
 
@@ -319,8 +255,8 @@ function renderGroupSelections(groups: ImageGroups): void {
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.addEventListener("change", () => {
-        const currentGroups = groupImages(images.map(item => item.url));
-        const currentGroup = currentGroups[key];
+        if (busy) return;
+        const currentGroup = collectionGroups[key];
         if (!currentGroup) return;
         requestFocus({kind: "pdf-group", key});
         const urls = new Set(currentGroup.items);
@@ -337,8 +273,7 @@ function renderGroupSelections(groups: ImageGroups): void {
       const checkbox = label.children[0] as HTMLInputElement | undefined;
       const name = label.children[1] as HTMLSpanElement | undefined;
       if (!checkbox || !name) return;
-      const urls = new Set(group.items);
-      const groupItems = images.filter(item => urls.has(item.url));
+      const groupItems = collectionGroupItems.get(key) ?? [];
       const selectedCount = groupItems.filter(item => item.selected).length;
       checkbox.checked = groupItems.length > 0 && selectedCount === groupItems.length;
       checkbox.indeterminate = selectedCount > 0 && selectedCount < groupItems.length;
@@ -405,7 +340,8 @@ function finishDrop(event: DragEvent): void {
   render();
 }
 
-function createImageRow(item: ImageItem): HTMLLIElement {
+function createImageRow(initialItem: ImageItem): HTMLLIElement {
+  const currentItem = (): ImageItem => collectionByUrl.get(initialItem.url)!;
   const row = document.createElement("li");
   const preview = document.createElement("img");
   preview.className = "preview";
@@ -431,12 +367,14 @@ function createImageRow(item: ImageItem): HTMLLIElement {
   row.addEventListener("pointerdown", () => { suppressThumbnailClick = false; });
   row.addEventListener("click", () => {
     if (suppressThumbnailClick || draggedImage || busy) return;
+    const item = currentItem();
     item.selected = !item.selected;
     requestFocus({kind: "image", url: item.url, action: "drag"});
     render();
   });
   row.addEventListener("dragstart", event => {
     if (busy) { event.preventDefault(); return; }
+    const item = currentItem();
     suppressThumbnailClick = true;
     draggedImage = item;
     if (event.dataTransfer) {
@@ -446,7 +384,7 @@ function createImageRow(item: ImageItem): HTMLLIElement {
     }
     row.classList.add("dragging");
   });
-  row.addEventListener("dragover", event => previewInsertion(item, event));
+  row.addEventListener("dragover", event => previewInsertion(currentItem(), event));
   row.addEventListener("drop", finishDrop);
   row.addEventListener("dragend", () => {
     if (!draggedImage) return;
@@ -455,7 +393,8 @@ function createImageRow(item: ImageItem): HTMLLIElement {
     showInsertion([...imageView.visibleImages]);
   });
   row.addEventListener("keydown", event => {
-    if (event.target !== row) return;
+    if (event.target !== row || busy) return;
+    const item = currentItem();
     if (!event.altKey && ["Enter", " "].includes(event.key)) {
       event.preventDefault();
       if (!event.repeat && !draggedImage && !busy) { item.selected = !item.selected; requestFocus({kind: "image", url: item.url, action: "drag"}); render(); }
@@ -476,7 +415,7 @@ function renderImages(visibleImages: readonly ImageItem[]): void {
   imageView.rows = reconcileKeyedChildren(imagesElement, visibleImages, item => item.url, createImageRow, (row, item, index) => {
     const parts = imageRowParts.get(row);
     if (!parts) return;
-    const overallIndex = images.indexOf(item);
+    const overallIndex = collectionPositions.get(item)!;
     row.style.order = String(index);
     if (item.selected) row.classList.remove("unselected");
     else row.classList.add("unselected");
@@ -494,7 +433,7 @@ function renderImages(visibleImages: readonly ImageItem[]): void {
     row.setAttribute("data-focus-url", item.url);
     row.setAttribute("data-focus-action", "drag");
     row.setAttribute("aria-label", `${imageFilename(item.url)}、${overallIndex + 1}番目。${failed ? "取得失敗。" : ""}クリックでPDF選択、ドラッグまたはAltと上下矢印で並べ替え`);
-    parts.preview.src = item.url;
+    if (parts.preview.src !== item.url) parts.preview.src = item.url;
     parts.preview.alt = `画像 ${index + 1}`;
     parts.order.textContent = `${overallIndex + 1}`;
     parts.order.setAttribute("aria-label", `全体の${overallIndex + 1}番目`);
@@ -512,7 +451,7 @@ function renderImages(visibleImages: readonly ImageItem[]): void {
       const rect = row.getBoundingClientRect();
       const dx = Math.max(rect.left - event.clientX, 0, event.clientX - rect.right);
       const dy = Math.max(rect.top - event.clientY, 0, event.clientY - rect.bottom);
-      if (dx * dx + dy * dy < distance) { nearest = images.find(item => item.url === url) ?? null; distance = dx * dx + dy * dy; }
+      if (dx * dx + dy * dy < distance) { nearest = collectionByUrl.get(url) ?? null; distance = dx * dx + dy * dy; }
     }
     if (nearest) previewInsertion(nearest, event);
   };
@@ -623,13 +562,14 @@ function renderViewer(): void {
 }
 
 function render(): void {
+  updateCollection();
   const selected = images.filter(item => item.selected);
   if (pendingExport && (selected.length !== pendingExport.selected.length ||
       selected.some((item, index) => item !== pendingExport!.selected[index]))) {
     pendingExport = null;
     if (!busy) setStatus("選択や順序が変わりました。PDFを保存してください。", "info");
   }
-  const groups = groupImages(images.map(item => item.url));
+  const groups = collectionGroups;
   if (activeGroupKey !== null && !groups[activeGroupKey]) activeGroupKey = null;
   const visibleImages = filterImagesByGroup(images, activeGroupKey === null ? null : groups[activeGroupKey]!);
   const selectedCount = selected.length;
@@ -640,7 +580,7 @@ function render(): void {
   failuresElement.hidden = !pendingExport?.failed.size;
   failedImagesElement.replaceChildren(...(pendingExport?.selected.filter(item => pendingExport!.failed.has(item)) ?? []).map(item => {
     const row = document.createElement("li");
-    row.textContent = `${images.indexOf(item) + 1}番 ${imageFilename(item.url)}`;
+    row.textContent = `${collectionPositions.get(item)! + 1}番 ${imageFilename(item.url)}`;
     row.title = item.url;
     return row;
   }));
@@ -803,14 +743,15 @@ const endViewerPan = (event: PointerEvent): void => {
 };
 viewerStageElement.addEventListener("pointerup", endViewerPan);
 viewerStageElement.addEventListener("pointercancel", endViewerPan);
-selectAllButton.addEventListener("click", () => { for (const item of images) item.selected = true; render(); });
-clearAllButton.addEventListener("click", () => { for (const item of images) item.selected = false; render(); });
+selectAllButton.addEventListener("click", () => { if (busy) return; for (const item of images) item.selected = true; render(); });
+clearAllButton.addEventListener("click", () => { if (busy) return; for (const item of images) item.selected = false; render(); });
 resetOrderButton.addEventListener("click", () => {
   if (busy || resetOrderButton.disabled) return;
   images = [...initialImageOrder];
   render();
 });
 resetButton.addEventListener("click", () => {
+  if (busy) return;
   images = [];
   initialImageOrder = [];
   pendingExport = null;
