@@ -9,11 +9,11 @@ export function captureCollectionLinks(session: string): void {
   let pdfUrl: string | null = null;
   let canExport = false;
   type HoverState = {anchor: HTMLAnchorElement; url: URL; target: Element; modifier: boolean};
-  type GlowState = {url: string; value: string; priority: string; applied: string};
+  type PersistentGlow = {url: string; overlay: HTMLElement};
   let lastHover: HoverState | null = null;
   const pendingClicks = new Map<string, Set<Element>>();
   const analyzedLinks = new Map<string, Set<Element>>();
-  const markedTargets = new Map<Element, GlowState>();
+  const markedTargets = new Map<Element, PersistentGlow>();
 
   const onMessage = (message: unknown): void => {
     if (typeof message !== "object" || message === null) return;
@@ -48,32 +48,32 @@ export function captureCollectionLinks(session: string): void {
   const goldGlow = "inset 0 0 0 4px rgba(255,235,140,1),0 0 0 3px rgba(255,205,65,1),0 0 16px 7px rgba(255,190,40,.9),0 0 34px 12px rgba(255,170,20,.55)";
   const desiredGlow = (url: string): string => canExport && url === pdfUrl ? goldGlow : cyanGlow;
 
+  const positionGlow = (target: Element, overlay: HTMLElement): void => {
+    const rect = target.getBoundingClientRect();
+    overlay.style.left = `${rect.left}px`;
+    overlay.style.top = `${rect.top}px`;
+    overlay.style.width = `${rect.width}px`;
+    overlay.style.height = `${rect.height}px`;
+  };
+
   const markTarget = (target: Element, url: string): void => {
-    const desired = desiredGlow(url);
-    if (!markedTargets.has(target)) {
-      const style = (target as HTMLElement).style;
-      markedTargets.set(target, {
-        url,
-        value: style.getPropertyValue("box-shadow"),
-        priority: style.getPropertyPriority("box-shadow"),
-        applied: desired,
-      });
-    } else {
-      const state = markedTargets.get(target)!;
-      state.url = url;
-      state.applied = desired;
-    }
-    const style = (target as HTMLElement).style;
-    style.setProperty("box-shadow", desired, "important");
-    markedTargets.get(target)!.applied = style.getPropertyValue("box-shadow");
+    let state = markedTargets.get(target);
+    if (!state) {
+      const overlay = document.createElement("div");
+      overlay.setAttribute("aria-hidden", "true");
+      overlay.style.cssText = "position:fixed;pointer-events:none;z-index:2147483646;display:block;border-radius:5px;background:transparent;";
+      document.documentElement.append(overlay);
+      state = {url, overlay};
+      markedTargets.set(target, state);
+    } else state.url = url;
+    state.overlay.style.boxShadow = desiredGlow(url);
+    positionGlow(target, state.overlay);
   };
 
   const redrawMarkedTargets = (): void => {
     for (const [target, state] of markedTargets) {
-      state.applied = desiredGlow(state.url);
-      const style = (target as HTMLElement).style;
-      style.setProperty("box-shadow", state.applied, "important");
-      state.applied = style.getPropertyValue("box-shadow");
+      state.overlay.style.boxShadow = desiredGlow(state.url);
+      positionGlow(target, state.overlay);
     }
   };
 
@@ -131,6 +131,8 @@ export function captureCollectionLinks(session: string): void {
   };
 
   const onLeave = (): void => { lastHover = null; hideGlow(); };
+  const onScroll = (): void => { onLeave(); redrawMarkedTargets(); };
+  const onResize = (): void => { onLeave(); redrawMarkedTargets(); };
 
   const onClick = (event: MouseEvent): void => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -154,19 +156,14 @@ export function captureCollectionLinks(session: string): void {
     document.removeEventListener("click", onClick, true);
     document.removeEventListener("pointermove", onHover, true);
     document.removeEventListener("pointerout", onLeave, true);
-    document.removeEventListener("scroll", onLeave, true);
-    window.removeEventListener("resize", onLeave);
-    for (const [target, state] of markedTargets) {
-      const style = (target as HTMLElement).style;
-      if (style.getPropertyValue("box-shadow") !== state.applied || style.getPropertyPriority("box-shadow") !== "important") continue;
-      if (state.value || state.priority) style.setProperty("box-shadow", state.value, state.priority);
-      else style.removeProperty("box-shadow");
-    }
+    document.removeEventListener("scroll", onScroll, true);
+    window.removeEventListener("resize", onResize);
+    for (const state of markedTargets.values()) state.overlay.remove();
     glow.remove();
   });
   document.addEventListener("click", onClick, true);
   document.addEventListener("pointermove", onHover, true);
   document.addEventListener("pointerout", onLeave, true);
-  document.addEventListener("scroll", onLeave, true);
-  window.addEventListener("resize", onLeave);
+  document.addEventListener("scroll", onScroll, true);
+  window.addEventListener("resize", onResize);
 }

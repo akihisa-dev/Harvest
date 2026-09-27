@@ -23,6 +23,8 @@ function makeStyle(initial = "", initialPriority = "") {
 function setup() {
   const listeners = new Map();
   const glow = {style: makeStyle(), setAttribute() {}, remove() { this.removed = true; }};
+  const overlays = [];
+  let created = 0;
   const removed = [];
   const messages = [];
   let disconnected;
@@ -39,14 +41,19 @@ function setup() {
   globalThis.window = {addEventListener(type, listener) { windowListeners.set(type, listener); }, removeEventListener() {}};
   globalThis.location = {href: "https://example.test/current"};
   globalThis.document = {
-    createElement() { return glow; },
-    documentElement: {append() {}},
+    createElement() {
+      if (created++ === 0) return glow;
+      const overlay = {style: makeStyle(), setAttribute() {}, remove() { this.removed = true; }};
+      overlays.push(overlay);
+      return overlay;
+    },
+    documentElement: {append(node) { node.appended = true; }},
     baseURI: "https://example.test/current",
     addEventListener(type, listener, capture) { assert.equal(capture, true); listeners.set(type, listener); },
     removeEventListener(type, listener, capture) { removed.push({type, listener, capture}); listeners.delete(type); },
   };
   return {
-    port, messages, removed, glow,
+    port, messages, removed, glow, overlays,
     hover(anchor) {
       const event = {path: [anchor], composedPath() { return this.path; }};
       listeners.get("pointermove")?.(event);
@@ -184,19 +191,22 @@ test("成功したクリック対象だけが離脱・スクロール・サイ�
     fixture.port.messageListener({busy: false, pdfUrl: null, canExport: true});
     assert.equal(failed.style.getPropertyValue("box-shadow"), "");
     fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/picked", canExport: true});
-    assert.ok(original.getPropertyValue("box-shadow").includes("255,235,140"));
+    assert.equal(original.getPropertyValue("box-shadow"), "original-shadow");
+    assert.ok(fixture.overlays[0].style.boxShadow.includes("255,235,140"));
     fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/other", canExport: true});
-    assert.ok(original.getPropertyValue("box-shadow").includes("125,235,255"));
-    assert.ok(otherOriginal.getPropertyValue("box-shadow").includes("255,235,140"));
+    assert.ok(fixture.overlays[0].style.boxShadow.includes("125,235,255"));
+    assert.ok(fixture.overlays[1].style.boxShadow.includes("255,235,140"));
     fixture.leave();
     fixture.scroll();
     fixture.resize();
-    assert.ok(original.getPropertyValue("box-shadow").includes("125,235,255"));
-    assert.ok(otherOriginal.getPropertyValue("box-shadow").includes("255,235,140"));
+    assert.ok(fixture.overlays[0].style.boxShadow.includes("125,235,255"));
+    assert.ok(fixture.overlays[1].style.boxShadow.includes("255,235,140"));
     fixture.disconnect();
     assert.equal(original.getPropertyValue("box-shadow"), "original-shadow");
     assert.equal(original.getPropertyPriority("box-shadow"), "important");
     assert.equal(otherOriginal.getPropertyValue("box-shadow"), "other-shadow");
+    assert.equal(fixture.overlays[0].removed, true);
+    assert.equal(fixture.overlays[1].removed, true);
   } finally { fixture.restore(); }
 });
 

@@ -48,32 +48,32 @@ export function captureCollectionLinks(session) {
     const cyanGlow = "inset 0 0 0 3px rgba(125,235,255,.95),0 0 0 2px rgba(125,235,255,.9),0 0 12px 5px rgba(70,210,255,.7),0 0 26px 8px rgba(70,210,255,.35)";
     const goldGlow = "inset 0 0 0 4px rgba(255,235,140,1),0 0 0 3px rgba(255,205,65,1),0 0 16px 7px rgba(255,190,40,.9),0 0 34px 12px rgba(255,170,20,.55)";
     const desiredGlow = (url) => canExport && url === pdfUrl ? goldGlow : cyanGlow;
+    const positionGlow = (target, overlay) => {
+        const rect = target.getBoundingClientRect();
+        overlay.style.left = `${rect.left}px`;
+        overlay.style.top = `${rect.top}px`;
+        overlay.style.width = `${rect.width}px`;
+        overlay.style.height = `${rect.height}px`;
+    };
     const markTarget = (target, url) => {
-        const desired = desiredGlow(url);
-        if (!markedTargets.has(target)) {
-            const style = target.style;
-            markedTargets.set(target, {
-                url,
-                value: style.getPropertyValue("box-shadow"),
-                priority: style.getPropertyPriority("box-shadow"),
-                applied: desired,
-            });
+        let state = markedTargets.get(target);
+        if (!state) {
+            const overlay = document.createElement("div");
+            overlay.setAttribute("aria-hidden", "true");
+            overlay.style.cssText = "position:fixed;pointer-events:none;z-index:2147483646;display:block;border-radius:5px;background:transparent;";
+            document.documentElement.append(overlay);
+            state = { url, overlay };
+            markedTargets.set(target, state);
         }
-        else {
-            const state = markedTargets.get(target);
+        else
             state.url = url;
-            state.applied = desired;
-        }
-        const style = target.style;
-        style.setProperty("box-shadow", desired, "important");
-        markedTargets.get(target).applied = style.getPropertyValue("box-shadow");
+        state.overlay.style.boxShadow = desiredGlow(url);
+        positionGlow(target, state.overlay);
     };
     const redrawMarkedTargets = () => {
         for (const [target, state] of markedTargets) {
-            state.applied = desiredGlow(state.url);
-            const style = target.style;
-            style.setProperty("box-shadow", state.applied, "important");
-            state.applied = style.getPropertyValue("box-shadow");
+            state.overlay.style.boxShadow = desiredGlow(state.url);
+            positionGlow(target, state.overlay);
         }
     };
     const findLink = (event) => {
@@ -135,6 +135,8 @@ export function captureCollectionLinks(session) {
         drawHover(lastHover);
     };
     const onLeave = () => { lastHover = null; hideGlow(); };
+    const onScroll = () => { onLeave(); redrawMarkedTargets(); };
+    const onResize = () => { onLeave(); redrawMarkedTargets(); };
     const onClick = (event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
             return;
@@ -157,22 +159,15 @@ export function captureCollectionLinks(session) {
         document.removeEventListener("click", onClick, true);
         document.removeEventListener("pointermove", onHover, true);
         document.removeEventListener("pointerout", onLeave, true);
-        document.removeEventListener("scroll", onLeave, true);
-        window.removeEventListener("resize", onLeave);
-        for (const [target, state] of markedTargets) {
-            const style = target.style;
-            if (style.getPropertyValue("box-shadow") !== state.applied || style.getPropertyPriority("box-shadow") !== "important")
-                continue;
-            if (state.value || state.priority)
-                style.setProperty("box-shadow", state.value, state.priority);
-            else
-                style.removeProperty("box-shadow");
-        }
+        document.removeEventListener("scroll", onScroll, true);
+        window.removeEventListener("resize", onResize);
+        for (const state of markedTargets.values())
+            state.overlay.remove();
         glow.remove();
     });
     document.addEventListener("click", onClick, true);
     document.addEventListener("pointermove", onHover, true);
     document.addEventListener("pointerout", onLeave, true);
-    document.addEventListener("scroll", onLeave, true);
-    window.addEventListener("resize", onLeave);
+    document.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
 }
