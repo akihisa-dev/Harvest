@@ -210,3 +210,36 @@ test("結果通知の失敗でも待機中の取得を解放する", async () =>
     Object.assign(globalThis, previous);
   }
 });
+
+test("画素の読み取り失敗でもメモリを解放し、後続画像を入力順で準備する", async () => {
+  const previous = {fetch: globalThis.fetch, document: globalThis.document, createImageBitmap: globalThis.createImageBitmap};
+  const canvases = [];
+  const closed = [];
+  globalThis.fetch = async url => ({ok: true, blob: async () => new Blob([url], {type: "image/png"})});
+  globalThis.createImageBitmap = async blob => {
+    const name = await blob.text();
+    return {name, width: 1, height: 1, close() { closed.push(name); }};
+  };
+  globalThis.document = {createElement() {
+    let name;
+    const canvas = {width: 0, height: 0, getContext() {
+      return {fillRect() {}, drawImage(bitmap) { name = bitmap.name; }, getImageData() {
+        if (name === "broken") throw new Error("private decoder detail");
+        return {data: new Uint8ClampedArray([1, 2, 3, 255])};
+      }};
+    }};
+    canvases.push(canvas);
+    return canvas;
+  }};
+  try {
+    const results = [];
+    await preparePdfImages([{url: "broken"}, {url: "valid"}], (item, result) => results.push([item.url, result]));
+    assert.deepEqual(results.map(([url]) => url), ["broken", "valid"]);
+    assert.ok(results[0][1] instanceof PdfImageError);
+    assert.equal(results[0][1].kind, "invalid-image");
+    assert.doesNotMatch(results[0][1].message, /private decoder detail/);
+    assert.deepEqual([...inflateSync(results[1][1].rgbFlate)], [1, 2, 3]);
+    assert.deepEqual(closed, ["broken", "valid"]);
+    assert.ok(canvases.every(canvas => canvas.width === 0 && canvas.height === 0));
+  } finally { Object.assign(globalThis, previous); }
+});

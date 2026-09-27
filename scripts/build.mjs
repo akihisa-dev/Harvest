@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { access, copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { access, cp, copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import process from "node:process";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -43,20 +43,21 @@ try {
   await mkdir(join(stage, "source", "scripts"), { recursive: true });
   await mkdir(join(stage, "source", "tests"), { recursive: true });
   for (const locale of ["ja", "en"]) await mkdir(join(stage, "_locales", locale), { recursive: true });
-  await copyFile(join(stage, ".compiled", "extension", "background.js"), join(stage, "background.js"));
+  const compiledExtension = join(stage, ".compiled", "extension");
+  for (const file of await readdir(compiledExtension, { recursive: true })) {
+    if (!file.endsWith(".js")) continue;
+    const source = join(compiledExtension, file);
+    const destination = file === "background.js"
+      ? join(stage, "background.js")
+      : join(stage, "app", file === "app.js" ? "index.js" : file);
+    await mkdir(dirname(destination), { recursive: true });
+    await copyFile(source, destination);
+  }
+  await cp(join(stage, ".compiled", "core"), join(stage, "core"), { recursive: true });
   await copyFile(join(root, "app", "index.html"), join(stage, "app", "index.html"));
   await copyFile(join(root, "app", "style.css"), join(stage, "app", "style.css"));
   await copyFile(join(root, "app", "legal.html"), join(stage, "app", "legal.html"));
   await copyFile(join(root, "assets", "brand", "harvest-geometric-logo.svg"), join(stage, "brand", "harvest-geometric-logo.svg"));
-  await copyFile(join(stage, ".compiled", "extension", "app.js"), join(stage, "app", "index.js"));
-  await copyFile(join(stage, ".compiled", "extension", "pdf-image.js"), join(stage, "app", "pdf-image.js"));
-  await copyFile(join(stage, ".compiled", "extension", "motion.js"), join(stage, "app", "motion.js"));
-  await copyFile(join(stage, ".compiled", "extension", "localization.js"), join(stage, "app", "localization.js"));
-  await copyFile(join(stage, ".compiled", "extension", "page-scan.js"), join(stage, "app", "page-scan.js"));
-  await copyFile(join(stage, ".compiled", "extension", "collection-mode.js"), join(stage, "app", "collection-mode.js"));
-  await copyFile(join(stage, ".compiled", "extension", "page-access.js"), join(stage, "app", "page-access.js"));
-  await copyFile(join(stage, ".compiled", "core", "images.js"), join(stage, "core", "images.js"));
-  await copyFile(join(stage, ".compiled", "core", "pdf.js"), join(stage, "core", "pdf.js"));
   for (const size of [16, 32, 48, 128]) {
     await copyFile(join(root, "assets", "icons", `icon-${size}.png`), join(stage, "icons", `icon-${size}.png`));
   }
@@ -73,12 +74,8 @@ try {
   for (const file of ["index.html", "style.css", "legal.html"]) {
     await copyFile(join(root, "app", file), join(stage, "source", "app", file));
   }
-  for (const file of await readdir(join(root, "src", "core"))) {
-    await copyFile(join(root, "src", "core", file), join(stage, "source", "src", "core", file));
-  }
-  for (const file of await readdir(join(root, "src", "extension"))) {
-    await copyFile(join(root, "src", "extension", file), join(stage, "source", "src", "extension", file));
-  }
+  await cp(join(root, "src", "core"), join(stage, "source", "src", "core"), { recursive: true });
+  await cp(join(root, "src", "extension"), join(stage, "source", "src", "extension"), { recursive: true });
   for (const directory of ["scripts", "tests"]) {
     for (const file of await readdir(join(root, directory))) {
       if (!file.endsWith(".mjs")) continue;

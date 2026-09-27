@@ -52,7 +52,13 @@ pnpm verify:full
 
 `pnpm build`で`dist/extension/`を作成し、Chromeの拡張機能管理画面から「パッケージ化されていない拡張機能を読み込む」で読み込みます。配布用ZIPは`pnpm package:extension`で作成します。Windowsでは`配布ZIPを作成.bat`、macOSでは`配布ZIPを作成.command`を開いても作成できます。これらは同じ作成処理を呼び出します。この処理は固定版のNode.jsとpnpmを確認してビルドし、ZIPの整合性と最上位の`manifest.json`を確認してから、`dist/Harvest-extension-<version>.zip`へ保存します。`dist/extension/`はソースと同期してGitにも登録します。ZIPを含むそれ以外の`dist/`生成物は登録しません。
 
-Chrome APIに依存しない処理はsrc/core/、Chrome固有処理はsrc/extension/に置きます。作業規約はAGENTS.md、参加手順はCONTRIBUTING.md、GitHubの運用設定はdocs/repository-setup.mdを参照してください。
+Chrome APIに依存しない画像の選択・順序とPDFの組み立ては `src/core/`、画面操作とブラウザーへの接続は `src/extension/` に置きます。
+
+画像の通信と時間制限は `image-fetch.ts`、画素への変換とメモリの解放は `image-decode.ts`、並行取得・逐次変換・入力順の結果通知は `pdf-image.ts` が担当します。既存のPDF作成関数と画像準備関数の呼び出し方は維持します。担当の境界は [共通処理](src/core/README.md) と [画面・ブラウザー接続](src/extension/README.md) を参照してください。
+
+ビルドはコンパイル済みモジュールをまとめて配置し、`check:build` で各モジュールの参照先が配布物内に存在することを確認します。
+
+作業規約はAGENTS.md、参加手順はCONTRIBUTING.md、GitHubの運用設定はdocs/repository-setup.mdを参照してください。
 
 Chrome ウェブストアへの提出には[提出手順](store/submit.md)と[掲載文](store/listing-ja.md)を使います。利用者データの取扱いは[プライバシーポリシー](docs/privacy-policy.md)に記載しています。
 

@@ -1,31 +1,49 @@
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+import { checkRelativeImports } from "./build-imports.mjs";
 
-const expected = JSON.parse(await readFile(new URL("../manifest.template.json", import.meta.url), "utf8"));
-const actual = JSON.parse(await readFile(new URL("../dist/extension/manifest.json", import.meta.url), "utf8"));
+const root = fileURLToPath(new URL("../", import.meta.url));
+const output = join(root, "dist", "extension");
+const expected = JSON.parse(await readFile(join(root, "manifest.template.json"), "utf8"));
+const actual = JSON.parse(await readFile(join(output, "manifest.json"), "utf8"));
 assert.deepEqual(actual, expected, "生成manifestがtemplateと一致しません。");
 
-for (const path of [
-  "../dist/extension/background.js",
-  "../dist/extension/app/index.html",
-  "../dist/extension/app/index.js",
-  "../dist/extension/app/pdf-image.js",
-  "../dist/extension/app/motion.js",
-  "../dist/extension/app/localization.js",
-  "../dist/extension/app/page-scan.js",
-  "../dist/extension/app/page-access.js",
-  "../dist/extension/app/collection-mode.js",
-  "../dist/extension/app/style.css",
-  "../dist/extension/brand/harvest-geometric-logo.svg",
-  "../dist/extension/core/images.js",
-  "../dist/extension/core/pdf.js",
-  "../dist/extension/icons/icon-16.png",
-  "../dist/extension/icons/icon-32.png",
-  "../dist/extension/icons/icon-48.png",
-  "../dist/extension/icons/icon-128.png",
-  "../dist/extension/_locales/ja/messages.json",
-  "../dist/extension/_locales/en/messages.json"
-]) {
-  await access(new URL(path, import.meta.url));
+async function filesUnder(directory) {
+  const files = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...await filesUnder(path));
+    else if (entry.isFile()) files.push(path);
+  }
+  return files;
 }
-console.log("Extension build output is complete.");
+
+for (const path of [
+  "background.js",
+  "app/index.html",
+  "app/index.js",
+  "app/style.css",
+  "brand/harvest-geometric-logo.svg",
+  "icons/icon-16.png",
+  "icons/icon-32.png",
+  "icons/icon-48.png",
+  "icons/icon-128.png",
+  "_locales/ja/messages.json",
+  "_locales/en/messages.json"
+]) {
+  await access(join(output, path));
+}
+
+const runtimeFiles = (await filesUnder(output)).filter((path) => path.endsWith(".js"));
+await checkRelativeImports(runtimeFiles, output);
+
+for (const sourceFile of (await filesUnder(join(root, "src"))).filter((path) => !path.endsWith("/.DS_Store"))) {
+  const distributed = join(output, "source", relative(root, sourceFile));
+  await access(distributed).catch(() => {
+    assert.fail(`配布sourceに必要なファイルがありません: ${relative(root, sourceFile)}`);
+  });
+}
+
+console.log("Extension build output and module imports are complete.");

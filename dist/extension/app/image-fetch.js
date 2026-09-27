@@ -1,0 +1,114 @@
+import { getOriginalJpegPage } from "../core/jpeg.js";
+import { checkCancelled, invalidImage, PdfImageError } from "./pdf-image-contract.js";
+const DEFAULT_TIMEOUT_MS = 20_000;
+function timeoutValue(options) {
+    const value = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    if (!Number.isFinite(value) || value <= 0) {
+        throw new RangeError("timeoutMs must be a positive finite number.");
+    }
+    return value;
+}
+function responseError(status) {
+    if (status === 401 || status === 403) {
+        return new PdfImageError("http", "画像へのアクセスが拒否されました。", status);
+    }
+    if (status === 404 || status === 410) {
+        return new PdfImageError("http", "画像が見つかりませんでした。", status);
+    }
+    if (status === 408 || status === 429 || status >= 500) {
+        return new PdfImageError("http", "画像サーバーが応答できませんでした。", status);
+    }
+    return new PdfImageError("http", "画像を取得できませんでした。", status);
+}
+function isAbortError(error) {
+    return error instanceof DOMException && error.name === "AbortError";
+}
+async function cancelResponse(response) {
+    try {
+        if (response?.body && !response.bodyUsed)
+            await response.body.cancel();
+    }
+    catch {
+        // A response that has already been closed needs no further cleanup.
+    }
+}
+export async function fetchImage(url, options) {
+    checkCancelled(options.signal);
+    const timeoutMs = timeoutValue(options);
+    const controller = new AbortController();
+    let response;
+    let timedOut = false;
+    let timeoutHandle;
+    let removeAbortListener;
+    const sourceSignal = options.signal;
+    let rejectAbort;
+    const cancelled = new Promise((_, reject) => { rejectAbort = reject; });
+    if (sourceSignal?.aborted)
+        controller.abort();
+    else if (sourceSignal) {
+        const abort = () => {
+            controller.abort();
+            rejectAbort?.(new PdfImageError("cancelled", "画像の取得を中止しました。"));
+        };
+        sourceSignal.addEventListener("abort", abort, { once: true });
+        removeAbortListener = () => sourceSignal.removeEventListener("abort", abort);
+    }
+    const operation = (async () => {
+        try {
+            response = await fetch(url, { credentials: "include", signal: controller.signal });
+            if (!response.ok) {
+                const error = responseError(response.status);
+                void cancelResponse(response);
+                throw error;
+            }
+            const blob = await response.blob();
+            if (blob.type && !blob.type.toLowerCase().startsWith("image/")) {
+                throw invalidImage("画像データではありません。");
+            }
+            // Read the body while the response timeout is still active. This also lets
+            // us detect and retain a supported JPEG without decoding or re-encoding it.
+            const bytes = new Uint8Array(await blob.arrayBuffer());
+            const original = getOriginalJpegPage(bytes);
+            if (original)
+                return { kind: "original", page: original };
+            return { kind: "bitmap", blob };
+        }
+        catch (error) {
+            void cancelResponse(response);
+            if (error instanceof PdfImageError)
+                throw error;
+            if (sourceSignal?.aborted) {
+                throw new PdfImageError("cancelled", "画像の取得を中止しました。");
+            }
+            if (controller.signal.aborted || isAbortError(error)) {
+                // The timeout promise below wins the race when it caused the abort.
+                throw new PdfImageError("timeout", "画像の取得に時間がかかりすぎたため中止しました。");
+            }
+            throw new PdfImageError("network", "画像を取得できませんでした。通信状態と画像URLを確認してください。");
+        }
+    })();
+    const timeout = new Promise((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+            void cancelResponse(response);
+            reject(new PdfImageError("timeout", "画像の取得に時間がかかりすぎたため中止しました。"));
+        }, timeoutMs);
+    });
+    try {
+        return await Promise.race([operation, timeout, cancelled]);
+    }
+    catch (error) {
+        if (timedOut) {
+            throw new PdfImageError("timeout", "画像の取得に時間がかかりすぎたため中止しました。");
+        }
+        throw error;
+    }
+    finally {
+        if (timeoutHandle !== undefined)
+            clearTimeout(timeoutHandle);
+        removeAbortListener?.();
+        if (timedOut)
+            void cancelResponse(response);
+    }
+}
