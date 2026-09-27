@@ -54,7 +54,9 @@ const collectionSessions = new Set();
 let collectionSession = null;
 let collectionTabId = null;
 let collectionPort = null;
+let collectionAnalyzedUrl = null;
 function stopCollection() {
+    collectionAnalyzedUrl = null;
     collectionSession = null;
     collectionTabId = null;
     const port = collectionPort;
@@ -77,9 +79,13 @@ chrome.runtime.onConnect?.addListener(port => {
         if (collectionPort !== port || !collectionSession || busy || disposed ||
             typeof message.url !== "string" || !isWebUrl(message.url))
             return;
+        if (collectionAnalyzedUrl === message.url) {
+            void exportPdf();
+            return;
+        }
         sourceUrl.value = message.url;
         updateSourceDrop();
-        void startScan();
+        void startScan(message.url);
     });
     port.onDisconnect.addListener(() => {
         if (collectionPort === port)
@@ -207,9 +213,10 @@ function setBusy(value) {
     exportButton.disabled = value || !images.some(item => item.selected);
     render();
 }
-async function startScan() {
+async function startScan(collectionLink) {
     if (busy)
         return;
+    const session = collectionSession;
     const enteredUrl = sourceUrl.value.trim();
     let targetUrl = "";
     if (enteredUrl) {
@@ -225,6 +232,7 @@ async function startScan() {
             return;
         }
     }
+    collectionAnalyzedUrl = null;
     hideSourceInput();
     const controller = new AbortController();
     scanController = controller;
@@ -252,6 +260,7 @@ async function startScan() {
         const nextImages = urls.map(url => ({ url, sourcePage: result.url, selected: selectedUrls.has(url) }));
         // Publish only a complete scan. A rejected scan keeps the previous working set.
         images = nextImages;
+        collectionAnalyzedUrl = collectionLink && session !== null && session === collectionSession ? collectionLink : null;
         initialImageOrder = [...images];
         pageTitle = result.title || "画像";
         pendingExport = null;
@@ -887,6 +896,7 @@ resetOrderButton.addEventListener("click", () => {
 resetButton.addEventListener("click", () => {
     if (busy)
         return;
+    collectionAnalyzedUrl = null;
     images = [];
     initialImageOrder = [];
     pendingExport = null;
