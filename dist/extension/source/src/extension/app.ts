@@ -65,6 +65,7 @@ let busy = false;
 let disposed = false;
 let scanController: AbortController | null = null;
 let exportController: AbortController | null = null;
+let exportProgress = "";
 window.addEventListener?.("pagehide", () => {
   disposed = true;
   collectionController.stop();
@@ -136,6 +137,11 @@ function setStatus(message: string, state: StatusState = "info", progress = ""):
   statusElement.setAttribute("aria-label", state === "busy" ? message : "");
   statusElement.dataset["state"] = state;
   statusElement.title = message;
+  if (exportController && state === "busy") {
+    exportProgress = progress;
+    exportButton.textContent = progress;
+    exportButton.setAttribute("aria-label", message);
+  }
 }
 
 function requestFocus(target: FocusTarget): void { focusTarget = target; }
@@ -539,7 +545,8 @@ function render(): void {
   const visibleImages = imageCollection.items.filter(item => visibleUrls.has(item.url));
   const selectedCount = selected.length;
   exportButton.dataset["saving"] = String(exportController !== null);
-  exportButton.textContent = pendingExport?.failed.size
+  if (!exportController) exportButton.removeAttribute("aria-label");
+  exportButton.textContent = exportController ? exportProgress : pendingExport?.failed.size
     ? t("exportRetry", {count: pendingExport.failed.size, plural: formatPlural(pendingExport.failed.size)})
     : selectedCount ? t("exportCount", {count: selectedCount, plural: formatPlural(selectedCount)}) : t("savePdf");
   failuresElement.hidden = !pendingExport?.failed.size;
@@ -591,6 +598,7 @@ async function exportPdf(): Promise<void> {
   const remaining = work.selected.filter(item => !work.prepared.has(item));
   const controller = new AbortController();
   exportController = controller;
+  exportProgress = `0 / ${remaining.length}`;
   completionElement.hidden = true;
   setBusy(true);
   setStatus(t(retry ? "retryImages" : "prepareImages", {completed: 0, total: remaining.length}), "busy", `0 / ${remaining.length}`);
@@ -639,6 +647,7 @@ async function exportPdf(): Promise<void> {
     setStatus(error instanceof Error ? localizeErrorMessage(error.message, "errorPdfCreate", true) : t("errorPdfCreate"), "error");
   } finally {
     exportController = null;
+    exportProgress = "";
     if (!disposed) setBusy(false);
     if (!disposed && pendingExport === work && work.failed.size) failuresElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"});
   }

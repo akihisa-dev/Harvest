@@ -463,15 +463,22 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     const failedUrl = resultImages[0];
     const fetches = [];
     let failOnce = true;
+    let releaseFailedFetch;
+    const failedFetchGate = new Promise(resolve => { releaseFailedFetch = resolve; });
     document.querySelector("#source-url").value = "https://example.com/next";
     document.querySelector("#source-url").dispatch("input");
     globalThis.fetch = async url => {
       fetches.push(url);
-      if (url === failedUrl && failOnce) throw new Error("test");
+      if (url === failedUrl && failOnce) {
+        await failedFetchGate;
+        throw new Error("test");
+      }
       return new Response(new Uint8Array([1]), {headers: {"Content-Type": "image/png"}});
     };
     document.querySelector("#export").dispatch("click");
     assert.equal(exportButton.dataset.saving, "true", "PDF保存中はボタンにロードマークを出す");
+    assert.equal(exportButton.textContent, "0 / 4", "保存中はボタンに処理済み枚数と対象枚数を表示する");
+    assert.equal(exportButton.getAttribute("aria-label"), "画像を準備しています… 0 / 4", "保存中のボタンは進捗の意味を読み上げられる");
     assert.equal(exportOverlay.hidden, false, "PDF保存中はビュアーにオーバーレイを重ねる");
     assert.equal(exportButton.disabled, true, "保存中は重複して押せない");
     assert.equal(document.querySelector("#status").textContent, "0 / 4", "PDF作成中も枚数の進捗を画面に表示する");
@@ -487,8 +494,12 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     document.querySelector("#images").children[1].dispatch("drop", {clientX: 75, clientY: 150});
     assert.equal(document.querySelector("#status").dataset.state, "busy");
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), busyOrder);
+    await waitUntil(() => exportButton.textContent === "2 / 4");
+    assert.equal(exportButton.getAttribute("aria-label"), "画像を準備しています… 2 / 4", "処理に合わせてボタンの進捗が更新される");
+    releaseFailedFetch();
     await waitUntil(() => document.querySelector("#failures").hidden === false);
     assert.equal(exportButton.dataset.saving, "false", "保存失敗後はロードマークを消す");
+    assert.equal(exportButton.getAttribute("aria-label"), null, "保存失敗後は通常のボタン名に戻す");
     assert.equal(exportOverlay.hidden, true, "保存失敗後はビュアーのオーバーレイを消す");
     assert.equal(document.downloads.length, 0);
     assert.equal(document.querySelector("#source-url").value, "https://example.com/next", "保存失敗時は再試行のためURLを残す");
@@ -513,9 +524,11 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     createdUrls.length = 0;
     document.querySelector("#export").dispatch("click");
     assert.equal(exportButton.dataset.saving, "true", "再試行中もロードマークを出す");
+    assert.equal(exportButton.textContent, "0 / 1", "再試行中は残り枚数に対する進捗を表示する");
     assert.equal(exportOverlay.hidden, false, "再試行中もビュアーにオーバーレイを重ねる");
     await waitUntil(() => document.downloads.length === 1);
     await waitUntil(() => exportButton.dataset.saving === "false");
+    assert.equal(exportButton.textContent, "PDFを保存（4枚）", "保存開始後は通常のボタン名に戻す");
     assert.equal(exportOverlay.hidden, true, "保存開始後はビュアーのオーバーレイを消す");
     assert.deepEqual(fetches, [...busyOrder, failedUrl]);
     assert.deepEqual(document.downloads, ["ページ.pdf"]);

@@ -71,6 +71,7 @@ let busy = false;
 let disposed = false;
 let scanController = null;
 let exportController = null;
+let exportProgress = "";
 window.addEventListener?.("pagehide", () => {
     disposed = true;
     collectionController.stop();
@@ -122,6 +123,11 @@ function setStatus(message, state = "info", progress = "") {
     statusElement.setAttribute("aria-label", state === "busy" ? message : "");
     statusElement.dataset["state"] = state;
     statusElement.title = message;
+    if (exportController && state === "busy") {
+        exportProgress = progress;
+        exportButton.textContent = progress;
+        exportButton.setAttribute("aria-label", message);
+    }
 }
 function requestFocus(target) { focusTarget = target; }
 function restoreFocus() {
@@ -565,7 +571,9 @@ function render() {
     const visibleImages = imageCollection.items.filter(item => visibleUrls.has(item.url));
     const selectedCount = selected.length;
     exportButton.dataset["saving"] = String(exportController !== null);
-    exportButton.textContent = pendingExport?.failed.size
+    if (!exportController)
+        exportButton.removeAttribute("aria-label");
+    exportButton.textContent = exportController ? exportProgress : pendingExport?.failed.size
         ? t("exportRetry", { count: pendingExport.failed.size, plural: formatPlural(pendingExport.failed.size) })
         : selectedCount ? t("exportCount", { count: selectedCount, plural: formatPlural(selectedCount) }) : t("savePdf");
     failuresElement.hidden = !pendingExport?.failed.size;
@@ -618,6 +626,7 @@ async function exportPdf() {
     const remaining = work.selected.filter(item => !work.prepared.has(item));
     const controller = new AbortController();
     exportController = controller;
+    exportProgress = `0 / ${remaining.length}`;
     completionElement.hidden = true;
     setBusy(true);
     setStatus(t(retry ? "retryImages" : "prepareImages", { completed: 0, total: remaining.length }), "busy", `0 / ${remaining.length}`);
@@ -672,6 +681,7 @@ async function exportPdf() {
     }
     finally {
         exportController = null;
+        exportProgress = "";
         if (!disposed)
             setBusy(false);
         if (!disposed && pendingExport === work && work.failed.size)
