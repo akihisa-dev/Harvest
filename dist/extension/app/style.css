@@ -84,7 +84,7 @@ section, aside { min-width: 0; }
 .app-header.drag-over::after { content: attr(data-drop-label); position: absolute; inset: 8px; z-index: 2; display: grid; place-items: center; border: 2px dashed var(--ink); border-radius: 10px; background: var(--overlay); color: var(--ink); font-size: 16px; font-weight: 700; pointer-events: none; }
 main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; background: var(--hover); }
 .header-input-column { display: block; min-width: 0; }
-.controls { padding: 8px var(--sidebar-padding) 8px 12px; }
+.controls { padding: 8px var(--sidebar-padding) 8px 0; }
 .save-area { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 0 0 8px; border-bottom: 1px solid var(--line); }
 .save-area #export { width: 100%; }
 .export-control { position: relative; }
@@ -95,9 +95,12 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 #pdf-save-state[data-state="changed"]::before { background: currentColor; }
 .export-control:has(#export:disabled) #pdf-save-state { color: var(--disabled-ink); }
 .source-page-option { display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; }
-.source-row { display: grid; grid-template-columns: minmax(0, 1fr) var(--stage-gap) var(--stage-sidebar-width) calc(13px + var(--sidebar-padding)) auto; }
+.source-row { display: grid; grid-template-columns: minmax(0, 1fr) calc(1px + var(--sidebar-padding)) auto; }
 .source-row #source-drop, .source-row #source-url { grid-column: 1; grid-row: 1; }
-.source-actions { grid-column: 5; grid-row: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: calc(var(--sidebar-width) - 1px - var(--sidebar-padding) - var(--sidebar-padding)); overflow-y: auto; scrollbar-gutter: stable; }
+.source-actions { grid-column: 3; grid-row: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: calc(var(--sidebar-width) - 1px - var(--sidebar-padding) - var(--sidebar-padding)); overflow-y: auto; scrollbar-gutter: stable; }
+body:has(#viewer-page:not([hidden])) .controls { padding-left: 12px; }
+body:has(#viewer-page:not([hidden])) .source-row { grid-template-columns: minmax(0, 1fr) var(--stage-gap) var(--stage-sidebar-width) calc(13px + var(--sidebar-padding)) auto; }
+body:has(#viewer-page:not([hidden])) .source-actions { grid-column: 5; }
 .source-actions button { min-width: 0; padding-inline: 2px; }
 .source-row #reset { width: auto; min-height: 36px; padding: 7px 2px; }
 .source-row #collection-toggle { min-width: 0; }

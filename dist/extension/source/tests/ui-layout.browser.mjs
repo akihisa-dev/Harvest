@@ -56,7 +56,8 @@ async function inspectLayout(page, width, height, label) {
       heading: rect(".results-heading"), groupBar: rect(".group-bar"), groups: rect("#groups"),
       viewerControls: rect(".viewer-controls"), status: rect("#status"), clear: rect("#reset"),
       source: rect("#source-drop"), scan: rect("#scan"), collect: rect("#collection-toggle"), export: rect("#export"), viewer: rect("#viewer-toggle"),
-      viewerOpen: !document.querySelector("#viewer").hidden, stage: rect("#viewer-stage"),
+      viewerPageVisible: !document.querySelector("#viewer-page").hidden && !document.querySelector("#viewer").hidden,
+      stage: rect("#viewer-stage"),
       allVisibility: rect("#all-visibility"), allSelection: rect(".toolbar-check"), resetOrder: rect("#reset-order"),
       headingText: document.querySelector("#images-heading").getBoundingClientRect().toJSON(),
       groupCount: document.querySelectorAll("#groups .group-chip").length,
@@ -80,9 +81,12 @@ async function inspectLayout(page, width, height, label) {
     `${label}: URL, analyze, clear, and collect must stay in this order`);
   assert.ok(Math.abs(result.scan.x - result.export.x) <= 1, `${label}: header actions and save button must share the left edge (${result.scan.x}, ${result.export.x})`);
   assert.ok(Math.abs(result.collect.right - result.export.right) <= 1, `${label}: header actions and save button must share the right edge (${result.collect.right}, ${result.export.right})`);
-  if (result.viewerOpen) {
+  if (result.viewerPageVisible) {
     assert.ok(Math.abs(result.source.x - result.stage.x) <= 1, `${label}: URL field and image stage must share the left edge (${result.source.x}, ${result.stage.x})`);
     assert.ok(Math.abs(result.source.right - result.stage.right) <= 1, `${label}: URL field and image stage must share the right edge (${result.source.right}, ${result.stage.right})`);
+  } else {
+    assert.ok(Math.abs(result.source.x - result.main.x) <= 1, `${label}: URL field and empty area must share the left edge (${result.source.x}, ${result.main.x})`);
+    assert.ok(Math.abs(result.source.right - result.main.right) <= 1, `${label}: URL field and empty area must share the right edge (${result.source.right}, ${result.main.right})`);
   }
   assert.ok(result.sidebar.x >= result.main.right - 1, `${label}: controls must be to the right of the image`);
   assert.ok(result.sidebar.right <= width + 1, `${label}: sidebar must fit within viewport`);
