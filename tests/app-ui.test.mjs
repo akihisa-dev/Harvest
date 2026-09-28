@@ -94,7 +94,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   };
   document.body = new StubElement("body", document);
   for (const selector of [
-    "#source-url", "#scan", "#export", "#select-all", "#clear-all", "#reset-order", "#reset",
+    "#source-url", "#scan", "#export", "#all-visibility", "#all-selection", "#reset-order", "#reset",
     "#completion", "#back-to-images", "#failures", "#failed-images", "#images", "#groups",
     "#count", "#empty", "#empty-logo", "#empty-message", "#scan-overlay", "#status", "#pdf-save-state", "#viewer-toggle", "#viewer", "#viewer-empty",
     "#viewer-page", "#viewer-previous", "#viewer-position", "#viewer-next", "#viewer-image",
@@ -266,8 +266,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(pdfSaveState.textContent, "", "状態は文字を表示せず印だけで示す");
     assert.equal(pdfSaveState.dataset.state, "unsaved");
     assert.equal(document.querySelector("#images").children.length, 2);
-    assert.equal(descendants(document.querySelector("#groups")).find(button => button.getAttribute("aria-pressed") === "true").textContent, "シリーズ (2枚)");
-    document.querySelector("#groups").children[0].children[0].dispatch("click");
+    assert.equal(document.querySelector("#groups").children[0].children[0].textContent, "シリーズ (2枚)");
+    document.querySelector("#all-visibility").dispatch("click");
     assert.equal(document.querySelector("#export").textContent, "PDFを保存（2枚）");
     const resetOrder = document.querySelector("#reset-order");
     assert.equal(resetOrder.disabled, true);
@@ -346,11 +346,14 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(viewerPrevious.disabled, true);
     assert.equal(viewerNext.disabled, false);
 
-    document.querySelector("#clear-all").dispatch("click");
+    const allSelection = document.querySelector("#all-selection");
+    allSelection.checked = false;
+    allSelection.dispatch("change");
     assert.equal(viewerEmpty.hidden, false);
     assert.equal(viewerPage.hidden, true);
     assert.equal(viewerPosition.textContent, "");
-    document.querySelector("#select-all").dispatch("click");
+    allSelection.checked = true;
+    allSelection.dispatch("change");
     assert.equal(viewerEmpty.hidden, true);
     assert.equal(viewerPage.hidden, false);
     assert.equal(viewerImage.src, resultImages[0]);
@@ -363,8 +366,9 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
       .find(input => input.getAttribute("data-focus-kind") === "pdf-group" && input.getAttribute("data-focus-key") === key);
     const groupChips = document.querySelector("#groups").children.filter(element => element.className === "group-chip");
     assert.ok(groupChips.length > 0);
-    assert.equal(groupChips.every(chip => chip.children.length === 2 && chip.children[0].tagName === "button" && chip.children[1].tagName === "input"), true);
-    const coverFilter = descendants(document.querySelector("#groups")).find(button => button.tagName === "button" && button.textContent.startsWith("表紙"));
+    assert.equal(groupChips.every(chip => chip.children.length === 3 && chip.children[0].tagName === "span" && chip.children[1].tagName === "button" && chip.children[2].children[0].tagName === "input"), true);
+    const groupButton = prefix => groupChips.find(chip => chip.children[0].textContent.startsWith(prefix))?.children[1];
+    const coverFilter = groupButton("表紙");
     const coverPdfCheckbox = getPdfGroupCheckbox(coverFilter.getAttribute("data-focus-key"));
     assert.match(coverPdfCheckbox.getAttribute("aria-label"), /PDFに含める 表紙/);
     coverPdfCheckbox.checked = true;
@@ -374,8 +378,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#images").children.length, 4);
 
     const groups = document.querySelector("#groups");
-    const coverButton = descendants(groups).find(button => button.tagName === "button" && button.textContent.startsWith("表紙"));
-    descendants(groups).find(button => button.tagName === "button" && button.textContent.startsWith("シリーズ")).dispatch("click");
+    const coverButton = groupButton("表紙");
+    groupButton("シリーズ").dispatch("click");
     assert.equal(document.activeElement.getAttribute("data-focus-kind"), "group");
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
     assert.equal(document.querySelector("#images").children.length, 2);
@@ -395,7 +399,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
     assert.equal(document.querySelector("#images").children.length, 2);
 
-    const allButton = groups.children[0].children[0];
+    const allButton = document.querySelector("#all-visibility");
     allButton.dispatch("click");
     const firstRow = document.querySelector("#images").children[0];
     const firstUrl = firstRow.children[0].src;
@@ -441,7 +445,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     keyboardRow.dispatch("keydown", {target: keyboardRow, key: " "});
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択");
 
-    descendants(groups).find(button => button.tagName === "button" && button.textContent.startsWith("シリーズ")).dispatch("click");
+    groupButton("シリーズ").dispatch("click");
     const coverRows = document.querySelector("#images").children;
     const hiddenUrl = resultImages[0];
     assert.equal([...coverRows].some(row => row.children[0].src === hiddenUrl), false);
@@ -491,7 +495,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     rejectScan = true;
     document.querySelector("#scan").dispatch("click");
     document.querySelector("#reset").dispatch("click");
-    document.querySelector("#clear-all").dispatch("click");
+    allSelection.checked = false;
+    allSelection.dispatch("change");
     document.querySelector("#images").children[0].dispatch("keydown", {altKey: true, key: "ArrowDown"});
     await waitUntil(() => !document.querySelector("#scan").disabled);
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), busyOrder);
@@ -535,7 +540,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(pdfSaveState.getAttribute("aria-label"), "保存を開始しました", "収集失敗時は保存済み状態を保つ");
     rejectScan = false;
 
-    descendants(groups).find(button => button.tagName === "button" && button.textContent.startsWith("シリーズ")).dispatch("click");
+    groupButton("シリーズ").dispatch("click");
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
     resetOrder.dispatch("click");
     assert.equal(resetOrder.disabled, true);
@@ -551,8 +556,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(pdfSaveState.getAttribute("aria-label"), "未保存", "再収集成功後は未保存へ戻す");
     assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択・2枚を表示");
     assert.equal(document.querySelector("#images").children.length, 2);
-    assert.equal(descendants(document.querySelector("#groups")).find(button => button.getAttribute("aria-pressed") === "true").textContent, "シリーズ (2枚)");
-    document.querySelector("#groups").children[0].children[0].dispatch("click");
+    assert.equal(document.querySelector("#groups").children[0].children[0].textContent, "シリーズ (2枚)");
+    document.querySelector("#all-visibility").dispatch("click");
     const rescannedRow = document.querySelector("#images").children[0];
     rescannedRow.dispatch("pointerdown");
     rescannedRow.dispatch("click");

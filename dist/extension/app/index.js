@@ -49,8 +49,8 @@ const viewerThumbnailsElement = required("#viewer-thumbnails");
 const viewerZoomInButton = required("#viewer-zoom-in");
 const viewerZoomOutButton = required("#viewer-zoom-out");
 const viewerZoomResetButton = required("#viewer-zoom-reset");
-const selectAllButton = required("#select-all");
-const clearAllButton = required("#clear-all");
+const allVisibilityButton = required("#all-visibility");
+const allSelectionCheckbox = required("#all-selection");
 const resetOrderButton = required("#reset-order");
 const resetButton = required("#reset");
 const completionElement = required("#completion");
@@ -230,19 +230,43 @@ async function startScan(collectionLink) {
         }
     }
 }
+function renderEye(button, shown, label) {
+    const eye = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    eye.classList.add("eye-icon");
+    eye.setAttribute("viewBox", "0 0 24 24");
+    eye.setAttribute("aria-hidden", "true");
+    const outline = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    outline.setAttribute("d", "M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z");
+    const pupil = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    pupil.setAttribute("cx", "12");
+    pupil.setAttribute("cy", "12");
+    pupil.setAttribute("r", "2.5");
+    eye.append(outline, pupil);
+    if (!shown) {
+        const gap = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        gap.setAttribute("d", "M3 21 21 3");
+        gap.classList.add("eye-slash-gap");
+        const slash = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        slash.setAttribute("d", "M3 21 21 3");
+        slash.classList.add("eye-slash");
+        eye.append(gap, slash);
+    }
+    button.replaceChildren(eye);
+    button.title = t(shown ? "hideGroup" : "displayGroup", { label });
+    button.setAttribute("aria-label", button.title);
+    button.setAttribute("aria-pressed", String(shown));
+}
 function renderGroups(groups) {
     groupsElement.hidden = Object.keys(groups).length === 0;
     const entries = groupsElement.hidden ? [] : Object.entries(groups).sort((a, b) => a[1].priority - b[1].priority);
-    reconcileKeyedChildren(groupsElement, groupsElement.hidden ? [] : ["all", ...entries.map(([key]) => key)], key => key, key => {
+    reconcileKeyedChildren(groupsElement, entries.map(([key]) => key), key => key, key => {
+        const label = document.createElement("span");
+        label.className = "group-label";
         const button = document.createElement("button");
         button.type = "button";
         button.addEventListener("click", () => {
             requestFocus({ kind: "group", key });
-            if (key === "all") {
-                visibleGroupKeys = visibleGroupKeys.size === Object.keys(imageCollection.groups).length
-                    ? new Set() : new Set(Object.keys(imageCollection.groups));
-            }
-            else if (visibleGroupKeys.has(key))
+            if (visibleGroupKeys.has(key))
                 visibleGroupKeys.delete(key);
             else
                 visibleGroupKeys.add(key);
@@ -251,62 +275,35 @@ function renderGroups(groups) {
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.addEventListener("change", () => {
-            if (busy)
+            if (busy || !imageCollection.groups[key])
                 return;
             requestFocus({ kind: "pdf-group", key });
-            if (key === "all")
-                imageCollection.setAllSelected(checkbox.checked);
-            else if (imageCollection.groups[key])
-                imageCollection.setGroupSelected(key, checkbox.checked);
+            imageCollection.setGroupSelected(key, checkbox.checked);
             render();
         });
+        const checkboxLabel = document.createElement("label");
+        checkboxLabel.className = "group-check";
+        checkboxLabel.append(checkbox);
         const chip = document.createElement("div");
         chip.className = "group-chip";
-        chip.append(button, checkbox);
+        chip.append(label, button, checkboxLabel);
         return chip;
     }, (element, key) => {
-        const button = element.children[0];
-        const group = key === "all" ? undefined : groups[key];
-        button.textContent = key === "all" ? t("allGroups") : formatGroupLabel(group?.label ?? "");
-        const shown = key === "all" ? visibleGroupKeys.size === entries.length : visibleGroupKeys.has(key);
-        const eye = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        eye.classList.add("eye-icon");
-        eye.setAttribute("viewBox", "0 0 24 24");
-        eye.setAttribute("aria-hidden", "true");
-        const outline = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        outline.setAttribute("d", "M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z");
-        const pupil = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        pupil.setAttribute("cx", "12");
-        pupil.setAttribute("cy", "12");
-        pupil.setAttribute("r", "2.5");
-        eye.append(outline, pupil);
-        if (!shown) {
-            const gap = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            gap.setAttribute("d", "M3 21 21 3");
-            gap.classList.add("eye-slash-gap");
-            const slash = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            slash.setAttribute("d", "M3 21 21 3");
-            slash.classList.add("eye-slash");
-            eye.append(gap, slash);
-        }
-        button.append(eye);
-        button.title = t(shown ? "hideGroup" : "displayGroup", { label: key === "all" ? t("allGroups") : formatGroupLabel(group?.label ?? "") });
-        button.setAttribute("aria-label", button.title);
+        const group = groups[key];
+        const groupLabel = formatGroupLabel(group?.label ?? "");
+        element.children[0].textContent = groupLabel;
+        const button = element.children[1];
+        renderEye(button, visibleGroupKeys.has(key), groupLabel);
         button.disabled = busy;
         button.setAttribute("data-focus-kind", "group");
         button.setAttribute("data-focus-key", key);
-        button.setAttribute("aria-pressed", String(shown));
-        const checkbox = element.children[1];
-        const selection = key === "all"
-            ? { checked: imageCollection.items.length > 0 && imageCollection.selectedItems.length === imageCollection.items.length,
-                indeterminate: imageCollection.hasSelection && imageCollection.selectedItems.length < imageCollection.items.length }
-            : imageCollection.groupSelection(key);
+        const checkbox = element.children[2].children[0];
+        const selection = imageCollection.groupSelection(key);
         checkbox.checked = selection.checked;
         checkbox.indeterminate = selection.indeterminate;
         checkbox.disabled = busy;
         checkbox.setAttribute("data-focus-kind", "pdf-group");
         checkbox.setAttribute("data-focus-key", key);
-        const groupLabel = key === "all" ? t("allGroups") : formatGroupLabel(group?.label ?? "");
         checkbox.setAttribute("aria-label", t("includeGroup", { label: groupLabel }));
     });
 }
@@ -605,8 +602,14 @@ function render() {
             : scanState === "error"
                 ? t("scanErrorEmpty")
                 : "";
-    selectAllButton.disabled = busy || imageCollection.items.length === 0;
-    clearAllButton.disabled = busy || imageCollection.items.length === 0;
+    const allVisible = Object.keys(groups).length > 0 && visibleGroupKeys.size === Object.keys(groups).length;
+    renderEye(allVisibilityButton, allVisible, t("allGroups"));
+    allVisibilityButton.disabled = busy || imageCollection.items.length === 0;
+    allSelectionCheckbox.checked = imageCollection.items.length > 0 && selectedCount === imageCollection.items.length;
+    allSelectionCheckbox.indeterminate = selectedCount > 0 && selectedCount < imageCollection.items.length;
+    allSelectionCheckbox.disabled = busy || imageCollection.items.length === 0;
+    allSelectionCheckbox.title = t(allSelectionCheckbox.checked ? "clearAllTitle" : "selectAllTitle");
+    allSelectionCheckbox.setAttribute("aria-label", t(allSelectionCheckbox.checked ? "clearAll" : "selectAll"));
     resetOrderButton.disabled = busy || imageCollection.matchesInitialOrderAndSelection();
     exportButton.disabled = busy || !imageCollection.hasSelection;
     renderGroups(groups);
@@ -803,10 +806,19 @@ document.addEventListener("drop", event => {
     void startScan();
 });
 exportButton.addEventListener("click", () => { void exportPdf(); });
-selectAllButton.addEventListener("click", () => { if (busy)
-    return; imageCollection.setAllSelected(true); render(); });
-clearAllButton.addEventListener("click", () => { if (busy)
-    return; imageCollection.setAllSelected(false); render(); });
+allVisibilityButton.addEventListener("click", () => {
+    if (busy || allVisibilityButton.disabled)
+        return;
+    visibleGroupKeys = visibleGroupKeys.size === Object.keys(imageCollection.groups).length
+        ? new Set() : new Set(Object.keys(imageCollection.groups));
+    render();
+});
+allSelectionCheckbox.addEventListener("change", () => {
+    if (busy)
+        return;
+    imageCollection.setAllSelected(allSelectionCheckbox.checked);
+    render();
+});
 resetOrderButton.addEventListener("click", () => {
     if (busy || resetOrderButton.disabled)
         return;

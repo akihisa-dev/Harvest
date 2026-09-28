@@ -126,19 +126,26 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 .toolbar { display: grid; grid-template-columns: repeat(3, 36px); justify-content: end; gap: 6px; }
 .toolbar button { display: grid; place-items: center; width: 36px; height: 36px; min-height: 0; padding: 0; background: var(--surface); border-color: var(--line); }
 .toolbar svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.toolbar .eye-icon { width: 20px; height: 20px; }
 .toolbar button:hover:not(:disabled) { background: var(--hover); }
-.group-bar { min-height: 0; margin-top: 4px; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
-.group-bar::-webkit-scrollbar { width: 10px; }
-.group-bar::-webkit-scrollbar-track { background: var(--subtle); }
-.group-bar::-webkit-scrollbar-thumb { background: var(--muted); border: 2px solid var(--subtle); border-radius: 5px; }
+.toolbar-check { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); cursor: pointer; }
+.toolbar-check:hover:not(:has(input:disabled)) { background: var(--hover); }
+.toolbar-check:has(input:disabled) { color: var(--disabled-ink); background: var(--disabled); cursor: default; }
+.toolbar-check input { width: 18px; height: 18px; }
+.toolbar-check:has(input:focus-visible) { outline: 2px solid var(--ink); outline-offset: 3px; }
+.toolbar-check input:focus-visible { outline: 0; }
+.group-bar { min-height: 0; margin-top: 4px; }
 .group-bar:has(.groups[hidden]) { display: none; }
 .groups { display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; }
-.group-chip { display: flex; align-items: center; gap: 8px; min-height: 40px; width: 100%; padding: 3px 10px 3px 4px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 11px; overflow-wrap: anywhere; background: var(--surface); }
+.group-chip { display: grid; grid-template-columns: minmax(0, 1fr) 36px 36px; align-items: center; gap: 6px; min-height: 42px; width: 100%; padding: 3px 0 3px 8px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 11px; overflow-wrap: anywhere; background: var(--surface); }
 .group-chip:has(input:disabled) { color: var(--muted); }
-.group-chip button { display: flex; align-items: center; justify-content: space-between; flex: 1; gap: 8px; min-width: 0; min-height: 32px; max-width: 100%; padding: 4px 6px; border: 0; background: transparent; font-size: 11px; font-weight: 500; overflow-wrap: anywhere; text-align: left; }
+.group-label { min-width: 0; font-weight: 500; }
+.group-chip button { display: grid; place-items: center; width: 36px; height: 36px; min-height: 0; padding: 0; border: 0; background: transparent; }
 .group-chip button:hover:not(:disabled) { border: 0; background: var(--hover); }
 .group-chip button:focus-visible { outline-offset: -2px; }
-.group-chip input { flex: none; width: 18px; height: 18px; }
+.group-check { display: grid; place-items: center; width: 36px; height: 36px; cursor: pointer; }
+.group-check:has(input:disabled) { cursor: default; }
+.group-check input { width: 18px; height: 18px; }
 .eye-icon { display: block; flex: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .eye-slash-gap { stroke: var(--surface); stroke-width: 4; }
 .group-chip button[aria-pressed="false"] .eye-icon { color: var(--muted); }

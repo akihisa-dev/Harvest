@@ -33,6 +33,7 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
   globalThis.document = {
     body: element("body"),
     querySelector: element,
+    createElementNS(_namespace, tag) { return element(tag); },
     querySelectorAll() { return []; },
     addEventListener(name, callback) { documentListeners.set(name, callback); },
   };

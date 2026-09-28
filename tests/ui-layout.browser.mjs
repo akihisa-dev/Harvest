@@ -56,10 +56,12 @@ async function inspectLayout(page, width, height, label) {
       heading: rect(".results-heading"), groupBar: rect(".group-bar"), groups: rect("#groups"),
       viewerControls: rect(".viewer-controls"), status: rect("#status"), clear: rect("#reset"),
       source: rect("#source-drop"), scan: rect("#scan"), collect: rect("#collection-toggle"), export: rect("#export"), viewer: rect("#viewer-toggle"),
-      selectAll: rect("#select-all"), clearAll: rect("#clear-all"), resetOrder: rect("#reset-order"),
+      allVisibility: rect("#all-visibility"), allSelection: rect(".toolbar-check"), resetOrder: rect("#reset-order"),
       count: rect("#count"),
       headingText: document.querySelector("#images-heading").getBoundingClientRect().toJSON(),
       groupCount: document.querySelectorAll("#groups .group-chip").length,
+      firstGroupEye: document.querySelector("#groups .group-chip button")?.getBoundingClientRect().toJSON(),
+      firstGroupSelection: document.querySelector("#groups .group-check")?.getBoundingClientRect().toJSON(),
     };
   });
   assert.equal(result.viewport.width, width, `${label}: viewport width`);
@@ -84,13 +86,17 @@ async function inspectLayout(page, width, height, label) {
   }
   assert.ok(result.export.y < result.viewer.y && result.viewer.y < result.headingText.y,
     `${label}: PDF, list toggle, and image groups must be arranged vertically`);
-  assert.ok(result.count.bottom <= result.selectAll.y, `${label}: image count must stay above selection actions`);
-  assert.ok(result.selectAll.right <= result.clearAll.x && result.clearAll.right <= result.resetOrder.x,
-    `${label}: selection actions must fit in one row`);
-  for (const [name, box] of Object.entries({selectAll: result.selectAll, clearAll: result.clearAll, resetOrder: result.resetOrder})) {
+  assert.ok(result.count.bottom <= result.resetOrder.y, `${label}: image count must stay above selection actions`);
+  assert.ok(result.resetOrder.right <= result.allVisibility.x && result.allVisibility.right <= result.allSelection.x,
+    `${label}: reset, all-images eye, and all-images checkbox must fit in one row`);
+  for (const [name, box] of Object.entries({resetOrder: result.resetOrder, allVisibility: result.allVisibility, allSelection: result.allSelection})) {
     assert.ok(Math.abs(box.width - box.height) <= 1, `${label}: ${name} must be a square icon button`);
   }
-  assert.ok(result.resetOrder.right <= result.sidebar.right + 1, `${label}: selection actions must fit sidebar width`);
+  assert.ok(result.allSelection.right <= result.sidebar.right + 1, `${label}: selection actions must fit sidebar width`);
+  if (result.firstGroupEye && result.firstGroupSelection) {
+    assert.ok(Math.abs(result.firstGroupEye.x - result.allVisibility.x) <= 1, `${label}: group eyes must line up with the all-images eye`);
+    assert.ok(Math.abs(result.firstGroupSelection.x - result.allSelection.x) <= 1, `${label}: group checkboxes must line up with the all-images checkbox`);
+  }
   assert.ok(result.groupBar.scrollWidth <= result.groupBar.clientWidth + 1, `${label}: group bar must not scroll horizontally`);
   return result;
 }
@@ -145,9 +151,11 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           await page.locator("#images-heading").waitFor();
           assert.equal(await page.title(), locale === "ja-JP" ? "Harvest | 画像を集める" : "Harvest | Collect images", `${caseName}: document title should follow browser locale`);
           assert.equal(await page.locator("#images-heading").textContent(), locale === "ja-JP" ? "画像グループ" : "Image groups");
-          const actionNames = locale === "ja-JP" ? ["すべて選択", "選択を解除", "全部元に戻す"] : ["Select all", "Clear selection", "Restore order and selection"];
-          for (const name of actionNames) assert.equal(await page.getByRole("button", {name, exact: true}).count(), 1, `${caseName}: action needs an accessible name`);
-          for (const selector of ["#select-all", "#clear-all", "#reset-order"]) {
+          const resetName = locale === "ja-JP" ? "全部元に戻す" : "Restore order and selection";
+          assert.equal(await page.getByRole("button", {name: resetName, exact: true}).count(), 1, `${caseName}: reset action needs an accessible name`);
+          assert.equal(await page.locator("#all-visibility").getAttribute("aria-label"), locale === "ja-JP" ? "すべての画像を表示" : "Show all images");
+          assert.equal(await page.locator("#all-selection").getAttribute("aria-label"), locale === "ja-JP" ? "すべて選択" : "Select all");
+          for (const selector of ["#all-visibility", "#reset-order"]) {
             assert.equal(await page.locator(`${selector} svg`).count(), 1, `${caseName}: action icon must be visible`);
           }
           assert.equal(await page.locator(".workspace-sidebar").getAttribute("aria-label"),
@@ -219,11 +227,10 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           await sourceOption.evaluate((element, text) => { element.textContent = text; }, originalOption);
           const few = await inspectLayout(page, width, height, `${caseName} few images`);
           assert.equal(few.header.height, empty.header.height, `${caseName}: image results must not change header height`);
-          assert.equal(few.groupCount, 2, `${caseName}: fixture should create one group and an all-images row`);
-          const allRow = page.locator("#groups .group-chip").first();
-          const allEye = allRow.locator("button");
-          const allSelection = allRow.locator("input[type=checkbox]");
-          assert.equal(await allSelection.count(), 1, `${caseName}: all-images row needs a PDF checkbox`);
+          assert.equal(few.groupCount, 1, `${caseName}: fixture should create one group`);
+          const allEye = page.locator("#all-visibility");
+          const allSelection = page.locator("#all-selection");
+          assert.equal(await allSelection.count(), 1, `${caseName}: toolbar needs an all-images PDF checkbox`);
           assert.equal(await page.locator("#groups .group-chip button svg.eye-icon").count(), few.groupCount,
             `${caseName}: every group row needs a visible eye icon`);
           await allEye.click();
