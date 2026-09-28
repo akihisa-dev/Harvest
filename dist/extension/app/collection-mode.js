@@ -21,11 +21,14 @@ export function captureCollectionLinks(session) {
             pdfUrl = typeof message.pdfUrl === "string" ? message.pdfUrl : null;
         if ("canExport" in message && typeof message.canExport === "boolean")
             canExport = message.canExport;
+        pruneDetachedTargets();
         if (!busy && typeof pdfUrl === "string") {
             const targets = pendingClicks.get(pdfUrl) ?? analyzedLinks.get(pdfUrl);
             if (targets) {
                 const analyzed = analyzedLinks.get(pdfUrl) ?? new Set();
                 for (const target of targets) {
+                    if (!target.isConnected)
+                        continue;
                     analyzed.add(target);
                     markTarget(target, pdfUrl);
                 }
@@ -45,6 +48,32 @@ export function captureCollectionLinks(session) {
     document.documentElement.append(glow);
     let hovered = null;
     const hideGlow = () => { hovered = null; glow.style.display = "none"; };
+    const pruneDetachedTargets = () => {
+        for (const [target, state] of markedTargets) {
+            if (target.isConnected)
+                continue;
+            state.overlay.remove();
+            markedTargets.delete(target);
+        }
+        for (const links of [pendingClicks, analyzedLinks]) {
+            for (const [url, targets] of links) {
+                for (const target of targets)
+                    if (!target.isConnected)
+                        targets.delete(target);
+                if (targets.size === 0)
+                    links.delete(url);
+            }
+        }
+        if (lastHover && (!lastHover.anchor.isConnected || !lastHover.target.isConnected)) {
+            lastHover = null;
+            hideGlow();
+        }
+    };
+    const observer = new MutationObserver(records => {
+        if (records.some(record => record.removedNodes.length > 0))
+            pruneDetachedTargets();
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
     const cyanGlow = "inset 0 0 0 3px rgba(125,235,255,.95),0 0 0 2px rgba(125,235,255,.9),0 0 12px 5px rgba(70,210,255,.7),0 0 26px 8px rgba(70,210,255,.35)";
     const goldGlow = "inset 0 0 0 4px rgba(255,235,140,1),0 0 0 3px rgba(255,205,65,1),0 0 16px 7px rgba(255,190,40,.9),0 0 34px 12px rgba(255,170,20,.55)";
     const desiredGlow = (url) => canExport && url === pdfUrl ? goldGlow : cyanGlow;
@@ -56,6 +85,8 @@ export function captureCollectionLinks(session) {
         overlay.style.height = `${rect.height}px`;
     };
     const markTarget = (target, url) => {
+        if (!target.isConnected)
+            return;
         let state = markedTargets.get(target);
         if (!state) {
             const overlay = document.createElement("div");
@@ -135,8 +166,8 @@ export function captureCollectionLinks(session) {
         drawHover(lastHover);
     };
     const onLeave = () => { lastHover = null; hideGlow(); };
-    const onScroll = () => { onLeave(); redrawMarkedTargets(); };
-    const onResize = () => { onLeave(); redrawMarkedTargets(); };
+    const onScroll = () => { onLeave(); pruneDetachedTargets(); redrawMarkedTargets(); };
+    const onResize = () => { onLeave(); pruneDetachedTargets(); redrawMarkedTargets(); };
     const onClick = (event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
             return;
@@ -156,6 +187,7 @@ export function captureCollectionLinks(session) {
     };
     port.onMessage.addListener(onMessage);
     port.onDisconnect.addListener(() => {
+        observer.disconnect();
         document.removeEventListener("click", onClick, true);
         document.removeEventListener("pointermove", onHover, true);
         document.removeEventListener("pointerout", onLeave, true);
@@ -163,6 +195,10 @@ export function captureCollectionLinks(session) {
         window.removeEventListener("resize", onResize);
         for (const state of markedTargets.values())
             state.overlay.remove();
+        markedTargets.clear();
+        pendingClicks.clear();
+        analyzedLinks.clear();
+        lastHover = null;
         glow.remove();
     });
     document.addEventListener("click", onClick, true);

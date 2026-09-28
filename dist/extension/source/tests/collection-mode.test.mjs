@@ -3,8 +3,8 @@ import test from "node:test";
 import {captureCollectionLinks} from "../dist/extension/app/collection-mode.js";
 
 class Anchor {
-  constructor(href, style = makeStyle()) { this.href = href; this.nodeType = 1; this.tagName = "A"; this.style = style; }
-  getBoundingClientRect() { return {left: 10, top: 20, width: 100, height: 80}; }
+  constructor(href, style = makeStyle()) { this.href = href; this.nodeType = 1; this.tagName = "A"; this.style = style; this.isConnected = true; }
+  getBoundingClientRect() { return this.rect ?? {left: 10, top: 20, width: 100, height: 80}; }
   hasAttribute(name) { return name === "href"; }
   getAttribute(name) { return name === "href" ? this.href : null; }
 }
@@ -28,15 +28,21 @@ function setup() {
   const removed = [];
   const messages = [];
   let disconnected;
+  let mutationObserver;
   const port = {
     postMessage(message) { messages.push(message); },
     onMessage: {addListener(listener) { port.messageListener = listener; }},
     onDisconnect: {addListener(listener) { disconnected = listener; }},
     messageListener: undefined,
   };
-  const previous = {chrome: globalThis.chrome, document: globalThis.document, location: globalThis.location, window: globalThis.window, Element: globalThis.Element};
+  const previous = {chrome: globalThis.chrome, document: globalThis.document, location: globalThis.location, window: globalThis.window, Element: globalThis.Element, MutationObserver: globalThis.MutationObserver};
   globalThis.chrome = {runtime: {connect(options) { assert.deepEqual(options, {name: "test-session"}); return port; }}};
   globalThis.Element = Anchor;
+  globalThis.MutationObserver = class {
+    constructor(callback) { this.callback = callback; mutationObserver = this; }
+    observe(target, options) { this.target = target; this.options = options; }
+    disconnect() { this.disconnected = true; }
+  };
   const windowListeners = new Map();
   globalThis.window = {addEventListener(type, listener) { windowListeners.set(type, listener); }, removeEventListener() {}};
   globalThis.location = {href: "https://example.test/current"};
@@ -54,6 +60,11 @@ function setup() {
   };
   return {
     port, messages, removed, glow, overlays,
+    removeFromPage(anchor) {
+      anchor.isConnected = false;
+      mutationObserver.callback([{removedNodes: [anchor]}]);
+    },
+    get observer() { return mutationObserver; },
     hover(anchor) {
       const event = {path: [anchor], composedPath() { return this.path; }};
       listeners.get("pointermove")?.(event);
@@ -119,6 +130,7 @@ test("切断後はリスナーを除去して遷移を復元する", () => {
     fixture.disconnect();
     assert.equal(fixture.removed.length, 4);
     assert.equal(fixture.glow.removed, true);
+    assert.equal(fixture.observer.disconnected, true);
     assert.equal(fixture.removed[0].type, "click");
     assert.equal(fixture.removed[0].capture, true);
     assert.deepEqual(fixture.click(new Anchor("https://example.test/after")), {prevented: 0, stopped: 0});
@@ -207,6 +219,45 @@ test("成功したクリック対象だけが離脱・スクロール・サイ�
     assert.equal(otherOriginal.getPropertyValue("box-shadow"), "other-shadow");
     assert.equal(fixture.overlays[0].removed, true);
     assert.equal(fixture.overlays[1].removed, true);
+  } finally { fixture.restore(); }
+});
+
+test("DOMから消えた対象のマーカーと参照を片付け、残る対象の追従を保つ", () => {
+  const fixture = setup();
+  try {
+    captureCollectionLinks("test-session");
+    assert.deepEqual(fixture.observer.options, {childList: true, subtree: true});
+    const removed = new Anchor("/removed");
+    const kept = new Anchor("/kept");
+    fixture.click(removed);
+    fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/removed", canExport: true});
+    fixture.click(kept);
+    fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/kept", canExport: true});
+    assert.equal(fixture.overlays.length, 2);
+
+    fixture.removeFromPage(removed);
+    assert.equal(fixture.overlays[0].removed, true, "削除を検知して対応する表示を消す");
+    assert.notEqual(fixture.overlays[1].removed, true);
+    removed.isConnected = true;
+    fixture.port.messageListener({pdfUrl: "https://example.test/removed"});
+    assert.equal(fixture.overlays.length, 2, "古い解析済み参照から再作成しない");
+
+    kept.rect = {left: 35, top: 40, width: 90, height: 70};
+    fixture.scroll();
+    fixture.resize();
+    assert.equal(fixture.overlays[1].style.left, "35px");
+    assert.equal(fixture.overlays[1].style.top, "40px");
+
+    const pending = new Anchor("/pending");
+    fixture.click(pending);
+    fixture.removeFromPage(pending);
+    pending.isConnected = true;
+    fixture.port.messageListener({pdfUrl: "https://example.test/pending"});
+    assert.equal(fixture.overlays.length, 2, "解析待ちの古い参照も再利用しない");
+
+    fixture.click(removed);
+    fixture.port.messageListener({pdfUrl: "https://example.test/removed"});
+    assert.equal(fixture.overlays.length, 3, "再接続後の新しい操作はマークできる");
   } finally { fixture.restore(); }
 });
 
