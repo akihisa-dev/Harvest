@@ -227,9 +227,6 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
 @media (prefers-color-scheme: dark) {
   #empty-logo { filter: invert(1); }
 }
-.completion { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; padding: 10px 12px; border: 1px solid var(--ink); border-radius: var(--radius); background: var(--surface); }
-.completion p { font-size: 12px; font-weight: 600; }
-.completion button { min-height: 30px; padding: 5px 8px; font-size: 12px; }
 .viewer { height: 100%; min-height: 0; }
 .viewer-page { height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) var(--stage-sidebar-width); gap: var(--stage-gap); }
 .viewer-sidebar { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -351,7 +348,7 @@ input[type="checkbox"]:disabled { opacity: .55; }
 }
 
 /* Chrome keeps hidden elements in the render tree only for their exit transition. */
-#empty, #completion, .group-bar, #groups {
+#empty, .group-bar, #groups {
   interpolate-size: allow-keywords;
   height: auto;
   opacity: 1;
@@ -361,12 +358,12 @@ input[type="checkbox"]:disabled { opacity: .55; }
     padding var(--motion-duration) var(--motion-easing),
     display var(--motion-duration) allow-discrete;
 }
-#empty[hidden], #completion[hidden], #groups[hidden],
+#empty[hidden], #groups[hidden],
 .group-bar:has(.groups[hidden]) {
   height: 0; opacity: 0; margin-block: 0; padding-block: 0; overflow: clip; pointer-events: none;
 }
 @starting-style {
-  #empty:not([hidden]), #completion:not([hidden]), #groups:not([hidden]),
+  #empty:not([hidden]), #groups:not([hidden]),
   .group-bar:has(.groups:not([hidden])) { height: 0; opacity: 0; }
 }
 #status {
@@ -376,7 +373,7 @@ input[type="checkbox"]:disabled { opacity: .55; }
 .motion-ghost-shell { position: fixed; inset: 0; pointer-events: none; display: block; z-index: 10; }
 .motion-ghost, .motion-ghost * { transition: none !important; }
 @media (prefers-reduced-motion: reduce) {
-  #empty, #completion, .group-bar, #groups, #status { transition: none; }
+  #empty, .group-bar, #groups, #status { transition: none; }
   .motion-ghost-shell { display: none; }
 }
 

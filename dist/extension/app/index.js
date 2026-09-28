@@ -51,10 +51,8 @@ const allVisibilityButton = required("#all-visibility");
 const allSelectionCheckbox = required("#all-selection");
 const resetOrderButton = required("#reset-order");
 const resetButton = required("#reset");
-const completionElement = required("#completion");
 const failuresElement = required("#failures");
 const failedImagesElement = required("#failed-images");
-const backToImagesButton = required("#back-to-images");
 const imagesElement = required("#images");
 const groupsElement = required("#groups");
 const scanOverlay = required("#scan-overlay");
@@ -209,7 +207,6 @@ async function startScan(collectionLink) {
         visibleGroupKeys = new Set(initialGroup === null ? Object.keys(imageCollection.groups) : [initialGroup]);
         viewerController.setOpen(false);
         viewerController.clearCurrentPage();
-        completionElement.hidden = true;
         scanState = imageCollection.items.length ? "results" : "empty";
         setStatus(imageCollection.items.length ? "" : t("scanEmpty"), "info");
     }
@@ -631,7 +628,6 @@ async function exportPdf() {
     const controller = new AbortController();
     exportController = controller;
     exportProgress = `0 / ${remaining.length}`;
-    completionElement.hidden = true;
     setBusy(true);
     setStatus(t(retry ? "retryImages" : "prepareImages", { completed: 0, total: remaining.length }), "busy", `0 / ${remaining.length}`);
     try {
@@ -675,7 +671,6 @@ async function exportPdf() {
         clearSourceUrl();
         pendingExport = null;
         setStatus(t("pdfSaved", { count: pages.length, plural: formatPlural(pages.length) }), "success");
-        completionElement.hidden = false;
     }
     catch (error) {
         if (disposed)
@@ -814,10 +809,8 @@ resetButton.addEventListener("click", () => {
     viewerController.clearCurrentPage();
     scanState = "initial";
     pageTitle = t("imageFallback");
-    completionElement.hidden = true;
     setStatus("", "info");
     render();
 });
-backToImagesButton.addEventListener("click", () => { completionElement.hidden = true; imagesElement.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth" }); });
 updateSourceDrop();
 render();

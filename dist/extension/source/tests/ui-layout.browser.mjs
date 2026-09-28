@@ -177,6 +177,7 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           await page.setViewportSize({ width, height });
           await page.goto(url);
           await page.locator("#images-heading").waitFor();
+          assert.equal(await page.locator("#completion").count(), 0, `${caseName}: image list should not have a save-started banner`);
           assert.equal(await page.title(), locale === "ja-JP" ? "Harvest | 画像を集める" : "Harvest | Collect images", `${caseName}: document title should follow browser locale`);
           assert.equal(await page.locator("#images-heading").textContent(), locale === "ja-JP" ? "画像グループ" : "Image groups");
           const resetName = locale === "ja-JP" ? "全部元に戻す" : "Restore order and selection";

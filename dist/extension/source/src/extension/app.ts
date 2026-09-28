@@ -44,10 +44,8 @@ const allVisibilityButton = required<HTMLButtonElement>("#all-visibility");
 const allSelectionCheckbox = required<HTMLInputElement>("#all-selection");
 const resetOrderButton = required<HTMLButtonElement>("#reset-order");
 const resetButton = required<HTMLButtonElement>("#reset");
-const completionElement = required<HTMLDivElement>("#completion");
 const failuresElement = required<HTMLElement>("#failures");
 const failedImagesElement = required<HTMLUListElement>("#failed-images");
-const backToImagesButton = required<HTMLButtonElement>("#back-to-images");
 const imagesElement = required<HTMLOListElement>("#images");
 const groupsElement = required<HTMLDivElement>("#groups");
 const scanOverlay = required<HTMLElement>("#scan-overlay");
@@ -215,7 +213,6 @@ async function startScan(collectionLink?: string): Promise<void> {
     visibleGroupKeys = new Set(initialGroup === null ? Object.keys(imageCollection.groups) : [initialGroup]);
     viewerController.setOpen(false);
     viewerController.clearCurrentPage();
-    completionElement.hidden = true;
     scanState = imageCollection.items.length ? "results" : "empty";
     setStatus(imageCollection.items.length ? "" : t("scanEmpty"), "info");
   } catch (error) {
@@ -601,7 +598,6 @@ async function exportPdf(): Promise<void> {
   const controller = new AbortController();
   exportController = controller;
   exportProgress = `0 / ${remaining.length}`;
-  completionElement.hidden = true;
   setBusy(true);
   setStatus(t(retry ? "retryImages" : "prepareImages", {completed: 0, total: remaining.length}), "busy", `0 / ${remaining.length}`);
   try {
@@ -642,7 +638,6 @@ async function exportPdf(): Promise<void> {
     clearSourceUrl();
     pendingExport = null;
     setStatus(t("pdfSaved", {count: pages.length, plural: formatPlural(pages.length)}), "success");
-    completionElement.hidden = false;
   } catch (error) {
     if (disposed) return;
     pendingExport = work.prepared.size || work.failed.size ? work : null;
@@ -767,11 +762,9 @@ resetButton.addEventListener("click", () => {
   viewerController.clearCurrentPage();
   scanState = "initial";
   pageTitle = t("imageFallback");
-  completionElement.hidden = true;
   setStatus("", "info");
   render();
 });
-backToImagesButton.addEventListener("click", () => { completionElement.hidden = true; imagesElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"}); });
 
 updateSourceDrop();
 render();

@@ -95,7 +95,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   document.body = new StubElement("body", document);
   for (const selector of [
     "#source-url", "#scan", "#export", "#all-visibility", "#all-selection", "#reset-order", "#reset",
-    "#completion", "#back-to-images", "#failures", "#failed-images", "#images", "#groups",
+    "#failures", "#failed-images", "#images", "#groups",
     "#empty", "#empty-logo", "#empty-message", "#scan-overlay", "#url-drop-overlay", "#status", "#viewer-toggle", "#viewer", "#viewer-empty",
     "#viewer-page", "#viewer-previous", "#viewer-position", "#viewer-next", "#viewer-image", "#export-overlay",
     "#viewer-filename", "#viewer-thumbnails", "#viewer-zoom-in", "#viewer-zoom-out",
