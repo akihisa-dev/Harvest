@@ -59,6 +59,7 @@ async function inspectLayout(page, width, height, label) {
       allVisibility: rect("#all-visibility"), allSelection: rect(".toolbar-check"), resetOrder: rect("#reset-order"),
       headingText: document.querySelector("#images-heading").getBoundingClientRect().toJSON(),
       groupCount: document.querySelectorAll("#groups .group-chip").length,
+      firstGroup: document.querySelector("#groups .group-chip")?.getBoundingClientRect().toJSON(),
       firstGroupEye: document.querySelector("#groups .group-chip button")?.getBoundingClientRect().toJSON(),
       firstGroupSelection: document.querySelector("#groups .group-check")?.getBoundingClientRect().toJSON(),
     };
@@ -92,7 +93,9 @@ async function inspectLayout(page, width, height, label) {
     assert.ok(Math.abs(box.width - box.height) <= 1, `${label}: ${name} must be a square icon button`);
   }
   assert.ok(result.allSelection.right <= result.sidebar.right + 1, `${label}: selection actions must fit sidebar width`);
-  if (result.firstGroupEye && result.firstGroupSelection) {
+  if (result.firstGroup && result.firstGroupEye && result.firstGroupSelection) {
+    assert.ok(Math.abs(result.firstGroup.x - result.resetOrder.x) <= 1, `${label}: reset and group rows must share the left edge`);
+    assert.ok(Math.abs(result.firstGroup.right - result.allSelection.right) <= 1, `${label}: selection and group rows must share the right edge`);
     assert.ok(Math.abs(result.firstGroupEye.x - result.allVisibility.x) <= 1, `${label}: group eyes must line up with the all-images eye`);
     assert.ok(Math.abs(result.firstGroupSelection.x - result.allSelection.x) <= 1, `${label}: group checkboxes must line up with the all-images checkbox`);
   }

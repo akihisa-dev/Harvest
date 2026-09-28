@@ -122,7 +122,9 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 .results-heading, .group-bar { padding: 0; }
 .section-head { gap: 4px 10px; min-width: 0; }
 .section-head h2 { font-size: 14px; }
-.toolbar { display: grid; grid-template-columns: repeat(3, 36px); justify-content: end; gap: 6px; }
+.toolbar { display: flex; gap: 6px; }
+.toolbar #reset-order { margin-right: auto; }
+.toolbar button, .toolbar-check { flex: 0 0 36px; }
 .toolbar button { display: grid; place-items: center; width: 36px; height: 36px; min-height: 0; padding: 0; background: var(--surface); border-color: var(--line); }
 .toolbar svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .toolbar .eye-icon { width: 20px; height: 20px; }
@@ -255,6 +257,7 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
 @media (max-width: 480px) {
   .results-area { grid-template-columns: minmax(0, 1fr) 148px; grid-template-rows: minmax(0, 1fr); }
   .workspace-sidebar { max-height: none; padding: 8px; }
+  .toolbar, .group-chip { gap: 4px; }
   .viewer-page { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
   .viewer-sidebar { max-height: 30dvh; }
   .viewer-thumbnails { min-height: 72px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; }
