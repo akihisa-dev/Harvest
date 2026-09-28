@@ -177,27 +177,25 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
   margin-top: 4px;
 }
 .viewer-meta:has(#status:empty:not([data-state="busy"])) { display: none; }
+.viewer-meta:has(#status[data-state="busy"]) { margin: 0; padding: 0; height: 0; }
 #reset { width: 100%; min-height: 30px; padding-block: 5px; flex: none; }
 #export { min-height: 38px; }
 #status { align-self: stretch; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-height: 3em; overflow: hidden; flex: none; }
 #status:empty:not([data-state="busy"]) { display: none; }
 #status[data-state="error"] { padding: 0 6px; border-left: 3px solid var(--ink); background: var(--subtle); color: var(--ink); }
-#status[data-state="busy"] { display: flex; align-items: center; gap: 6px; height: 24px; max-height: none; }
-#status[data-state="busy"]::before,
+#status[data-state="busy"] { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #scan-overlay::before {
   content: "";
   display: block;
-  width: 22px;
-  height: 22px;
+  width: 64px;
+  height: 64px;
   flex: none;
   background-color: var(--ink);
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Ccircle cx='24' cy='24' r='19' fill='none' stroke='black' stroke-opacity='.2' stroke-width='6'/%3E%3Cpath d='M37.44 10.56a19 19 0 0 1-21.48 30.66' fill='none' stroke='black' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat;
   animation: waiting-ring 900ms linear infinite;
 }
-#scan-overlay::before { width: 64px; height: 64px; }
 @keyframes waiting-ring { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  #status[data-state="busy"]::before,
   #scan-overlay::before { animation: none; }
 }
 

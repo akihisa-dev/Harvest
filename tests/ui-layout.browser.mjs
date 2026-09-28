@@ -174,30 +174,34 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           const spinnerState = await page.evaluate(() => {
             const status = document.querySelector("#status");
             const empty = document.querySelector("#empty");
-            const ring = getComputedStyle(status, "::before");
+            const ring = getComputedStyle(document.querySelector("#scan-overlay"), "::before");
             return {
               statusText: status.textContent,
               statusLabel: status.getAttribute("aria-label"),
-              statusRingContent: ring.content,
-              statusRingWidth: ring.width,
-              statusRingAnimation: ring.animationName,
-              statusRingColor: ring.backgroundColor,
+              statusRingContent: getComputedStyle(status, "::before").content,
+              statusWidth: status.getBoundingClientRect().width,
+              statusContainerHeight: document.querySelector(".viewer-meta").getBoundingClientRect().height,
+              overlayRingContent: ring.content,
+              overlayRingAnimation: ring.animationName,
+              overlayRingColor: ring.backgroundColor,
               appInkColor: getComputedStyle(document.documentElement).color,
               emptyState: empty.dataset.state,
               emptyMessage: document.querySelector("#empty-message").textContent,
               emptyLogoHidden: document.querySelector("#empty-logo").hidden,
               scanOverlayHidden: document.querySelector("#scan-overlay").hidden,
-              overlayRingWidth: getComputedStyle(document.querySelector("#scan-overlay"), "::before").width,
+              overlayRingWidth: ring.width,
             };
           });
           assert.equal(spinnerState.statusText, "", `${caseName}: busy status should not render its message`);
           assert.equal(spinnerState.statusLabel, locale === "ja-JP" ? "ページを調べています…" : "Analyzing the page…", `${caseName}: busy status should remain accessible`);
-          assert.notEqual(spinnerState.statusRingContent, "none", `${caseName}: busy status should show its spinner`);
-          assert.equal(spinnerState.statusRingWidth, "22px", `${caseName}: status spinner should be compact`);
-          assert.equal(spinnerState.statusRingColor, spinnerState.appInkColor, `${caseName}: spinner should follow the app ink color`);
-          assert.equal(spinnerState.statusRingAnimation, "none", `${caseName}: reduced motion should stop spinner animation`);
+          assert.equal(spinnerState.statusRingContent, "none", `${caseName}: sidebar should not show a loading icon`);
+          assert.equal(spinnerState.statusWidth, 1, `${caseName}: busy status should remain visually hidden`);
+          assert.equal(spinnerState.statusContainerHeight, 0, `${caseName}: busy status should leave no sidebar gap`);
+          assert.notEqual(spinnerState.overlayRingContent, "none", `${caseName}: scanning overlay should show its spinner`);
+          assert.equal(spinnerState.overlayRingColor, spinnerState.appInkColor, `${caseName}: spinner should follow the app ink color`);
+          assert.equal(spinnerState.overlayRingAnimation, "none", `${caseName}: reduced motion should stop spinner animation`);
           await page.emulateMedia({reducedMotion: "no-preference"});
-          const movingSpinner = await page.locator("#status").evaluate(element => {
+          const movingSpinner = await page.locator("#scan-overlay").evaluate(element => {
             const ring = getComputedStyle(element, "::before");
             return {animationName: ring.animationName, animationDuration: ring.animationDuration};
           });
