@@ -6,7 +6,7 @@ import { preparePdfImages, PdfImageError } from "./pdf-image.js";
 import { createPdf, type PdfImagePage } from "../core/pdf.js";
 import { prepareSourceGlyphs } from "./pdf-source-glyphs.js";
 import { animateLayoutChange, prefersReducedMotion, reconcileKeyedChildren, setMotionText } from "./motion.js";
-import { formatCount, formatFailedAria, formatGroupLabel, formatPlural, localizeErrorMessage, t } from "./localization.js";
+import { formatFailedAria, formatGroupLabel, formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { createViewerController } from "./viewer-controller.js";
 
 const sourceUrl = required<HTMLInputElement>("#source-url");
@@ -52,7 +52,6 @@ const failedImagesElement = required<HTMLUListElement>("#failed-images");
 const backToImagesButton = required<HTMLButtonElement>("#back-to-images");
 const imagesElement = required<HTMLOListElement>("#images");
 const groupsElement = required<HTMLDivElement>("#groups");
-const countElement = required<HTMLSpanElement>("#count");
 const scanOverlay = required<HTMLElement>("#scan-overlay");
 const emptyElement = required<HTMLElement>("#empty");
 const emptyLogoElement = required<HTMLImageElement>("#empty-logo");
@@ -295,7 +294,7 @@ function renderGroups(groups: ImageCollection["groups"]): void {
     (element, key) => {
       const group = groups[key];
       const groupLabel = formatGroupLabel(group?.label ?? "");
-      (element.children[0] as HTMLSpanElement).textContent = groupLabel;
+      (element.children[0] as HTMLSpanElement).textContent = groupLabel.replace(/ (\([^()]+\))$/, "\n$1");
       const button = element.children[1] as HTMLButtonElement;
       renderEye(button, visibleGroupKeys.has(key), groupLabel);
       button.disabled = busy;
@@ -550,8 +549,6 @@ function render(): void {
   pdfSaveStateElement.dataset["state"] = saved ? "saved" : savedPdfSignature === null ? "unsaved" : "changed";
   pdfSaveStateElement.setAttribute("aria-label", t(saved ? "pdfSaveStarted" : savedPdfSignature === null ? "pdfUnsaved" : "pdfSaveChanged"));
   pdfSaveStateElement.title = saved ? t("pdfSaveStartedHelp") : "";
-  setMotionText(countElement, formatCount(selectedCount, imageCollection.items.length,
-    visibleImages.length === imageCollection.items.length ? undefined : visibleImages.length));
   exportButton.textContent = pendingExport?.failed.size
     ? t("exportRetry", {count: pendingExport.failed.size, plural: formatPlural(pendingExport.failed.size)})
     : selectedCount ? t("exportCount", {count: selectedCount, plural: formatPlural(selectedCount)}) : t("savePdf");

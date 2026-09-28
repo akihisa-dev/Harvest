@@ -122,7 +122,6 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 .results-heading, .group-bar { padding: 0; }
 .section-head { gap: 4px 10px; min-width: 0; }
 .section-head h2 { font-size: 14px; }
-#count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .toolbar { display: grid; grid-template-columns: repeat(3, 36px); justify-content: end; gap: 6px; }
 .toolbar button { display: grid; place-items: center; width: 36px; height: 36px; min-height: 0; padding: 0; background: var(--surface); border-color: var(--line); }
 .toolbar svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -139,7 +138,7 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 .groups { display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; }
 .group-chip { display: grid; grid-template-columns: minmax(0, 1fr) 36px 36px; align-items: center; gap: 6px; min-height: 42px; width: 100%; padding: 3px 0 3px 8px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 11px; overflow-wrap: anywhere; background: var(--surface); }
 .group-chip:has(input:disabled) { color: var(--muted); }
-.group-label { min-width: 0; font-weight: 500; }
+.group-label { min-width: 0; font-weight: 500; white-space: pre-line; }
 .group-chip button { display: grid; place-items: center; width: 36px; height: 36px; min-height: 0; padding: 0; border: 0; background: transparent; }
 .group-chip button:hover:not(:disabled) { border: 0; background: var(--hover); }
 .group-chip button:focus-visible { outline-offset: -2px; }

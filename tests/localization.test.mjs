@@ -30,12 +30,10 @@ test("辞書は英語と日本語で同じキーを持ち、HTMLの静的キー�
   }
 });
 
-test("英語では件数・グループ名・既知エラーが英語になり、サイト値はそのまま扱える", async () => {
+test("英語ではグループ名・既知エラーが英語になり、サイト値はそのまま扱える", async () => {
   const restore = installLocalizationEnvironment("en");
   try {
     const localization = await import(`../dist/extension/app/localization.js?values=${Date.now()}`);
-    assert.equal(localization.formatCount(2, 4), "2 / 4 images selected");
-    assert.equal(localization.formatCount(2, 4, 3), "2 / 4 images selected · 3 displayed");
     assert.equal(localization.formatGroupLabel("シリーズ (2枚)"), "Series (2 images)");
     assert.equal(localization.formatGroupLabel("表紙・サムネイル (1枚)"), "Cover / thumbnail (1 image)");
     assert.equal(localization.formatFailedAria(false), " ");
@@ -165,8 +163,7 @@ test("英語画面で解析・分類・選択・エラー表示が翻訳され�
     assert.equal(root.querySelector("#reset").getAttribute("aria-label"), "Clear the collected results and selection");
     root.querySelector("#scan").dispatch("click");
     await waitForScan();
-    assert.equal(root.querySelector("#count").textContent, "2 / 2 images selected");
-    assert.ok(descendants(root.querySelector("#groups")).some(button => button.textContent === "Series (2 images)"));
+    assert.ok(descendants(root.querySelector("#groups")).some(button => button.textContent === "Series\n(2 images)"));
     assert.equal(root.querySelector("#export").textContent, "Save PDF (2 images)");
     assert.equal((await import(`../dist/extension/app/localization.js?source=${Date.now()}`)).t("includeSourcePage"), "Add a source page at the end");
     const row = root.querySelector("#images").children[0];

@@ -57,7 +57,6 @@ async function inspectLayout(page, width, height, label) {
       viewerControls: rect(".viewer-controls"), status: rect("#status"), clear: rect("#reset"),
       source: rect("#source-drop"), scan: rect("#scan"), collect: rect("#collection-toggle"), export: rect("#export"), viewer: rect("#viewer-toggle"),
       allVisibility: rect("#all-visibility"), allSelection: rect(".toolbar-check"), resetOrder: rect("#reset-order"),
-      count: rect("#count"),
       headingText: document.querySelector("#images-heading").getBoundingClientRect().toJSON(),
       groupCount: document.querySelectorAll("#groups .group-chip").length,
       firstGroupEye: document.querySelector("#groups .group-chip button")?.getBoundingClientRect().toJSON(),
@@ -86,7 +85,7 @@ async function inspectLayout(page, width, height, label) {
   }
   assert.ok(result.export.y < result.viewer.y && result.viewer.y < result.headingText.y,
     `${label}: PDF, list toggle, and image groups must be arranged vertically`);
-  assert.ok(result.count.bottom <= result.resetOrder.y, `${label}: image count must stay above selection actions`);
+  assert.ok(result.headingText.bottom <= result.resetOrder.y, `${label}: heading must stay above selection actions`);
   assert.ok(result.resetOrder.right <= result.allVisibility.x && result.allVisibility.right <= result.allSelection.x,
     `${label}: reset, all-images eye, and all-images checkbox must fit in one row`);
   for (const [name, box] of Object.entries({resetOrder: result.resetOrder, allVisibility: result.allVisibility, allSelection: result.allSelection})) {

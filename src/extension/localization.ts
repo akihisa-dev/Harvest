@@ -19,7 +19,6 @@ const english = {
   includeSourcePage: "Add a source page at the end",
   sourceHeading: "Source",
   imagesHeading: "Image groups",
-  countInitial: "0 images",
   selectionToolbar: "Display, select, and reorder images",
   workspaceControls: "Image and save controls",
   selectAll: "Select all",
@@ -53,8 +52,6 @@ const english = {
   displayGroup: "Show {label}",
   hideGroup: "Hide {label}",
   includeGroup: "Include in PDF: {label}",
-  countSelected: "{selected} / {total} images selected",
-  countSelectedVisible: "{selected} / {total} images selected · {visible} displayed",
   exportRetry: "Retry {count} failed image{plural}",
   exportCount: "Save PDF ({count} image{plural})",
   prepareImages: "Preparing images… {completed} / {total}",
@@ -131,7 +128,6 @@ const japanese: {[K in keyof typeof english]: string} = {
   includeSourcePage: "末尾に出典ページを追加",
   sourceHeading: "Source",
   imagesHeading: "画像グループ",
-  countInitial: "0枚",
   selectionToolbar: "画像の表示・選択・並び順",
   workspaceControls: "画像と保存の操作",
   selectAll: "すべて選択",
@@ -165,8 +161,6 @@ const japanese: {[K in keyof typeof english]: string} = {
   displayGroup: "{label}を表示",
   hideGroup: "{label}を非表示",
   includeGroup: "PDFに含める {label}",
-  countSelected: "{selected} / {total}枚を選択",
-  countSelectedVisible: "{selected} / {total}枚を選択・{visible}枚を表示",
   exportRetry: "失敗した{count}枚を再試行",
   exportCount: "PDFを保存（{count}枚）",
   prepareImages: "画像を準備しています… {completed} / {total}",
@@ -299,10 +293,6 @@ export function localizeErrorMessage(message: string, fallback: TranslationKey =
   if (translatedKey) return t(translatedKey);
   if (forceFallback || (uiLanguage === "en" && /[ぁ-んァ-ヶ一-龯]/u.test(message))) return t(fallback);
   return message;
-}
-
-export function formatCount(selected: number, total: number, visible?: number): string {
-  return t(visible === undefined ? "countSelected" : "countSelectedVisible", {selected, total, visible: visible ?? 0});
 }
 
 export function formatGroupLabel(label: string): string {

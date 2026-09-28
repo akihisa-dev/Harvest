@@ -6,7 +6,7 @@ import { preparePdfImages, PdfImageError } from "./pdf-image.js";
 import { createPdf } from "../core/pdf.js";
 import { prepareSourceGlyphs } from "./pdf-source-glyphs.js";
 import { animateLayoutChange, prefersReducedMotion, reconcileKeyedChildren, setMotionText } from "./motion.js";
-import { formatCount, formatFailedAria, formatGroupLabel, formatPlural, localizeErrorMessage, t } from "./localization.js";
+import { formatFailedAria, formatGroupLabel, formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { createViewerController } from "./viewer-controller.js";
 const sourceUrl = required("#source-url");
 const sourceDrop = required("#source-drop");
@@ -59,7 +59,6 @@ const failedImagesElement = required("#failed-images");
 const backToImagesButton = required("#back-to-images");
 const imagesElement = required("#images");
 const groupsElement = required("#groups");
-const countElement = required("#count");
 const scanOverlay = required("#scan-overlay");
 const emptyElement = required("#empty");
 const emptyLogoElement = required("#empty-logo");
@@ -291,7 +290,7 @@ function renderGroups(groups) {
     }, (element, key) => {
         const group = groups[key];
         const groupLabel = formatGroupLabel(group?.label ?? "");
-        element.children[0].textContent = groupLabel;
+        element.children[0].textContent = groupLabel.replace(/ (\([^()]+\))$/, "\n$1");
         const button = element.children[1];
         renderEye(button, visibleGroupKeys.has(key), groupLabel);
         button.disabled = busy;
@@ -575,7 +574,6 @@ function render() {
     pdfSaveStateElement.dataset["state"] = saved ? "saved" : savedPdfSignature === null ? "unsaved" : "changed";
     pdfSaveStateElement.setAttribute("aria-label", t(saved ? "pdfSaveStarted" : savedPdfSignature === null ? "pdfUnsaved" : "pdfSaveChanged"));
     pdfSaveStateElement.title = saved ? t("pdfSaveStartedHelp") : "";
-    setMotionText(countElement, formatCount(selectedCount, imageCollection.items.length, visibleImages.length === imageCollection.items.length ? undefined : visibleImages.length));
     exportButton.textContent = pendingExport?.failed.size
         ? t("exportRetry", { count: pendingExport.failed.size, plural: formatPlural(pendingExport.failed.size) })
         : selectedCount ? t("exportCount", { count: selectedCount, plural: formatPlural(selectedCount) }) : t("savePdf");
