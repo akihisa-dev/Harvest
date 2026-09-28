@@ -42,6 +42,7 @@ const viewerPreviousButton = required("#viewer-previous");
 const viewerNextButton = required("#viewer-next");
 const viewerPositionElement = required("#viewer-position");
 const viewerStageElement = required("#viewer-stage");
+const exportOverlay = required("#export-overlay");
 const viewerImageElement = required("#viewer-image");
 const viewerFilenameElement = required("#viewer-filename");
 const viewerThumbnailsElement = required("#viewer-thumbnails");
@@ -579,6 +580,7 @@ function render() {
         return row;
     }));
     scanOverlay.hidden = scanState !== "scanning";
+    exportOverlay.hidden = exportController === null;
     emptyElement.hidden = imageCollection.items.length > 0;
     emptyLogoElement.hidden = scanState !== "initial";
     emptyElement.dataset["state"] = scanState;

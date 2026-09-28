@@ -35,6 +35,7 @@ const viewerPreviousButton = required<HTMLButtonElement>("#viewer-previous");
 const viewerNextButton = required<HTMLButtonElement>("#viewer-next");
 const viewerPositionElement = required<HTMLSpanElement>("#viewer-position");
 const viewerStageElement = required<HTMLDivElement>("#viewer-stage");
+const exportOverlay = required<HTMLDivElement>("#export-overlay");
 const viewerImageElement = required<HTMLImageElement>("#viewer-image");
 const viewerFilenameElement = required<HTMLParagraphElement>("#viewer-filename");
 const viewerThumbnailsElement = required<HTMLOListElement>("#viewer-thumbnails");
@@ -553,6 +554,7 @@ function render(): void {
     return row;
   }));
   scanOverlay.hidden = scanState !== "scanning";
+  exportOverlay.hidden = exportController === null;
   emptyElement.hidden = imageCollection.items.length > 0;
   emptyLogoElement.hidden = scanState !== "initial";
   emptyElement.dataset["state"] = scanState;

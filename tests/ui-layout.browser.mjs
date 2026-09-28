@@ -239,6 +239,26 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           assert.equal(await page.locator("#viewer").isVisible(), true, `${caseName}: successful scan opens viewer`);
           const stage = await page.locator("#viewer-stage").boundingBox();
           assert.ok(stage.width > 100 && stage.height > height * 0.45, `${caseName}: large image must use available space`);
+          const exportOverlayState = await page.locator("#export-overlay").evaluate(overlay => {
+            const initiallyHidden = overlay.hidden;
+            overlay.hidden = false;
+            const box = overlay.getBoundingClientRect();
+            const stageBox = overlay.parentElement.getBoundingClientRect();
+            const ring = getComputedStyle(overlay, "::before");
+            const state = {
+              initiallyHidden, visible: getComputedStyle(overlay).display !== "none",
+              bounds: [box.x, box.y, box.width, box.height], stageBounds: [stageBox.x, stageBox.y, stageBox.width, stageBox.height],
+              ringContent: ring.content, ringWidth: ring.width, ringAnimation: ring.animationName,
+            };
+            overlay.hidden = true;
+            return state;
+          });
+          assert.equal(exportOverlayState.initiallyHidden, true, `${caseName}: PDF overlay should be hidden before saving`);
+          assert.equal(exportOverlayState.visible, true, `${caseName}: PDF overlay should be visible during saving`);
+          assert.deepEqual(exportOverlayState.bounds, exportOverlayState.stageBounds, `${caseName}: PDF overlay should cover the viewer image`);
+          assert.notEqual(exportOverlayState.ringContent, "none", `${caseName}: PDF overlay should use the scanning ring`);
+          assert.equal(exportOverlayState.ringWidth, "64px", `${caseName}: PDF overlay ring should match the scanning ring`);
+          assert.equal(exportOverlayState.ringAnimation, "none", `${caseName}: reduced motion should stop PDF overlay animation`);
           const zoomControl = await page.locator(".viewer-zoom").evaluate(element => ({
             border: getComputedStyle(element).borderTopWidth,
             gap: getComputedStyle(element).columnGap,

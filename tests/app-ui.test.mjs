@@ -97,7 +97,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     "#source-url", "#scan", "#export", "#all-visibility", "#all-selection", "#reset-order", "#reset",
     "#completion", "#back-to-images", "#failures", "#failed-images", "#images", "#groups",
     "#empty", "#empty-logo", "#empty-message", "#scan-overlay", "#status", "#viewer-toggle", "#viewer", "#viewer-empty",
-    "#viewer-page", "#viewer-previous", "#viewer-position", "#viewer-next", "#viewer-image",
+    "#viewer-page", "#viewer-previous", "#viewer-position", "#viewer-next", "#viewer-image", "#export-overlay",
     "#viewer-filename", "#viewer-thumbnails", "#viewer-zoom-in", "#viewer-zoom-out",
     "#viewer-zoom-reset", "#viewer-stage",
   ]) document.querySelector(selector);
@@ -245,6 +245,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(emptyMessage.hidden, true);
 
     const scanOverlay = document.querySelector("#scan-overlay");
+    const exportOverlay = document.querySelector("#export-overlay");
+    assert.equal(exportOverlay.hidden, true, "PDF保存前はビュアーのオーバーレイを隠す");
     const thumbnailsBeforeScan = document.querySelector("#images").children.map(row => row.children[0].src);
     document.querySelector("#scan").dispatch("click");
     assert.equal(scanOverlay.hidden, false, "既存画像を表示中でも解析リングを重ねる");
@@ -466,6 +468,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     };
     document.querySelector("#export").dispatch("click");
     assert.equal(exportButton.dataset.saving, "true", "PDF保存中はボタンにロードマークを出す");
+    assert.equal(exportOverlay.hidden, false, "PDF保存中はビュアーにオーバーレイを重ねる");
     assert.equal(exportButton.disabled, true, "保存中は重複して押せない");
     assert.equal(document.querySelector("#status").textContent, "0 / 4", "PDF作成中も枚数の進捗を画面に表示する");
     assert.equal(document.querySelector("#status").getAttribute("aria-label"), "画像を準備しています… 0 / 4", "PDF作成の状態と進捗を読み上げ用に残す");
@@ -482,6 +485,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), busyOrder);
     await waitUntil(() => document.querySelector("#failures").hidden === false);
     assert.equal(exportButton.dataset.saving, "false", "保存失敗後はロードマークを消す");
+    assert.equal(exportOverlay.hidden, true, "保存失敗後はビュアーのオーバーレイを消す");
     assert.equal(document.downloads.length, 0);
     assert.equal(document.querySelector("#source-url").value, "https://example.com/next", "保存失敗時は再試行のためURLを残す");
     assert.equal(document.querySelector("#failures").hidden, false);
@@ -505,8 +509,10 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     createdUrls.length = 0;
     document.querySelector("#export").dispatch("click");
     assert.equal(exportButton.dataset.saving, "true", "再試行中もロードマークを出す");
+    assert.equal(exportOverlay.hidden, false, "再試行中もビュアーにオーバーレイを重ねる");
     await waitUntil(() => document.downloads.length === 1);
     await waitUntil(() => exportButton.dataset.saving === "false");
+    assert.equal(exportOverlay.hidden, true, "保存開始後はビュアーのオーバーレイを消す");
     assert.deepEqual(fetches, [...busyOrder, failedUrl]);
     assert.deepEqual(document.downloads, ["ページ.pdf"]);
     assert.equal(document.querySelector("#failures").hidden, true);
