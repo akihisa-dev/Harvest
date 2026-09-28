@@ -207,7 +207,7 @@ async function startScan(collectionLink) {
         pageTitle = result.title || t("imageFallback");
         pendingExport = null;
         activeGroupKey = defaultDisplayedImageGroup(imageCollection.groups);
-        viewerController.setOpen(false);
+        viewerController.setOpen(imageCollection.items.length > 0);
         viewerController.clearCurrentPage();
         completionElement.hidden = true;
         scanState = imageCollection.items.length ? "results" : "empty";

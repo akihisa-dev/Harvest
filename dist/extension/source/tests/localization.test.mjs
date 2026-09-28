@@ -171,7 +171,7 @@ test("英語画面で解析・分類・選択・エラー表示が翻訳され�
     const row = root.querySelector("#images").children[0];
     assert.match(row.getAttribute("aria-label"), /^001.jpg, number 1/);
     assert.equal(row.dataset.dropLabel, "Move here");
-    root.querySelector("#viewer-toggle").dispatch("click");
+    assert.equal(root.querySelector("#viewer-toggle").getAttribute("aria-pressed"), "true");
     assert.equal(root.querySelector("#viewer-image").alt, "Selected image 1");
     assert.match(root.querySelector("#viewer-thumbnails").children[0].children[0].getAttribute("aria-label"), /001.jpg/);
     fail = true;

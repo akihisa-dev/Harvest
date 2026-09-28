@@ -52,10 +52,11 @@ async function inspectLayout(page, width, height, label) {
     };
     return {
       viewport: { width: innerWidth, height: innerHeight, bodyWidth: document.body.scrollWidth, bodyHeight: document.body.scrollHeight },
-      header: rect(".app-header"), main: rect("main"), controls: rect(".results-controls"),
+      header: rect(".app-header"), main: rect("main"), sidebar: rect(".workspace-sidebar"), controls: rect(".results-controls"),
       heading: rect(".results-heading"), groupBar: rect(".group-bar"), groups: rect("#groups"),
       viewerControls: rect(".viewer-controls"), status: rect("#status"), clear: rect("#reset"),
       scan: rect("#scan"), export: rect("#export"), viewer: rect("#viewer-toggle"),
+      selectAll: rect("#select-all"), clearAll: rect("#clear-all"), resetOrder: rect("#reset-order"),
       headingText: document.querySelector("#images-heading").getBoundingClientRect().toJSON(),
       groupCount: document.querySelectorAll("#groups .group-chip").length,
     };
@@ -66,23 +67,23 @@ async function inspectLayout(page, width, height, label) {
   assert.ok(result.header.bottom <= result.main.y + 1, `${label}: header must not overlap main`);
   assert.ok(result.main.bottom <= height + 1, `${label}: main must remain inside viewport`);
   assert.equal(result.viewport.bodyHeight, height, `${label}: page must not gain vertical scrolling`);
-  for (const [name, box] of Object.entries({
-    heading: result.headingText,
-    scan: result.scan,
-    pdf: result.export,
-    viewer: result.viewer,
-    clear: result.clear,
-  })) {
+  for (const [name, box] of Object.entries({scan: result.scan})) {
     assert.ok(box.width > 0 && box.height > 0, `${label}: ${name} must be visible`);
     assert.ok(box.x >= result.header.x && box.right <= result.header.right + 1, `${label}: ${name} must fit within header width`);
     assert.ok(box.y >= result.header.y && box.bottom <= result.header.bottom + 1, `${label}: ${name} must fit within header height`);
   }
-  const rightColumnBottom = Math.max(result.status.bottom, result.clear.bottom, result.viewer.bottom);
-  assert.ok(rightColumnBottom <= result.header.bottom + 1, `${label}: status, viewer, and clear controls must not be clipped`);
+  assert.ok(result.sidebar.x >= result.main.right - 1, `${label}: controls must be to the right of the image`);
+  assert.ok(result.sidebar.right <= width + 1, `${label}: sidebar must fit within viewport`);
+  assert.ok(result.sidebar.scrollWidth <= result.sidebar.clientWidth + 1, `${label}: sidebar must not scroll horizontally`);
+  for (const [name, box] of Object.entries({heading: result.headingText, pdf: result.export, viewer: result.viewer, clear: result.clear})) {
+    assert.ok(box.width > 0 && box.height > 0, `${label}: ${name} must be laid out`);
+    assert.ok(box.x >= result.sidebar.x && box.right <= result.sidebar.right + 1, `${label}: ${name} must fit in sidebar width`);
+  }
+  assert.ok(result.headingText.y < result.export.y && result.export.y < result.viewer.y && result.viewer.y < result.clear.y,
+    `${label}: controls must be arranged vertically`);
+  assert.ok(result.selectAll.bottom <= result.clearAll.y && result.clearAll.bottom <= result.resetOrder.y,
+    `${label}: selection actions must be in one column`);
   assert.ok(result.groupBar.scrollWidth <= result.groupBar.clientWidth + 1, `${label}: group bar must not scroll horizontally`);
-  const sourceGap = result.heading.y - result.scan.bottom;
-  assert.ok(sourceGap >= 0 && sourceGap <= 9,
-    `${label}: image heading must start immediately below the URL controls (gap ${sourceGap}px)`);
   return result;
 }
 
@@ -97,7 +98,7 @@ async function assertNoBrowserErrors(page, label, errors) {
   assert.deepEqual(errors, [], `${label}: browser reported JavaScript or console errors`);
 }
 
-test("real Chrome keeps the header stable and confines group scrolling across panel sizes and content states", async t => {
+test("real Chrome keeps the large viewer beside vertical controls across panel sizes and content states", async t => {
   const { server, url } = await serveExtension();
   let browser;
   try {
@@ -135,6 +136,8 @@ test("real Chrome keeps the header stable and confines group scrolling across pa
           await page.goto(url);
           await page.locator("#images-heading").waitFor();
           assert.equal(await page.title(), locale === "ja-JP" ? "Harvest | 画像を集める" : "Harvest | Collect images", `${caseName}: document title should follow browser locale`);
+          assert.equal(await page.locator(".workspace-sidebar").getAttribute("aria-label"),
+            locale === "ja-JP" ? "画像と保存の操作" : "Image and save controls", `${caseName}: sidebar label should follow browser locale`);
           const empty = await inspectLayout(page, width, height, `${caseName} empty`);
           const pendingFixture = {...imageFixture(4, 1), pending: true};
           await page.evaluate(value => { window.__harvestScanFixture = value; }, pendingFixture);
@@ -181,6 +184,9 @@ test("real Chrome keeps the header stable and confines group scrolling across pa
           await page.evaluate(() => window.__releaseScanFixture());
           await page.waitForFunction(() => !document.querySelector("#scan").disabled);
           await page.waitForTimeout(280);
+          assert.equal(await page.locator("#viewer").isVisible(), true, `${caseName}: successful scan opens viewer`);
+          const stage = await page.locator("#viewer-stage").boundingBox();
+          assert.ok(stage.width > 100 && stage.height > height * 0.45, `${caseName}: large image must use available space`);
           const firstResultCount = await page.locator("#images img").count();
           const secondPendingFixture = {...imageFixture(4, 1), pending: true};
           await page.evaluate(value => { window.__harvestScanFixture = value; }, secondPendingFixture);
@@ -204,29 +210,23 @@ test("real Chrome keeps the header stable and confines group scrolling across pa
           const many = await inspectLayout(page, width, height, `${caseName} many groups`);
           assert.equal(many.header.height, empty.header.height, `${caseName}: group count must not change header height`);
           assert.ok(many.groupCount >= 30, `${caseName}: many-group fixture should create at least 30 groups`);
-          assert.ok(many.groupBar.scrollHeight > many.groupBar.clientHeight, `${caseName}: group list must overflow its own viewport`);
-          assert.equal(many.controls.scrollHeight, many.controls.clientHeight, `${caseName}: results controls must not scroll as a whole`);
-          const scrollState = await page.locator(".group-bar").evaluate(element => {
+          assert.ok(many.sidebar.scrollHeight > many.sidebar.clientHeight, `${caseName}: tall controls must scroll within right panel`);
+          const scrollState = await page.locator(".workspace-sidebar").evaluate(element => {
             const start = element.scrollTop;
-            const controls = element.closest(".results-controls");
             const main = document.querySelector("main");
             element.scrollTop = element.scrollHeight;
             return {
               overflowY: getComputedStyle(element).overflowY,
               headerOverflow: getComputedStyle(document.querySelector(".app-header")).overflow,
-              controlsOverflowY: getComputedStyle(controls).overflowY,
               start,
               end: element.scrollTop,
-              controlsScrollTop: controls.scrollTop,
               mainScrollTop: main.scrollTop,
             };
           });
-          assert.equal(scrollState.overflowY, "auto", `${caseName}: the group bar should own vertical scrolling`);
+          assert.equal(scrollState.overflowY, "auto", `${caseName}: right panel should own vertical scrolling`);
           assert.equal(scrollState.headerOverflow, "hidden", `${caseName}: the header itself must not scroll`);
-          assert.equal(scrollState.controlsOverflowY, "visible", `${caseName}: surrounding controls must not scroll`);
           assert.equal(scrollState.start, 0, `${caseName}: group list should begin at the top`);
-          assert.ok(scrollState.end > 0, `${caseName}: group list should move when scrolled`);
-          assert.equal(scrollState.controlsScrollTop, 0, `${caseName}: controls container must remain still`);
+          assert.ok(scrollState.end > 0, `${caseName}: right panel should move when scrolled`);
           assert.equal(scrollState.mainScrollTop, 0, `${caseName}: main content must remain still`);
           const lastGroup = page.locator("#groups .group-chip").last().locator("button");
           await lastGroup.scrollIntoViewIfNeeded();
