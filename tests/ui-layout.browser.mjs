@@ -77,6 +77,8 @@ async function inspectLayout(page, width, height, label) {
   }
   assert.ok(result.source.right <= result.scan.x && result.scan.right <= result.clear.x && result.clear.right <= result.collect.x,
     `${label}: URL, analyze, clear, and collect must stay in this order`);
+  assert.ok(Math.abs(result.scan.x - result.export.x) <= 1, `${label}: header actions and save button must share the left edge (${result.scan.x}, ${result.export.x})`);
+  assert.ok(Math.abs(result.collect.right - result.export.right) <= 1, `${label}: header actions and save button must share the right edge (${result.collect.right}, ${result.export.right})`);
   assert.ok(result.sidebar.x >= result.main.right - 1, `${label}: controls must be to the right of the image`);
   assert.ok(result.sidebar.right <= width + 1, `${label}: sidebar must fit within viewport`);
   assert.ok(result.sidebar.scrollWidth <= result.sidebar.clientWidth + 1, `${label}: sidebar must not scroll horizontally`);

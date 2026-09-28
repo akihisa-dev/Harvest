@@ -16,9 +16,11 @@
           <div class="source-row">
             <button id="source-drop" type="button" data-i18n="sourceDrop">ページURLをドロップ、またはクリックして入力</button>
             <input id="source-url" type="url" inputmode="url" data-i18n-placeholder="sourcePlaceholder" placeholder="ページURLを入力" autocomplete="url" aria-describedby="source-hint" hidden>
-            <button id="scan" type="button" data-i18n="scan">解析</button>
-            <button id="reset" type="button" data-i18n-aria-label="clearTitle" data-i18n-title="clearTitle" aria-label="収集結果と選択をクリア" title="収集結果と選択をクリア" data-i18n="clear">クリア</button>
-            <button id="collection-toggle" type="button" aria-pressed="false" data-i18n-title="collectionTitle" title="収集中はページ内のリンクをクリックすると、移動せずリンク先を解析します" data-i18n="collectionStart">収集</button>
+            <div class="source-actions">
+              <button id="scan" type="button" data-i18n="scan">解析</button>
+              <button id="reset" type="button" data-i18n-aria-label="clearTitle" data-i18n-title="clearTitle" aria-label="収集結果と選択をクリア" title="収集結果と選択をクリア" data-i18n="clear">クリア</button>
+              <button id="collection-toggle" type="button" aria-pressed="false" data-i18n-title="collectionTitle" title="収集中はページ内のリンクをクリックすると、移動せずリンク先を解析します" data-i18n="collectionStart">収集</button>
+            </div>
           </div>
           <p id="source-hint" class="visually-hidden" data-i18n="sourceHint">空欄なら、開いているページを解析します。</p>
         </section>

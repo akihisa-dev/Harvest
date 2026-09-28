@@ -25,6 +25,8 @@
   --radius: 6px;
   --motion-duration: 240ms;
   --motion-easing: cubic-bezier(.22, 1, .36, 1);
+  --sidebar-width: clamp(220px, 25vw, 300px);
+  --sidebar-padding: 16px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -80,7 +82,7 @@ section, aside { min-width: 0; }
 .app-header.drag-over::after { content: attr(data-drop-label); position: absolute; inset: 8px; z-index: 2; display: grid; place-items: center; border: 2px dashed var(--ink); border-radius: 10px; background: var(--overlay); color: var(--ink); font-size: 16px; font-weight: 700; pointer-events: none; }
 main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; background: var(--hover); }
 .header-input-column { display: block; min-width: 0; }
-.controls { padding: 8px 16px; }
+.controls { padding: 8px var(--sidebar-padding); }
 .save-area { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 0 0 8px; border-bottom: 1px solid var(--line); }
 .save-area #export { width: 100%; }
 .export-control { position: relative; }
@@ -91,9 +93,11 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 #pdf-save-state[data-state="changed"]::before { background: currentColor; }
 .export-control:has(#export:disabled) #pdf-save-state { color: var(--disabled-ink); }
 .source-page-option { display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; }
-.source-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px; }
-.source-row #reset { width: auto; min-height: 36px; padding: 7px 12px; }
-.source-row #collection-toggle { min-width: 64px; }
+.source-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.source-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: calc(var(--sidebar-width) - 1px - var(--sidebar-padding) - var(--sidebar-padding)); overflow-y: auto; scrollbar-gutter: stable; }
+.source-actions button { min-width: 0; padding-inline: 2px; }
+.source-row #reset { width: auto; min-height: 36px; padding: 7px 2px; }
+.source-row #collection-toggle { min-width: 0; }
 .source-row input { width: 100%; min-width: 0; height: 36px; padding: 7px 10px; border: 1px solid var(--control-line); border-radius: var(--radius); color: var(--ink); background: var(--surface); }
 .source-row input::placeholder { color: var(--muted); }
 .source-row input:disabled { background: var(--disabled); color: var(--muted); }
@@ -102,7 +106,7 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 #source-drop.drag-over, .source-row input.drag-over { border: 2px dashed var(--ink); background: var(--hover); color: var(--ink); }
 #source-drop:disabled { color: var(--disabled-ink); background: var(--disabled); border-color: var(--line); }
 #scan, #export { color: var(--pressed-ink); background: var(--ink); border-color: var(--ink); }
-#scan { min-width: 64px; }
+#scan { min-width: 0; }
 #scan:hover:not(:disabled), #export:hover:not(:disabled) { background: var(--pressed-hover); border-color: var(--pressed-hover); }
 #scan:disabled, #export:disabled { background: var(--line); border-color: var(--line); color: var(--disabled-ink); }
 
@@ -194,9 +198,9 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
   #scan-overlay::before { animation: none; }
 }
 
-.results-area { flex: 1; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) clamp(220px, 25vw, 300px); min-width: 0; min-height: 0; overflow: hidden; }
+.results-area { flex: 1; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--sidebar-width); min-width: 0; min-height: 0; overflow: hidden; }
 #scan-overlay { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; background: var(--overlay); }
-.workspace-sidebar { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding: 12px 16px; border-left: 1px solid var(--line); background: var(--surface); scrollbar-gutter: stable; }
+.workspace-sidebar { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding: 12px var(--sidebar-padding); border-left: 1px solid var(--line); background: var(--surface); scrollbar-gutter: stable; }
 main { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; padding: 12px; scrollbar-gutter: stable; }
 .legal-footer { flex: none; padding: 3px 12px; border-top: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 11px; text-align: right; }
 .legal-footer a { color: inherit; }
@@ -250,13 +254,16 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
 .viewer-thumb-number { display: block; font-size: 11px; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 700px) {
-  .results-area { grid-template-columns: minmax(0, 1fr) 180px; }
-  .workspace-sidebar { padding: 8px; }
+  :root { --sidebar-width: 180px; --sidebar-padding: 8px; }
+  .workspace-sidebar { padding-block: 8px; }
+  .source-actions { gap: 4px; }
+  .source-actions button { font-size: 11px; }
   .viewer-page { grid-template-columns: minmax(0, 1fr) minmax(104px, 24vw); gap: 8px; }
 }
 @media (max-width: 480px) {
-  .results-area { grid-template-columns: minmax(0, 1fr) 148px; grid-template-rows: minmax(0, 1fr); }
-  .workspace-sidebar { max-height: none; padding: 8px; }
+  :root { --sidebar-width: 148px; }
+  .results-area { grid-template-rows: minmax(0, 1fr); }
+  .workspace-sidebar { max-height: none; }
   .toolbar, .group-chip { gap: 4px; }
   .viewer-page { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
   .viewer-sidebar { max-height: 30dvh; }
@@ -267,7 +274,6 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
 }
 
 @media (max-width: 359px) {
-  .controls { padding-inline: 12px; }
   main { padding: 12px; }
   .image-list { grid-template-columns: repeat(auto-fill, minmax(min(115px, 100%), 1fr)); gap: 10px; }
 }
