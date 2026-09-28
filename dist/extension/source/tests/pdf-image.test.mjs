@@ -35,9 +35,13 @@ test("設定なしで元の画素と寸法を保ち、JPEGへ再圧縮しない"
       callback(new Blob([new Uint8Array([1, 2, 3])], {type}));
     },
   };
-  globalThis.fetch = async () => ({ok: true, blob: async () => new Blob([new Uint8Array([1])], {type: "image/png"})});
+  globalThis.fetch = async () => new Response(new Uint8Array([1]), {headers: {"Content-Type": "image/png"}});
   globalThis.document = {createElement: () => canvas};
-  globalThis.createImageBitmap = async () => ({width: 2, height: 1, close() { closed++; }});
+  globalThis.createImageBitmap = async blob => {
+    assert.equal(blob.type, "image/png");
+    assert.deepEqual([...new Uint8Array(await blob.arrayBuffer())], [1]);
+    return {width: 2, height: 1, close() { closed++; }};
+  };
   try {
     const page = await toPdfPage("https://example.com/image.png");
     assert.equal(page.width, 2);
@@ -59,7 +63,12 @@ test("対応するJFIF JPEGは取得したバイト列と寸法をそのまま�
     0xff, 0xda, 0x00, 0x08, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x00, 0xff, 0xd9,
   ]);
   let decoded = 0;
-  globalThis.fetch = async () => ({ok: true, status: 200, blob: async () => new Blob([jpeg], {type: "image/jpeg"})});
+  const responseBuffer = jpeg.buffer;
+  globalThis.fetch = async () => ({
+    ok: true, status: 200, headers: new Headers({"Content-Type": "image/jpeg"}),
+    arrayBuffer: async () => responseBuffer,
+    blob() { throw new Error("JPEG must not be copied into a Blob"); },
+  });
   globalThis.createImageBitmap = async () => {
     decoded += 1;
     return {width: 3, height: 2, close() {}};
@@ -67,6 +76,7 @@ test("対応するJFIF JPEGは取得したバイト列と寸法をそのまま�
   try {
     const page = await toPdfPage("https://example.com/original.jpg");
     assert.deepEqual([...page.jpeg], [...jpeg]);
+    assert.strictEqual(page.jpeg.buffer, responseBuffer, "JPEG reuses the response buffer");
     assert.equal(page.width, 3);
     assert.equal(page.height, 2);
     assert.equal(decoded, 0);
@@ -78,7 +88,7 @@ test("対応するJFIF JPEGは取得したバイト列と寸法をそのまま�
 test("HTTP失敗・通信失敗・画像形式不正を利用者向け理由へ変換する", async () => {
   const previous = { fetch: globalThis.fetch };
   try {
-    globalThis.fetch = async () => ({ok: false, status: 404, blob: async () => new Blob()});
+    globalThis.fetch = async () => new Response(null, {status: 404});
     await assert.rejects(toPdfPage("https://example.com/missing"), (error) => {
       assert(error instanceof PdfImageError);
       assert.equal(error.kind, "http");
@@ -94,7 +104,7 @@ test("HTTP失敗・通信失敗・画像形式不正を利用者向け理由へ�
       return true;
     });
 
-    globalThis.fetch = async () => ({ok: true, status: 200, blob: async () => new Blob(["not an image"], {type: "text/html"})});
+    globalThis.fetch = async () => new Response("not an image", {headers: {"Content-Type": "text/html"}});
     await assert.rejects(toPdfPage("https://example.com/page"), (error) => {
       assert(error instanceof PdfImageError);
       assert.equal(error.kind, "invalid-image");
@@ -118,7 +128,8 @@ test("応答待ちの上限でAbortし、応答本文も後始末する", async 
       status: 200,
       body,
       bodyUsed: false,
-      blob: async () => new Promise((resolve, reject) => {
+      headers: new Headers({"Content-Type": "image/png"}),
+      arrayBuffer: async () => new Promise((resolve, reject) => {
         signal.addEventListener("abort", () => {
           body.bodyUsed = true;
           reject(new DOMException("Aborted", "AbortError"));
@@ -154,7 +165,7 @@ test("取得は少数並列、画素変換は逐次、結果は入力順で通�
     maxFetches = Math.max(maxFetches, activeFetches);
     await new Promise((resolve) => setTimeout(resolve, delays.get(url) ?? 0));
     activeFetches -= 1;
-    return {ok: true, status: 200, blob: async () => new Blob([url], {type: "image/png"})};
+    return new Response(url, {headers: {"Content-Type": "image/png"}});
   };
   globalThis.createImageBitmap = async () => ({
     width: 1,
@@ -198,7 +209,7 @@ test("取得は少数並列、画素変換は逐次、結果は入力順で通�
 
 test("結果通知の失敗でも待機中の取得を解放する", async () => {
   const previous = { fetch: globalThis.fetch };
-  globalThis.fetch = async () => ({ok: true, status: 200, blob: async () => new Blob(["image"], {type: "image/png"})});
+  globalThis.fetch = async () => new Response("image", {headers: {"Content-Type": "image/png"}});
   try {
     await assert.rejects(
       preparePdfImages([{url: "a"}, {url: "b"}, {url: "c"}, {url: "d"}], () => {
@@ -215,7 +226,7 @@ test("画素の読み取り失敗でもメモリを解放し、後続画像を�
   const previous = {fetch: globalThis.fetch, document: globalThis.document, createImageBitmap: globalThis.createImageBitmap};
   const canvases = [];
   const closed = [];
-  globalThis.fetch = async url => ({ok: true, blob: async () => new Blob([url], {type: "image/png"})});
+  globalThis.fetch = async url => new Response(url, {headers: {"Content-Type": "image/png"}});
   globalThis.createImageBitmap = async blob => {
     const name = await blob.text();
     return {name, width: 1, height: 1, close() { closed.push(name); }};

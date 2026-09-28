@@ -61,17 +61,17 @@ export async function fetchImage(url, options) {
                 void cancelResponse(response);
                 throw error;
             }
-            const blob = await response.blob();
-            if (blob.type && !blob.type.toLowerCase().startsWith("image/")) {
+            const contentType = response.headers.get("content-type") ?? "";
+            if (contentType && !contentType.toLowerCase().startsWith("image/")) {
                 throw invalidImage("画像データではありません。");
             }
-            // Read the body while the response timeout is still active. This also lets
-            // us detect and retain a supported JPEG without decoding or re-encoding it.
-            const bytes = new Uint8Array(await blob.arrayBuffer());
+            // Keep one response buffer for JPEG detection and direct PDF embedding.
+            // Only formats requiring pixel decoding need a Blob afterward.
+            const bytes = new Uint8Array(await response.arrayBuffer());
             const original = getOriginalJpegPage(bytes);
             if (original)
                 return { kind: "original", page: original };
-            return { kind: "bitmap", blob };
+            return { kind: "bitmap", blob: new Blob([bytes], { type: contentType }) };
         }
         catch (error) {
             void cancelResponse(response);

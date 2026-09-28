@@ -199,7 +199,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, false, "解析後は画面下部で受け付けない");
     assert.equal(document.dispatch("dragover", {target: header, dataTransfer: pageUrlDrag}).prevented, true, "解析後は上部全体で受け付ける");
     document.dispatch("dragleave", {dataTransfer: pageUrlDrag});
-    globalThis.fetch = async () => ({ok: true, blob: async () => new Blob([new Uint8Array([1])], {type: "image/png"})});
+    globalThis.fetch = async () => new Response(new Uint8Array([1]), {headers: {"Content-Type": "image/png"}});
     const scansBeforePdf = executionCount;
     capturedMessage({url: "https://example.com/linked"});
     capturedMessage({url: "https://example.com/linked"});
@@ -459,7 +459,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     globalThis.fetch = async url => {
       fetches.push(url);
       if (url === failedUrl && failOnce) throw new Error("test");
-      return {ok: true, blob: async () => new Blob([new Uint8Array([1])], {type: "image/png"})};
+      return new Response(new Uint8Array([1]), {headers: {"Content-Type": "image/png"}});
     };
     document.querySelector("#export").dispatch("click");
     assert.equal(document.querySelector("#status").textContent, "0 / 4", "PDF作成中も枚数の進捗を画面に表示する");
