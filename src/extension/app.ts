@@ -66,7 +66,7 @@ let savedPdfSignature: string | null = null;
 function pdfSignature(): string {
   return JSON.stringify([pageTitle, includeSourcePage.checked, imageCollection.selectedItems.map(item => [item.url, item.sourcePage])]);
 }
-let activeGroupKey: string | null = null;
+let visibleGroupKeys = new Set<string>();
 let busy = false;
 let disposed = false;
 let scanController: AbortController | null = null;
@@ -214,7 +214,8 @@ async function startScan(collectionLink?: string): Promise<void> {
     if (collectionLink) collectionController.markAnalyzedUrl(collectionLink, session);
     pageTitle = result.title || t("imageFallback");
     pendingExport = null;
-    activeGroupKey = defaultDisplayedImageGroup(imageCollection.groups);
+    const initialGroup = defaultDisplayedImageGroup(imageCollection.groups);
+    visibleGroupKeys = new Set(initialGroup === null ? Object.keys(imageCollection.groups) : [initialGroup]);
     viewerController.setOpen(imageCollection.items.length > 0);
     viewerController.clearCurrentPage();
     completionElement.hidden = true;
@@ -240,21 +241,26 @@ function renderGroups(groups: ImageCollection["groups"]): void {
     key => {
       const button = document.createElement("button");
       button.type = "button";
+      const eye = document.createElement("span");
+      eye.className = "eye-icon";
+      eye.setAttribute("aria-hidden", "true");
+      button.append(eye);
       button.addEventListener("click", () => {
         requestFocus({kind: "group", key});
-        activeGroupKey = key === "all" ? null : key;
+        if (key === "all") {
+          visibleGroupKeys = visibleGroupKeys.size === Object.keys(imageCollection.groups).length
+            ? new Set() : new Set(Object.keys(imageCollection.groups));
+        } else if (visibleGroupKeys.has(key)) visibleGroupKeys.delete(key);
+        else visibleGroupKeys.add(key);
         render();
       });
-      if (key === "all") return button;
-
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.addEventListener("change", () => {
         if (busy) return;
-        const currentGroup = imageCollection.groups[key];
-        if (!currentGroup) return;
         requestFocus({kind: "pdf-group", key});
-        imageCollection.setGroupSelected(key, checkbox.checked);
+        if (key === "all") imageCollection.setAllSelected(checkbox.checked);
+        else if (imageCollection.groups[key]) imageCollection.setGroupSelected(key, checkbox.checked);
         render();
       });
       const chip = document.createElement("div");
@@ -263,24 +269,31 @@ function renderGroups(groups: ImageCollection["groups"]): void {
       return chip;
     },
     (element, key) => {
-      const button = (key === "all" ? element : element.children[0]) as HTMLButtonElement;
+      const button = element.children[0] as HTMLButtonElement;
       const group = key === "all" ? undefined : groups[key];
-      button.textContent = key === "all" ? t("showAll") : formatGroupLabel(group?.label ?? "");
-      button.title = key === "all" ? t("allImages") : t("oneGroup");
+      button.textContent = key === "all" ? t("allGroups") : formatGroupLabel(group?.label ?? "");
+      const shown = key === "all" ? visibleGroupKeys.size === entries.length : visibleGroupKeys.has(key);
+      const eye = document.createElement("span");
+      eye.className = `eye-icon${shown ? "" : " eye-hidden"}`;
+      eye.setAttribute("aria-hidden", "true");
+      button.append(eye);
+      button.title = t(shown ? "hideGroup" : "displayGroup", {label: key === "all" ? t("allGroups") : formatGroupLabel(group?.label ?? "")});
+      button.setAttribute("aria-label", button.title);
       button.disabled = busy;
       button.setAttribute("data-focus-kind", "group");
       button.setAttribute("data-focus-key", key);
-      button.setAttribute("aria-pressed", String(key === "all" ? activeGroupKey === null : activeGroupKey === key));
-      if (key === "all") return;
-      if (!group) return;
+      button.setAttribute("aria-pressed", String(shown));
       const checkbox = element.children[1] as HTMLInputElement;
-      const selection = imageCollection.groupSelection(key);
+      const selection = key === "all"
+        ? {checked: imageCollection.items.length > 0 && imageCollection.selectedItems.length === imageCollection.items.length,
+          indeterminate: imageCollection.hasSelection && imageCollection.selectedItems.length < imageCollection.items.length}
+        : imageCollection.groupSelection(key);
       checkbox.checked = selection.checked;
       checkbox.indeterminate = selection.indeterminate;
       checkbox.disabled = busy;
       checkbox.setAttribute("data-focus-kind", "pdf-group");
       checkbox.setAttribute("data-focus-key", key);
-      const groupLabel = formatGroupLabel(group.label);
+      const groupLabel = key === "all" ? t("allGroups") : formatGroupLabel(group?.label ?? "");
       checkbox.setAttribute("aria-label", t("includeGroup", {label: groupLabel}));
     });
 }
@@ -514,15 +527,17 @@ function render(): void {
     if (!busy) setStatus(t("selectionChanged"), "info");
   }
   const groups = imageCollection.groups;
-  if (activeGroupKey !== null && !groups[activeGroupKey]) activeGroupKey = null;
-  const visibleImages = imageCollection.visibleItems(activeGroupKey);
+  for (const key of visibleGroupKeys) if (!groups[key]) visibleGroupKeys.delete(key);
+  const visibleUrls = new Set([...visibleGroupKeys].flatMap(key => groups[key]?.items ?? []));
+  const visibleImages = imageCollection.items.filter(item => visibleUrls.has(item.url));
   const selectedCount = selected.length;
   const saved = savedPdfSignature !== null && savedPdfSignature === pdfSignature();
   pdfSaveStateElement.hidden = imageCollection.items.length === 0;
   pdfSaveStateElement.dataset["state"] = saved ? "saved" : savedPdfSignature === null ? "unsaved" : "changed";
   pdfSaveStateElement.setAttribute("aria-label", t(saved ? "pdfSaveStarted" : savedPdfSignature === null ? "pdfUnsaved" : "pdfSaveChanged"));
   pdfSaveStateElement.title = saved ? t("pdfSaveStartedHelp") : "";
-  setMotionText(countElement, formatCount(selectedCount, imageCollection.items.length, activeGroupKey === null ? undefined : visibleImages.length));
+  setMotionText(countElement, formatCount(selectedCount, imageCollection.items.length,
+    visibleImages.length === imageCollection.items.length ? undefined : visibleImages.length));
   exportButton.textContent = pendingExport?.failed.size
     ? t("exportRetry", {count: pendingExport.failed.size, plural: formatPlural(pendingExport.failed.size)})
     : selectedCount ? t("exportCount", {count: selectedCount, plural: formatPlural(selectedCount)}) : t("savePdf");
@@ -551,7 +566,7 @@ function render(): void {
         : "";
   selectAllButton.disabled = busy || imageCollection.items.length === 0;
   clearAllButton.disabled = busy || imageCollection.items.length === 0;
-  resetOrderButton.disabled = busy || imageCollection.matchesInitialOrder();
+  resetOrderButton.disabled = busy || imageCollection.matchesInitialOrderAndSelection();
   exportButton.disabled = busy || !imageCollection.hasSelection;
   renderGroups(groups);
   renderImages(visibleImages);
@@ -732,7 +747,7 @@ selectAllButton.addEventListener("click", () => { if (busy) return; imageCollect
 clearAllButton.addEventListener("click", () => { if (busy) return; imageCollection.setAllSelected(false); render(); });
 resetOrderButton.addEventListener("click", () => {
   if (busy || resetOrderButton.disabled) return;
-  imageCollection.resetOrder();
+  imageCollection.restoreInitialOrderAndSelection();
   render();
 });
 resetButton.addEventListener("click", () => {
@@ -742,7 +757,7 @@ resetButton.addEventListener("click", () => {
   imageCollection.clear();
   savedPdfSignature = null;
   pendingExport = null;
-  activeGroupKey = null;
+  visibleGroupKeys.clear();
   viewerController.setOpen(false);
   viewerController.clearCurrentPage();
   scanState = "initial";

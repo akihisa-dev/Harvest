@@ -164,7 +164,7 @@ test("英語画面で解析・分類・選択・エラー表示が翻訳され�
     assert.equal(root.querySelector("#reset").getAttribute("aria-label"), "Clear the collected results and selection");
     root.querySelector("#scan").dispatch("click");
     await waitForScan();
-    assert.equal(root.querySelector("#count").textContent, "2 / 2 images selected · 2 displayed");
+    assert.equal(root.querySelector("#count").textContent, "2 / 2 images selected");
     assert.ok(descendants(root.querySelector("#groups")).some(button => button.textContent === "Series (2 images)"));
     assert.equal(root.querySelector("#export").textContent, "Save PDF (2 images)");
     assert.equal((await import(`../dist/extension/app/localization.js?source=${Date.now()}`)).t("includeSourcePage"), "Add a source page at the end");

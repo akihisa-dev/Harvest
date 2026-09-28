@@ -3,6 +3,7 @@ import { defaultSelectedImageGroups, filterImagesByGroup, groupImages } from "./
 export class ImageCollection {
     orderedItems = [];
     initialItems = [];
+    initialSelectedUrls = new Set();
     groupedItems = {};
     itemByUrl = new Map();
     positionByItem = new Map();
@@ -18,11 +19,13 @@ export class ImageCollection {
         const selectedUrls = new Set(Object.entries(groups).flatMap(([key, group]) => selectedGroups[key] ? group.items : []));
         this.orderedItems = urls.map(url => ({ url, sourcePage, selected: selectedUrls.has(url) }));
         this.initialItems = [...this.orderedItems];
+        this.initialSelectedUrls = selectedUrls;
         this.reindex(groups);
     }
     clear() {
         this.orderedItems = [];
         this.initialItems = [];
+        this.initialSelectedUrls.clear();
         this.reindex({});
     }
     itemForUrl(url) { return this.itemByUrl.get(url); }
@@ -88,6 +91,16 @@ export class ImageCollection {
     resetOrder() {
         this.orderedItems = [...this.initialItems];
         this.reindex();
+    }
+    restoreInitialOrderAndSelection() {
+        this.orderedItems = [...this.initialItems];
+        for (const item of this.orderedItems)
+            item.selected = this.initialSelectedUrls.has(item.url);
+        this.reindex();
+    }
+    matchesInitialOrderAndSelection() {
+        return this.matchesInitialOrder() &&
+            this.orderedItems.every(item => item.selected === this.initialSelectedUrls.has(item.url));
     }
     matchesInitialOrder() {
         return this.orderedItems.length === this.initialItems.length &&

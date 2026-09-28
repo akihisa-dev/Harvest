@@ -61,6 +61,19 @@ test("再収集は項目の識別子と索引を更新し、古い順序を引�
   assert.equal(collection.matchesInitialOrder(), true);
 });
 
+test("解析直後の順序とPDF選択を同時に復元する", () => {
+  const collection = new ImageCollection();
+  collection.replace(urls, "https://example.test/view");
+  const initialSelection = collection.items.map(item => item.selected);
+  collection.setAllSelected(true);
+  assert.equal(collection.matchesInitialOrderAndSelection(), false);
+  collection.moveVisible(collection.items, collection.items[0], collection.items[3]);
+  collection.restoreInitialOrderAndSelection();
+  assert.deepEqual(collection.items.map(item => item.url), urls);
+  assert.deepEqual(collection.items.map(item => item.selected), initialSelection);
+  assert.equal(collection.matchesInitialOrderAndSelection(), true);
+});
+
 test("不正な表示順の適用を拒否して現在の順序を保つ", () => {
   const collection = new ImageCollection();
   collection.replace(urls, "https://example.test/view");

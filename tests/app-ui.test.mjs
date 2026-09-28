@@ -266,7 +266,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(pdfSaveState.dataset.state, "unsaved");
     assert.equal(document.querySelector("#images").children.length, 2);
     assert.equal(descendants(document.querySelector("#groups")).find(button => button.getAttribute("aria-pressed") === "true").textContent, "シリーズ (2枚)");
-    document.querySelector("#groups").children.find(button => button.textContent === "すべて表示").dispatch("click");
+    document.querySelector("#groups").children[0].children[0].dispatch("click");
     assert.equal(document.querySelector("#export").textContent, "PDFを保存（2枚）");
     const resetOrder = document.querySelector("#reset-order");
     assert.equal(resetOrder.disabled, true);
@@ -374,8 +374,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
 
     const groups = document.querySelector("#groups");
     const coverButton = descendants(groups).find(button => button.tagName === "button" && button.textContent.startsWith("表紙"));
-    coverButton.dispatch("click");
-    assert.equal(document.activeElement.getAttribute("data-focus-key"), coverButton.getAttribute("data-focus-key"));
+    descendants(groups).find(button => button.tagName === "button" && button.textContent.startsWith("シリーズ")).dispatch("click");
+    assert.equal(document.activeElement.getAttribute("data-focus-kind"), "group");
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
     assert.equal(document.querySelector("#images").children.length, 2);
 
@@ -394,7 +394,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
     assert.equal(document.querySelector("#images").children.length, 2);
 
-    const allButton = groups.children.find(button => button.textContent === "すべて表示");
+    const allButton = groups.children[0].children[0];
     allButton.dispatch("click");
     const firstRow = document.querySelector("#images").children[0];
     const firstUrl = firstRow.children[0].src;
@@ -440,7 +440,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     keyboardRow.dispatch("keydown", {target: keyboardRow, key: " "});
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択");
 
-    coverButton.dispatch("click");
+    descendants(groups).find(button => button.tagName === "button" && button.textContent.startsWith("シリーズ")).dispatch("click");
     const coverRows = document.querySelector("#images").children;
     const hiddenUrl = resultImages[0];
     assert.equal([...coverRows].some(row => row.children[0].src === hiddenUrl), false);
@@ -534,12 +534,12 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(pdfSaveState.getAttribute("aria-label"), "保存を開始しました", "収集失敗時は保存済み状態を保つ");
     rejectScan = false;
 
-    coverButton.dispatch("click");
+    descendants(groups).find(button => button.tagName === "button" && button.textContent.startsWith("シリーズ")).dispatch("click");
     assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
     resetOrder.dispatch("click");
     assert.equal(resetOrder.disabled, true);
     assert.equal(pdfSaveState.getAttribute("aria-label"), "変更あり・要保存", "選択順序の変更を表示する");
-    assert.equal(document.querySelector("#count").textContent, "4 / 4枚を選択・2枚を表示");
+    assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択・2枚を表示");
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), resultImages.slice(2));
     allButton.dispatch("click");
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), resultImages);
@@ -551,7 +551,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#count").textContent, "2 / 4枚を選択・2枚を表示");
     assert.equal(document.querySelector("#images").children.length, 2);
     assert.equal(descendants(document.querySelector("#groups")).find(button => button.getAttribute("aria-pressed") === "true").textContent, "シリーズ (2枚)");
-    document.querySelector("#groups").children.find(button => button.textContent === "すべて表示").dispatch("click");
+    document.querySelector("#groups").children[0].children[0].dispatch("click");
     const rescannedRow = document.querySelector("#images").children[0];
     rescannedRow.dispatch("pointerdown");
     rescannedRow.dispatch("click");

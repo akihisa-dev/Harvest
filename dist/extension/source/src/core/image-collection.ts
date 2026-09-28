@@ -4,6 +4,7 @@ import { defaultSelectedImageGroups, filterImagesByGroup, groupImages, type Imag
 export class ImageCollection {
   private orderedItems: ImageItem[] = [];
   private initialItems: ImageItem[] = [];
+  private initialSelectedUrls = new Set<string>();
   private groupedItems: ImageGroups = {};
   private itemByUrl = new Map<string, ImageItem>();
   private positionByItem = new Map<ImageItem, number>();
@@ -21,12 +22,14 @@ export class ImageCollection {
     const selectedUrls = new Set(Object.entries(groups).flatMap(([key, group]) => selectedGroups[key] ? group.items : []));
     this.orderedItems = urls.map(url => ({url, sourcePage, selected: selectedUrls.has(url)}));
     this.initialItems = [...this.orderedItems];
+    this.initialSelectedUrls = selectedUrls;
     this.reindex(groups);
   }
 
   clear(): void {
     this.orderedItems = [];
     this.initialItems = [];
+    this.initialSelectedUrls.clear();
     this.reindex({});
   }
 
@@ -93,6 +96,17 @@ export class ImageCollection {
   resetOrder(): void {
     this.orderedItems = [...this.initialItems];
     this.reindex();
+  }
+
+  restoreInitialOrderAndSelection(): void {
+    this.orderedItems = [...this.initialItems];
+    for (const item of this.orderedItems) item.selected = this.initialSelectedUrls.has(item.url);
+    this.reindex();
+  }
+
+  matchesInitialOrderAndSelection(): boolean {
+    return this.matchesInitialOrder() &&
+      this.orderedItems.every(item => item.selected === this.initialSelectedUrls.has(item.url));
   }
 
   matchesInitialOrder(): boolean {

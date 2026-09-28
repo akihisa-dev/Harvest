@@ -85,8 +85,8 @@ async function inspectLayout(page, width, height, label) {
   assert.ok(result.export.y < result.viewer.y && result.viewer.y < result.headingText.y,
     `${label}: PDF, list toggle, and image groups must be arranged vertically`);
   assert.ok(result.count.bottom <= result.selectAll.y, `${label}: image count must stay above selection actions`);
-  assert.ok(result.selectAll.right <= result.clearAll.x && result.clearAll.bottom <= result.resetOrder.y,
-    `${label}: selection actions must form two readable rows`);
+  assert.ok(result.selectAll.right <= result.clearAll.x && result.clearAll.right <= result.resetOrder.x,
+    `${label}: selection actions must fit in one row`);
   assert.ok(result.resetOrder.right <= result.sidebar.right + 1, `${label}: selection actions must fit sidebar width`);
   assert.ok(result.groupBar.scrollWidth <= result.groupBar.clientWidth + 1, `${label}: group bar must not scroll horizontally`);
   return result;
@@ -142,11 +142,10 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           await page.locator("#images-heading").waitFor();
           assert.equal(await page.title(), locale === "ja-JP" ? "Harvest | 画像を集める" : "Harvest | Collect images", `${caseName}: document title should follow browser locale`);
           assert.equal(await page.locator("#images-heading").textContent(), locale === "ja-JP" ? "画像グループ" : "Image groups");
-          const actionNames = locale === "ja-JP" ? ["すべて選択", "選択を解除", "並び順を戻す"] : ["Select all", "Clear selection", "Reset order"];
+          const actionNames = locale === "ja-JP" ? ["すべて選択", "選択を解除", "全部元に戻す"] : ["Select all", "Clear selection", "Restore order and selection"];
           for (const name of actionNames) assert.equal(await page.getByRole("button", {name, exact: true}).count(), 1, `${caseName}: action needs an accessible name`);
-          const visibleActions = locale === "ja-JP" ? ["全選択", "選択解除", "順序を戻す"] : ["Select all", "Clear all", "Reset order"];
-          for (const [index, selector] of ["#select-all", "#clear-all", "#reset-order"].entries()) {
-            assert.equal(await page.locator(selector).innerText(), visibleActions[index], `${caseName}: action label must be visible`);
+          for (const selector of ["#select-all", "#clear-all", "#reset-order"]) {
+            assert.equal(await page.locator(`${selector} svg`).count(), 1, `${caseName}: action icon must be visible`);
           }
           assert.equal(await page.locator(".workspace-sidebar").getAttribute("aria-label"),
             locale === "ja-JP" ? "画像と保存の操作" : "Image and save controls", `${caseName}: sidebar label should follow browser locale`);
@@ -217,12 +216,25 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           await sourceOption.evaluate((element, text) => { element.textContent = text; }, originalOption);
           const few = await inspectLayout(page, width, height, `${caseName} few images`);
           assert.equal(few.header.height, empty.header.height, `${caseName}: image results must not change header height`);
-          assert.equal(few.groupCount, 1, `${caseName}: fixture should create one group`);
+          assert.equal(few.groupCount, 2, `${caseName}: fixture should create one group and an all-images row`);
+          const allRow = page.locator("#groups .group-chip").first();
+          const allEye = allRow.locator("button");
+          const allSelection = allRow.locator("input[type=checkbox]");
+          assert.equal(await allSelection.count(), 1, `${caseName}: all-images row needs a PDF checkbox`);
+          await allEye.click();
+          assert.equal(await page.locator("#images > li").count(), 0, `${caseName}: all-images eye hides the list`);
+          await allEye.click();
+          assert.equal(await page.locator("#images > li").count(), 4, `${caseName}: all-images eye restores the list`);
+          await allSelection.uncheck();
+          assert.equal(await page.locator("#export").isDisabled(), true, `${caseName}: all-images checkbox clears PDF selection`);
+          await allSelection.check();
+          assert.equal(await page.locator("#export").isDisabled(), false, `${caseName}: all-images checkbox selects PDF images`);
           await scan(page, imageFixture(120, 36));
           const many = await inspectLayout(page, width, height, `${caseName} many groups`);
           assert.equal(many.header.height, empty.header.height, `${caseName}: group count must not change header height`);
           assert.ok(many.groupCount >= 30, `${caseName}: many-group fixture should create at least 30 groups`);
           assert.ok(many.sidebar.scrollHeight > many.sidebar.clientHeight, `${caseName}: tall controls must scroll within right panel`);
+          await page.locator(".workspace-sidebar").evaluate(element => { element.scrollTop = 0; });
           const scrollState = await page.locator(".workspace-sidebar").evaluate(element => {
             const start = element.scrollTop;
             const main = document.querySelector("main");
