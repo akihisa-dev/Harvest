@@ -122,9 +122,9 @@ section, aside { min-width: 0; }
 .section-head { gap: 4px 10px; min-width: 0; }
 .section-head h2 { font-size: 14px; }
 #count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.toolbar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
-.toolbar button { display: grid; place-items: center; min-width: 0; min-height: 36px; padding: 3px; background: var(--surface); border-color: var(--line); }
-.toolbar .action-icon { font-size: 18px; line-height: 1; }
+.toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.toolbar button { min-width: 0; min-height: 36px; padding: 4px 2px; background: var(--surface); border-color: var(--line); font-size: 11px; line-height: 1.25; text-align: center; }
+.toolbar #reset-order { grid-column: 1 / -1; min-height: 34px; }
 .toolbar button:hover:not(:disabled) { background: var(--hover); }
 .group-bar { min-height: 0; margin-top: 4px; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
 .group-bar::-webkit-scrollbar { width: 10px; }

@@ -85,8 +85,8 @@ async function inspectLayout(page, width, height, label) {
   assert.ok(result.export.y < result.viewer.y && result.viewer.y < result.headingText.y,
     `${label}: PDF, list toggle, and image groups must be arranged vertically`);
   assert.ok(result.count.bottom <= result.selectAll.y, `${label}: image count must stay above selection actions`);
-  assert.ok(result.selectAll.right <= result.clearAll.x && result.clearAll.right <= result.resetOrder.x,
-    `${label}: selection actions must fit in one row`);
+  assert.ok(result.selectAll.right <= result.clearAll.x && result.clearAll.bottom <= result.resetOrder.y,
+    `${label}: selection actions must form two readable rows`);
   assert.ok(result.resetOrder.right <= result.sidebar.right + 1, `${label}: selection actions must fit sidebar width`);
   assert.ok(result.groupBar.scrollWidth <= result.groupBar.clientWidth + 1, `${label}: group bar must not scroll horizontally`);
   return result;
@@ -143,7 +143,11 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           assert.equal(await page.title(), locale === "ja-JP" ? "Harvest | 画像を集める" : "Harvest | Collect images", `${caseName}: document title should follow browser locale`);
           assert.equal(await page.locator("#images-heading").textContent(), locale === "ja-JP" ? "画像グループ" : "Image groups");
           const actionNames = locale === "ja-JP" ? ["すべて選択", "選択を解除", "並び順を戻す"] : ["Select all", "Clear selection", "Reset order"];
-          for (const name of actionNames) assert.equal(await page.getByRole("button", {name, exact: true}).count(), 1, `${caseName}: icon action needs an accessible name`);
+          for (const name of actionNames) assert.equal(await page.getByRole("button", {name, exact: true}).count(), 1, `${caseName}: action needs an accessible name`);
+          const visibleActions = locale === "ja-JP" ? ["全選択", "選択解除", "順序を戻す"] : ["Select all", "Clear all", "Reset order"];
+          for (const [index, selector] of ["#select-all", "#clear-all", "#reset-order"].entries()) {
+            assert.equal(await page.locator(selector).innerText(), visibleActions[index], `${caseName}: action label must be visible`);
+          }
           assert.equal(await page.locator(".workspace-sidebar").getAttribute("aria-label"),
             locale === "ja-JP" ? "画像と保存の操作" : "Image and save controls", `${caseName}: sidebar label should follow browser locale`);
           const empty = await inspectLayout(page, width, height, `${caseName} empty`);
