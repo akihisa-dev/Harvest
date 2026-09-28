@@ -98,7 +98,6 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 .source-row { display: grid; grid-template-columns: minmax(0, 1fr) calc(1px + var(--sidebar-padding)) auto; }
 .source-row #source-drop, .source-row #source-url { grid-column: 1; grid-row: 1; }
 .source-actions { grid-column: 3; grid-row: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: calc(var(--sidebar-width) - 1px - var(--sidebar-padding) - var(--sidebar-padding)); overflow-y: auto; scrollbar-gutter: stable; }
-body:has(#viewer-page:not([hidden])) .controls { padding-left: 12px; }
 body:has(#viewer-page:not([hidden])) .source-row { grid-template-columns: minmax(0, 1fr) var(--stage-gap) var(--stage-sidebar-width) calc(13px + var(--sidebar-padding)) auto; }
 body:has(#viewer-page:not([hidden])) .source-actions { grid-column: 5; }
 .source-actions button { min-width: 0; padding-inline: 2px; }

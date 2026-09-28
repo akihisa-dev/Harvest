@@ -82,7 +82,7 @@ async function inspectLayout(page, width, height, label) {
   assert.ok(Math.abs(result.scan.x - result.export.x) <= 1, `${label}: header actions and save button must share the left edge (${result.scan.x}, ${result.export.x})`);
   assert.ok(Math.abs(result.collect.right - result.export.right) <= 1, `${label}: header actions and save button must share the right edge (${result.collect.right}, ${result.export.right})`);
   if (result.viewerPageVisible) {
-    assert.ok(Math.abs(result.source.x - result.stage.x) <= 1, `${label}: URL field and image stage must share the left edge (${result.source.x}, ${result.stage.x})`);
+    assert.ok(Math.abs(result.source.x - result.main.x) <= 1, `${label}: URL field and gray viewer area must share the left edge (${result.source.x}, ${result.main.x})`);
     assert.ok(Math.abs(result.source.right - result.stage.right) <= 1, `${label}: URL field and image stage must share the right edge (${result.source.right}, ${result.stage.right})`);
   } else {
     assert.ok(Math.abs(result.source.x - result.main.x) <= 1, `${label}: URL field and empty area must share the left edge (${result.source.x}, ${result.main.x})`);
