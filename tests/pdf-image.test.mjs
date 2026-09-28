@@ -54,6 +54,56 @@ test("設定なしで元の画素と寸法を保ち、JPEGへ再圧縮しない"
   }
 });
 
+test("画素変換後の圧縮中に中止すると、完了を待たずに画像と描画領域を解放する", async () => {
+  const previous = {
+    fetch: globalThis.fetch,
+    document: globalThis.document,
+    createImageBitmap: globalThis.createImageBitmap,
+    CompressionStream: globalThis.CompressionStream,
+  };
+  const controller = new AbortController();
+  let compressionStarted;
+  const started = new Promise(resolve => { compressionStarted = resolve; });
+  let closed = 0;
+  const canvas = {
+    width: 0, height: 0,
+    getContext: () => ({
+      fillRect() {}, drawImage() {},
+      getImageData: () => ({data: new Uint8ClampedArray([1, 2, 3, 255])}),
+    }),
+  };
+  globalThis.fetch = async () => new Response(new Uint8Array([1]), {headers: {"Content-Type": "image/png"}});
+  globalThis.document = {createElement: () => canvas};
+  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() { closed++; }});
+  globalThis.CompressionStream = class {
+    constructor(format) {
+      assert.equal(format, "deflate");
+      return new TransformStream({
+        transform(chunk, output) { output.enqueue(chunk); },
+        flush() {
+          compressionStarted();
+          return new Promise(() => {});
+        },
+      });
+    }
+  };
+  try {
+    const work = toPdfPage("https://example.com/image.png", {signal: controller.signal});
+    await started;
+    controller.abort();
+    await Promise.race([
+      assert.rejects(work, error => error instanceof PdfImageError && error.kind === "cancelled"),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("圧縮完了を待っています")), 500)),
+    ]);
+    assert.equal(closed, 1);
+    assert.equal(canvas.width, 0);
+    assert.equal(canvas.height, 0);
+  } finally {
+    controller.abort();
+    Object.assign(globalThis, previous);
+  }
+});
+
 test("対応するJFIF JPEGは取得したバイト列と寸法をそのまま使う", async () => {
   const previous = { fetch: globalThis.fetch, createImageBitmap: globalThis.createImageBitmap };
   const jpeg = new Uint8Array([

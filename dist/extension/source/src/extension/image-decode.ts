@@ -70,10 +70,35 @@ export async function decodeImage(fetched: FetchedImage, options: PdfImageOption
     }
 
     try {
-      const stream = new Blob([rgb.buffer]).stream().pipeThrough(new CompressionStream("deflate"));
-      const rgbFlate = new Uint8Array(await new Response(stream).arrayBuffer());
-      return { rgbFlate, width, height };
+      checkCancelled(options.signal);
+      const stream = new Blob([rgb.buffer]).stream().pipeThrough(new CompressionStream("deflate"), options.signal ? { signal: options.signal } : undefined);
+      const reader = stream.getReader();
+      const cancelRead = (): void => { void reader.cancel().catch(() => {}); };
+      options.signal?.addEventListener("abort", cancelRead, { once: true });
+      try {
+        checkCancelled(options.signal);
+        const chunks: Uint8Array[] = [];
+        let length = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          checkCancelled(options.signal);
+          if (done) break;
+          chunks.push(value);
+          length += value.byteLength;
+        }
+        const rgbFlate = new Uint8Array(length);
+        let offset = 0;
+        for (const chunk of chunks) {
+          rgbFlate.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        return { rgbFlate, width, height };
+      } finally {
+        options.signal?.removeEventListener("abort", cancelRead);
+        reader.releaseLock();
+      }
     } catch {
+      checkCancelled(options.signal);
       throw invalidImage("画像をPDF用に変換できませんでした。");
     }
   } finally {
