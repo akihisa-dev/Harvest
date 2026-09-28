@@ -215,6 +215,22 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           assert.equal(await page.locator("#viewer").isVisible(), true, `${caseName}: successful scan opens viewer`);
           const stage = await page.locator("#viewer-stage").boundingBox();
           assert.ok(stage.width > 100 && stage.height > height * 0.45, `${caseName}: large image must use available space`);
+          const zoomControl = await page.locator(".viewer-zoom").evaluate(element => ({
+            border: getComputedStyle(element).borderTopWidth,
+            gap: getComputedStyle(element).columnGap,
+            buttonBorders: [...element.querySelectorAll("button")].map(button => getComputedStyle(button).borderTopWidth),
+          }));
+          assert.equal(zoomControl.border, "1px", `${caseName}: zoom control must have one outer border`);
+          assert.equal(zoomControl.gap, "0px", `${caseName}: zoom buttons must form one control`);
+          assert.deepEqual(zoomControl.buttonBorders, ["0px", "0px", "0px"], `${caseName}: zoom buttons must not have separate borders`);
+          const zoomLabels = await page.evaluate(() => {
+            const reset = document.querySelector("#viewer-zoom-reset");
+            document.querySelector("#viewer-zoom-in").click();
+            const increased = reset.textContent;
+            document.querySelector("#viewer-zoom-out").click();
+            return {increased, restored: reset.textContent};
+          });
+          assert.deepEqual(zoomLabels, {increased: "125%", restored: "100%"}, `${caseName}: side buttons must change the percentage`);
           const firstResultCount = await page.locator("#images img").count();
           const secondPendingFixture = {...imageFixture(4, 1), pending: true};
           await page.evaluate(value => { window.__harvestScanFixture = value; }, secondPendingFixture);
