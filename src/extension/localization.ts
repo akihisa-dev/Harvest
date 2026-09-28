@@ -11,7 +11,7 @@ const english = {
   collectionStart: "Collect",
   collectionStop: "Stop",
   collectionTitle: "While collecting, click links on the page to analyze their destinations without navigating away",
-  sourceDrop: "Drop a page URL or click to enter it",
+  sourceDrop: "Click to enter a page URL",
   sourcePlaceholder: "Enter a page URL",
   scan: "Analyze",
   sourceHint: "If left blank, the open page will be analyzed.",
@@ -116,7 +116,7 @@ const japanese: {[K in keyof typeof english]: string} = {
   collectionStart: "収集",
   collectionStop: "停止",
   collectionTitle: "収集中はページ内のリンクをクリックすると、移動せずリンク先を解析します",
-  sourceDrop: "ページURLをドロップ、またはクリックして入力",
+  sourceDrop: "クリックしてページURLを入力",
   sourcePlaceholder: "ページURLを入力",
   scan: "解析",
   sourceHint: "空欄なら、開いているページを解析します。",
@@ -250,7 +250,6 @@ export function localizeDocument(root: Document = document): void {
       element.setAttribute(attribute, t(element.getAttribute(dataName) as TranslationKey));
     }
   }
-  if (root.body) root.body.dataset["dropLabel"] = t("dropUrl");
 }
 
 const sourceMessages: Partial<Record<string, TranslationKey>> = {

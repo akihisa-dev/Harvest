@@ -11,8 +11,7 @@ import { createViewerController } from "./viewer-controller.js";
 
 const sourceUrl = required<HTMLInputElement>("#source-url");
 const sourceDrop = required<HTMLButtonElement>("#source-drop");
-const headerElement = required<HTMLDivElement>(".app-header");
-headerElement.dataset["dropLabel"] = t("dropUrl");
+const urlDropOverlay = required<HTMLDivElement>("#url-drop-overlay");
 const collectionButton = required<HTMLButtonElement>("#collection-toggle");
 const scanButton = required<HTMLButtonElement>("#scan");
 const exportButton = required<HTMLButtonElement>("#export");
@@ -27,7 +26,6 @@ includeSourcePage.addEventListener("change", () => {
 });
 const viewerToggleButton = required<HTMLButtonElement>("#viewer-toggle");
 const viewerElement = required<HTMLElement>("#viewer");
-const mainElement = required<HTMLElement>("main");
 const resultsElement = required<HTMLElement>(".results");
 const viewerEmptyElement = required<HTMLParagraphElement>("#viewer-empty");
 const viewerPageElement = required<HTMLDivElement>("#viewer-page");
@@ -705,27 +703,11 @@ sourceDrop.addEventListener("click", showSourceInput);
 sourceUrl.addEventListener("input", updateSourceDrop);
 sourceUrl.addEventListener("blur", hideSourceInput);
 sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter") void startScan(); });
-function isMainPageUrlDropTarget(target: EventTarget | null): boolean {
-  return target === mainElement || target === emptyElement || target === viewerElement || target === imagesElement ||
-    (typeof Node !== "undefined" && target instanceof Node && mainElement.contains(target));
-}
-function acceptsPageUrlDrop(target: EventTarget | null): boolean {
-  return pageWideUrlDropAvailable() || target === headerElement || target === sourceDrop || target === sourceUrl ||
-    isMainPageUrlDropTarget(target) ||
-    (typeof Node !== "undefined" && target instanceof Node && headerElement.contains(target));
-}
-function pageWideUrlDropAvailable(): boolean {
-  return sourceUrl.value.trim() === "" && imageCollection.items.length === 0;
-}
 function isPageUrlDrag(event: DragEvent): boolean {
   return Boolean(event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain"));
 }
 function clearDropFeedback(): void {
-  document.body.classList.remove("page-drop-ready");
-  headerElement.classList.remove("drag-over");
-  mainElement.classList.remove("drag-over");
-  sourceDrop.classList.remove("drag-over");
-  sourceUrl.classList.remove("drag-over");
+  urlDropOverlay.hidden = true;
 }
 let urlDragDepth = 0;
 document.addEventListener("dragenter", event => {
@@ -737,18 +719,13 @@ document.addEventListener("dragleave", event => {
   if (urlDragDepth === 0) clearDropFeedback();
 });
 document.addEventListener("dragover", event => {
-  if (busy || draggedImage || !isPageUrlDrag(event) || !acceptsPageUrlDrop(event.target)) {
+  if (busy || draggedImage || !isPageUrlDrag(event)) {
     clearDropFeedback();
     return;
   }
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-  clearDropFeedback();
-  if (pageWideUrlDropAvailable()) document.body.classList.add("page-drop-ready");
-  else if (isMainPageUrlDropTarget(event.target)) mainElement.classList.add("drag-over");
-  else headerElement.classList.add("drag-over");
-  if (event.target === sourceDrop) sourceDrop.classList.add("drag-over");
-  if (event.target === sourceUrl) sourceUrl.classList.add("drag-over");
+  urlDropOverlay.hidden = false;
 });
 document.addEventListener("drop", event => {
   urlDragDepth = 0;
@@ -757,7 +734,7 @@ document.addEventListener("drop", event => {
   const url = dropped.split(/\r?\n/).find(line => line && !line.startsWith("#"))?.trim();
   if (!url || !isWebUrl(url)) return;
   event.preventDefault();
-  if (busy || draggedImage || !acceptsPageUrlDrop(event.target)) return;
+  if (busy || draggedImage) return;
   sourceUrl.value = url;
   hideSourceInput();
   void startScan();

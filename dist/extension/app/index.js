@@ -10,8 +10,7 @@ import { formatFailedAria, formatGroupLabel, formatPlural, localizeErrorMessage,
 import { createViewerController } from "./viewer-controller.js";
 const sourceUrl = required("#source-url");
 const sourceDrop = required("#source-drop");
-const headerElement = required(".app-header");
-headerElement.dataset["dropLabel"] = t("dropUrl");
+const urlDropOverlay = required("#url-drop-overlay");
 const collectionButton = required("#collection-toggle");
 const scanButton = required("#scan");
 const exportButton = required("#export");
@@ -34,7 +33,6 @@ includeSourcePage.addEventListener("change", () => {
 });
 const viewerToggleButton = required("#viewer-toggle");
 const viewerElement = required("#viewer");
-const mainElement = required("main");
 const resultsElement = required(".results");
 const viewerEmptyElement = required("#viewer-empty");
 const viewerPageElement = required("#viewer-page");
@@ -742,27 +740,11 @@ sourceUrl.addEventListener("input", updateSourceDrop);
 sourceUrl.addEventListener("blur", hideSourceInput);
 sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter")
     void startScan(); });
-function isMainPageUrlDropTarget(target) {
-    return target === mainElement || target === emptyElement || target === viewerElement || target === imagesElement ||
-        (typeof Node !== "undefined" && target instanceof Node && mainElement.contains(target));
-}
-function acceptsPageUrlDrop(target) {
-    return pageWideUrlDropAvailable() || target === headerElement || target === sourceDrop || target === sourceUrl ||
-        isMainPageUrlDropTarget(target) ||
-        (typeof Node !== "undefined" && target instanceof Node && headerElement.contains(target));
-}
-function pageWideUrlDropAvailable() {
-    return sourceUrl.value.trim() === "" && imageCollection.items.length === 0;
-}
 function isPageUrlDrag(event) {
     return Boolean(event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain"));
 }
 function clearDropFeedback() {
-    document.body.classList.remove("page-drop-ready");
-    headerElement.classList.remove("drag-over");
-    mainElement.classList.remove("drag-over");
-    sourceDrop.classList.remove("drag-over");
-    sourceUrl.classList.remove("drag-over");
+    urlDropOverlay.hidden = true;
 }
 let urlDragDepth = 0;
 document.addEventListener("dragenter", event => {
@@ -777,24 +759,14 @@ document.addEventListener("dragleave", event => {
         clearDropFeedback();
 });
 document.addEventListener("dragover", event => {
-    if (busy || draggedImage || !isPageUrlDrag(event) || !acceptsPageUrlDrop(event.target)) {
+    if (busy || draggedImage || !isPageUrlDrag(event)) {
         clearDropFeedback();
         return;
     }
     event.preventDefault();
     if (event.dataTransfer)
         event.dataTransfer.dropEffect = "copy";
-    clearDropFeedback();
-    if (pageWideUrlDropAvailable())
-        document.body.classList.add("page-drop-ready");
-    else if (isMainPageUrlDropTarget(event.target))
-        mainElement.classList.add("drag-over");
-    else
-        headerElement.classList.add("drag-over");
-    if (event.target === sourceDrop)
-        sourceDrop.classList.add("drag-over");
-    if (event.target === sourceUrl)
-        sourceUrl.classList.add("drag-over");
+    urlDropOverlay.hidden = false;
 });
 document.addEventListener("drop", event => {
     urlDragDepth = 0;
@@ -804,7 +776,7 @@ document.addEventListener("drop", event => {
     if (!url || !isWebUrl(url))
         return;
     event.preventDefault();
-    if (busy || draggedImage || !acceptsPageUrlDrop(event.target))
+    if (busy || draggedImage)
         return;
     sourceUrl.value = url;
     hideSourceInput();

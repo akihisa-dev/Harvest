@@ -96,11 +96,12 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   for (const selector of [
     "#source-url", "#scan", "#export", "#all-visibility", "#all-selection", "#reset-order", "#reset",
     "#completion", "#back-to-images", "#failures", "#failed-images", "#images", "#groups",
-    "#empty", "#empty-logo", "#empty-message", "#scan-overlay", "#status", "#viewer-toggle", "#viewer", "#viewer-empty",
+    "#empty", "#empty-logo", "#empty-message", "#scan-overlay", "#url-drop-overlay", "#status", "#viewer-toggle", "#viewer", "#viewer-empty",
     "#viewer-page", "#viewer-previous", "#viewer-position", "#viewer-next", "#viewer-image", "#export-overlay",
     "#viewer-filename", "#viewer-thumbnails", "#viewer-zoom-in", "#viewer-zoom-out",
     "#viewer-zoom-reset", "#viewer-stage",
   ]) document.querySelector(selector);
+  document.querySelector("#url-drop-overlay").hidden = true;
   const previousDocument = globalThis.document;
   const previousChrome = globalThis.chrome;
   const previousWindow = globalThis.window;
@@ -167,22 +168,24 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     includeSourcePage.checked = false;
     includeSourcePage.dispatch("change");
     const sourceDrop = document.querySelector("#source-drop");
+    const urlDropOverlay = document.querySelector("#url-drop-overlay");
     const pageUrlDrag = {
       types: ["text/uri-list"],
       getData: type => type === "text/uri-list" ? "https://example.com/dropped" : "",
     };
     assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, true);
-    assert.equal(document.body.className.includes("page-drop-ready"), true, "初回操作前は画面全体でURLを受け付ける");
+    assert.equal(urlDropOverlay.hidden, false, "初回操作前は画面全体の案内を表示する");
     document.dispatch("dragleave", {dataTransfer: pageUrlDrag});
+    assert.equal(urlDropOverlay.hidden, true, "ドラッグが外れたら案内を消す");
     const header = document.querySelector(".app-header");
     const sourceUrl = document.querySelector("#source-url");
     sourceUrl.value = "https://example.com/entered";
     sourceUrl.dispatch("input");
-    assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, false, "URL入力後は画面下部で受け付けない");
+    assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, true, "URL入力後も画面下部で受け付ける");
+    assert.equal(urlDropOverlay.hidden, false);
     assert.equal(document.dispatch("dragover", {target: document.querySelector("#empty"), dataTransfer: pageUrlDrag}).prevented, true, "URL入力後も中央の空白領域で受け付ける");
-    assert.equal(document.querySelector("main").className.includes("drag-over"), true);
     assert.equal(document.dispatch("dragover", {target: header, dataTransfer: pageUrlDrag}).prevented, true, "URL入力後は上部全体で受け付ける");
-    assert.equal(header.className.includes("drag-over"), true);
+    assert.equal(urlDropOverlay.hidden, false, "どの場所でも同じ画面全体の案内を表示する");
     document.dispatch("dragleave", {dataTransfer: pageUrlDrag});
     sourceUrl.value = "";
     sourceUrl.dispatch("input");
@@ -190,18 +193,21 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     collection.dispatch("click");
     await waitUntil(() => capturedMessage);
     assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, true);
-    assert.equal(document.body.className.includes("page-drop-ready"), true, "収集中でもURLと解析結果が空なら画面全体で受け付ける");
+    assert.equal(urlDropOverlay.hidden, false, "収集中も画面全体の案内を表示する");
     assert.equal(document.dispatch("dragover", {target: sourceDrop, dataTransfer: pageUrlDrag}).prevented, true);
-    assert.equal(sourceDrop.className.includes("drag-over"), true, "収集開始後もURL欄はドロップ先になる");
+    assert.equal(urlDropOverlay.hidden, false, "URL欄でも個別の案内に切り替わらない");
+    assert.equal(sourceDrop.className.includes("drag-over"), false);
     document.dispatch("dragleave", {dataTransfer: pageUrlDrag});
     assert.equal(collection.getAttribute("aria-pressed"), "true");
     assert.equal(createdUrls.length, 0, "開始時には解析しない");
     capturedMessage({url: "https://example.com/linked"});
     await waitUntil(() => !document.querySelector("#scan").disabled);
     assert.equal(createdUrls.at(-1), "https://example.com/linked");
-    assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, false, "解析後は画面下部で受け付けない");
+    assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, true, "解析後も画面下部で受け付ける");
     assert.equal(document.dispatch("dragover", {target: document.querySelector("#viewer"), dataTransfer: pageUrlDrag}).prevented, true, "解析後も中央の表示領域で受け付ける");
     assert.equal(document.dispatch("dragover", {target: header, dataTransfer: pageUrlDrag}).prevented, true, "解析後は上部全体で受け付ける");
+    assert.equal(document.dispatch("dragover", {target: document.querySelector(".workspace-sidebar"), dataTransfer: pageUrlDrag}).prevented, true, "解析後は右の操作欄でも受け付ける");
+    assert.equal(urlDropOverlay.hidden, false);
     document.dispatch("dragleave", {dataTransfer: pageUrlDrag});
     globalThis.fetch = async () => new Response(new Uint8Array([1]), {headers: {"Content-Type": "image/png"}});
     const scansBeforePdf = executionCount;
@@ -235,6 +241,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#source-drop").dataset.hasUrl, "false");
     assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, true, "クリア後は画面全体のドロップ受付に戻る");
     assert.equal(document.dispatch("dragover", {target: sourceDrop, dataTransfer: pageUrlDrag}).prevented, true);
+    assert.equal(urlDropOverlay.hidden, false);
     document.dispatch("dragleave", {dataTransfer: pageUrlDrag});
     const empty = document.querySelector("#empty");
     const emptyLogo = document.querySelector("#empty-logo");
@@ -602,9 +609,10 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, true, "解析結果が空なら画面全体で受け付ける");
     sourceUrl.value = "https://example.com/entered";
     sourceUrl.dispatch("input");
-    document.dispatch("drop", {target: document.querySelector("#empty"), dataTransfer: pageUrlDrag});
+    document.dispatch("drop", {target: document.querySelector(".workspace-sidebar"), dataTransfer: pageUrlDrag});
+    assert.equal(urlDropOverlay.hidden, true, "ドロップ後は画面全体の案内を消す");
     await waitUntil(() => !document.querySelector("#scan").disabled);
-    assert.deepEqual(createdUrls, ["https://example.com/dropped"], "URL入力済みでも中央へのドロップで解析する");
+    assert.deepEqual(createdUrls, ["https://example.com/dropped"], "URL入力済みでも右の操作欄へのドロップで解析する");
   } finally {
     globalThis.fetch = previousFetch;
     globalThis.createImageBitmap = previousCreateImageBitmap;

@@ -56,7 +56,11 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
-body.page-drop-ready::after { content: attr(data-drop-label); position: fixed; inset: 8px; z-index: 20; display: grid; place-items: center; border: 2px dashed var(--ink); border-radius: 10px; background: var(--overlay); color: var(--ink); font-size: 16px; font-weight: 700; pointer-events: none; }
+#url-drop-overlay { position: fixed; inset: 8px; z-index: 20; display: grid; place-items: center; border: 2px dashed var(--ink); border-radius: 10px; background: var(--overlay); color: var(--ink); pointer-events: none; }
+.url-drop-content { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 12px; font-size: 16px; font-weight: 700; text-align: center; }
+.url-drop-content img { width: 64px; height: 64px; flex: none; opacity: .28; }
+body:has(#url-drop-overlay:not([hidden])) #empty-logo { visibility: hidden; }
+@media (prefers-color-scheme: dark) { .url-drop-content img { filter: invert(1); } }
 button, input { font: inherit; }
 button {
   min-height: 36px;
@@ -80,9 +84,6 @@ section, aside { min-width: 0; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 .app-header { flex: none; min-height: 52px; overflow: hidden; background: var(--surface); border-bottom: 1px solid var(--line); }
-.app-header.drag-over { position: relative; }
-.app-header.drag-over::after { content: attr(data-drop-label); position: absolute; inset: 8px; z-index: 2; display: grid; place-items: center; border: 2px dashed var(--ink); border-radius: 10px; background: var(--overlay); color: var(--ink); font-size: 16px; font-weight: 700; pointer-events: none; }
-main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; background: var(--hover); }
 .header-input-column { display: block; min-width: 0; }
 .controls { padding: 8px var(--sidebar-padding) 8px 0; }
 .save-area { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 0 0 8px; border-bottom: 1px solid var(--line); }
@@ -97,9 +98,8 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 .source-row input { width: 100%; min-width: 0; height: 36px; padding: 7px 10px; border: 1px solid var(--control-line); border-radius: var(--radius); color: var(--ink); background: var(--surface); }
 .source-row input::placeholder { color: var(--muted); }
 .source-row input:disabled { background: var(--disabled); color: var(--muted); }
-#source-drop { width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; color: var(--muted); background: var(--surface); border-style: dashed; font-weight: 400; }
+#source-drop { width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; color: var(--muted); background: var(--surface); font-weight: 400; }
 #source-drop[data-has-url="true"] { color: var(--ink); }
-#source-drop.drag-over, .source-row input.drag-over { border: 2px dashed var(--ink); background: var(--hover); color: var(--ink); }
 #source-drop:disabled { color: var(--disabled-ink); background: var(--disabled); border-color: var(--line); }
 #scan, #export { color: var(--pressed-ink); background: var(--ink); border-color: var(--ink); }
 #scan { min-width: 0; }

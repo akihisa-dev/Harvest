@@ -14,7 +14,7 @@
         <section class="controls" aria-labelledby="source-heading">
           <div class="visually-hidden"><h2 id="source-heading"><label for="source-url" data-i18n="pageUrl">ページURL</label></h2><span data-i18n="optional">任意</span></div>
           <div class="source-row">
-            <button id="source-drop" type="button" data-i18n="sourceDrop">ページURLをドロップ、またはクリックして入力</button>
+            <button id="source-drop" type="button" data-i18n="sourceDrop">クリックしてページURLを入力</button>
             <input id="source-url" type="url" inputmode="url" data-i18n-placeholder="sourcePlaceholder" placeholder="ページURLを入力" autocomplete="url" aria-describedby="source-hint" hidden>
             <div class="source-actions">
               <button id="scan" type="button" data-i18n="scan">解析</button>
@@ -86,5 +86,6 @@
     <div id="scan-overlay" aria-hidden="true" hidden></div>
     </div>
     <footer class="legal-footer"><a href="legal.html" target="_blank" rel="noopener">ライセンスとソース / License and source</a></footer>
+    <div id="url-drop-overlay" aria-hidden="true" hidden><div class="url-drop-content"><img src="../brand/harvest-geometric-logo.svg" alt=""><span data-i18n="dropUrl">URLをドロップして解析</span></div></div>
   </body>
 </html>

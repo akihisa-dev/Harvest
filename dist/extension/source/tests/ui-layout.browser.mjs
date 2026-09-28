@@ -114,6 +114,28 @@ async function scan(page, fixture) {
   await page.waitForTimeout(280);
 }
 
+async function inspectUrlDropZone(page, targetSelector) {
+  return page.evaluate(selector => {
+    const overlay = document.querySelector("#url-drop-overlay");
+    const initiallyHidden = overlay.hidden;
+    const transfer = new DataTransfer();
+    transfer.setData("text/uri-list", "https://source.example.test/another");
+    const drag = new DragEvent("dragover", {bubbles: true, cancelable: true, dataTransfer: transfer});
+    document.querySelector(selector).dispatchEvent(drag);
+    const box = overlay.getBoundingClientRect();
+    const state = {
+      initiallyHidden, accepted: drag.defaultPrevented, visible: !overlay.hidden,
+      bounds: [box.x, box.y, box.width, box.height],
+      label: overlay.querySelector("span").textContent,
+      logoWidth: overlay.querySelector("img").getBoundingClientRect().width,
+      underlyingLogoVisibility: getComputedStyle(document.querySelector("#empty-logo")).visibility,
+      individualHighlights: document.querySelectorAll(".app-header.drag-over, main.drag-over, #source-drop.drag-over, #source-url.drag-over").length,
+    };
+    document.dispatchEvent(new DragEvent("dragleave", {dataTransfer: transfer}));
+    return {...state, hiddenAfterLeave: overlay.hidden};
+  }, targetSelector);
+}
+
 async function assertNoBrowserErrors(page, label, errors) {
   assert.deepEqual(errors, [], `${label}: browser reported JavaScript or console errors`);
 }
@@ -167,6 +189,16 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           assert.equal(await page.locator(".workspace-sidebar").getAttribute("aria-label"),
             locale === "ja-JP" ? "画像と保存の操作" : "Image and save controls", `${caseName}: sidebar label should follow browser locale`);
           const empty = await inspectLayout(page, width, height, `${caseName} empty`);
+          const initialDrop = await inspectUrlDropZone(page, "#source-drop");
+          assert.equal(initialDrop.initiallyHidden, true, `${caseName}: full-screen drop zone starts hidden`);
+          assert.equal(initialDrop.accepted, true, `${caseName}: URL field should accept a dragged URL`);
+          assert.equal(initialDrop.visible, true, `${caseName}: URL drag should show the full-screen drop zone`);
+          assert.deepEqual(initialDrop.bounds, [8, 8, width - 16, height - 16], `${caseName}: drop zone should cover the whole panel`);
+          assert.equal(initialDrop.label, locale === "ja-JP" ? "URLをドロップして解析" : "Drop a URL to analyze", `${caseName}: drop zone should show localized guidance`);
+          assert.ok(initialDrop.logoWidth > 0, `${caseName}: drop zone should include the logo`);
+          assert.equal(initialDrop.underlyingLogoVisibility, "hidden", `${caseName}: background logo should not overlap the drop guidance`);
+          assert.equal(initialDrop.individualHighlights, 0, `${caseName}: no individual drop zone should be highlighted`);
+          assert.equal(initialDrop.hiddenAfterLeave, true, `${caseName}: drop zone should disappear when the URL leaves`);
           const pendingFixture = {...imageFixture(4, 1), pending: true};
           await page.evaluate(value => { window.__harvestScanFixture = value; }, pendingFixture);
           await page.locator("#scan").click();
@@ -232,6 +264,11 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           await page.evaluate(() => window.__releaseScanFixture());
           await page.waitForFunction(() => !document.querySelector("#scan").disabled);
           await page.waitForTimeout(280);
+          const resultsDrop = await inspectUrlDropZone(page, ".workspace-sidebar");
+          assert.equal(resultsDrop.accepted, true, `${caseName}: sidebar should accept a dragged URL after scanning`);
+          assert.equal(resultsDrop.visible, true, `${caseName}: sidebar drag should use the same full-screen zone`);
+          assert.deepEqual(resultsDrop.bounds, initialDrop.bounds, `${caseName}: drop zone size should not depend on results`);
+          assert.equal(resultsDrop.individualHighlights, 0, `${caseName}: results should not restore individual drop zones`);
           assert.equal(await page.locator("#scan").textContent(), locale === "ja-JP" ? "解析" : "Analyze", `${caseName}: button text should return after analysis`);
           assert.equal(await page.locator("#scan").getAttribute("aria-label"), null, `${caseName}: normal button name should return after analysis`);
           assert.equal(await page.locator("#pdf-save-state").count(), 0, `${caseName}: save button should not show a permanent status mark`);
