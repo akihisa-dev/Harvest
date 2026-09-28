@@ -27,7 +27,7 @@ export async function scanDocument() {
         "src",
     ];
     const imageSrcsetAttributes = ["data-srcset", "srcset"];
-    const imageUrlPattern = /https?:\/\/[^\s"'\\<>]+?\.(?:jpe?g|png|webp|avif)(?:[?#][^\s"'\\<>]*)?/gi;
+    const imageUrlPattern = /https?:\/\/[^\s"'\\<>]+?\.(?:jpe?g|png|webp|avif|gif)(?:[?#][^\s"'\\<>]*)?/gi;
     const add = (value, positionElement, sourceElement) => {
         checkDeadline();
         const candidate = value?.trim();

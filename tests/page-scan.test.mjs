@@ -274,6 +274,38 @@ test("srcsetの最大指定、属性内URL、背景、meta、リンクを収集�
   assert.equal(new Set(result.images).size, result.images.length);
 });
 
+test("script・style・本文・汎用属性値にあるGIF URLを収集する", async () => {
+  const script = new FixtureElement("script", {}, [], {
+    textContent: 'const image = "https://cdn.example.test/pages/script.gif?size=large";',
+  });
+  const style = new FixtureElement("style", {}, [], {
+    textContent: 'background-image: url("https://cdn.example.test/pages/style.gif");',
+  });
+  const paragraph = new FixtureElement("p", {}, [], {
+    textContent: "https://cdn.example.test/pages/body.gif",
+  });
+  const generic = new FixtureElement("div", {
+    "data-image": "https://cdn.example.test/pages/attribute.gif",
+  });
+  const image = new FixtureElement("img", {src: "https://cdn.example.test/pages/image.gif"});
+  const anchor = new FixtureElement("a", {href: "https://cdn.example.test/pages/link.gif"}, [], {
+    href: "https://cdn.example.test/pages/link.gif",
+  });
+  const root = new FixtureElement("html", {}, [script, style, paragraph, generic, image, anchor]);
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+
+  for (const url of [
+    "https://cdn.example.test/pages/script.gif?size=large",
+    "https://cdn.example.test/pages/style.gif",
+    "https://cdn.example.test/pages/body.gif",
+    "https://cdn.example.test/pages/attribute.gif",
+    "https://cdn.example.test/pages/image.gif",
+    "https://cdn.example.test/pages/link.gif",
+  ]) {
+    assert.ok(result.images.includes(url), `missing ${url}`);
+  }
+});
+
 test("srcsetの空白なし区切りとURL内のカンマを区別する", async () => {
   const root = new FixtureElement("html", {}, [
     new FixtureElement("source", {srcset: "small.jpg,large.jpg"}),

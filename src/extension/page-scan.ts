@@ -38,7 +38,7 @@ export async function scanDocument(): Promise<PageScan> {
     "src",
   ];
   const imageSrcsetAttributes = ["data-srcset", "srcset"];
-  const imageUrlPattern = /https?:\/\/[^\s"'\\<>]+?\.(?:jpe?g|png|webp|avif)(?:[?#][^\s"'\\<>]*)?/gi;
+  const imageUrlPattern = /https?:\/\/[^\s"'\\<>]+?\.(?:jpe?g|png|webp|avif|gif)(?:[?#][^\s"'\\<>]*)?/gi;
 
   const add = (value: string | null | undefined, positionElement?: Element, sourceElement?: Element): void => {
     checkDeadline();
