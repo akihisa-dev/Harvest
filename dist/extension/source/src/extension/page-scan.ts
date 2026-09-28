@@ -19,9 +19,11 @@ export async function scanDocument(): Promise<PageScan> {
   type CandidateRecord = {
     url: string;
     detectionOrder: number;
-    elements: Element[];
+    sources: Map<Element, Element | undefined>;
+    foundOutsideElements: boolean;
   };
   const candidates = new Map<string, CandidateRecord>();
+  const elementUrls = new Map<Element, Set<string>>();
   let nextDetectionOrder = 0;
   const imageAttributes = [
     "data-original",
@@ -38,35 +40,39 @@ export async function scanDocument(): Promise<PageScan> {
   const imageSrcsetAttributes = ["data-srcset", "srcset"];
   const imageUrlPattern = /https?:\/\/[^\s"'\\<>]+?\.(?:jpe?g|png|webp|avif)(?:[?#][^\s"'\\<>]*)?/gi;
 
-  const add = (value: string | null | undefined, element?: Element): void => {
+  const add = (value: string | null | undefined, positionElement?: Element, sourceElement?: Element): void => {
     checkDeadline();
     const candidate = value?.trim();
     if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:")) return;
     try {
       const url = new URL(candidate, document.baseURI || location.href).href;
-      const existing = candidates.get(url);
-      if (existing) {
-        if (element && !existing.elements.includes(element)) existing.elements.push(element);
-      } else {
-        candidates.set(url, {url, detectionOrder: nextDetectionOrder++, elements: element ? [element] : []});
-      }
+      recordCandidate(url, positionElement, sourceElement);
     } catch {
       // Keep malformed values for the core normalizer to reject consistently.
-      const existing = candidates.get(candidate);
-      if (existing) {
-        if (element && !existing.elements.includes(element)) existing.elements.push(element);
-      } else {
-        candidates.set(candidate, {url: candidate, detectionOrder: nextDetectionOrder++, elements: element ? [element] : []});
-      }
+      recordCandidate(candidate, positionElement, sourceElement);
     }
   };
 
-  const scanText = (value: string | null | undefined, element?: Element): void => {
+  const recordCandidate = (url: string, positionElement?: Element, sourceElement?: Element): void => {
+    let record = candidates.get(url);
+    if (!record) {
+      record = {url, detectionOrder: nextDetectionOrder++, sources: new Map(), foundOutsideElements: false};
+      candidates.set(url, record);
+    }
+    if (sourceElement) {
+      record.sources.set(sourceElement, positionElement);
+      elementUrls.get(sourceElement)?.add(url);
+    } else {
+      record.foundOutsideElements = true;
+    }
+  };
+
+  const scanText = (value: string | null | undefined, positionElement?: Element, sourceElement?: Element): void => {
     if (!value) return;
     for (const match of value.matchAll(imageUrlPattern)) {
       checkDeadline();
       const candidate = match[0];
-      if (candidate) add(candidate.replaceAll("&amp;", "&"), element);
+      if (candidate) add(candidate.replaceAll("&amp;", "&"), positionElement, sourceElement);
     }
     checkDeadline();
   };
@@ -167,7 +173,7 @@ export async function scanDocument(): Promise<PageScan> {
     const urlPattern = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/gi;
     for (const match of background.matchAll(urlPattern)) {
       checkDeadline();
-      add(match[1] ?? match[2] ?? match[3], element);
+      add(match[1] ?? match[2] ?? match[3], element, element);
     }
   };
 
@@ -224,7 +230,8 @@ export async function scanDocument(): Promise<PageScan> {
     const ordered = [...candidates.values()]
       .map(record => ({
         record,
-        position: record.elements.map(positioned).filter((value): value is {top: number; left: number; order: number} => Boolean(value))
+        position: [...record.sources.values()].filter((element): element is Element => Boolean(element))
+          .map(positioned).filter((value): value is {top: number; left: number; order: number} => Boolean(value))
           .sort((a, b) => { checkDeadline(); return a.top - b.top || a.left - b.left || a.order - b.order; })[0],
       }))
       .sort((a, b) => {
@@ -255,25 +262,27 @@ export async function scanDocument(): Promise<PageScan> {
 
   const collectElement = (element: Element): void => {
     checkDeadline();
+    const previousUrls = elementUrls.get(element);
+    elementUrls.set(element, new Set());
     const tagName = element.tagName.toLowerCase();
     const positionElement = imagePositionElement(element);
     if (tagName === "img" || tagName === "source") {
-      for (const attribute of imageAttributes) add(element.getAttribute(attribute), positionElement);
+      for (const attribute of imageAttributes) add(element.getAttribute(attribute), positionElement, element);
       for (const attribute of imageSrcsetAttributes) {
-        for (const candidate of srcsetImages(element.getAttribute(attribute))) add(candidate, positionElement);
+        for (const candidate of srcsetImages(element.getAttribute(attribute))) add(candidate, positionElement, element);
       }
       if (tagName === "img") {
         const image = element as HTMLImageElement;
-        add(image.currentSrc || image.src, positionElement);
+        add(image.currentSrc || image.src, positionElement, element);
       }
     } else if (tagName === "a") {
       const anchor = element as HTMLAnchorElement;
       const href = anchor.href || element.getAttribute("href") || "";
-      if (/\.(?:jpe?g|png|webp|avif|gif)(?:[?#]|$)/i.test(href)) add(href, element);
+      if (/\.(?:jpe?g|png|webp|avif|gif)(?:[?#]|$)/i.test(href)) add(href, element, element);
     } else if (tagName === "meta") {
       const property = element.getAttribute("property")?.toLowerCase();
       const name = element.getAttribute("name")?.toLowerCase();
-      if (property === "og:image" || name === "twitter:image") add(element.getAttribute("content"));
+      if (property === "og:image" || name === "twitter:image") add(element.getAttribute("content"), undefined, element);
     }
     for (const attribute of Array.from(element.attributes)) {
       const name = attribute.name.toLowerCase();
@@ -284,9 +293,15 @@ export async function scanDocument(): Promise<PageScan> {
       const textPositionElement = tagName === "meta" || tagName === "script" || tagName === "style"
         ? undefined
         : positionElement;
-      scanText(attribute.value, textPositionElement);
+      scanText(attribute.value, textPositionElement, element);
     }
     scanBackground(element);
+    for (const url of previousUrls ?? []) {
+      if (elementUrls.get(element)?.has(url)) continue;
+      const record = candidates.get(url);
+      record?.sources.delete(element);
+      if (record && record.sources.size === 0 && !record.foundOutsideElements) candidates.delete(url);
+    }
   };
 
   const yieldToPage = async (): Promise<void> => {

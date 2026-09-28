@@ -383,3 +383,51 @@ test("短い監視時間内に追加された画像を収集する", async () =>
   ]);
   assert.ok(result.images.includes("https://cdn.example.test/pages/late.jpg"));
 });
+
+test("属性の差し替え後は古い候補だけを除き、別の検出元の候補を残す", async () => {
+  const base = "https://cdn.example.test/pages/";
+  const image = new FixtureElement("img", {src: `${base}placeholder.jpg`});
+  const srcset = new FixtureElement("source", {srcset: `${base}old-srcset.jpg 2x`});
+  const lazy = new FixtureElement("img", {"data-src": `${base}old-lazy.jpg`});
+  const shared = new FixtureElement("img", {src: `${base}shared.jpg`});
+  const otherShared = new FixtureElement("img", {src: `${base}shared.jpg`});
+  const text = new FixtureElement("script", {}, [], {
+    textContent: `const cover = "${base}text-shared.jpg";`,
+  });
+  const textShared = new FixtureElement("img", {src: `${base}text-shared.jpg`});
+  const root = new FixtureElement("html", {}, [image, srcset, lazy, shared, otherShared, text, textShared]);
+  let observerCallback;
+  let mutated = false;
+  class ChangingObserver extends EmptyMutationObserver {
+    constructor(callback) { super(); observerCallback = callback; }
+  }
+
+  const result = await runWithFixture(new FixtureDocument(root), ChangingObserver, () => {
+    globalThis.setTimeout = (callback, delay) => {
+      if (delay === 800) return 1;
+      if (delay === 250 && !mutated) {
+        mutated = true;
+        image.attributesMap.set("src", `${base}page-001.jpg`);
+        image.src = `${base}page-001.jpg`;
+        srcset.attributesMap.set("srcset", `${base}new-srcset.jpg 2x`);
+        lazy.attributesMap.set("data-src", `${base}new-lazy.jpg`);
+        shared.attributesMap.set("src", `${base}new-shared.jpg`);
+        shared.src = `${base}new-shared.jpg`;
+        textShared.attributesMap.set("src", `${base}new-text.jpg`);
+        textShared.src = `${base}new-text.jpg`;
+        observerCallback([image, srcset, lazy, shared, textShared].map(target => ({type: "attributes", target})));
+        return 2;
+      }
+      callback();
+      return 3;
+    };
+    return scanDocument();
+  });
+
+  for (const name of ["placeholder", "old-srcset", "old-lazy"]) {
+    assert.equal(result.images.includes(`${base}${name}.jpg`), false, name);
+  }
+  for (const name of ["page-001", "new-srcset", "new-lazy", "new-shared", "new-text", "shared", "text-shared"]) {
+    assert.ok(result.images.includes(`${base}${name}.jpg`), name);
+  }
+});
