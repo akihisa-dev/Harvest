@@ -105,8 +105,9 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 #scan { min-width: 0; }
 #scan:hover:not(:disabled), #export:hover:not(:disabled) { background: var(--pressed-hover); border-color: var(--pressed-hover); }
 #scan:disabled, #export:disabled { background: var(--line); border-color: var(--line); color: var(--disabled-ink); }
+#scan[data-scanning="true"] { display: grid; place-items: center; color: var(--pressed-ink); background: var(--ink); border-color: var(--ink); cursor: wait; }
 #export[data-saving="true"] { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--pressed-ink); background: var(--ink); border-color: var(--ink); cursor: wait; }
-#export[data-saving="true"]::after { content: ""; display: block; width: 16px; height: 16px; flex: none; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: waiting-ring 900ms linear infinite; }
+#scan[data-scanning="true"]::before, #export[data-saving="true"]::after { content: ""; display: block; width: 16px; height: 16px; flex: none; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: waiting-ring 900ms linear infinite; }
 
 .results-controls {
   flex: none;
@@ -191,6 +192,7 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 }
 @keyframes waiting-ring { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
+  #scan[data-scanning="true"]::before,
   #export[data-saving="true"]::after,
   #scan-overlay::before, #export-overlay::before { animation: none; }
 }

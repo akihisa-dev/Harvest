@@ -544,6 +544,10 @@ function render(): void {
   const visibleUrls = new Set([...visibleGroupKeys].flatMap(key => groups[key]?.items ?? []));
   const visibleImages = imageCollection.items.filter(item => visibleUrls.has(item.url));
   const selectedCount = selected.length;
+  scanButton.dataset["scanning"] = String(scanController !== null);
+  scanButton.textContent = scanController ? "" : t("scan");
+  if (scanController) scanButton.setAttribute("aria-label", t("scanBusy"));
+  else scanButton.removeAttribute("aria-label");
   exportButton.dataset["saving"] = String(exportController !== null);
   if (!exportController) exportButton.removeAttribute("aria-label");
   exportButton.textContent = exportController ? exportProgress : pendingExport?.failed.size

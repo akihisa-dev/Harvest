@@ -245,10 +245,15 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(emptyMessage.hidden, true);
 
     const scanOverlay = document.querySelector("#scan-overlay");
+    const scanButton = document.querySelector("#scan");
     const exportOverlay = document.querySelector("#export-overlay");
     assert.equal(exportOverlay.hidden, true, "PDF保存前はビュアーのオーバーレイを隠す");
+    assert.equal(scanButton.textContent, "解析", "通常時は解析ボタンに文字を表示する");
     const thumbnailsBeforeScan = document.querySelector("#images").children.map(row => row.children[0].src);
-    document.querySelector("#scan").dispatch("click");
+    scanButton.dispatch("click");
+    assert.equal(scanButton.dataset.scanning, "true", "解析中はボタンのロード表示を有効にする");
+    assert.equal(scanButton.textContent, "", "解析中はボタンの文字を消す");
+    assert.equal(scanButton.getAttribute("aria-label"), "ページを調べています…", "解析中のボタンには読み上げ名を残す");
     assert.equal(scanOverlay.hidden, false, "既存画像を表示中でも解析リングを重ねる");
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), thumbnailsBeforeScan, "解析中も既存画像を保持する");
     assert.equal(document.querySelector("#status").dataset.state, "busy");
@@ -260,6 +265,9 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(empty.hidden, true);
     assert.equal(scanOverlay.hidden, true, "解析完了後はリングを隠す");
+    assert.equal(scanButton.dataset.scanning, "false", "解析完了後はボタンのロード表示を消す");
+    assert.equal(scanButton.textContent, "解析", "解析完了後はボタンの文字を戻す");
+    assert.equal(scanButton.getAttribute("aria-label"), null, "解析完了後は通常のボタン名に戻す");
     assert.equal(document.querySelector("#status").textContent, "");
     assert.equal(document.querySelector("#images").children.length, 2);
     assert.equal(document.querySelector("#groups").children[0].children[0].textContent, "シリーズ\n(2枚)");

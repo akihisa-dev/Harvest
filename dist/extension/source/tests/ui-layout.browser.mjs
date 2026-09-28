@@ -174,8 +174,16 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           const spinnerState = await page.evaluate(() => {
             const status = document.querySelector("#status");
             const empty = document.querySelector("#empty");
+            const scanButton = document.querySelector("#scan");
+            const buttonRing = getComputedStyle(scanButton, "::before");
             const ring = getComputedStyle(document.querySelector("#scan-overlay"), "::before");
             return {
+              scanButtonText: scanButton.textContent,
+              scanButtonLabel: scanButton.getAttribute("aria-label"),
+              scanButtonState: scanButton.dataset.scanning,
+              scanButtonRingContent: buttonRing.content,
+              scanButtonRingWidth: buttonRing.width,
+              scanButtonRingAnimation: buttonRing.animationName,
               statusText: status.textContent,
               statusLabel: status.getAttribute("aria-label"),
               statusRingContent: getComputedStyle(status, "::before").content,
@@ -192,6 +200,12 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
               overlayRingWidth: ring.width,
             };
           });
+          assert.equal(spinnerState.scanButtonText, "", `${caseName}: analyzing button should show no text`);
+          assert.equal(spinnerState.scanButtonLabel, locale === "ja-JP" ? "ページを調べています…" : "Analyzing the page…", `${caseName}: analyzing button should keep an accessible name`);
+          assert.equal(spinnerState.scanButtonState, "true", `${caseName}: analyzing button should enter loading state`);
+          assert.notEqual(spinnerState.scanButtonRingContent, "none", `${caseName}: analyzing button should show a loading ring`);
+          assert.equal(spinnerState.scanButtonRingWidth, "16px", `${caseName}: analyzing ring should fit inside button`);
+          assert.equal(spinnerState.scanButtonRingAnimation, "none", `${caseName}: reduced motion should stop button ring`);
           assert.equal(spinnerState.statusText, "", `${caseName}: busy status should not render its message`);
           assert.equal(spinnerState.statusLabel, locale === "ja-JP" ? "ページを調べています…" : "Analyzing the page…", `${caseName}: busy status should remain accessible`);
           assert.equal(spinnerState.statusRingContent, "none", `${caseName}: sidebar should not show a loading icon`);
@@ -205,6 +219,8 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
             const ring = getComputedStyle(element, "::before");
             return {animationName: ring.animationName, animationDuration: ring.animationDuration};
           });
+          const movingButtonRing = await page.locator("#scan").evaluate(element => getComputedStyle(element, "::before").animationName);
+          assert.notEqual(movingButtonRing, "none", `${caseName}: analyzing button ring should animate when motion is allowed`);
           assert.notEqual(movingSpinner.animationName, "none", `${caseName}: spinner should animate when motion is allowed`);
           assert.equal(movingSpinner.animationDuration, "0.9s", `${caseName}: spinner should use the specified rotation interval`);
           await page.emulateMedia({reducedMotion: "reduce"});
@@ -216,6 +232,8 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           await page.evaluate(() => window.__releaseScanFixture());
           await page.waitForFunction(() => !document.querySelector("#scan").disabled);
           await page.waitForTimeout(280);
+          assert.equal(await page.locator("#scan").textContent(), locale === "ja-JP" ? "解析" : "Analyze", `${caseName}: button text should return after analysis`);
+          assert.equal(await page.locator("#scan").getAttribute("aria-label"), null, `${caseName}: normal button name should return after analysis`);
           assert.equal(await page.locator("#pdf-save-state").count(), 0, `${caseName}: save button should not show a permanent status mark`);
           const saveButtonState = await page.locator("#export").evaluate(button => {
             const normalRing = getComputedStyle(button, "::after").content;
