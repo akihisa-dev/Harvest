@@ -45,7 +45,13 @@ export function groupImages(images) {
             const parts = url.pathname.split("/").filter(Boolean);
             const directory = parts.length > 1 ? parts[parts.length - 2] : "root";
             const { prefix, resolution } = filenamePattern(url.pathname);
-            const key = `${url.hostname}/${directory}|${prefix}|${resolution}`;
+            // Numeric query values commonly identify pages. Keep parameter names
+            // and fixed values so different image series do not share a group.
+            const queryParts = [...url.searchParams.entries()]
+                .map(([name, value]) => [name, /^\d+$/.test(value) ? null : value]);
+            queryParts.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+            const querySignature = queryParts.length ? `|${JSON.stringify(queryParts)}` : "";
+            const key = `${url.hostname}/${directory}|${prefix}|${resolution}${querySignature}`;
             const items = raw.get(key) ?? [];
             items.push(image);
             raw.set(key, items);

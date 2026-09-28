@@ -119,6 +119,30 @@ test("数字で始まるまとまりはシリーズ、それ以外はセット�
   ]);
 });
 
+test("同じ画像パスのクエリ連番は系列ごとにまとめ、パス型連番も維持する", () => {
+  const pages = [
+    "https://example.com/viewer/page.jpg?page=1&mode=full",
+    "https://example.com/viewer/page.jpg?mode=full&page=2",
+  ];
+  const thumbnails = [
+    "https://example.com/viewer/page.jpg?thumb=1&mode=small",
+    "https://example.com/viewer/page.jpg?thumb=2&mode=small",
+  ];
+  const alternate = [
+    "https://example.com/viewer/page.jpg?page=1&mode=preview",
+    "https://example.com/viewer/page.jpg?page=2&mode=preview",
+  ];
+  const pathPages = [
+    "https://example.com/viewer/01.jpg",
+    "https://example.com/viewer/02.jpg",
+  ];
+  const groups = Object.values(groupImages([...pages, ...thumbnails, ...alternate, ...pathPages]));
+  assert.equal(groups.length, 4);
+  for (const series of [pages, thumbnails, alternate, pathPages]) {
+    assert.deepEqual(groups.find(group => group.items.includes(series[0]))?.items, series);
+  }
+});
+
 test("解析後の表示とPDF選択はシリーズを優先し、同順位では枚数で選ぶ", () => {
   const groups = groupImages([
     "https://example.com/pages/body-001.jpg", "https://example.com/pages/body-002.jpg",
