@@ -57,6 +57,9 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
   }
 
   function resetTransform(): void {
+    if (pointer && elements.stage.hasPointerCapture(pointer.id)) {
+      elements.stage.releasePointerCapture(pointer.id);
+    }
     zoom = 1;
     panX = 0;
     panY = 0;
@@ -205,7 +208,7 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
   const endPan = (event: PointerEvent): void => {
     if (!pointer || pointer.id !== event.pointerId) return;
     pointer = null;
-    elements.stage.releasePointerCapture(event.pointerId);
+    if (elements.stage.hasPointerCapture(event.pointerId)) elements.stage.releasePointerCapture(event.pointerId);
     delete elements.stage.dataset["panning"];
   };
   elements.stage.addEventListener("pointerup", endPan);

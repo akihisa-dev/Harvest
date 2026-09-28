@@ -14,6 +14,7 @@ class StubElement {
     this.attributes = new Map();
     this.children = [];
     this.listeners = new Map();
+    this.pointerCaptures = new Set();
     this.className = "";
     this.style = {order: ""};
     this.classList = {add: name => { this.className += this.className ? ` ${name}` : name; }, remove: name => { this.className = this.className.split(" ").filter(value => value !== name).join(" "); }};
@@ -30,8 +31,9 @@ class StubElement {
   removeAttribute(name) { this.attributes.delete(name); }
   getAttribute(name) { return this.attributes.get(name) ?? null; }
   focus() { this.owner.activeElement = this; }
-  setPointerCapture() {}
-  releasePointerCapture() {}
+  setPointerCapture(pointerId) { this.pointerCaptures.add(pointerId); }
+  hasPointerCapture(pointerId) { return this.pointerCaptures.has(pointerId); }
+  releasePointerCapture(pointerId) { this.pointerCaptures.delete(pointerId); }
   scrollIntoView() {}
   getBoundingClientRect() {
     const order = Number(this.style.order || 0);
@@ -358,6 +360,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     viewerStage.dispatch("pointerdown", {clientX: 20, clientY: 30, pointerId: 1});
     viewerStage.dispatch("pointermove", {clientX: 60, clientY: 80, pointerId: 1});
     viewerStage.dispatch("pointerup", {clientX: 60, clientY: 80, pointerId: 1});
+    assert.equal(viewerStage.hasPointerCapture(1), false, "pointerupでキャプチャを解除する");
     assert.notEqual(viewerImage.style.transform, wheeledTransform);
     viewerZoomReset.dispatch("click");
     assert.match(viewerImage.style.transform, /scale\(1\)/);
@@ -369,6 +372,14 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(viewerPosition.textContent, "1 / 2");
     assert.equal(viewerPrevious.disabled, true);
     assert.equal(viewerNext.disabled, false);
+
+    viewerZoomIn.dispatch("click");
+    viewerStage.dispatch("pointerdown", {clientX: 20, clientY: 30, pointerId: 2});
+    assert.equal(viewerStage.hasPointerCapture(2), true);
+    assert.equal(viewerStage.dataset.panning, "true");
+    viewerNext.dispatch("click");
+    assert.equal(viewerStage.hasPointerCapture(2), false, "画像切替時にキャプチャを解除する");
+    assert.equal(viewerStage.dataset.panning, undefined, "画像切替時にパン表示を解除する");
 
     const allSelection = document.querySelector("#all-selection");
     allSelection.checked = false;
