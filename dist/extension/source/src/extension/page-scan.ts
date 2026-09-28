@@ -93,17 +93,23 @@ export async function scanDocument(): Promise<PageScan> {
           whitespace = index;
           break;
         }
-        if (value[index] === "," && /\s/.test(value[index + 1] ?? "")) {
-          commaSeparator = index;
-          break;
+        if (value[index] === ",") {
+          const beforeComma = value.slice(start, index);
+          const afterComma = value.slice(index + 1);
+          // A comma can also be part of a URL. Without whitespace, split only
+          // when both sides look like separate image filenames.
+          if (/\s/.test(value[index + 1] ?? "") ||
+            (/\.(?:jpe?g|png|webp|avif)$/i.test(beforeComma) &&
+              /^[^\s,]+\.(?:jpe?g|png|webp|avif)(?=[\s,?#]|$)/i.test(afterComma))) {
+            commaSeparator = index;
+            break;
+          }
         }
         index += 1;
       }
 
-      // With no descriptor, keep a comma in the URL unless it is clearly a
-      // srcset separator (a comma followed by whitespace).  This preserves
-      // valid URLs such as /scan,page.jpg while still accepting the common
-      // "small.jpg, large.jpg" form.
+      // Keep commas inside URLs such as /scan,page.jpg while recognizing
+      // image filename pairs with or without whitespace after the comma.
       if (commaSeparator >= 0) {
         entries.push({url: value.slice(start, commaSeparator).trim(), value: 0, kind: null});
         index = commaSeparator + 1;

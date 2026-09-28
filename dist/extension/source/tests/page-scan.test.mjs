@@ -274,6 +274,26 @@ test("srcsetの最大指定、属性内URL、背景、meta、リンクを収集�
   assert.equal(new Set(result.images).size, result.images.length);
 });
 
+test("srcsetの空白なし区切りとURL内のカンマを区別する", async () => {
+  const root = new FixtureElement("html", {}, [
+    new FixtureElement("source", {srcset: "small.jpg,large.jpg"}),
+    new FixtureElement("source", {srcset: "spaced-small.jpg, spaced-large.jpg"}),
+    new FixtureElement("source", {srcset: "density-small.jpg 1x,density-large.jpg 2x"}),
+    new FixtureElement("source", {srcset: "/scan,page.jpg,/another.jpg"}),
+  ]);
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+
+  assert.ok(result.images.includes("https://example.test/books/small.jpg"));
+  assert.ok(result.images.includes("https://example.test/books/large.jpg"));
+  assert.ok(result.images.includes("https://example.test/books/spaced-small.jpg"));
+  assert.ok(result.images.includes("https://example.test/books/spaced-large.jpg"));
+  assert.ok(result.images.includes("https://example.test/books/density-large.jpg"));
+  assert.equal(result.images.includes("https://example.test/books/density-small.jpg"), false);
+  assert.ok(result.images.includes("https://example.test/scan,page.jpg"));
+  assert.ok(result.images.includes("https://example.test/another.jpg"));
+  assert.equal(result.images.some(url => url.includes("small.jpg,large.jpg")), false);
+});
+
 test("表示位置を優先し、meta先行の重複URLと位置のない候補を補正する", async () => {
   const topImage = new FixtureElement("img", {
     src: "https://cdn.example.test/pages/top.jpg",
