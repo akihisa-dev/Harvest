@@ -313,6 +313,7 @@ export async function scanDocument(): Promise<PageScan> {
   const root = document.documentElement;
   const chunkSize = 250;
   const pendingElements = new Set<Element>();
+  const pendingRemovedElements = new Set<Element>();
   let pendingFlushPromise: Promise<void> | undefined;
   let observer: MutationObserver | undefined;
   let resolveWait: (() => void) | undefined;
@@ -341,10 +342,26 @@ export async function scanDocument(): Promise<PageScan> {
   const flushPending = (): Promise<void> => {
     if (pendingFlushPromise) return pendingFlushPromise;
     const run = async (): Promise<void> => {
-      while (pendingElements.size > 0) {
+      while (pendingElements.size > 0 || pendingRemovedElements.size > 0) {
+        const removed = [...pendingRemovedElements];
+        pendingRemovedElements.clear();
+        for (const element of removed) {
+          const tree = [element, ...Array.from(element.querySelectorAll<Element>("*"))];
+          for (const node of tree) {
+            checkDeadline();
+            if (root?.contains(node)) continue;
+            for (const url of elementUrls.get(node) ?? []) {
+              const record = candidates.get(url);
+              record?.sources.delete(node);
+              if (record && record.sources.size === 0 && !record.foundOutsideElements) candidates.delete(url);
+            }
+            elementUrls.delete(node);
+          }
+        }
         const batch = [...pendingElements];
         pendingElements.clear();
         for (const element of batch) {
+          if (!root?.contains(element)) continue;
           const tree = [element, ...Array.from(element.querySelectorAll<Element>("*"))];
           checkDeadline();
           for (let start = 0; start < tree.length; start += chunkSize) {
@@ -368,6 +385,10 @@ export async function scanDocument(): Promise<PageScan> {
       for (const node of Array.from(mutation.addedNodes)) {
         if (performance.now() >= deadline) return false;
         if (node.nodeType === 1) pendingElements.add(node as Element);
+      }
+      for (const node of Array.from(mutation.removedNodes ?? [])) {
+        if (performance.now() >= deadline) return false;
+        if (node.nodeType === 1) pendingRemovedElements.add(node as Element);
       }
     }
     return true;

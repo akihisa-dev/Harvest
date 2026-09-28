@@ -25,6 +25,10 @@ class FixtureElement {
     this.children.push(child);
   }
 
+  contains(element) {
+    return element === this || this.children.some(child => child.contains(element));
+  }
+
   getAttribute(name) {
     return this.attributesMap.get(name) ?? null;
   }
@@ -460,6 +464,49 @@ test("属性の差し替え後は古い候補だけを除き、別の検出元�
     assert.equal(result.images.includes(`${base}${name}.jpg`), false, name);
   }
   for (const name of ["page-001", "new-srcset", "new-lazy", "new-shared", "new-text", "shared", "text-shared"]) {
+    assert.ok(result.images.includes(`${base}${name}.jpg`), name);
+  }
+});
+
+test("削除された要素と子孫の候補を除き、現存する検出元と本文由来の候補を残す", async () => {
+  const base = "https://cdn.example.test/pages/";
+  const removedImage = new FixtureElement("img", {src: `${base}removed.jpg`});
+  const removedChild = new FixtureElement("img", {src: `${base}child.jpg`});
+  const removedParent = new FixtureElement("div", {}, [removedChild]);
+  const sharedRemoved = new FixtureElement("img", {src: `${base}shared.jpg`});
+  const sharedPresent = new FixtureElement("img", {src: `${base}shared.jpg`});
+  const textRemoved = new FixtureElement("img", {src: `${base}text-shared.jpg`});
+  const script = new FixtureElement("script", {}, [], {textContent: `const image = "${base}text-shared.jpg";`});
+  const moved = new FixtureElement("img", {src: `${base}moved.jpg`});
+  const late = new FixtureElement("img", {src: `${base}late.jpg`});
+  const root = new FixtureElement("html", {}, [removedImage, removedParent, sharedRemoved, sharedPresent, textRemoved, script, moved]);
+  let observerCallback;
+  let mutated = false;
+  class RemovingObserver extends EmptyMutationObserver {
+    constructor(callback) { super(); observerCallback = callback; }
+  }
+
+  const result = await runWithFixture(new FixtureDocument(root), RemovingObserver, () => {
+    globalThis.setTimeout = (callback, delay) => {
+      if (delay === 800) return 1;
+      if (delay === 250 && !mutated) {
+        mutated = true;
+        const removed = [removedImage, removedParent, sharedRemoved, textRemoved, moved];
+        root.children = root.children.filter(child => !removed.includes(child));
+        for (const element of removed) element.parentElement = null;
+        root.appendChild(moved);
+        root.appendChild(late);
+        observerCallback([{type: "childList", removedNodes: removed, addedNodes: [moved, late]}]);
+        return 2;
+      }
+      callback();
+      return 3;
+    };
+    return scanDocument();
+  });
+
+  for (const name of ["removed", "child"]) assert.equal(result.images.includes(`${base}${name}.jpg`), false, name);
+  for (const name of ["shared", "text-shared", "moved", "late"]) {
     assert.ok(result.images.includes(`${base}${name}.jpg`), name);
   }
 });

@@ -318,6 +318,7 @@ export async function scanDocument() {
     const root = document.documentElement;
     const chunkSize = 250;
     const pendingElements = new Set();
+    const pendingRemovedElements = new Set();
     let pendingFlushPromise;
     let observer;
     let resolveWait;
@@ -349,10 +350,29 @@ export async function scanDocument() {
         if (pendingFlushPromise)
             return pendingFlushPromise;
         const run = async () => {
-            while (pendingElements.size > 0) {
+            while (pendingElements.size > 0 || pendingRemovedElements.size > 0) {
+                const removed = [...pendingRemovedElements];
+                pendingRemovedElements.clear();
+                for (const element of removed) {
+                    const tree = [element, ...Array.from(element.querySelectorAll("*"))];
+                    for (const node of tree) {
+                        checkDeadline();
+                        if (root?.contains(node))
+                            continue;
+                        for (const url of elementUrls.get(node) ?? []) {
+                            const record = candidates.get(url);
+                            record?.sources.delete(node);
+                            if (record && record.sources.size === 0 && !record.foundOutsideElements)
+                                candidates.delete(url);
+                        }
+                        elementUrls.delete(node);
+                    }
+                }
                 const batch = [...pendingElements];
                 pendingElements.clear();
                 for (const element of batch) {
+                    if (!root?.contains(element))
+                        continue;
                     const tree = [element, ...Array.from(element.querySelectorAll("*"))];
                     checkDeadline();
                     for (let start = 0; start < tree.length; start += chunkSize) {
@@ -381,6 +401,12 @@ export async function scanDocument() {
                     return false;
                 if (node.nodeType === 1)
                     pendingElements.add(node);
+            }
+            for (const node of Array.from(mutation.removedNodes ?? [])) {
+                if (performance.now() >= deadline)
+                    return false;
+                if (node.nodeType === 1)
+                    pendingRemovedElements.add(node);
             }
         }
         return true;
