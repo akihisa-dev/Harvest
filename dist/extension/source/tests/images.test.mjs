@@ -143,7 +143,7 @@ test("同じ画像パスのクエリ連番は系列ごとにまとめ、パス�
   }
 });
 
-test("解析後の表示とPDF選択はシリーズを優先し、同順位では枚数で選ぶ", () => {
+test("解析後の表示とPDF選択は本文を優先し、本文がなければ従来の順位で選ぶ", () => {
   const groups = groupImages([
     "https://example.com/pages/body-001.jpg", "https://example.com/pages/body-002.jpg",
     "https://example.com/gallery/001.jpg", "https://example.com/gallery/002.jpg",
@@ -151,7 +151,7 @@ test("解析後の表示とPDF選択はシリーズを優先し、同順位で�
     "https://example.com/one.jpg",
   ]);
   const key = defaultDisplayedImageGroup(groups);
-  assert.equal(groups[key].label, "シリーズ (3枚)");
+  assert.equal(groups[key].label, "セット (2枚)");
   assert.deepEqual(Object.entries(defaultSelectedImageGroups(groups)).filter(([, selected]) => selected).map(([key]) => key), [key]);
   const fallbacks = [
     ["https://example.com/gallery/photo-01.jpg", "https://example.com/gallery/photo-02.jpg"],
@@ -164,4 +164,24 @@ test("解析後の表示とPDF選択はシリーズを優先し、同順位で�
   }
   assert.equal(defaultDisplayedImageGroup({}), null);
   assert.deepEqual(defaultSelectedImageGroups({}), {});
+});
+
+test("少数の数値画像より多数の本文を選び、本文同士と本文なしの順位を保つ", () => {
+  const numeric = ["https://example.com/gallery/01.jpg", "https://example.com/gallery/02.jpg"];
+  const body = Array.from({length: 20}, (_, index) => `https://example.com/gallery/page-${String(index + 1).padStart(3, "0")}.jpg`);
+  const groups = groupImages([...numeric, ...body]);
+  const selected = groups[defaultDisplayedImageGroup(groups)];
+  assert.deepEqual(selected.items, body);
+  assert.equal(selected.isMangaBody, true);
+  assert.deepEqual(Object.entries(defaultSelectedImageGroups(groups)).filter(([, value]) => value).map(([key]) => key), [defaultDisplayedImageGroup(groups)]);
+
+  const numericBody = groupImages([...numeric.map(url => url.replace("/gallery/", "/pages/")), ...body]);
+  assert.deepEqual(numericBody[defaultDisplayedImageGroup(numericBody)].items,
+    numeric.map(url => url.replace("/gallery/", "/pages/")));
+
+  const noBody = groupImages([...numeric, "https://example.com/gallery/photo-01.jpg", "https://example.com/gallery/photo-02.jpg"]);
+  assert.deepEqual(noBody[defaultDisplayedImageGroup(noBody)].items, numeric);
+
+  const uploaded = groupImages(["data:image/jpeg;base64,AA==", ...body]);
+  assert.equal(uploaded[defaultDisplayedImageGroup(uploaded)].priority, 0);
 });

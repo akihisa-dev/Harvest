@@ -91,7 +91,13 @@ export function groupImages(images) {
     return groups;
 }
 export function defaultDisplayedImageGroup(groups) {
-    const entries = Object.entries(groups).sort((a, b) => a[1].priority - b[1].priority || b[1].items.length - a[1].items.length);
+    const entries = Object.entries(groups).sort((a, b) => {
+        if (a[1].priority === 0 || b[1].priority === 0)
+            return a[1].priority - b[1].priority;
+        if (a[1].isMangaBody !== b[1].isMangaBody)
+            return a[1].isMangaBody ? -1 : 1;
+        return a[1].priority - b[1].priority || b[1].items.length - a[1].items.length;
+    });
     return entries[0]?.[0] ?? null;
 }
 export function defaultSelectedImageGroups(groups) {
