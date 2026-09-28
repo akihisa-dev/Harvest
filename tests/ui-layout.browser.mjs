@@ -55,7 +55,7 @@ async function inspectLayout(page, width, height, label) {
       header: rect(".app-header"), main: rect("main"), sidebar: rect(".workspace-sidebar"), controls: rect(".results-controls"),
       heading: rect(".results-heading"), groupBar: rect(".group-bar"), groups: rect("#groups"),
       viewerControls: rect(".viewer-controls"), status: rect("#status"), clear: rect("#reset"),
-      scan: rect("#scan"), export: rect("#export"), viewer: rect("#viewer-toggle"),
+      source: rect("#source-drop"), scan: rect("#scan"), collect: rect("#collection-toggle"), export: rect("#export"), viewer: rect("#viewer-toggle"),
       selectAll: rect("#select-all"), clearAll: rect("#clear-all"), resetOrder: rect("#reset-order"),
       headingText: document.querySelector("#images-heading").getBoundingClientRect().toJSON(),
       groupCount: document.querySelectorAll("#groups .group-chip").length,
@@ -67,20 +67,22 @@ async function inspectLayout(page, width, height, label) {
   assert.ok(result.header.bottom <= result.main.y + 1, `${label}: header must not overlap main`);
   assert.ok(result.main.bottom <= height + 1, `${label}: main must remain inside viewport`);
   assert.equal(result.viewport.bodyHeight, height, `${label}: page must not gain vertical scrolling`);
-  for (const [name, box] of Object.entries({scan: result.scan})) {
+  for (const [name, box] of Object.entries({source: result.source, scan: result.scan, clear: result.clear, collect: result.collect})) {
     assert.ok(box.width > 0 && box.height > 0, `${label}: ${name} must be visible`);
     assert.ok(box.x >= result.header.x && box.right <= result.header.right + 1, `${label}: ${name} must fit within header width`);
     assert.ok(box.y >= result.header.y && box.bottom <= result.header.bottom + 1, `${label}: ${name} must fit within header height`);
   }
+  assert.ok(result.source.right <= result.scan.x && result.scan.right <= result.clear.x && result.clear.right <= result.collect.x,
+    `${label}: URL, analyze, clear, and collect must stay in this order`);
   assert.ok(result.sidebar.x >= result.main.right - 1, `${label}: controls must be to the right of the image`);
   assert.ok(result.sidebar.right <= width + 1, `${label}: sidebar must fit within viewport`);
   assert.ok(result.sidebar.scrollWidth <= result.sidebar.clientWidth + 1, `${label}: sidebar must not scroll horizontally`);
-  for (const [name, box] of Object.entries({heading: result.headingText, pdf: result.export, viewer: result.viewer, clear: result.clear})) {
+  for (const [name, box] of Object.entries({heading: result.headingText, pdf: result.export, viewer: result.viewer})) {
     assert.ok(box.width > 0 && box.height > 0, `${label}: ${name} must be laid out`);
     assert.ok(box.x >= result.sidebar.x && box.right <= result.sidebar.right + 1, `${label}: ${name} must fit in sidebar width`);
   }
-  assert.ok(result.headingText.y < result.export.y && result.export.y < result.viewer.y && result.viewer.y < result.clear.y,
-    `${label}: controls must be arranged vertically`);
+  assert.ok(result.export.y < result.viewer.y && result.viewer.y < result.headingText.y,
+    `${label}: PDF, list toggle, and image groups must be arranged vertically`);
   assert.ok(result.selectAll.bottom <= result.clearAll.y && result.clearAll.bottom <= result.resetOrder.y,
     `${label}: selection actions must be in one column`);
   assert.ok(result.groupBar.scrollWidth <= result.groupBar.clientWidth + 1, `${label}: group bar must not scroll horizontally`);
@@ -136,6 +138,7 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           await page.goto(url);
           await page.locator("#images-heading").waitFor();
           assert.equal(await page.title(), locale === "ja-JP" ? "Harvest | 画像を集める" : "Harvest | Collect images", `${caseName}: document title should follow browser locale`);
+          assert.equal(await page.locator("#images-heading").textContent(), locale === "ja-JP" ? "画像グループ" : "Image groups");
           assert.equal(await page.locator(".workspace-sidebar").getAttribute("aria-label"),
             locale === "ja-JP" ? "画像と保存の操作" : "Image and save controls", `${caseName}: sidebar label should follow browser locale`);
           const empty = await inspectLayout(page, width, height, `${caseName} empty`);
@@ -201,7 +204,7 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           const originalOption = await sourceOption.textContent();
           await sourceOption.evaluate(element => { element.textContent = "出典ページの追加 Source page"; });
           const wrappedOption = await inspectLayout(page, width, height, `${caseName} wrapped source option`);
-          assert.equal(wrappedOption.heading.y, empty.heading.y, `${caseName}: right-side options must not push down the image heading`);
+          assert.equal(wrappedOption.header.height, empty.header.height, `${caseName}: right-side options must not change header height`);
           await sourceOption.evaluate((element, text) => { element.textContent = text; }, originalOption);
           const few = await inspectLayout(page, width, height, `${caseName} few images`);
           assert.equal(few.header.height, empty.header.height, `${caseName}: image results must not change header height`);

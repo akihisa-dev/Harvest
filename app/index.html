@@ -17,6 +17,8 @@
             <button id="source-drop" type="button" data-i18n="sourceDrop">ページURLをドロップ、またはクリックして入力</button>
             <input id="source-url" type="url" inputmode="url" data-i18n-placeholder="sourcePlaceholder" placeholder="ページURLを入力" autocomplete="url" aria-describedby="source-hint" hidden>
             <button id="scan" type="button" data-i18n="scan">解析</button>
+            <button id="reset" type="button" data-i18n-aria-label="clearTitle" data-i18n-title="clearTitle" aria-label="収集結果と選択をクリア" title="収集結果と選択をクリア" data-i18n="clear">クリア</button>
+            <button id="collection-toggle" type="button" aria-pressed="false" data-i18n-title="collectionTitle" title="収集中はページ内のリンクをクリックすると、移動せずリンク先を解析します" data-i18n="collectionStart">収集</button>
           </div>
           <p id="source-hint" class="visually-hidden" data-i18n="sourceHint">空欄なら、開いているページを解析します。</p>
         </section>
@@ -57,18 +59,6 @@
       </section>
     </main>
     <aside class="workspace-sidebar" data-i18n-aria-label="workspaceControls" aria-label="画像と保存の操作">
-      <button id="collection-toggle" type="button" aria-pressed="false" data-i18n-title="collectionTitle" title="収集中はページ内のリンクをクリックすると、移動せずリンク先を解析します" data-i18n="collectionStart">収集</button>
-      <div class="results-controls">
-        <div class="results-heading">
-          <div class="section-head"><h2 id="images-heading" data-i18n="imagesHeading">画像</h2><span id="count" data-i18n="countInitial">0枚</span></div>
-          <div class="toolbar" role="group" data-i18n-aria-label="selectionToolbar" aria-label="画像の選択と並び順">
-            <button id="select-all" type="button" data-i18n-title="selectAllTitle" title="表示していない画像も含めて、すべて選択" data-i18n="selectAll" disabled>すべて選択</button>
-            <button id="clear-all" type="button" data-i18n-title="clearAllTitle" title="表示していない画像も含めて、選択を解除" data-i18n="clearAll" disabled>選択を解除</button>
-            <button id="reset-order" type="button" data-i18n-title="resetOrderTitle" title="解析直後の並び順に戻す" data-i18n="resetOrder" disabled>並び順を戻す</button>
-          </div>
-        </div>
-        <div class="group-bar"><div id="groups" class="groups" role="group" data-i18n-aria-label="groupControls" aria-label="画像の表示とPDFへの選択" hidden></div></div>
-      </div>
       <aside class="save-area" aria-labelledby="export-heading">
         <h2 id="export-heading" class="visually-hidden" data-i18n="savePdf">PDFを保存</h2>
         <div class="export-control">
@@ -79,11 +69,19 @@
       </aside>
       <aside class="viewer-controls" data-i18n-aria-label="viewerMode" aria-label="ビュアーモード">
         <button id="viewer-toggle" type="button" aria-pressed="false" data-i18n="viewerMode" disabled>ビュアーモード</button>
-        <div class="viewer-meta">
-          <p id="status" role="status" aria-live="polite"></p>
-          <button id="reset" type="button" data-i18n-aria-label="clearTitle" data-i18n-title="clearTitle" aria-label="収集結果と選択をクリア" title="収集結果と選択をクリア" data-i18n="clear">クリア</button>
-        </div>
+        <div class="viewer-meta"><p id="status" role="status" aria-live="polite"></p></div>
       </aside>
+      <div class="results-controls">
+        <div class="results-heading">
+          <div class="section-head"><h2 id="images-heading" data-i18n="imagesHeading">画像グループ</h2><span id="count" data-i18n="countInitial">0枚</span></div>
+          <div class="toolbar" role="group" data-i18n-aria-label="selectionToolbar" aria-label="画像の選択と並び順">
+            <button id="select-all" type="button" data-i18n-title="selectAllTitle" title="表示していない画像も含めて、すべて選択" data-i18n="selectAll" disabled>すべて選択</button>
+            <button id="clear-all" type="button" data-i18n-title="clearAllTitle" title="表示していない画像も含めて、選択を解除" data-i18n="clearAll" disabled>選択を解除</button>
+            <button id="reset-order" type="button" data-i18n-title="resetOrderTitle" title="解析直後の並び順に戻す" data-i18n="resetOrder" disabled>並び順を戻す</button>
+          </div>
+        </div>
+        <div class="group-bar"><div id="groups" class="groups" role="group" data-i18n-aria-label="groupControls" aria-label="画像の表示とPDFへの選択" hidden></div></div>
+      </div>
     </aside>
     <div id="scan-overlay" aria-hidden="true" hidden></div>
     </div>
