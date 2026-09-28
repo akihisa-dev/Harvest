@@ -282,7 +282,11 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     const viewerZoomReset = document.querySelector("#viewer-zoom-reset");
     const viewerStage = document.querySelector("#viewer-stage");
     assert.equal(viewerToggle.disabled, false);
-    assert.equal(viewerToggle.getAttribute("aria-pressed"), "true", "解析後はビュアーを初期表示する");
+    assert.equal(viewerToggle.getAttribute("aria-pressed"), "false", "解析後は画像一覧を初期表示する");
+    assert.equal(viewer.hidden, true);
+    assert.equal(document.querySelector(".results").hidden, false);
+    viewerToggle.dispatch("click");
+    assert.equal(viewerToggle.getAttribute("aria-pressed"), "true", "ボタンでビュアーに切り替えられる");
     assert.equal(viewer.hidden, false);
     assert.equal(document.querySelector(".results").hidden, true);
     assert.equal(viewerPage.hidden, false);

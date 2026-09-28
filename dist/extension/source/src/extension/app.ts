@@ -209,7 +209,7 @@ async function startScan(collectionLink?: string): Promise<void> {
     pendingExport = null;
     const initialGroup = defaultDisplayedImageGroup(imageCollection.groups);
     visibleGroupKeys = new Set(initialGroup === null ? Object.keys(imageCollection.groups) : [initialGroup]);
-    viewerController.setOpen(imageCollection.items.length > 0);
+    viewerController.setOpen(false);
     viewerController.clearCurrentPage();
     completionElement.hidden = true;
     scanState = imageCollection.items.length ? "results" : "empty";

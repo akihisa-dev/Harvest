@@ -236,7 +236,11 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           assert.equal(saveButtonState.saving.alignment, "center", `${caseName}: saving label and ring should be centered`);
           assert.equal(saveButtonState.saving.background, saveButtonState.ink, `${caseName}: saving button should remain visually prominent`);
           assert.equal(saveButtonState.restoredRing, "none", `${caseName}: save ring should disappear afterward`);
-          assert.equal(await page.locator("#viewer").isVisible(), true, `${caseName}: successful scan opens viewer`);
+          assert.equal(await page.locator(".results").isVisible(), true, `${caseName}: successful scan opens image list`);
+          assert.equal(await page.locator("#viewer").isHidden(), true, `${caseName}: viewer remains closed after scanning`);
+          assert.equal(await page.locator("#viewer-toggle").getAttribute("aria-pressed"), "false", `${caseName}: viewer toggle starts unpressed`);
+          await page.locator("#viewer-toggle").click();
+          assert.equal(await page.locator("#viewer").isVisible(), true, `${caseName}: viewer toggle opens viewer`);
           const stage = await page.locator("#viewer-stage").boundingBox();
           assert.ok(stage.width > 100 && stage.height > height * 0.45, `${caseName}: large image must use available space`);
           const exportOverlayState = await page.locator("#export-overlay").evaluate(overlay => {
@@ -285,6 +289,8 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           await page.evaluate(() => window.__releaseScanFixture());
           await page.waitForFunction(() => !document.querySelector("#scan").disabled);
           assert.equal(await page.locator("#scan-overlay").isHidden(), true, `${caseName}: overlay should hide when re-analysis completes`);
+          assert.equal(await page.locator(".results").isVisible(), true, `${caseName}: re-analysis should return to the image list`);
+          assert.equal(await page.locator("#viewer").isHidden(), true, `${caseName}: re-analysis should close the viewer`);
           const sourceOption = page.locator(".source-page-option span");
           const originalOption = await sourceOption.textContent();
           await sourceOption.evaluate(element => { element.textContent = "出典ページの追加 Source page"; });
