@@ -1,6 +1,7 @@
 import { captureCollectionLinks } from "./collection-mode.js";
 export function createCollectionController(options) {
     const sessions = new Set();
+    const injectionStartedSessions = new Set();
     let activeSession = null;
     let activeTabId = null;
     let activePort = null;
@@ -10,6 +11,8 @@ export function createCollectionController(options) {
     }
     function stop() {
         lastAnalyzedUrl = null;
+        if (activeSession !== null && !injectionStartedSessions.has(activeSession))
+            sessions.delete(activeSession);
         activeSession = null;
         activeTabId = null;
         const port = activePort;
@@ -35,6 +38,7 @@ export function createCollectionController(options) {
             if (tab?.id === undefined || !isWebUrl(tab.url))
                 throw new Error(options.noPageError);
             activeTabId = tab.id;
+            injectionStartedSessions.add(session);
             await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: captureCollectionLinks, args: [session] });
         }
         catch (error) {
@@ -43,10 +47,15 @@ export function createCollectionController(options) {
             stop();
             options.onError(error);
         }
+        finally {
+            if (!injectionStartedSessions.has(session))
+                sessions.delete(session);
+        }
     }
     chrome.runtime.onConnect?.addListener(port => {
         if (!sessions.delete(port.name))
             return;
+        injectionStartedSessions.delete(port.name);
         if (port.name !== activeSession || port.sender?.tab?.id !== activeTabId) {
             port.disconnect();
             return;

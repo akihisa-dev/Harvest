@@ -34,6 +34,7 @@ export interface CollectionController {
 
 export function createCollectionController(options: CollectionControllerOptions): CollectionController {
   const sessions = new Set<string>();
+  const injectionStartedSessions = new Set<string>();
   let activeSession: string | null = null;
   let activeTabId: number | null = null;
   let activePort: CollectionPort | null = null;
@@ -45,6 +46,7 @@ export function createCollectionController(options: CollectionControllerOptions)
 
   function stop(): void {
     lastAnalyzedUrl = null;
+    if (activeSession !== null && !injectionStartedSessions.has(activeSession)) sessions.delete(activeSession);
     activeSession = null;
     activeTabId = null;
     const port = activePort;
@@ -66,16 +68,20 @@ export function createCollectionController(options: CollectionControllerOptions)
       if (activeSession !== session || options.isDisposed()) return;
       if (tab?.id === undefined || !isWebUrl(tab.url)) throw new Error(options.noPageError);
       activeTabId = tab.id;
+      injectionStartedSessions.add(session);
       await chrome.scripting.executeScript({target: {tabId: tab.id}, func: captureCollectionLinks, args: [session]});
     } catch (error) {
       if (activeSession !== session) return;
       stop();
       options.onError(error);
+    } finally {
+      if (!injectionStartedSessions.has(session)) sessions.delete(session);
     }
   }
 
   chrome.runtime.onConnect?.addListener(port => {
     if (!sessions.delete(port.name)) return;
+    injectionStartedSessions.delete(port.name);
     if (port.name !== activeSession || port.sender?.tab?.id !== activeTabId) { port.disconnect(); return; }
     activePort?.disconnect();
     activePort = port;

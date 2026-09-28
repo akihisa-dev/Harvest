@@ -163,6 +163,29 @@ test("開始中に解除したsessionは遅れて返ったtabへ注入しない"
     assert.equal(fixture.injections.length, 0);
     assert.equal(fixture.controller.session, null);
     assert.equal(fixture.button.attributes.get("aria-pressed"), "false");
+    const latePort = fixture.connect(session, 7);
+    assert.equal(latePort.disconnectCount, 0, "注入前に停止したsessionは受付対象から除かれる");
+  } finally { fixture.restore(); }
+});
+
+test("注入前の開始失敗ではsessionを受付対象から除く", async () => {
+  const fixture = setup();
+  const failedSessions = [];
+  fixture.query = async () => {
+    failedSessions.push(fixture.controller.session);
+    return [{id: 7, url: "chrome://settings"}];
+  };
+  try {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await fixture.controller.toggle();
+      assert.equal(fixture.controller.session, null);
+    }
+    assert.equal(fixture.injections.length, 0);
+    assert.equal(fixture.errors.length, failedSessions.length);
+    for (const session of failedSessions) {
+      const latePort = fixture.connect(session, 7);
+      assert.equal(latePort.disconnectCount, 0, "注入に到達しなかったsessionは受付対象から除かれる");
+    }
   } finally { fixture.restore(); }
 });
 
@@ -200,5 +223,38 @@ test("新しい収集中に届いた古いsessionの遅延portは切断し、新
     assert.equal(fixture.controller.session, currentSession);
     newPort.send({url: "https://example.test/current"});
     assert.deepEqual(fixture.scans, ["https://example.test/current"]);
+  } finally { fixture.restore(); }
+});
+
+test("別のsession開始後でも注入済みsessionの遅延portを切断する", async () => {
+  const fixture = setup();
+  let finishOldInjection;
+  let oldSession;
+  fixture.executeScript = injection => new Promise(resolve => {
+    fixture.injections.push(injection);
+    oldSession = injection.args[0];
+    finishOldInjection = () => resolve([]);
+  });
+  try {
+    const oldStart = fixture.controller.toggle();
+    for (let attempt = 0; attempt < 10 && !finishOldInjection; attempt++) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(typeof finishOldInjection, "function");
+    fixture.controller.stop();
+
+    fixture.executeScript = async injection => {
+      fixture.injections.push(injection);
+      fixture.connect(injection.args[0], 7);
+      return [];
+    };
+    await fixture.controller.toggle();
+    const currentSession = fixture.controller.session;
+    const currentPort = fixture.ports.at(-1);
+    finishOldInjection();
+    await oldStart;
+
+    const lateOldPort = fixture.connect(oldSession, 7);
+    assert.equal(lateOldPort.disconnectCount, 1, "別session開始後も注入済みの古いsessionを拒否する");
+    assert.equal(fixture.controller.session, currentSession);
+    assert.equal(fixture.controller.session, currentPort.name);
   } finally { fixture.restore(); }
 });
