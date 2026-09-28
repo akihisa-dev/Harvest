@@ -87,6 +87,9 @@ async function inspectLayout(page, width, height, label) {
   assert.ok(result.count.bottom <= result.selectAll.y, `${label}: image count must stay above selection actions`);
   assert.ok(result.selectAll.right <= result.clearAll.x && result.clearAll.right <= result.resetOrder.x,
     `${label}: selection actions must fit in one row`);
+  for (const [name, box] of Object.entries({selectAll: result.selectAll, clearAll: result.clearAll, resetOrder: result.resetOrder})) {
+    assert.ok(Math.abs(box.width - box.height) <= 1, `${label}: ${name} must be a square icon button`);
+  }
   assert.ok(result.resetOrder.right <= result.sidebar.right + 1, `${label}: selection actions must fit sidebar width`);
   assert.ok(result.groupBar.scrollWidth <= result.groupBar.clientWidth + 1, `${label}: group bar must not scroll horizontally`);
   return result;
@@ -221,8 +224,11 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           const allEye = allRow.locator("button");
           const allSelection = allRow.locator("input[type=checkbox]");
           assert.equal(await allSelection.count(), 1, `${caseName}: all-images row needs a PDF checkbox`);
+          assert.equal(await page.locator("#groups .group-chip button svg.eye-icon").count(), few.groupCount,
+            `${caseName}: every group row needs a visible eye icon`);
           await allEye.click();
           assert.equal(await page.locator("#images > li").count(), 0, `${caseName}: all-images eye hides the list`);
+          assert.equal(await allEye.locator(".eye-slash").count(), 1, `${caseName}: hidden state needs a crossed eye`);
           await allEye.click();
           assert.equal(await page.locator("#images > li").count(), 4, `${caseName}: all-images eye restores the list`);
           await allSelection.uncheck();

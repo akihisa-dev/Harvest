@@ -241,10 +241,6 @@ function renderGroups(groups: ImageCollection["groups"]): void {
     key => {
       const button = document.createElement("button");
       button.type = "button";
-      const eye = document.createElement("span");
-      eye.className = "eye-icon";
-      eye.setAttribute("aria-hidden", "true");
-      button.append(eye);
       button.addEventListener("click", () => {
         requestFocus({kind: "group", key});
         if (key === "all") {
@@ -273,9 +269,26 @@ function renderGroups(groups: ImageCollection["groups"]): void {
       const group = key === "all" ? undefined : groups[key];
       button.textContent = key === "all" ? t("allGroups") : formatGroupLabel(group?.label ?? "");
       const shown = key === "all" ? visibleGroupKeys.size === entries.length : visibleGroupKeys.has(key);
-      const eye = document.createElement("span");
-      eye.className = `eye-icon${shown ? "" : " eye-hidden"}`;
+      const eye = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      eye.classList.add("eye-icon");
+      eye.setAttribute("viewBox", "0 0 24 24");
       eye.setAttribute("aria-hidden", "true");
+      const outline = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      outline.setAttribute("d", "M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z");
+      const pupil = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      pupil.setAttribute("cx", "12");
+      pupil.setAttribute("cy", "12");
+      pupil.setAttribute("r", "2.5");
+      eye.append(outline, pupil);
+      if (!shown) {
+        const gap = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        gap.setAttribute("d", "M3 21 21 3");
+        gap.classList.add("eye-slash-gap");
+        const slash = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        slash.setAttribute("d", "M3 21 21 3");
+        slash.classList.add("eye-slash");
+        eye.append(gap, slash);
+      }
       button.append(eye);
       button.title = t(shown ? "hideGroup" : "displayGroup", {label: key === "all" ? t("allGroups") : formatGroupLabel(group?.label ?? "")});
       button.setAttribute("aria-label", button.title);

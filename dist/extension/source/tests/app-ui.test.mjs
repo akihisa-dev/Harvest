@@ -73,6 +73,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     elements: new Map(),
     listeners: new Map(),
     createElement(tagName) { return new StubElement(tagName, document); },
+    createElementNS(_namespace, tagName) { return new StubElement(tagName, document); },
     createTextNode(text) { return {textContent: text}; },
     querySelector(selector) {
       if (!document.elements.has(selector)) document.elements.set(selector, new StubElement("div", document));

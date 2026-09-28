@@ -109,6 +109,7 @@ test("英語画面で解析・分類・選択・エラー表示が翻訳され�
   const root = {
     activeElement: null, animations: [], downloads: [], elements: new Map(),
     createElement(tag) { return new StubElement(tag, root); },
+    createElementNS(_namespace, tag) { return new StubElement(tag, root); },
     createTextNode(textContent) { return {textContent}; },
     querySelector(selector) {
       if (!this.elements.has(selector)) this.elements.set(selector, new StubElement("div", root));
