@@ -316,6 +316,10 @@ test("srcsetの空白なし区切りとURL内のカンマを区別する", async
     new FixtureElement("source", {srcset: "spaced-small.jpg, spaced-large.jpg"}),
     new FixtureElement("source", {srcset: "density-small.jpg 1x,density-large.jpg 2x"}),
     new FixtureElement("source", {srcset: "/scan,page.jpg,/another.jpg"}),
+    new FixtureElement("source", {srcset: "small.gif,large.gif"}),
+    new FixtureElement("source", {srcset: "spaced-small.gif, spaced-large.gif"}),
+    new FixtureElement("source", {srcset: "density-small.gif 1x,density-large.gif 2x"}),
+    new FixtureElement("source", {srcset: "/scan,page.gif,/another.gif"}),
   ]);
   const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
 
@@ -328,6 +332,15 @@ test("srcsetの空白なし区切りとURL内のカンマを区別する", async
   assert.ok(result.images.includes("https://example.test/scan,page.jpg"));
   assert.ok(result.images.includes("https://example.test/another.jpg"));
   assert.equal(result.images.some(url => url.includes("small.jpg,large.jpg")), false);
+  assert.ok(result.images.includes("https://example.test/books/small.gif"));
+  assert.ok(result.images.includes("https://example.test/books/large.gif"));
+  assert.ok(result.images.includes("https://example.test/books/spaced-small.gif"));
+  assert.ok(result.images.includes("https://example.test/books/spaced-large.gif"));
+  assert.ok(result.images.includes("https://example.test/books/density-large.gif"));
+  assert.equal(result.images.includes("https://example.test/books/density-small.gif"), false);
+  assert.ok(result.images.includes("https://example.test/scan,page.gif"));
+  assert.ok(result.images.includes("https://example.test/another.gif"));
+  assert.equal(result.images.some(url => url.includes("small.gif,large.gif")), false);
 });
 
 test("表示位置を優先し、meta先行の重複URLと位置のない候補を補正する", async () => {

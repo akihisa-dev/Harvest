@@ -95,8 +95,8 @@ export async function scanDocument() {
                     // A comma can also be part of a URL. Without whitespace, split only
                     // when both sides look like separate image filenames.
                     if (/\s/.test(value[index + 1] ?? "") ||
-                        (/\.(?:jpe?g|png|webp|avif)$/i.test(beforeComma) &&
-                            /^[^\s,]+\.(?:jpe?g|png|webp|avif)(?=[\s,?#]|$)/i.test(afterComma))) {
+                        (/\.(?:jpe?g|png|webp|avif|gif)$/i.test(beforeComma) &&
+                            /^[^\s,]+\.(?:jpe?g|png|webp|avif|gif)(?=[\s,?#]|$)/i.test(afterComma))) {
                         commaSeparator = index;
                         break;
                     }
