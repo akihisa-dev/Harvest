@@ -33,7 +33,7 @@ export function normalizeImageUrls(candidates: readonly string[], pageUrl: strin
       const contentPath = ["/fanzine/", "/covers/", "/pages/", "/storage/", "/uploads/", "/viewer/"]
         .some(marker => lower.includes(marker));
       const excluded = ["avatar", "logo", "icon", "button", "advert", "tracking", "pixel", "analytics", "banner", "/theme", "/plugins/", "/wp-includes/", "loading"]
-        .some(marker => lower.includes(marker)) || /\.(?:svg|gif|ico|php|cgi)$/i.test(url.pathname);
+        .some(marker => lower.includes(marker)) || /\.(?:svg|ico|php|cgi)$/i.test(url.pathname);
       if (excluded && !contentPath) continue;
       found.add(url.href);
     } catch {

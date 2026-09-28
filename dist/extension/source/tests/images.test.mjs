@@ -55,9 +55,11 @@ test("UI用の画像除外規則は本文画像を残す", () => {
   assert.deepEqual(normalizeImageUrls([
     "/assets/logo.png",
     "/assets/icon.png",
+    "/assets/animation.gif",
     "/pages/logo-01.jpg",
     "/pages/01.gif",
   ], "https://example.com/viewer/index"), [
+    "https://example.com/assets/animation.gif",
     "https://example.com/pages/logo-01.jpg",
     "https://example.com/pages/01.gif",
   ]);
