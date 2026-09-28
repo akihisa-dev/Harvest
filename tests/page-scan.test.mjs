@@ -420,6 +420,37 @@ test("短い監視時間内に追加された画像を収集する", async () =>
   assert.ok(result.images.includes("https://cdn.example.test/pages/late.jpg"));
 });
 
+test("短い監視時間内に追加されたscriptとstyleの本文URLを収集する", async () => {
+  const root = new FixtureElement("html");
+  const lateScript = new FixtureElement("script", {}, [], {
+    textContent: 'const image = "https://cdn.example.test/pages/late-script.jpg";',
+  });
+  const lateStyle = new FixtureElement("style", {}, [], {
+    textContent: 'background-image: url("https://cdn.example.test/pages/late-style.webp");',
+  });
+  let observer;
+  class DelayedMutationObserver {
+    constructor(callback) { observer = {callback}; }
+    observe() {}
+    disconnect() {}
+  }
+  const result = await runWithFixture(new FixtureDocument(root), DelayedMutationObserver, () => {
+    globalThis.setTimeout = (callback, delay) => {
+      if (delay === 800) {
+        root.appendChild(lateScript);
+        root.appendChild(lateStyle);
+        observer.callback([{type: "childList", addedNodes: [lateScript, lateStyle]}]);
+      }
+      callback();
+      return 0;
+    };
+    return scanDocument();
+  });
+
+  assert.ok(result.images.includes("https://cdn.example.test/pages/late-script.jpg"));
+  assert.ok(result.images.includes("https://cdn.example.test/pages/late-style.webp"));
+});
+
 test("属性の差し替え後は古い候補だけを除き、別の検出元の候補を残す", async () => {
   const base = "https://cdn.example.test/pages/";
   const image = new FixtureElement("img", {src: `${base}placeholder.jpg`});

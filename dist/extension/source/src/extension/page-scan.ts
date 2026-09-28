@@ -266,6 +266,7 @@ export async function scanDocument(): Promise<PageScan> {
     elementUrls.set(element, new Set());
     const tagName = element.tagName.toLowerCase();
     const positionElement = imagePositionElement(element);
+    if (tagName === "script" || tagName === "style") scanText(element.textContent, undefined, element);
     if (tagName === "img" || tagName === "source") {
       for (const attribute of imageAttributes) add(element.getAttribute(attribute), positionElement, element);
       for (const attribute of imageSrcsetAttributes) {
