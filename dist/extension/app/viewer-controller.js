@@ -8,6 +8,7 @@ export function createViewerController(options) {
     let panX = 0;
     let panY = 0;
     let pointer = null;
+    let lastThumbnailWheelAt = -Infinity;
     const thumbnailRows = new Map();
     function updateTransform() {
         elements.image.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
@@ -80,7 +81,7 @@ export function createViewerController(options) {
         elements.thumbnails.replaceChildren(...rows);
         if (renderedUrl !== activeUrl) {
             const active = thumbnailRows.get(activeUrl)?.children[0];
-            active?.scrollIntoView({ block: "nearest" });
+            active?.scrollIntoView({ block: "center", inline: "nearest" });
         }
     }
     function render() {
@@ -141,6 +142,22 @@ export function createViewerController(options) {
             render();
         }
     });
+    elements.thumbnails.addEventListener("wheel", event => {
+        if (!open || !currentUrl || options.isBusy())
+            return;
+        event.preventDefault();
+        const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+        if (delta === 0 || event.timeStamp - lastThumbnailWheelAt < 180)
+            return;
+        const pages = options.getPages();
+        const index = pages.findIndex(item => item.url === currentUrl);
+        const nextIndex = Math.max(0, Math.min(pages.length - 1, index + Math.sign(delta)));
+        if (index < 0 || nextIndex === index)
+            return;
+        lastThumbnailWheelAt = event.timeStamp;
+        currentUrl = pages[nextIndex].url;
+        render();
+    }, { passive: false });
     elements.zoomIn.addEventListener("click", () => zoomBy(1.25));
     elements.zoomOut.addEventListener("click", () => zoomBy(1 / 1.25));
     elements.zoomReset.addEventListener("click", resetTransform);

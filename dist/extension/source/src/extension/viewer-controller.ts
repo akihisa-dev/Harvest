@@ -44,6 +44,7 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
   let panX = 0;
   let panY = 0;
   let pointer: {id: number; x: number; y: number; panX: number; panY: number} | null = null;
+  let lastThumbnailWheelAt = -Infinity;
   const thumbnailRows = new Map<string, HTMLLIElement>();
 
   function updateTransform(): void {
@@ -113,7 +114,7 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
     elements.thumbnails.replaceChildren(...rows);
     if (renderedUrl !== activeUrl) {
       const active = thumbnailRows.get(activeUrl)?.children[0] as HTMLButtonElement | undefined;
-      active?.scrollIntoView({block: "nearest"});
+      active?.scrollIntoView({block: "center", inline: "nearest"});
     }
   }
 
@@ -167,6 +168,19 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
     const index = pages.findIndex(item => item.url === currentUrl);
     if (index >= 0 && index < pages.length - 1) { currentUrl = pages[index + 1]!.url; render(); }
   });
+  elements.thumbnails.addEventListener("wheel", event => {
+    if (!open || !currentUrl || options.isBusy()) return;
+    event.preventDefault();
+    const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+    if (delta === 0 || event.timeStamp - lastThumbnailWheelAt < 180) return;
+    const pages = options.getPages();
+    const index = pages.findIndex(item => item.url === currentUrl);
+    const nextIndex = Math.max(0, Math.min(pages.length - 1, index + Math.sign(delta)));
+    if (index < 0 || nextIndex === index) return;
+    lastThumbnailWheelAt = event.timeStamp;
+    currentUrl = pages[nextIndex]!.url;
+    render();
+  }, {passive: false});
   elements.zoomIn.addEventListener("click", () => zoomBy(1.25));
   elements.zoomOut.addEventListener("click", () => zoomBy(1 / 1.25));
   elements.zoomReset.addEventListener("click", resetTransform);

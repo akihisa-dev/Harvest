@@ -322,6 +322,15 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     descendants(viewerThumbnails).filter(element => element.tagName === "button")[0].dispatch("click");
     assert.equal(viewerImage.src, resultImages[0]);
     assert.equal(viewerPosition.textContent, "1 / 2");
+    viewerThumbnails.dispatch("wheel", {deltaY: 120, deltaX: 0, timeStamp: 1000});
+    assert.equal(viewerImage.src, resultImages[1], "一覧のスクロールで次の画像を表示する");
+    assert.equal(viewerPosition.textContent, "2 / 2");
+    assert.equal(viewerThumbnails.children[1].children[0].getAttribute("aria-current"), "true");
+    viewerThumbnails.dispatch("wheel", {deltaY: 600, deltaX: 0, timeStamp: 1050});
+    assert.equal(viewerPosition.textContent, "2 / 2", "連続したスクロールでは画像を飛ばさない");
+    viewerThumbnails.dispatch("wheel", {deltaY: -120, deltaX: 0, timeStamp: 1300});
+    assert.equal(viewerImage.src, resultImages[0], "逆方向のスクロールで前の画像を表示する");
+    assert.equal(viewerPosition.textContent, "1 / 2");
 
     const initialTransform = viewerImage.style.transform;
     viewerZoomIn.dispatch("click");
