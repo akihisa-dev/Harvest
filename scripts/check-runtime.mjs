@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 
 const [nodeMajor] = process.versions.node.split(".").map(Number);
 if (!Number.isInteger(nodeMajor) || nodeMajor < 22 || nodeMajor >= 27) {
@@ -34,6 +35,21 @@ if (!/^\d+\.\d+\.\d+$/.test(pnpmVersion)) {
 }
 if (pnpmVersion !== expectedPnpmVersion) {
   throw new Error(`pnpm ${pnpmVersion} は宣言されたversion ${expectedPnpmVersion} と一致しません。`);
+}
+
+let hooksPath;
+try {
+  hooksPath = execFileSync("git", ["config", "--local", "--get", "core.hooksPath"], {
+    encoding: "utf8",
+    timeout: 5000,
+    killSignal: "SIGTERM",
+  }).trim();
+} catch {
+  throw new Error("Gitフックが未設定です。pnpm setup:hooks を実行してください。");
+}
+
+if (path.resolve(hooksPath) !== path.resolve(".githooks")) {
+  throw new Error(`Gitフックの設定先が .githooks ではありません（${hooksPath}）。pnpm setup:hooks を実行してください。`);
 }
 
 console.log(`runtime ok: node ${process.versions.node}, pnpm ${pnpmVersion}`);
