@@ -178,6 +178,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     sourceUrl.value = "https://example.com/entered";
     sourceUrl.dispatch("input");
     assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, false, "URL入力後は画面下部で受け付けない");
+    assert.equal(document.dispatch("dragover", {target: document.querySelector("#empty"), dataTransfer: pageUrlDrag}).prevented, true, "URL入力後も中央の空白領域で受け付ける");
+    assert.equal(document.querySelector("main").className.includes("drag-over"), true);
     assert.equal(document.dispatch("dragover", {target: header, dataTransfer: pageUrlDrag}).prevented, true, "URL入力後は上部全体で受け付ける");
     assert.equal(header.className.includes("drag-over"), true);
     document.dispatch("dragleave", {dataTransfer: pageUrlDrag});
@@ -197,6 +199,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     await waitUntil(() => !document.querySelector("#scan").disabled);
     assert.equal(createdUrls.at(-1), "https://example.com/linked");
     assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, false, "解析後は画面下部で受け付けない");
+    assert.equal(document.dispatch("dragover", {target: document.querySelector("#viewer"), dataTransfer: pageUrlDrag}).prevented, true, "解析後も中央の表示領域で受け付ける");
     assert.equal(document.dispatch("dragover", {target: header, dataTransfer: pageUrlDrag}).prevented, true, "解析後は上部全体で受け付ける");
     document.dispatch("dragleave", {dataTransfer: pageUrlDrag});
     globalThis.fetch = async () => new Response(new Uint8Array([1]), {headers: {"Content-Type": "image/png"}});
@@ -581,11 +584,9 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, true, "解析結果が空なら画面全体で受け付ける");
     sourceUrl.value = "https://example.com/entered";
     sourceUrl.dispatch("input");
-    document.dispatch("drop", {target: document.body, dataTransfer: pageUrlDrag});
-    assert.deepEqual(createdUrls, [], "URL入力済みなら画面下部へのドロップでは解析しない");
-    document.dispatch("drop", {target: header, dataTransfer: pageUrlDrag});
+    document.dispatch("drop", {target: document.querySelector("#empty"), dataTransfer: pageUrlDrag});
     await waitUntil(() => !document.querySelector("#scan").disabled);
-    assert.deepEqual(createdUrls, ["https://example.com/dropped"], "URL入力済みなら上部全体へのドロップで解析する");
+    assert.deepEqual(createdUrls, ["https://example.com/dropped"], "URL入力済みでも中央へのドロップで解析する");
   } finally {
     globalThis.fetch = previousFetch;
     globalThis.createImageBitmap = previousCreateImageBitmap;

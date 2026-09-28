@@ -35,6 +35,7 @@ includeSourcePage.addEventListener("change", () => {
 });
 const viewerToggleButton = required("#viewer-toggle");
 const viewerElement = required("#viewer");
+const mainElement = required("main");
 const resultsElement = required(".results");
 const viewerEmptyElement = required("#viewer-empty");
 const viewerPageElement = required("#viewer-page");
@@ -703,8 +704,13 @@ sourceUrl.addEventListener("input", updateSourceDrop);
 sourceUrl.addEventListener("blur", hideSourceInput);
 sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter")
     void startScan(); });
+function isMainPageUrlDropTarget(target) {
+    return target === mainElement || target === emptyElement || target === viewerElement || target === imagesElement ||
+        (typeof Node !== "undefined" && target instanceof Node && mainElement.contains(target));
+}
 function acceptsPageUrlDrop(target) {
     return pageWideUrlDropAvailable() || target === headerElement || target === sourceDrop || target === sourceUrl ||
+        isMainPageUrlDropTarget(target) ||
         (typeof Node !== "undefined" && target instanceof Node && headerElement.contains(target));
 }
 function pageWideUrlDropAvailable() {
@@ -716,6 +722,7 @@ function isPageUrlDrag(event) {
 function clearDropFeedback() {
     document.body.classList.remove("page-drop-ready");
     headerElement.classList.remove("drag-over");
+    mainElement.classList.remove("drag-over");
     sourceDrop.classList.remove("drag-over");
     sourceUrl.classList.remove("drag-over");
 }
@@ -742,6 +749,8 @@ document.addEventListener("dragover", event => {
     clearDropFeedback();
     if (pageWideUrlDropAvailable())
         document.body.classList.add("page-drop-ready");
+    else if (isMainPageUrlDropTarget(event.target))
+        mainElement.classList.add("drag-over");
     else
         headerElement.classList.add("drag-over");
     if (event.target === sourceDrop)
@@ -757,7 +766,7 @@ document.addEventListener("drop", event => {
     if (!url || !isWebUrl(url))
         return;
     event.preventDefault();
-    if (busy || !acceptsPageUrlDrop(event.target))
+    if (busy || draggedImage || !acceptsPageUrlDrop(event.target))
         return;
     sourceUrl.value = url;
     hideSourceInput();

@@ -78,6 +78,7 @@ section, aside { min-width: 0; }
 .app-header { flex: none; min-height: 52px; overflow: hidden; background: var(--surface); border-bottom: 1px solid var(--line); }
 .app-header.drag-over { position: relative; }
 .app-header.drag-over::after { content: attr(data-drop-label); position: absolute; inset: 8px; z-index: 2; display: grid; place-items: center; border: 2px dashed var(--ink); border-radius: 10px; background: var(--overlay); color: var(--ink); font-size: 16px; font-weight: 700; pointer-events: none; }
+main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; background: var(--hover); }
 .header-input-column { display: block; min-width: 0; }
 .controls { padding: 8px 16px; }
 .save-area { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 0 0 8px; border-bottom: 1px solid var(--line); }

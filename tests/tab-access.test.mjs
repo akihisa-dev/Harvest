@@ -107,10 +107,11 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
       target: element("#viewer"), dataTransfer: {types: ["text/uri-list"]},
       preventDefault() { prevented = true; },
     });
-    assert.equal(prevented, false, "URL入力後は画面下部で受け付けない");
+    assert.equal(prevented, true, "URL入力後も中央の表示領域で受け付ける");
     assert.equal(element("body").classList.contains("page-drop-ready"), false);
+    assert.equal(element("main").classList.contains("drag-over"), true);
     documentListeners.get("drop")({
-      target: element("#viewer"),
+      target: element("body"),
       dataTransfer: {getData: () => "https://example.com/ignored"},
       preventDefault() { prevented = true; },
     });
