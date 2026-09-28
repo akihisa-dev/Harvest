@@ -1,6 +1,6 @@
 {
   "name": "harvest-chrome-extension",
-  "version": "0.27.22",
+  "version": "0.27.23",
   "description": "Harvest Chrome extension",
   "license": "AGPL-3.0-only",
   "private": true,
