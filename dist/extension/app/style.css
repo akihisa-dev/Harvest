@@ -87,13 +87,6 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 .controls { padding: 8px var(--sidebar-padding) 8px 0; }
 .save-area { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 0 0 8px; border-bottom: 1px solid var(--line); }
 .save-area #export { width: 100%; }
-.export-control { position: relative; }
-.export-control #export { padding-inline: 28px; }
-#pdf-save-state { position: absolute; inset-inline-end: 12px; top: 50%; width: 10px; height: 10px; transform: translateY(-50%); color: var(--pressed-ink); pointer-events: none; }
-#pdf-save-state::before { content: ""; display: block; width: 8px; height: 8px; border: 1px solid currentColor; border-radius: 50%; }
-#pdf-save-state[data-state="saved"]::before { width: 5px; height: 9px; border-width: 0 1.5px 1.5px 0; border-radius: 0; transform: translate(2px, -1px) rotate(45deg); }
-#pdf-save-state[data-state="changed"]::before { background: currentColor; }
-.export-control:has(#export:disabled) #pdf-save-state { color: var(--disabled-ink); }
 .source-page-option { display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; }
 .source-row { display: grid; grid-template-columns: minmax(0, 1fr) calc(1px + var(--sidebar-padding)) auto; }
 .source-row #source-drop, .source-row #source-url { grid-column: 1; grid-row: 1; }
@@ -112,6 +105,8 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 #scan { min-width: 0; }
 #scan:hover:not(:disabled), #export:hover:not(:disabled) { background: var(--pressed-hover); border-color: var(--pressed-hover); }
 #scan:disabled, #export:disabled { background: var(--line); border-color: var(--line); color: var(--disabled-ink); }
+#export[data-saving="true"] { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--pressed-ink); background: var(--ink); border-color: var(--ink); cursor: wait; }
+#export[data-saving="true"]::after { content: ""; display: block; width: 16px; height: 16px; flex: none; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: waiting-ring 900ms linear infinite; }
 
 .results-controls {
   flex: none;
@@ -196,6 +191,7 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 }
 @keyframes waiting-ring { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
+  #export[data-saving="true"]::after,
   #scan-overlay::before { animation: none; }
 }
 

@@ -16,7 +16,6 @@ headerElement.dataset["dropLabel"] = t("dropUrl");
 const collectionButton = required<HTMLButtonElement>("#collection-toggle");
 const scanButton = required<HTMLButtonElement>("#scan");
 const exportButton = required<HTMLButtonElement>("#export");
-const pdfSaveStateElement = required<HTMLSpanElement>("#pdf-save-state");
 const includeSourcePage = required<HTMLInputElement>("#include-source-page");
 const sourcePagePreferenceKey = "harvest.includeSourcePage";
 try { includeSourcePage.checked = localStorage.getItem(sourcePagePreferenceKey) === "true"; }
@@ -60,11 +59,6 @@ const statusElement = required<HTMLParagraphElement>("#status");
 
 const imageCollection = new ImageCollection();
 let pageTitle = t("imageFallback");
-let savedPdfSignature: string | null = null;
-
-function pdfSignature(): string {
-  return JSON.stringify([pageTitle, includeSourcePage.checked, imageCollection.selectedItems.map(item => [item.url, item.sourcePage])]);
-}
 let visibleGroupKeys = new Set<string>();
 let busy = false;
 let disposed = false;
@@ -209,7 +203,6 @@ async function startScan(collectionLink?: string): Promise<void> {
     const urls = normalizeImageUrls(result.images, result.url);
     // Publish only a complete scan. A rejected scan keeps the previous working set.
     imageCollection.replace(urls, result.url);
-    savedPdfSignature = null;
     if (collectionLink) collectionController.markAnalyzedUrl(collectionLink, session);
     pageTitle = result.title || t("imageFallback");
     pendingExport = null;
@@ -544,11 +537,7 @@ function render(): void {
   const visibleUrls = new Set([...visibleGroupKeys].flatMap(key => groups[key]?.items ?? []));
   const visibleImages = imageCollection.items.filter(item => visibleUrls.has(item.url));
   const selectedCount = selected.length;
-  const saved = savedPdfSignature !== null && savedPdfSignature === pdfSignature();
-  pdfSaveStateElement.hidden = imageCollection.items.length === 0;
-  pdfSaveStateElement.dataset["state"] = saved ? "saved" : savedPdfSignature === null ? "unsaved" : "changed";
-  pdfSaveStateElement.setAttribute("aria-label", t(saved ? "pdfSaveStarted" : savedPdfSignature === null ? "pdfUnsaved" : "pdfSaveChanged"));
-  pdfSaveStateElement.title = saved ? t("pdfSaveStartedHelp") : "";
+  exportButton.dataset["saving"] = String(exportController !== null);
   exportButton.textContent = pendingExport?.failed.size
     ? t("exportRetry", {count: pendingExport.failed.size, plural: formatPlural(pendingExport.failed.size)})
     : selectedCount ? t("exportCount", {count: selectedCount, plural: formatPlural(selectedCount)}) : t("savePdf");
@@ -638,7 +627,6 @@ async function exportPdf(): Promise<void> {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-    savedPdfSignature = pdfSignature();
     clearSourceUrl();
     pendingExport = null;
     setStatus(t("pdfSaved", {count: pages.length, plural: formatPlural(pages.length)}), "success");
@@ -781,7 +769,6 @@ resetButton.addEventListener("click", () => {
   clearSourceUrl();
   collectionController.clearAnalyzedUrl();
   imageCollection.clear();
-  savedPdfSignature = null;
   pendingExport = null;
   visibleGroupKeys.clear();
   viewerController.setOpen(false);

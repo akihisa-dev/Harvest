@@ -216,6 +216,26 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           await page.evaluate(() => window.__releaseScanFixture());
           await page.waitForFunction(() => !document.querySelector("#scan").disabled);
           await page.waitForTimeout(280);
+          assert.equal(await page.locator("#pdf-save-state").count(), 0, `${caseName}: save button should not show a permanent status mark`);
+          const saveButtonState = await page.locator("#export").evaluate(button => {
+            const normalRing = getComputedStyle(button, "::after").content;
+            button.dataset.saving = "true";
+            button.disabled = true;
+            const style = getComputedStyle(button);
+            const ring = getComputedStyle(button, "::after");
+            const saving = {content: ring.content, width: ring.width, animation: ring.animationName, layout: style.display, alignment: style.justifyContent, background: style.backgroundColor};
+            button.dataset.saving = "false";
+            button.disabled = false;
+            return {normalRing, saving, restoredRing: getComputedStyle(button, "::after").content, ink: getComputedStyle(document.documentElement).color};
+          });
+          assert.equal(saveButtonState.normalRing, "none", `${caseName}: idle save button should have no ring`);
+          assert.notEqual(saveButtonState.saving.content, "none", `${caseName}: save button should show a ring while saving`);
+          assert.equal(saveButtonState.saving.width, "16px", `${caseName}: save ring should fit beside the label`);
+          assert.equal(saveButtonState.saving.animation, "none", `${caseName}: reduced motion should stop the save ring`);
+          assert.equal(saveButtonState.saving.layout, "flex", `${caseName}: saving label and ring should share the button`);
+          assert.equal(saveButtonState.saving.alignment, "center", `${caseName}: saving label and ring should be centered`);
+          assert.equal(saveButtonState.saving.background, saveButtonState.ink, `${caseName}: saving button should remain visually prominent`);
+          assert.equal(saveButtonState.restoredRing, "none", `${caseName}: save ring should disappear afterward`);
           assert.equal(await page.locator("#viewer").isVisible(), true, `${caseName}: successful scan opens viewer`);
           const stage = await page.locator("#viewer-stage").boundingBox();
           assert.ok(stage.width > 100 && stage.height > height * 0.45, `${caseName}: large image must use available space`);
