@@ -207,6 +207,82 @@ test("取得は少数並列、画素変換は逐次、結果は入力順で通�
   }
 });
 
+test("先頭画像が遅れても後続JPEGを並列数以上に蓄積せず、順序と無変換を保つ", async () => {
+  const previous = {fetch: globalThis.fetch, createImageBitmap: globalThis.createImageBitmap};
+  const jpeg = new Uint8Array([
+    0xff, 0xd8,
+    0xff, 0xe0, 0x00, 0x0e, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x02, 0x00, 0x00, 0x01, 0x00, 0x01,
+    0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x02, 0x00, 0x03, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
+    0xff, 0xda, 0x00, 0x08, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x00, 0xff, 0xd9,
+  ]);
+  let releaseHead;
+  const headResponse = new Promise(resolve => { releaseHead = resolve; });
+  let releaseLaterRequests;
+  const laterRequests = new Promise(resolve => { releaseLaterRequests = resolve; });
+  let laterStarted = 0;
+  let initialResponses = 0;
+  let resolveInitialResponses;
+  const firstWave = new Promise(resolve => { resolveInitialResponses = resolve; });
+  const started = [];
+  let activeFetches = 0;
+  let maxFetches = 0;
+  let decodes = 0;
+
+  globalThis.fetch = async url => {
+    started.push(url);
+    activeFetches += 1;
+    maxFetches = Math.max(maxFetches, activeFetches);
+    const index = Number(url.slice("image-".length));
+    try {
+      if (index === 0) await headResponse;
+      else if (index < 3) {
+        laterStarted += 1;
+        if (laterStarted === 2) releaseLaterRequests();
+        await laterRequests;
+      }
+    } finally {
+      activeFetches -= 1;
+    }
+    if (index === 1 || index === 2) {
+      initialResponses += 1;
+      if (initialResponses === 2) resolveInitialResponses();
+    }
+    return new Response(jpeg, {headers: {"Content-Type": "image/jpeg"}});
+  };
+  globalThis.createImageBitmap = async () => {
+    decodes += 1;
+    throw new Error("JPEG must not be decoded");
+  };
+
+  let work;
+  try {
+    const items = Array.from({length: 24}, (_, index) => ({url: `image-${index}`}));
+    const results = [];
+    work = preparePdfImages(items, (item, result) => results.push([item.url, result]), {
+      fetchConcurrency: 3,
+      timeoutMs: 5_000,
+    });
+    await Promise.race([
+      firstWave,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("初回の並列取得が完了しませんでした")), 1_000)),
+    ]);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(started, ["image-0", "image-1", "image-2"]);
+    assert.equal(maxFetches, 3, "指定した取得並列数を維持する");
+
+    releaseHead();
+    await work;
+    assert.deepEqual(results.map(([url]) => url), items.map(({url}) => url));
+    assert.equal(results.every(([, result]) => !(result instanceof PdfImageError)), true);
+    assert.equal(results.every(([, result]) => result.jpeg && Buffer.from(result.jpeg).equals(Buffer.from(jpeg))), true);
+    assert.equal(decodes, 0);
+  } finally {
+    releaseHead();
+    await work?.catch(() => {});
+    Object.assign(globalThis, previous);
+  }
+});
+
 test("結果通知の失敗でも待機中の取得を解放する", async () => {
   const previous = { fetch: globalThis.fetch };
   globalThis.fetch = async () => new Response("image", {headers: {"Content-Type": "image/png"}});
