@@ -27,6 +27,8 @@
   --motion-easing: cubic-bezier(.22, 1, .36, 1);
   --sidebar-width: clamp(220px, 25vw, 300px);
   --sidebar-padding: 16px;
+  --stage-sidebar-width: clamp(112px, 14vw, 160px);
+  --stage-gap: 10px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -82,7 +84,7 @@ section, aside { min-width: 0; }
 .app-header.drag-over::after { content: attr(data-drop-label); position: absolute; inset: 8px; z-index: 2; display: grid; place-items: center; border: 2px dashed var(--ink); border-radius: 10px; background: var(--overlay); color: var(--ink); font-size: 16px; font-weight: 700; pointer-events: none; }
 main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; background: var(--hover); }
 .header-input-column { display: block; min-width: 0; }
-.controls { padding: 8px var(--sidebar-padding); }
+.controls { padding: 8px var(--sidebar-padding) 8px 12px; }
 .save-area { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 0 0 8px; border-bottom: 1px solid var(--line); }
 .save-area #export { width: 100%; }
 .export-control { position: relative; }
@@ -93,8 +95,9 @@ main.drag-over { outline: 2px dashed var(--ink); outline-offset: -8px; backgroun
 #pdf-save-state[data-state="changed"]::before { background: currentColor; }
 .export-control:has(#export:disabled) #pdf-save-state { color: var(--disabled-ink); }
 .source-page-option { display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; }
-.source-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
-.source-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: calc(var(--sidebar-width) - 1px - var(--sidebar-padding) - var(--sidebar-padding)); overflow-y: auto; scrollbar-gutter: stable; }
+.source-row { display: grid; grid-template-columns: minmax(0, 1fr) var(--stage-gap) var(--stage-sidebar-width) calc(13px + var(--sidebar-padding)) auto; }
+.source-row #source-drop, .source-row #source-url { grid-column: 1; grid-row: 1; }
+.source-actions { grid-column: 5; grid-row: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: calc(var(--sidebar-width) - 1px - var(--sidebar-padding) - var(--sidebar-padding)); overflow-y: auto; scrollbar-gutter: stable; }
 .source-actions button { min-width: 0; padding-inline: 2px; }
 .source-row #reset { width: auto; min-height: 36px; padding: 7px 2px; }
 .source-row #collection-toggle { min-width: 0; }
@@ -232,7 +235,7 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
 .completion p { font-size: 12px; font-weight: 600; }
 .completion button { min-height: 30px; padding: 5px 8px; font-size: 12px; }
 .viewer { height: 100%; min-height: 0; }
-.viewer-page { height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(112px, 14vw, 160px); gap: 10px; }
+.viewer-page { height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) var(--stage-sidebar-width); gap: var(--stage-gap); }
 .viewer-sidebar { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .viewer-navigation { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
 .viewer-navigation button { min-width: 0; padding-inline: 2px; }
@@ -254,18 +257,17 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
 .viewer-thumb-number { display: block; font-size: 11px; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 700px) {
-  :root { --sidebar-width: 180px; --sidebar-padding: 8px; }
+  :root { --sidebar-width: 180px; --sidebar-padding: 8px; --stage-sidebar-width: max(104px, 24vw); --stage-gap: 8px; }
   .workspace-sidebar { padding-block: 8px; }
   .source-actions { gap: 4px; }
   .source-actions button { font-size: 11px; }
-  .viewer-page { grid-template-columns: minmax(0, 1fr) minmax(104px, 24vw); gap: 8px; }
 }
 @media (max-width: 480px) {
-  :root { --sidebar-width: 148px; }
+  :root { --sidebar-width: 148px; --stage-sidebar-width: 0px; --stage-gap: 0px; }
   .results-area { grid-template-rows: minmax(0, 1fr); }
   .workspace-sidebar { max-height: none; }
   .toolbar, .group-chip { gap: 4px; }
-  .viewer-page { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .viewer-page { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 8px; }
   .viewer-sidebar { max-height: 30dvh; }
   .viewer-thumbnails { min-height: 72px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; }
   #viewer-thumbnails { flex-direction: row; }
