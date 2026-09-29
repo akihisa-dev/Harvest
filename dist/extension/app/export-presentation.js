@@ -34,6 +34,7 @@ export function deriveExportViewState(options) {
     if (pending?.failed.size)
         return { phase: "retry-required", pending, progress: "" };
     const saved = options.completed?.format === options.format
+        && (options.format !== "pdf" || options.completed.includeSourcePage === options.includeSourcePage)
         && options.completed.selected.length === options.selected.length
         && options.completed.selected.every((item, index) => item === options.selected[index]);
     if (saved)

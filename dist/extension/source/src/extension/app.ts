@@ -104,7 +104,11 @@ function clearSourceUrl(): void {
 
 function setStatus(message: string, state: StatusState = "info", progress = ""): void {
   if (state === "success") {
-    completedExport = {format: selectedExportFormat, selected: [...imageCollection.selectedItems]};
+    completedExport = {
+      format: selectedExportFormat,
+      selected: [...imageCollection.selectedItems],
+      includeSourcePage: includeSourcePage.checked,
+    };
     setMotionText(statusElement, "");
     statusElement.setAttribute("aria-label", "");
     statusElement.dataset["state"] = state;
@@ -180,6 +184,7 @@ function render(): void {
   if (selectionChanged && !busy) setStatus(t("selectionChanged"), "info");
   const exportState = deriveExportViewState({
     format: selectedExportFormat,
+    includeSourcePage: includeSourcePage.checked,
     selected,
     completed: completedExport,
     pdfPending: pdfExportController?.pending ?? null,

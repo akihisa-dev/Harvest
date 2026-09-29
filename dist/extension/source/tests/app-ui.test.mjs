@@ -693,8 +693,10 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
 
     includeSourcePage.checked = true;
     includeSourcePage.dispatch("change");
+    assert.equal(exportButton.dataset.saved, "false", "保存後に出典ページを追加すると保存完了状態を外す");
     includeSourcePage.checked = false;
     includeSourcePage.dispatch("change");
+    assert.equal(exportButton.dataset.saved, "true", "元の出典ページ設定へ戻すと保存済み状態へ戻る");
     const savedSelection = document.querySelector("#images").children.find(row => row.getAttribute("aria-pressed") === "true");
     savedSelection.dispatch("pointerdown");
     savedSelection.dispatch("click");

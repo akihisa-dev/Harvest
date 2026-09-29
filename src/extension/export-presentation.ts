@@ -8,6 +8,7 @@ import type { ExportFormat } from "./export-preferences.js";
 export interface CompletedExport {
   readonly format: ExportFormat;
   readonly selected: readonly ImageItem[];
+  readonly includeSourcePage: boolean;
 }
 
 export type ExportViewState =
@@ -48,6 +49,7 @@ export function createSourcePreview(
 
 export function deriveExportViewState(options: {
   readonly format: ExportFormat;
+  readonly includeSourcePage: boolean;
   readonly selected: readonly ImageItem[];
   readonly completed: CompletedExport | null;
   readonly pdfPending: PendingPdfExport | null;
@@ -65,6 +67,7 @@ export function deriveExportViewState(options: {
   if (running) return {phase: "running", pending, progress};
   if (pending?.failed.size) return {phase: "retry-required", pending, progress: ""};
   const saved = options.completed?.format === options.format
+    && (options.format !== "pdf" || options.completed.includeSourcePage === options.includeSourcePage)
     && options.completed.selected.length === options.selected.length
     && options.completed.selected.every((item, index) => item === options.selected[index]);
   if (saved) return {phase: "saved", pending: null, progress: ""};

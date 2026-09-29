@@ -47,7 +47,7 @@ function pending(format, failed = new Map()) {
 const image = {url: "https://example.test/image.png", sourcePage: "https://example.test/gallery"};
 function viewState(overrides = {}) {
   return deriveExportViewState({
-    format: "pdf", selected: [], completed: null,
+    format: "pdf", includeSourcePage: false, selected: [], completed: null,
     pdfPending: null, imagePending: null,
     pdfRunning: false, imageRunning: false,
     pdfProgress: "", imageProgress: "",
@@ -63,7 +63,14 @@ test("export presentation follows empty, ready, running, retry, saved, and forma
     phase: "running", pending: pdfWork, progress: "1 / 2",
   });
   assert.deepEqual(viewState({selected: [image], pdfPending: pdfWork}), {phase: "retry-required", pending: pdfWork, progress: ""});
-  assert.equal(viewState({selected: [image], completed: {format: "pdf", selected: [image]}}).phase, "saved");
+  assert.equal(viewState({selected: [image], completed: {format: "pdf", selected: [image], includeSourcePage: false}}).phase, "saved");
+  const pdfCompleted = {format: "pdf", selected: [image], includeSourcePage: false};
+  assert.equal(viewState({selected: [image], completed: pdfCompleted, includeSourcePage: true}).phase, "ready",
+    "changing the source page setting after a PDF save requires another save");
+  assert.equal(viewState({selected: [image], completed: {...pdfCompleted, includeSourcePage: true}, includeSourcePage: true}).phase, "saved",
+    "a PDF is saved again when its current source page setting matches");
+  assert.equal(viewState({format: "jpg", selected: [image], completed: {...pdfCompleted, format: "jpg"}, includeSourcePage: true}).phase, "saved",
+    "source page setting does not affect image archive save state");
   assert.equal(viewState({selected: [image], completed: {format: "jpg", selected: [image]}}).phase, "ready");
   assert.equal(viewState({selected: [image], completed: {format: "pdf", selected: [{...image}]}}).phase, "ready",
     "a result is saved only while the same image objects remain selected in the same order");
