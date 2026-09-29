@@ -2,6 +2,7 @@ import { createPdfImagePageObjects } from "./pdf-image-page.js";
 import { createPdfSourcePageObjects, preparePdfSourcePage } from "./pdf-source-page.js";
 import { serializePdfDocument, pdfText } from "./pdf-objects.js";
 export { getOriginalJpegPage } from "./jpeg.js";
+export { createSourcePageLayout } from "./source-page-layout.js";
 /** Creates a PDF with one image per page, sized to the image dimensions. */
 export function createPdfFromJpegs(images, source) {
     const preparedSource = preparePdfSourcePage(source);

@@ -1,14 +1,12 @@
 import type { PdfRgbImagePage, PdfSourcePageOptions } from "./pdf-types.js";
 import { validatePdfImage } from "./pdf-image-page.js";
 import { pdfAsciiHex, pdfHex, pdfStreamObject, pdfText } from "./pdf-objects.js";
+import { createSourcePageLayout, sourcePageCharacterWidth, type SourcePageLayout } from "./source-page-layout.js";
 
 const SOURCE_COPY_CODES = Array.from({length: 0x7e - 0x21 + 1}, (_, index) => index + 0x21);
-const SOURCE_PAGE_WIDTH = 595;
-const SOURCE_PAGE_HEIGHT = 842;
-const SOURCE_PAGE_MARGIN = 48;
 
 interface PreparedSourcePage {
-  readonly source: PdfSourcePageOptions;
+  readonly layout: SourcePageLayout;
   readonly sourceGlyphs: Map<string, PdfRgbImagePage>;
   readonly glyphCharacters: string[];
   readonly copyFontGroups: string[][];
@@ -31,6 +29,7 @@ interface SourceGlyphObject {
 export function preparePdfSourcePage(source: PdfSourcePageOptions | undefined): PreparedSourcePage | undefined {
   const sourcePage = validateSourcePage(source);
   if (sourcePage === undefined) return undefined;
+  const layout = createSourcePageLayout(sourcePage);
   const sourceGlyphs = validateSourceGlyphs(sourcePage);
   const sourceCharacters = [...new Set(
     [...sourcePage.heading, ...sourcePage.filename, ...sourcePage.url]
@@ -41,11 +40,11 @@ export function preparePdfSourcePage(source: PdfSourcePageOptions | undefined): 
   for (let index = 0; index < glyphCharacters.length; index += SOURCE_COPY_CODES.length) {
     copyFontGroups.push(glyphCharacters.slice(index, index + SOURCE_COPY_CODES.length));
   }
-  return {source: sourcePage, sourceGlyphs, glyphCharacters, copyFontGroups};
+  return {layout, sourceGlyphs, glyphCharacters, copyFontGroups};
 }
 
 export function createPdfSourcePageObjects(prepared: PreparedSourcePage, pageObject: number): Uint8Array[] {
-  const {source, sourceGlyphs, glyphCharacters, copyFontGroups} = prepared;
+  const {layout, sourceGlyphs, glyphCharacters, copyFontGroups} = prepared;
   const contentsObject = pageObject + 1;
   const fontObject = pageObject + 2;
   const descendantObject = pageObject + 3;
@@ -74,7 +73,7 @@ export function createPdfSourcePageObjects(prepared: PreparedSourcePage, pageObj
       copyGlyphs.set(character, {fontName: font.name, code: SOURCE_COPY_CODES[index]!});
     });
   }
-  const {contents, cmapText} = sourcePageContent(source, sourceGlyphObjects, copyGlyphs);
+  const {contents, cmapText} = sourcePageContent(layout, sourceGlyphObjects, copyGlyphs);
   const toUnicode = sourceToUnicodeCMap(cmapText);
   const fontResources = [
     `/F1 ${fontObject} 0 R`,
@@ -87,7 +86,7 @@ export function createPdfSourcePageObjects(prepared: PreparedSourcePage, pageObj
 
   objects.push(pdfText(
     `${pageObject} 0 obj\n` +
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${SOURCE_PAGE_WIDTH} ${SOURCE_PAGE_HEIGHT}] ` +
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${layout.width} ${layout.height}] ` +
     `/Resources << /Font << ${fontResources} >> ` +
     (glyphResources === "" ? "" : `/XObject << ${glyphResources} >> `) + ">> " +
     `/Contents ${contentsObject} 0 R >>\nendobj\n`,
@@ -212,31 +211,6 @@ function validateSourceGlyphs(source: PdfSourcePageOptions): Map<string, PdfRgbI
   return output;
 }
 
-function sourceCharacterWidth(character: string): number {
-  if (character.codePointAt(0)! <= 0x00ff) return 600;
-  return 1000;
-}
-
-function wrapSourceLine(value: string, maxWidth: number): string[] {
-  const output: string[] = [];
-  for (const paragraph of value.split(/\r\n|\r|\n/u)) {
-    let line = "";
-    let width = 0;
-    for (const character of paragraph) {
-      const characterWidth = sourceCharacterWidth(character);
-      if (line !== "" && width + characterWidth > maxWidth) {
-        output.push(line);
-        line = "";
-        width = 0;
-      }
-      line += character;
-      width += characterWidth;
-    }
-    output.push(line);
-  }
-  return output;
-}
-
 function sourceToUnicodeCMap(text: string): Uint8Array {
   const characters = [...new Set(text)].sort((left, right) => left.codePointAt(0)! - right.codePointAt(0)!);
   const mappings = characters.map(character => `${pdfHex(character)} ${pdfHex(character)}`);
@@ -297,100 +271,73 @@ function sourceCopyToUnicodeCMap(characters: readonly string[], fontName: string
 }
 
 function sourcePageContent(
-  source: PdfSourcePageOptions,
+  layout: SourcePageLayout,
   glyphObjects: ReadonlyMap<string, SourceGlyphObject>,
   copyGlyphs: ReadonlyMap<string, {readonly fontName: string; readonly code: number}>,
 ): {contents: Uint8Array; cmapText: string} {
-  const availableWidth = (SOURCE_PAGE_WIDTH - SOURCE_PAGE_MARGIN * 2) * 1000;
-  const headingLines = wrapSourceLine(source.heading, availableWidth / 18);
-  const filenameLines = wrapSourceLine(source.filename, availableWidth / 12);
-  const fixedHeight = headingLines.length * 25 + filenameLines.length * 18 + 20;
-  const availableHeight = Math.max(1, SOURCE_PAGE_HEIGHT - SOURCE_PAGE_MARGIN * 2 - fixedHeight);
-  const urlUnits = [...source.url].reduce((total, character) => total + sourceCharacterWidth(character), 0);
-  let urlSize = 10;
-  let urlLines = wrapSourceLine(source.url, availableWidth / urlSize);
-  while (urlSize > 0.25 && fixedHeight + urlLines.length * urlSize * 1.4 > availableHeight) {
-    urlSize -= 0.25;
-    urlLines = wrapSourceLine(source.url, availableWidth / urlSize);
-  }
-  if (fixedHeight + urlLines.length * urlSize * 1.4 > availableHeight) {
-    urlSize = Math.max(0.05, Math.sqrt((availableHeight * availableWidth) / Math.max(urlUnits, 1) / 1.4));
-    urlLines = wrapSourceLine(source.url, availableWidth / urlSize);
-  }
-  const lines = [...headingLines, ...filenameLines, ...urlLines];
   const commands: string[] = ["BT"];
-  let y = SOURCE_PAGE_HEIGHT - SOURCE_PAGE_MARGIN;
-  const sections = [
-    {lines: headingLines, size: 18, leading: 25},
-    {lines: filenameLines, size: 12, leading: 18},
-    {lines: urlLines, size: urlSize, leading: urlSize * 1.4},
-  ];
-  for (const section of sections) {
-    for (const line of section.lines) {
-      let x = SOURCE_PAGE_MARGIN;
-      let run = "";
-      let runFont: "F1" | "F2" | null = null;
-      const flush = (): void => {
-        if (runFont === null || run === "") return;
-        const encoded = runFont === "F1" ? pdfHex(run) : pdfAsciiHex(run);
-        commands.push(`/${runFont} ${section.size} Tf 1 0 0 1 ${x.toFixed(3)} ${y.toFixed(3)} Tm ${encoded} Tj`);
-        x += [...run].reduce((width, character) => width + sourceCharacterWidth(character), 0) * section.size / 1000;
-        run = "";
-      };
-      const lineCharacters = [...line];
-      for (let index = 0; index < lineCharacters.length;) {
-        const character = lineCharacters[index]!;
-        const glyph = glyphObjects.get(character);
-        if (glyph !== undefined) {
-          flush();
-          const copy = copyGlyphs.get(character);
-          const glyphRun = [glyph];
-          let encoded = copy === undefined ? "" : copy.code.toString(16).padStart(2, "0");
-          if (copy !== undefined) {
-            for (let next = index + 1; next < lineCharacters.length; next += 1) {
-              const nextCharacter = lineCharacters[next]!;
-              const nextGlyph = glyphObjects.get(nextCharacter);
-              const nextCopy = copyGlyphs.get(nextCharacter);
-              if (nextGlyph === undefined || nextCopy?.fontName !== copy.fontName) break;
-              glyphRun.push(nextGlyph);
-              encoded += nextCopy.code.toString(16).padStart(2, "0");
-            }
+  for (const line of layout.lines) {
+    let x = line.x;
+    let run = "";
+    let runFont: "F1" | "F2" | null = null;
+    const flush = (): void => {
+      if (runFont === null || run === "") return;
+      const encoded = runFont === "F1" ? pdfHex(run) : pdfAsciiHex(run);
+      commands.push(`/${runFont} ${line.size} Tf 1 0 0 1 ${x.toFixed(3)} ${line.y.toFixed(3)} Tm ${encoded} Tj`);
+      x += [...run].reduce((width, character) => width + sourcePageCharacterWidth(character), 0) * line.size / 1000;
+      run = "";
+    };
+    const lineCharacters = [...line.text];
+    for (let index = 0; index < lineCharacters.length;) {
+      const character = lineCharacters[index]!;
+      const glyph = glyphObjects.get(character);
+      if (glyph !== undefined) {
+        flush();
+        const copy = copyGlyphs.get(character);
+        const glyphRun = [glyph];
+        let encoded = copy === undefined ? "" : copy.code.toString(16).padStart(2, "0");
+        if (copy !== undefined) {
+          for (let next = index + 1; next < lineCharacters.length; next += 1) {
+            const nextCharacter = lineCharacters[next]!;
+            const nextGlyph = glyphObjects.get(nextCharacter);
+            const nextCopy = copyGlyphs.get(nextCharacter);
+            if (nextGlyph === undefined || nextCopy?.fontName !== copy.fontName) break;
+            glyphRun.push(nextGlyph);
+            encoded += nextCopy.code.toString(16).padStart(2, "0");
           }
-          if (copy !== undefined) {
-            commands.push(
-              `/${copy.fontName} ${section.size} Tf 166.667 Tz 3 Tr ` +
-              `1 0 0 1 ${x.toFixed(3)} ${y.toFixed(3)} Tm ` +
-              `<${encoded}> Tj 100 Tz 0 Tr`,
-            );
-          }
-          commands.push("ET");
-          for (const runGlyph of glyphRun) {
-            const width = sourceCharacterWidth(runGlyph.character) * section.size / 1000;
-            const height = section.size;
-            commands.push(
-              `q\n${width.toFixed(3)} 0 0 ${height.toFixed(3)} ` +
-              `${x.toFixed(3)} ${(y - height * 0.2).toFixed(3)} cm\n/${runGlyph.name} Do\nQ`,
-            );
-            x += width;
-          }
-          commands.push("BT");
-          runFont = null;
-          index += glyphRun.length;
-          continue;
         }
-        const font: "F1" | "F2" = character.codePointAt(0)! <= 0xff ? "F2" : "F1";
-        if (runFont !== font) {
-          flush();
-          runFont = font;
+        if (copy !== undefined) {
+          commands.push(
+            `/${copy.fontName} ${line.size} Tf 166.667 Tz 3 Tr ` +
+            `1 0 0 1 ${x.toFixed(3)} ${line.y.toFixed(3)} Tm ` +
+            `<${encoded}> Tj 100 Tz 0 Tr`,
+          );
         }
-        run += character;
-        index += 1;
+        commands.push("ET");
+        for (const runGlyph of glyphRun) {
+          const width = sourcePageCharacterWidth(runGlyph.character) * line.size / 1000;
+          const height = line.size;
+          commands.push(
+            `q\n${width.toFixed(3)} 0 0 ${height.toFixed(3)} ` +
+            `${x.toFixed(3)} ${(line.y - height * 0.2).toFixed(3)} cm\n/${runGlyph.name} Do\nQ`,
+          );
+          x += width;
+        }
+        commands.push("BT");
+        runFont = null;
+        index += glyphRun.length;
+        continue;
       }
-      flush();
-      y -= section.leading;
+      const font: "F1" | "F2" = character.codePointAt(0)! <= 0xff ? "F2" : "F1";
+      if (runFont !== font) {
+        flush();
+        runFont = font;
+      }
+      run += character;
+      index += 1;
     }
-    y -= 10;
+    flush();
   }
   commands.push("ET\n");
-  return {contents: pdfText(commands.join("\n")), cmapText: lines.join("\n")};
+  return {contents: pdfText(commands.join("\n")), cmapText: layout.lines.map(line => line.text).join("\n")};
 }

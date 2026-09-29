@@ -5,6 +5,7 @@ import { serializePdfDocument, pdfText } from "./pdf-objects.js";
 
 export type { PdfJpegImagePage, PdfRgbImagePage, PdfImagePage, PdfJpegImage, PdfSourcePageOptions } from "./pdf-types.js";
 export { getOriginalJpegPage } from "./jpeg.js";
+export { createSourcePageLayout, type SourcePageLayout, type SourcePageLayoutInput, type SourcePageLayoutLine } from "./source-page-layout.js";
 
 /** Creates a PDF with one image per page, sized to the image dimensions. */
 export function createPdfFromJpegs(images: readonly PdfImagePage[], source?: PdfSourcePageOptions): Uint8Array {

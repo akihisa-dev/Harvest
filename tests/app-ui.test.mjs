@@ -323,6 +323,28 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.match(sourceSvg, /Source/);
     assert.match(sourceSvg, /ページ\.pdf/);
     assert.match(sourceSvg, /https:\/\/example.com\/view/);
+    const { createSourcePageLayout } = await import("../dist/extension/core/pdf.js");
+    const sourceLayout = createSourcePageLayout({
+      heading: "Source",
+      filename: "ページ.pdf",
+      url: "https://example.com/view",
+    });
+    const previewLines = [...sourceSvg.matchAll(
+      /<text x="([^"]+)" y="([^"]+)" font-size="([^"]+)"(?: textLength="([^"]+)" lengthAdjust="spacingAndGlyphs")? xml:space="preserve">([^<]*)<\/text>/g,
+    )].map(([, x, y, size, width, text]) => ({
+      x: Number(x),
+      y: Number(y),
+      size: Number(size),
+      width: width === undefined ? null : Number(width),
+      text,
+    }));
+    assert.deepEqual(previewLines, sourceLayout.lines.map(line => ({
+      x: Number(line.x.toFixed(3)),
+      y: Number((sourceLayout.height - line.y).toFixed(3)),
+      size: line.size,
+      width: line.text ? Number(line.width.toFixed(3)) : null,
+      text: line.text,
+    })), "SVG preview positions, sizes, widths, and line breaks match the core layout result");
     includeSourcePage.checked = false;
     includeSourcePage.dispatch("change");
     assert.equal(viewerThumbnails.children.length, 2, "オフならSourceページを除去する");

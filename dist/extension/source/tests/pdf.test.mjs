@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createPdf, createPdfFromJpegs, getOriginalJpegPage } from "../dist/extension/core/pdf.js";
+import { createPdf, createPdfFromJpegs, createSourcePageLayout, getOriginalJpegPage } from "../dist/extension/core/pdf.js";
 
 const decode = (bytes) => new TextDecoder().decode(bytes);
 const ascii = (value) => new TextEncoder().encode(value);
@@ -143,6 +143,36 @@ test("appends an optional selectable Unicode source page and wraps long URLs", (
     .map(match => Number(match[1]));
   assert.ok(yPositions.length > 3);
   assert.ok(yPositions.every(y => y >= 48 && y <= 794), "wrapped source text remains inside the page");
+});
+
+test("uses the shared source layout for wrapped Unicode PDF text and explicit newlines", () => {
+  const sourcePage = {
+    heading: "Source\narchive",
+    filename: `${"日本語📚".repeat(70)}.pdf`,
+    url: `https://example.test/${"長いパス/\n".repeat(350)}final`,
+  };
+  const layout = createSourcePageLayout(sourcePage);
+  const source = decode(createPdfFromJpegs([], sourcePage));
+  const content = readSourceContentStream(source);
+  const groupedRuns = new Map();
+  for (const [, font, size, x, y, hex] of content.matchAll(
+    /\/(F[12]) ([\d.]+) Tf 1 0 0 1 ([\d.]+) ([\d.]+) Tm <([0-9a-f]+)> Tj/g,
+  )) {
+    const line = groupedRuns.get(y) ?? [];
+    line.push({x: Number(x), text: font === "F1" ? decodeUtf16Hex(hex) : decodeAsciiHex(hex)});
+    groupedRuns.set(y, line);
+  }
+  const drawnLines = [...groupedRuns.entries()]
+    .sort(([left], [right]) => Number(right) - Number(left))
+    .map(([y, runs]) => ({
+      y: Number(y),
+      text: runs.sort((left, right) => left.x - right.x).map(run => run.text).join(""),
+    }));
+  const expectedLines = layout.lines.filter(line => line.text !== "").map(line => ({y: Number(line.y.toFixed(3)), text: line.text}));
+
+  assert.ok(layout.lines.some(line => line.size < 10), "a very long URL lowers its shared font size");
+  assert.deepEqual(drawnLines, expectedLines, "PDF text line breaks and baselines come from the shared layout");
+  assert.match(source, /<d83ddcda> <d83ddcda>/, "supplementary Unicode remains selectable through the ToUnicode map");
 });
 
 test("draws supplied Unicode glyphs as images and maps invisible copy text", () => {

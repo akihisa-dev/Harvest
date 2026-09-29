@@ -1,5 +1,6 @@
 import { defaultDisplayedImageGroup, normalizeImageUrls, type ImageItem } from "../core/images.js";
 import { ImageCollection } from "../core/image-collection.js";
+import { createSourcePageLayout } from "../core/pdf.js";
 import { createCollectionController } from "./collection-controller.js";
 import { scanTab, scanUrl } from "./page-access.js";
 import { prefersReducedMotion, setMotionText } from "./motion.js";
@@ -210,25 +211,14 @@ function pdfFilename(): string {
 function sourcePreview(): ImageItem | null {
   const first = imageCollection.selectedItems[0];
   if (!includeSourcePage.checked || !first) return null;
+  const layout = createSourcePageLayout({heading: t("sourceHeading"), filename: pdfFilename(), url: first.sourcePage});
   const escape = (value: string): string => value.replace(/[&<>"']/g, character =>
     ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;"})[character]!);
-  const wrap = (value: string): string[] => {
-    const lines: string[] = [];
-    let line = "";
-    let width = 0;
-    for (const character of value) {
-      const advance = character.codePointAt(0)! < 256 ? 1 : 2;
-      if (width + advance > 65) { lines.push(line); line = ""; width = 0; }
-      line += character;
-      width += advance;
-    }
-    lines.push(line);
-    return lines;
-  };
-  const lines = [...wrap(pdfFilename()), "", ...wrap(first.sourcePage)];
-  const size = Math.min(12, 670 / Math.max(lines.length, 1) / 1.5);
-  const text = lines.map((line, index) => `<text x="48" y="${100 + index * size * 1.5}" font-size="${size}">${escape(line)}</text>`).join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="595" height="842"><rect width="595" height="842" fill="white"/><g fill="black" font-family="monospace"><text x="48" y="65" font-size="18">Source</text>${text}</g></svg>`;
+  const text = layout.lines.map(line => {
+    const textLength = line.text ? ` textLength="${line.width.toFixed(3)}" lengthAdjust="spacingAndGlyphs"` : "";
+    return `<text x="${line.x.toFixed(3)}" y="${(layout.height - line.y).toFixed(3)}" font-size="${line.size}"${textLength} xml:space="preserve">${escape(line.text)}</text>`;
+  }).join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${layout.width}" height="${layout.height}"><rect width="${layout.width}" height="${layout.height}" fill="white"/><g fill="black" font-family="monospace">${text}</g></svg>`;
   return {url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, sourcePage: first.sourcePage, selected: true};
 }
 
