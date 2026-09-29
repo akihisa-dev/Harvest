@@ -464,6 +464,34 @@ test("短い監視時間内に追加されたscriptとstyleの本文URLを収集
   assert.ok(result.images.includes("https://cdn.example.test/pages/late-style.webp"));
 });
 
+test("監視中に空の独自属性へ設定された画像URLを収集する", async () => {
+  const base = "https://cdn.example.test/pages/";
+  const lazy = new FixtureElement("div", {"data-zoom-image": ""});
+  const root = new FixtureElement("html", {}, [lazy]);
+  let observerCallback;
+  let mutated = false;
+  class ArbitraryAttributeObserver extends EmptyMutationObserver {
+    constructor(callback) { super(); observerCallback = callback; }
+  }
+
+  const result = await runWithFixture(new FixtureDocument(root), ArbitraryAttributeObserver, () => {
+    globalThis.setTimeout = (callback, delay) => {
+      if (delay === 800) return 1;
+      if (delay === 250 && !mutated) {
+        mutated = true;
+        lazy.attributesMap.set("data-zoom-image", `${base}001.jpg`);
+        observerCallback([{type: "attributes", target: lazy, attributeName: "data-zoom-image"}]);
+        return 2;
+      }
+      callback();
+      return 3;
+    };
+    return scanDocument();
+  });
+
+  assert.deepEqual(result.images, [`${base}001.jpg`]);
+});
+
 test("属性の差し替え後は古い候補だけを除き、別の検出元の候補を残す", async () => {
   const base = "https://cdn.example.test/pages/";
   const image = new FixtureElement("img", {src: `${base}placeholder.jpg`});

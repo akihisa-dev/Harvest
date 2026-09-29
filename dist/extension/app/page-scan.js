@@ -436,7 +436,6 @@ export async function scanDocument() {
             childList: true,
             subtree: true,
             attributes: true,
-            attributeFilter: ["class", "style", "src", "srcset", "href", "data-src", "data-srcset", "data-original", "data-full", "data-high-res", "data-lazyload", "data-lazy-src", "data-lib-src", "data-image", "data-url"],
         });
         maxTimer = setTimeout(finish, maxWaitMs);
     }
