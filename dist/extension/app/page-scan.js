@@ -26,8 +26,10 @@ export async function scanDocument() {
         "data-url",
         "src",
     ];
+    const relativeImageAttributes = imageAttributes.filter(attribute => attribute !== "data-url" && attribute !== "src");
     const imageSrcsetAttributes = ["data-srcset", "srcset"];
     const imageUrlPattern = /https?:\/\/[^\s"'\\<>]+?\.(?:jpe?g|png|webp|avif|gif)(?:[?#][^\s"'\\<>]*)?/gi;
+    const relativeImagePathPattern = /\.(?:jpe?g|png|webp|avif|gif)$/i;
     const add = (value, positionElement, sourceElement) => {
         checkDeadline();
         const candidate = value?.trim();
@@ -66,6 +68,13 @@ export async function scanDocument() {
                 add(candidate.replaceAll("&amp;", "&"), positionElement, sourceElement);
         }
         checkDeadline();
+    };
+    const isRelativeImageCandidate = (value) => {
+        const candidate = value.trim();
+        if (!candidate || /^[a-z][a-z\d+.-]*:/i.test(candidate) || /[\s"'<>\\]/.test(candidate))
+            return false;
+        const path = candidate.split(/[?#]/, 1)[0] ?? "";
+        return Boolean(path) && relativeImagePathPattern.test(path);
     };
     const parseSrcset = (value) => {
         const entries = [];
@@ -300,6 +309,10 @@ export async function scanDocument() {
             const textPositionElement = tagName === "meta" || tagName === "script" || tagName === "style"
                 ? undefined
                 : positionElement;
+            if (relativeImageAttributes.includes(name) && isRelativeImageCandidate(attribute.value)) {
+                add(attribute.value, textPositionElement, element);
+                continue;
+            }
             scanText(attribute.value, textPositionElement, element);
         }
         scanBackground(element);

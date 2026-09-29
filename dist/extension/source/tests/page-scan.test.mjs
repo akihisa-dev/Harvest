@@ -310,6 +310,23 @@ test("script・style・本文・汎用属性値にあるGIF URLを収集する",
   }
 });
 
+test("非img要素の画像用途属性にある相対URLをページ基準で解決する", async () => {
+  const lazy = new FixtureElement("div", {
+    "data-src": "/pages/001.jpg?size=large",
+    "data-url": "/api/preview.jpg",
+    "aria-label": "/pages/decoration.jpg",
+    "data-lazy-src": "/pages/unknown",
+  });
+  const image = new FixtureElement("img", {"data-src": "/pages/002.jpg"});
+  const root = new FixtureElement("html", {}, [lazy, image]);
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+
+  assert.deepEqual(result.images, [
+    "https://example.test/pages/001.jpg?size=large",
+    "https://example.test/pages/002.jpg",
+  ]);
+});
+
 test("srcsetの空白なし区切りとURL内のカンマを区別する", async () => {
   const root = new FixtureElement("html", {}, [
     new FixtureElement("source", {srcset: "small.jpg,large.jpg"}),

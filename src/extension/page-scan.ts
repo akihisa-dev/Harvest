@@ -37,8 +37,10 @@ export async function scanDocument(): Promise<PageScan> {
     "data-url",
     "src",
   ];
+  const relativeImageAttributes = imageAttributes.filter(attribute => attribute !== "data-url" && attribute !== "src");
   const imageSrcsetAttributes = ["data-srcset", "srcset"];
   const imageUrlPattern = /https?:\/\/[^\s"'\\<>]+?\.(?:jpe?g|png|webp|avif|gif)(?:[?#][^\s"'\\<>]*)?/gi;
+  const relativeImagePathPattern = /\.(?:jpe?g|png|webp|avif|gif)$/i;
 
   const add = (value: string | null | undefined, positionElement?: Element, sourceElement?: Element): void => {
     checkDeadline();
@@ -75,6 +77,13 @@ export async function scanDocument(): Promise<PageScan> {
       if (candidate) add(candidate.replaceAll("&amp;", "&"), positionElement, sourceElement);
     }
     checkDeadline();
+  };
+
+  const isRelativeImageCandidate = (value: string): boolean => {
+    const candidate = value.trim();
+    if (!candidate || /^[a-z][a-z\d+.-]*:/i.test(candidate) || /[\s"'<>\\]/.test(candidate)) return false;
+    const path = candidate.split(/[?#]/, 1)[0] ?? "";
+    return Boolean(path) && relativeImagePathPattern.test(path);
   };
 
   type SrcsetEntry = {url: string; value: number; kind: "w" | "x" | null};
@@ -294,6 +303,10 @@ export async function scanDocument(): Promise<PageScan> {
       const textPositionElement = tagName === "meta" || tagName === "script" || tagName === "style"
         ? undefined
         : positionElement;
+      if (relativeImageAttributes.includes(name) && isRelativeImageCandidate(attribute.value)) {
+        add(attribute.value, textPositionElement, element);
+        continue;
+      }
       scanText(attribute.value, textPositionElement, element);
     }
     scanBackground(element);
