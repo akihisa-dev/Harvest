@@ -3,7 +3,7 @@
     "message": "Harvest"
   },
   "extensionDescription": {
-    "message": "Webページの画像をサイドパネルで集め、選択してPDFに保存します。"
+    "message": "Webページの画像を集め、必要な画像を選んでPDF・JPG・PNG・JXLで保存します。"
   },
   "openHarvest": {
     "message": "Harvestを開く"

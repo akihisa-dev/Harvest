@@ -3,7 +3,7 @@
     "message": "Harvest"
   },
   "extensionDescription": {
-    "message": "Collect images from web pages in the side panel and save selected images as a PDF."
+    "message": "Collect images from web pages, select the ones you need, and save them as PDF, JPG, PNG, or JXL."
   },
   "openHarvest": {
     "message": "Open Harvest"
