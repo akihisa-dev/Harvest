@@ -65,6 +65,18 @@ test("UI用の画像除外規則は本文画像を残す", () => {
   ]);
 });
 
+test("PHP・CGI経由の画像候補をURL拡張子だけで除外しない", () => {
+  assert.deepEqual(normalizeImageUrls([
+    "https://example.com/image.php?id=123",
+    "https://example.com/view.cgi?page=5",
+    "https://example.com/icon.svg",
+    "https://example.com/favicon.ico",
+  ], "https://example.com/article"), [
+    "https://example.com/image.php?id=123",
+    "https://example.com/view.cgi?page=5",
+  ]);
+});
+
 test("画像を漫画本文・表紙・単発のまとまりへ分類し、本文を初期選択する", () => {
   const groups = groupImages([
     "https://example.com/pages/001.jpg",
