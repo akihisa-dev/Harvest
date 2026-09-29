@@ -43,6 +43,7 @@ test("英語ではグループ名・既知エラーが英語になり、サイ�
     assert.equal(localization.localizeErrorMessage("The open page cannot be analyzed. Specify a URL.", "errorPageRead", true), "The open page cannot be analyzed. Specify a URL.");
     assert.equal(localization.localizeErrorMessage("internal detail", "errorPdfCreate", true), "Could not create the PDF.");
     assert.equal(localization.t("imageRowAria", {filename: "ページ画像.jpg", index: 1, failed: ""}), "ページ画像.jpg, number 1. Click to select for saving, drag or use Alt and the arrow keys to reorder");
+    assert.equal(localization.t("exportSaved", {count: 2, plural: localization.formatPlural(2)}), "Saved 2 images");
     assert.equal(localization.t("sourceHeading"), "Source");
   } finally {
     restore();

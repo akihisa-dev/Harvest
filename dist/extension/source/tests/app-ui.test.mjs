@@ -669,7 +669,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(exportOverlay.hidden, false, "再試行中もビュアーにオーバーレイを重ねる");
     await waitUntil(() => document.downloads.length === 1);
     await waitUntil(() => exportButton.dataset.saving === "false");
-    assert.equal(exportButton.textContent, "保存しました", "保存完了は保存ボタン内に表示する");
+    assert.equal(exportButton.textContent, "4件保存しました", "保存完了は保存件数とともに保存ボタン内へ表示する");
     assert.equal(exportButton.dataset.saved, "true", "保存完了状態を保存ボタンへ設定する");
     assert.equal(exportOverlay.hidden, true, "保存開始後はビュアーのオーバーレイを消す");
     assert.deepEqual(fetches, [...busyOrder, failedUrl]);

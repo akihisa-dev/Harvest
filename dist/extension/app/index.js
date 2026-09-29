@@ -4,7 +4,7 @@ import { createSourcePageLayout } from "../core/pdf.js";
 import { createCollectionController } from "./collection-controller.js";
 import { scanTab, scanUrl } from "./page-access.js";
 import { prefersReducedMotion, setMotionText } from "./motion.js";
-import { localizeErrorMessage, t } from "./localization.js";
+import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { createViewerController } from "./viewer-controller.js";
 import { createImageListView } from "./image-list-view.js";
 import { createPdfExportController } from "./pdf-export-controller.js";
@@ -329,7 +329,7 @@ function render() {
     else if (pendingExport?.failed.size)
         exportButton.textContent = t("exportRetry");
     else if (exportSaved)
-        exportButton.textContent = t("exportSaved");
+        exportButton.textContent = t("exportSaved", { count: selectedCount, plural: formatPlural(selectedCount) });
     else if (selected.length)
         exportButton.textContent = t("exportAction", { format: selectedExportFormat.toUpperCase() });
     else
