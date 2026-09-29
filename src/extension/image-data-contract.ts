@@ -1,5 +1,10 @@
 import type { PdfJpegImagePage } from "../core/pdf-types.js";
 
+export const MAX_IMAGE_BYTES = 64 * 1024 * 1024;
+export const MAX_IMAGE_DIMENSION = 16_384;
+export const MAX_IMAGE_PIXELS = 64_000_000;
+export const IMAGE_TOO_LARGE_MESSAGE = "画像が大きすぎるため、処理できません。";
+
 export type ImageDataErrorKind = "http" | "network" | "timeout" | "cancelled" | "invalid-image";
 
 /** A user-safe failure shared by image retrieval, decoding, and format conversion. */
@@ -27,6 +32,17 @@ export type FetchedImage =
 
 export function invalidImage(message: string): ImageDataError {
   return new ImageDataError("invalid-image", message);
+}
+
+/** Return the shared user-facing error for dimensions that cannot be processed safely. */
+export function imageDimensionsError(width: number, height: number): string | null {
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
+    return "画像の大きさが不正です。";
+  }
+  if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION || width * height > MAX_IMAGE_PIXELS) {
+    return IMAGE_TOO_LARGE_MESSAGE;
+  }
+  return null;
 }
 
 export function validatePositiveInteger(value: number, name: string): number {

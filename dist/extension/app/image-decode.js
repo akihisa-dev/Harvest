@@ -1,4 +1,4 @@
-import { checkCancelled, invalidImage, validatePositiveInteger } from "./image-data-contract.js";
+import { checkCancelled, imageDimensionsError, invalidImage, validatePositiveInteger } from "./image-data-contract.js";
 const DEFAULT_PIXEL_CHUNK_PIXELS = 262_144;
 function yieldToEventLoop() {
     return new Promise((resolve) => setTimeout(resolve, 0));
@@ -19,13 +19,9 @@ export async function decodeImage(fetched, options) {
         checkCancelled(options.signal);
         const width = bitmap.width;
         const height = bitmap.height;
-        if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
-            throw invalidImage("画像の大きさが不正です。");
-        }
-        const pixelCount = width * height;
-        if (!Number.isSafeInteger(pixelCount) || pixelCount > Number.MAX_SAFE_INTEGER / 3) {
-            throw invalidImage("画像が大きすぎてPDF用に変換できませんでした。");
-        }
+        const dimensionsError = imageDimensionsError(width, height);
+        if (dimensionsError)
+            throw invalidImage(dimensionsError);
         canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;

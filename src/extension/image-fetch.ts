@@ -1,5 +1,14 @@
 import { getOriginalJpegPage } from "../core/jpeg.js";
-import { checkCancelled, invalidImage, ImageDataError, type FetchedImage, type ImageDataOptions } from "./image-data-contract.js";
+import {
+  checkCancelled,
+  IMAGE_TOO_LARGE_MESSAGE,
+  imageDimensionsError,
+  invalidImage,
+  ImageDataError,
+  MAX_IMAGE_BYTES,
+  type FetchedImage,
+  type ImageDataOptions,
+} from "./image-data-contract.js";
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 
@@ -34,6 +43,61 @@ async function cancelResponse(response: Response | undefined): Promise<void> {
   } catch {
     // A response that has already been closed needs no further cleanup.
   }
+}
+
+function contentLength(response: Response): number | undefined {
+  const value = response.headers.get("content-length")?.trim();
+  if (!value || !/^\d+$/.test(value)) return undefined;
+  const length = Number(value);
+  return Number.isSafeInteger(length) ? length : undefined;
+}
+
+/** Read an image response with a hard byte ceiling; the optional limit can only tighten it. */
+export async function readImageBytes(response: Response, requestedLimit = MAX_IMAGE_BYTES): Promise<Uint8Array> {
+  if (!Number.isSafeInteger(requestedLimit) || requestedLimit <= 0) {
+    throw new RangeError("requestedLimit must be a positive safe integer.");
+  }
+  const limit = Math.min(requestedLimit, MAX_IMAGE_BYTES);
+  const declaredLength = contentLength(response);
+  if (declaredLength !== undefined && declaredLength > limit) {
+    void cancelResponse(response);
+    throw invalidImage(IMAGE_TOO_LARGE_MESSAGE);
+  }
+
+  const body = response.body;
+  if (!body) {
+    // Real fetch responses expose a stream. Keep support for body-less test and
+    // embedding responses, while still rejecting them once their size is known.
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > limit) throw invalidImage(IMAGE_TOO_LARGE_MESSAGE);
+    return bytes;
+  }
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      if (value.byteLength > limit - length) {
+        void reader.cancel().catch(() => {});
+        throw invalidImage(IMAGE_TOO_LARGE_MESSAGE);
+      }
+      chunks.push(value);
+      length += value.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 export async function fetchImage(url: string, options: ImageDataOptions): Promise<FetchedImage> {
@@ -74,10 +138,14 @@ export async function fetchImage(url: string, options: ImageDataOptions): Promis
 
       // Keep one response buffer for JPEG detection and direct PDF embedding.
       // Only formats requiring pixel decoding need a Blob afterward.
-      const bytes = new Uint8Array(await response.arrayBuffer());
+      const bytes = await readImageBytes(response);
       const original = getOriginalJpegPage(bytes);
-      if (original) return { kind: "original", page: original };
-      return { kind: "bitmap", blob: new Blob([bytes], {type: contentType}) };
+      if (original) {
+        const dimensionsError = imageDimensionsError(original.width, original.height);
+        if (dimensionsError) throw invalidImage(dimensionsError);
+        return { kind: "original", page: original };
+      }
+      return { kind: "bitmap", blob: new Blob([bytes.buffer as ArrayBuffer], {type: contentType}) };
     } catch (error) {
       void cancelResponse(response);
       if (error instanceof ImageDataError) throw error;

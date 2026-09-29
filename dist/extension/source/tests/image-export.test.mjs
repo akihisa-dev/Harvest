@@ -24,6 +24,7 @@ globalThis.chrome = {i18n: {getUILanguage: () => "en"}};
 globalThis.window = {setTimeout() {}};
 
 const {convertImage} = await import("../dist/extension/app/image-format.js");
+const {IMAGE_TOO_LARGE_MESSAGE, MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS, imageDimensionsError} = await import("../dist/extension/app/image-data-contract.js");
 const {encodeJxlPixels} = await import("../dist/extension/app/jxl-codec.js");
 const {createImageExportController, createImageZipEntries} = await import("../dist/extension/app/image-export-controller.js");
 const {createStoredZip} = await import("../dist/extension/core/stored-zip.js");
@@ -82,6 +83,39 @@ test("reuses JPEG and PNG source bytes when they already match the selected form
     assert.equal(png, originalPng, "valid PNG bytes are reused without re-encoding");
     assert.equal(closed, 1, "the source PNG is decoded only to verify it is usable, then released");
   } finally {
+    globalThis.createImageBitmap = previousCreateImageBitmap;
+  }
+});
+
+test("PDFと画像保存形式が共有する画素上限は境界を含めて判定する", () => {
+  assert.equal(imageDimensionsError(8_000, 8_000), null, "the 64-megapixel boundary is accepted");
+  assert.equal(imageDimensionsError(MAX_IMAGE_DIMENSION, 1), null, "the per-side dimension boundary is accepted");
+  assert.equal(imageDimensionsError(MAX_IMAGE_DIMENSION + 1, 1), IMAGE_TOO_LARGE_MESSAGE);
+  assert.equal(imageDimensionsError(8_001, 8_000), IMAGE_TOO_LARGE_MESSAGE, "one pixel over the area limit is rejected");
+  assert.ok(8_001 * 8_000 > MAX_IMAGE_PIXELS);
+});
+
+test("JPG・PNG・JXLは共通画素上限をCanvas前に適用し、PNG再利用も拒否する", async () => {
+  const previousDocument = globalThis.document;
+  const previousCreateImageBitmap = globalThis.createImageBitmap;
+  let createdCanvases = 0;
+  let closed = 0;
+  globalThis.document = {...pageDocument, createElement() { createdCanvases += 1; throw new Error("canvas must not be created"); }};
+  globalThis.createImageBitmap = async () => ({width: 8_001, height: 8_000, close() { closed += 1; }});
+  const regularBlob = new Blob(["webp"], {type: "image/webp"});
+  const pngBlob = new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], {type: "image/png"});
+  try {
+    await assert.rejects(convertImage({kind: "bitmap", blob: regularBlob}, "jpg"), error => error.message === IMAGE_TOO_LARGE_MESSAGE);
+    await assert.rejects(convertImage({kind: "bitmap", blob: pngBlob}, "png"), error => error.message === IMAGE_TOO_LARGE_MESSAGE);
+    await assert.rejects(convertImage({kind: "bitmap", blob: regularBlob}, "jxl"), error => error.message === IMAGE_TOO_LARGE_MESSAGE);
+    await assert.rejects(convertImage({
+      kind: "original",
+      page: {jpeg: new Uint8Array([0xff, 0xd8]), width: 8_001, height: 8_000},
+    }, "jpg"), error => error.message === IMAGE_TOO_LARGE_MESSAGE);
+    assert.equal(createdCanvases, 0);
+    assert.equal(closed, 3, "each decoded bitmap is released after the limit check");
+  } finally {
+    globalThis.document = previousDocument;
     globalThis.createImageBitmap = previousCreateImageBitmap;
   }
 });

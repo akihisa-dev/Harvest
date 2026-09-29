@@ -1,5 +1,5 @@
 import type { PdfImagePage } from "../core/pdf-types.js";
-import { checkCancelled, invalidImage, validatePositiveInteger, type FetchedImage, type ImageDataOptions } from "./image-data-contract.js";
+import { checkCancelled, imageDimensionsError, invalidImage, validatePositiveInteger, type FetchedImage, type ImageDataOptions } from "./image-data-contract.js";
 
 const DEFAULT_PIXEL_CHUNK_PIXELS = 262_144;
 
@@ -23,13 +23,8 @@ export async function decodeImage(fetched: FetchedImage, options: ImageDataOptio
     checkCancelled(options.signal);
     const width = bitmap.width;
     const height = bitmap.height;
-    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
-      throw invalidImage("画像の大きさが不正です。");
-    }
-    const pixelCount = width * height;
-    if (!Number.isSafeInteger(pixelCount) || pixelCount > Number.MAX_SAFE_INTEGER / 3) {
-      throw invalidImage("画像が大きすぎてPDF用に変換できませんでした。");
-    }
+    const dimensionsError = imageDimensionsError(width, height);
+    if (dimensionsError) throw invalidImage(dimensionsError);
 
     canvas = document.createElement("canvas");
     canvas.width = width;

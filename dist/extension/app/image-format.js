@@ -1,4 +1,4 @@
-import { checkCancelled } from "./image-data-contract.js";
+import { checkCancelled, imageDimensionsError } from "./image-data-contract.js";
 import { encodeJxl } from "./jxl-encoder.js";
 export class ImageFormatError extends Error {
     constructor(message) {
@@ -28,6 +28,9 @@ async function isDecodablePng(blob, signal) {
     }
     try {
         checkCancelled(signal);
+        const dimensionsError = imageDimensionsError(bitmap.width, bitmap.height);
+        if (dimensionsError)
+            throw new ImageFormatError(dimensionsError);
         return true;
     }
     finally {
@@ -47,8 +50,13 @@ function toBlob(canvas, type, quality) {
 /** Convert one fetched image, releasing its decoded pixels before returning. */
 export async function convertImage(fetched, format, signal) {
     checkCancelled(signal);
-    if (format === "jpg" && fetched.kind === "original")
-        return fetchedBlob(fetched);
+    if (fetched.kind === "original") {
+        const dimensionsError = imageDimensionsError(fetched.page.width, fetched.page.height);
+        if (dimensionsError)
+            throw new ImageFormatError(dimensionsError);
+        if (format === "jpg")
+            return fetchedBlob(fetched);
+    }
     if (format === "png" && fetched.kind === "bitmap" && await isDecodablePng(fetched.blob, signal))
         return fetched.blob;
     const source = fetchedBlob(fetched);
@@ -64,9 +72,9 @@ export async function convertImage(fetched, format, signal) {
     try {
         checkCancelled(signal);
         const { width, height } = bitmap;
-        if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
-            throw new ImageFormatError("画像の大きさが不正です。");
-        }
+        const dimensionsError = imageDimensionsError(width, height);
+        if (dimensionsError)
+            throw new ImageFormatError(dimensionsError);
         canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
