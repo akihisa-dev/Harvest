@@ -63,14 +63,14 @@
     <aside class="workspace-sidebar" data-i18n-aria-label="workspaceControls" aria-label="画像と保存の操作">
       <aside class="save-area" aria-labelledby="export-heading">
         <h2 id="export-heading" class="visually-hidden" data-i18n="exportHeading">保存形式と保存</h2>
-        <div class="export-control" role="group" aria-labelledby="export-heading">
-          <label class="visually-hidden" for="export-format" data-i18n="exportFormat">保存形式</label>
-          <select id="export-format" data-i18n-aria-label="exportFormat" aria-label="保存形式">
-            <option value="pdf">PDF</option>
-            <option value="jpg">JPG</option>
-            <option value="png">PNG</option>
-            <option value="jxl">JXL</option>
-          </select>
+        <div class="export-control">
+          <fieldset class="export-formats" role="group" aria-labelledby="export-format-label">
+            <legend id="export-format-label" class="visually-hidden" data-i18n="exportFormat">保存形式</legend>
+            <label><input id="export-format-pdf" type="radio" name="export-format" value="pdf"><span>PDF</span></label>
+            <label><input id="export-format-jpg" type="radio" name="export-format" value="jpg"><span>JPG</span></label>
+            <label><input id="export-format-png" type="radio" name="export-format" value="png"><span>PNG</span></label>
+            <label><input id="export-format-jxl" type="radio" name="export-format" value="jxl"><span>JXL</span></label>
+          </fieldset>
           <button id="export" type="button" disabled aria-live="polite" aria-atomic="true" data-i18n="save">保存</button>
         </div>
         <label class="source-page-option"><input id="include-source-page" type="checkbox"><span data-i18n="includeSourcePage">末尾に出典ページを追加</span></label>

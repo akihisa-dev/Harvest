@@ -107,6 +107,11 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     "#viewer-filename", "#viewer-thumbnails", "#viewer-zoom-in", "#viewer-zoom-out",
     "#viewer-zoom-reset", "#viewer-stage",
   ]) document.querySelector(selector);
+  for (const format of ["pdf", "jpg", "png", "jxl"]) {
+    const option = document.querySelector(`#export-format-${format}`);
+    option.value = format;
+    option.checked = format === "pdf";
+  }
   document.querySelector("#url-drop-overlay").hidden = true;
   const previousDocument = globalThis.document;
   const previousChrome = globalThis.chrome;
@@ -226,16 +231,20 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     await import(`../dist/extension/app/index.js?ui=${Date.now()}`);
     const includeSourcePage = document.querySelector("#include-source-page");
     assert.equal(includeSourcePage.checked, true, "保存済みの設定を再び開いたパネルへ反映する");
-    const exportFormat = document.querySelector("#export-format");
+    const exportFormat = document.querySelector("#export-format-pdf");
+    const exportFormats = ["pdf", "jpg", "png", "jxl"].map(format => document.querySelector(`#export-format-${format}`));
     const sourcePageOption = document.querySelector(".source-page-option");
-    assert.equal(exportFormat.value, "pdf", "初回は既存どおりPDFを選ぶ");
-    exportFormat.value = "jxl";
-    exportFormat.dispatch("change");
+    assert.equal(exportFormats.filter(option => option.checked).length, 1, "保存形式は1つだけ選択する");
+    assert.equal(exportFormat.checked, true, "初回は既存どおりPDFを選ぶ");
+    const changeExportFormat = format => {
+      for (const option of exportFormats) option.checked = option.value === format;
+      document.querySelector(`#export-format-${format}`).dispatch("change");
+    };
+    changeExportFormat("jxl");
     assert.equal(savedPreferences.get("harvest.exportFormat"), "jxl", "保存形式だけをブラウザー内に記録する");
     assert.equal(sourcePageOption.hidden, true, "出典ページ設定は画像形式では隠す");
     assert.equal(includeSourcePage.checked, true, "保存形式を変えてもPDFの出典設定を保つ");
-    exportFormat.value = "pdf";
-    exportFormat.dispatch("change");
+    changeExportFormat("pdf");
     assert.equal(sourcePageOption.hidden, false, "PDFへ戻すと出典ページ設定を再表示する");
     includeSourcePage.checked = false;
     includeSourcePage.dispatch("change");

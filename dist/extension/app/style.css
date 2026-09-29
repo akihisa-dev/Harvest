@@ -87,10 +87,12 @@ section, aside { min-width: 0; }
 .header-input-column { display: block; min-width: 0; }
 .controls { padding: 8px var(--sidebar-padding) 8px 0; }
 .save-area { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 0 0 8px; border-bottom: 1px solid var(--line); }
-.export-control { display: flex; gap: 0; min-width: 0; }
-.export-control select { flex: 0 0 72px; min-width: 0; height: 36px; padding: 4px 6px; border: 1px solid var(--control-line); border-right: 0; border-radius: var(--radius) 0 0 var(--radius); color: var(--ink); background: var(--surface); }
-.export-control select:focus-visible { outline-offset: -2px; }
-.export-control #export { flex: 1; width: auto; min-width: 0; overflow: hidden; padding-inline: 6px; border-left: 0; border-radius: 0 var(--radius) var(--radius) 0; text-overflow: ellipsis; white-space: nowrap; }
+.export-control { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.export-formats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.export-formats label { display: flex; align-items: center; justify-content: center; gap: 2px; min-width: 0; font-size: 11px; cursor: pointer; }
+.export-formats input { width: 12px; height: 12px; flex: none; margin: 0; accent-color: var(--ink); cursor: pointer; }
+.export-formats input:disabled, .export-formats input:disabled + span { cursor: default; }
+.export-control #export { width: 100%; min-width: 0; overflow: hidden; padding-inline: 6px; text-overflow: ellipsis; white-space: nowrap; }
 .source-page-option { display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; }
 .source-row { display: grid; grid-template-columns: minmax(0, 1fr) calc(1px + var(--sidebar-padding)) auto; }
 .source-row #source-drop, .source-row #source-url { grid-column: 1; grid-row: 1; }
@@ -265,6 +267,7 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
   :root { --sidebar-width: 148px; --stage-sidebar-width: 0px; --stage-gap: 0px; }
   .results-area { grid-template-rows: minmax(0, 1fr); }
   .workspace-sidebar { max-height: none; }
+  .export-formats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .export-control #export { padding-inline: 4px; }
   #export[data-saving="true"]::after { display: none; }
   .toolbar, .group-chip { gap: 4px; }

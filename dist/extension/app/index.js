@@ -15,7 +15,12 @@ const urlDropOverlay = required("#url-drop-overlay");
 const collectionButton = required("#collection-toggle");
 const scanButton = required("#scan");
 const exportButton = required("#export");
-const exportFormat = required("#export-format");
+const exportFormatInputs = [
+    { format: "pdf", input: required("#export-format-pdf") },
+    { format: "jpg", input: required("#export-format-jpg") },
+    { format: "png", input: required("#export-format-png") },
+    { format: "jxl", input: required("#export-format-jxl") },
+];
 const sourcePageOption = required(".source-page-option");
 const includeSourcePage = required("#include-source-page");
 const sourcePagePreferenceKey = "harvest.includeSourcePage";
@@ -30,7 +35,8 @@ try {
         selectedExportFormat = storedFormat;
 }
 catch { /* Keep PDF as the default when browser storage is unavailable. */ }
-exportFormat.value = selectedExportFormat;
+for (const { format, input } of exportFormatInputs)
+    input.checked = format === selectedExportFormat;
 try {
     includeSourcePage.checked = localStorage.getItem(sourcePagePreferenceKey) === "true";
 }
@@ -46,20 +52,20 @@ includeSourcePage.addEventListener("change", () => {
     }
     render();
 });
-exportFormat.addEventListener("change", () => {
-    if (!isExportFormat(exportFormat.value)) {
-        exportFormat.value = selectedExportFormat;
-        return;
-    }
-    selectedExportFormat = exportFormat.value;
-    try {
-        localStorage.setItem(exportFormatPreferenceKey, selectedExportFormat);
-    }
-    catch {
-        setStatus(t("errorSaveFormatPreference"), "error");
-    }
-    render();
-});
+for (const { format, input } of exportFormatInputs) {
+    input.addEventListener("change", () => {
+        if (!input.checked)
+            return;
+        selectedExportFormat = format;
+        try {
+            localStorage.setItem(exportFormatPreferenceKey, selectedExportFormat);
+        }
+        catch {
+            setStatus(t("errorSaveFormatPreference"), "error");
+        }
+        render();
+    });
+}
 const viewerToggleButton = required("#viewer-toggle");
 const viewerElement = required("#viewer");
 const resultsElement = required(".results");
@@ -170,7 +176,8 @@ function setBusy(value) {
     scanButton.disabled = value;
     sourceDrop.disabled = value;
     sourceUrl.disabled = value;
-    exportFormat.disabled = value;
+    for (const { input } of exportFormatInputs)
+        input.disabled = value;
     includeSourcePage.disabled = value;
     resetButton.disabled = value;
     exportButton.disabled = value || !imageCollection.hasSelection;
@@ -329,7 +336,8 @@ function render() {
         exportButton.textContent = t("save");
     exportButton.title = exportButton.textContent;
     sourcePageOption.hidden = selectedExportFormat !== "pdf";
-    exportFormat.value = selectedExportFormat;
+    for (const { format, input } of exportFormatInputs)
+        input.checked = format === selectedExportFormat;
     failuresElement.hidden = !pendingExport?.failed.size;
     failedImagesElement.replaceChildren(...(pendingExport?.selected.filter(item => pendingExport.failed.has(item)) ?? []).map(item => {
         const row = document.createElement("li");
@@ -361,7 +369,8 @@ function render() {
     allSelectionCheckbox.setAttribute("aria-label", t(allSelectionCheckbox.checked ? "clearAll" : "selectAll"));
     resetOrderButton.disabled = busy || imageCollection.matchesInitialOrderAndSelection();
     exportButton.disabled = busy || !imageCollection.hasSelection;
-    exportFormat.disabled = busy;
+    for (const { input } of exportFormatInputs)
+        input.disabled = busy;
     imageListView.render(pendingExport ? new Set(pendingExport.failed.keys()) : undefined, sourcePreview());
     viewerController.render();
 }

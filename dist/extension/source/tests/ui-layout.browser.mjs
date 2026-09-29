@@ -54,19 +54,20 @@ async function inspectLayout(page, width, height, label) {
       viewport: { width: innerWidth, height: innerHeight, bodyWidth: document.body.scrollWidth, bodyHeight: document.body.scrollHeight },
       header: rect(".app-header"), main: rect("main"), sidebar: rect(".workspace-sidebar"), controls: rect(".results-controls"),
       heading: rect(".results-heading"), groupBar: rect(".group-bar"), groups: rect("#groups"), exportControl: rect(".export-control"),
-      saveArea: rect(".save-area"), exportSelect: rect("#export-format"), sourceOption: rect(".source-page-option"),
+      saveArea: rect(".save-area"), exportFormats: rect(".export-formats"), sourceOption: rect(".source-page-option"),
       exportSegments: (() => {
         const control = document.querySelector(".export-control");
-        const format = control.querySelector("select");
-        const save = control.querySelector("button");
-        const formatStyle = getComputedStyle(format);
-        const saveStyle = getComputedStyle(save);
+        const formats = control.querySelector(".export-formats");
+        const save = control.querySelector("#export");
         return {
-          gap: getComputedStyle(control).columnGap,
-          formatRight: format.getBoundingClientRect().right,
-          saveLeft: save.getBoundingClientRect().left,
-          formatInnerCorners: [formatStyle.borderTopRightRadius, formatStyle.borderBottomRightRadius],
-          saveInnerCorners: [saveStyle.borderTopLeftRadius, saveStyle.borderBottomLeftRadius],
+          role: formats.getAttribute("role"),
+          formatBottom: formats.getBoundingClientRect().bottom,
+          saveTop: save.getBoundingClientRect().top,
+          options: ["pdf", "jpg", "png", "jxl"].map(format => {
+            const option = document.querySelector(`#export-format-${format}`);
+            const box = option.getBoundingClientRect();
+            return {format, x: box.x, y: box.y, right: box.right, bottom: box.bottom, width: box.width, height: box.height, visible: box.width > 0 && box.height > 0};
+          }),
         };
       })(),
       viewerControls: rect(".viewer-controls"), status: rect("#status"), clear: rect("#reset"),
@@ -94,16 +95,22 @@ async function inspectLayout(page, width, height, label) {
     `${label}: URL, analyze, clear, and collect must stay in this order`);
   assert.ok(Math.abs(result.scan.x - result.exportControl.x) <= 1, `${label}: header actions and format/save control must share the left edge (${result.scan.x}, ${result.exportControl.x})`);
   assert.ok(Math.abs(result.collect.right - result.exportControl.right) <= 1, `${label}: header actions and format/save control must share the right edge (${result.collect.right}, ${result.exportControl.right})`);
-  assert.equal(result.exportSegments.gap, "0px", `${label}: format and save must form one control without a gap`);
-  assert.equal(result.exportSegments.formatRight, result.exportSegments.saveLeft, `${label}: format and save segments must touch`);
-  assert.deepEqual(result.exportSegments.formatInnerCorners, ["0px", "0px"], `${label}: format segment must use square inner corners`);
-  assert.deepEqual(result.exportSegments.saveInnerCorners, ["0px", "0px"], `${label}: save segment must use square inner corners`);
+  assert.ok(result.exportSegments.formatBottom <= result.exportSegments.saveTop,
+    `${label}: format radio group must be above the save button`);
+  assert.equal(result.exportSegments.role, "group", `${label}: format choices must be grouped for assistive technology`);
+  assert.ok(result.exportFormats.scrollWidth <= result.exportFormats.clientWidth + 1,
+    `${label}: format radio group must not scroll horizontally (${result.exportFormats.scrollWidth}/${result.exportFormats.clientWidth})`);
+  for (const option of result.exportSegments.options) {
+    assert.ok(option.visible, `${label}: ${option.format} format option must be visible`);
+    assert.ok(option.x >= result.exportFormats.x && option.right <= result.exportFormats.right + 1,
+      `${label}: ${option.format} format option must fit within the radio group`);
+  }
   assert.ok(Math.abs(result.source.x - result.main.x) <= 1, `${label}: URL field and gray area must share the left edge (${result.source.x}, ${result.main.x})`);
   assert.ok(Math.abs(result.source.right - result.main.right) <= 1, `${label}: URL field and gray area must share the right edge (${result.source.right}, ${result.main.right})`);
   assert.ok(result.sidebar.x >= result.main.right - 1, `${label}: controls must be to the right of the image`);
   assert.ok(result.sidebar.right <= width + 1, `${label}: sidebar must fit within viewport`);
   assert.ok(result.sidebar.scrollWidth <= result.sidebar.clientWidth + 1,
-    `${label}: sidebar must not scroll horizontally (${result.sidebar.scrollWidth}/${result.sidebar.clientWidth}; save=${result.saveArea.scrollWidth}/${result.saveArea.clientWidth}; select=${result.exportSelect.scrollWidth}/${result.exportSelect.clientWidth}; source=${result.sourceOption.scrollWidth}/${result.sourceOption.clientWidth})`);
+    `${label}: sidebar must not scroll horizontally (${result.sidebar.scrollWidth}/${result.sidebar.clientWidth}; save=${result.saveArea.scrollWidth}/${result.saveArea.clientWidth}; formats=${result.exportFormats.scrollWidth}/${result.exportFormats.clientWidth}; source=${result.sourceOption.scrollWidth}/${result.sourceOption.clientWidth})`);
   for (const [name, box] of Object.entries({heading: result.headingText, pdf: result.exportControl, viewer: result.viewer})) {
     assert.ok(box.width > 0 && box.height > 0, `${label}: ${name} must be laid out`);
     assert.ok(box.x >= result.sidebar.x && box.right <= result.sidebar.right + 1, `${label}: ${name} must fit in sidebar width`);

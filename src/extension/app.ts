@@ -17,20 +17,26 @@ const urlDropOverlay = required<HTMLDivElement>("#url-drop-overlay");
 const collectionButton = required<HTMLButtonElement>("#collection-toggle");
 const scanButton = required<HTMLButtonElement>("#scan");
 const exportButton = required<HTMLButtonElement>("#export");
-const exportFormat = required<HTMLSelectElement>("#export-format");
+type ExportFormat = "pdf" | ImageArchiveFormat;
+const exportFormatInputs: ReadonlyArray<{format: ExportFormat; input: HTMLInputElement}> = [
+  {format: "pdf", input: required<HTMLInputElement>("#export-format-pdf")},
+  {format: "jpg", input: required<HTMLInputElement>("#export-format-jpg")},
+  {format: "png", input: required<HTMLInputElement>("#export-format-png")},
+  {format: "jxl", input: required<HTMLInputElement>("#export-format-jxl")},
+];
 const sourcePageOption = required<HTMLLabelElement>(".source-page-option");
 const includeSourcePage = required<HTMLInputElement>("#include-source-page");
 const sourcePagePreferenceKey = "harvest.includeSourcePage";
 const exportFormatPreferenceKey = "harvest.exportFormat";
-function isExportFormat(value: string): value is "pdf" | ImageArchiveFormat {
+function isExportFormat(value: string): value is ExportFormat {
   return value === "pdf" || value === "jpg" || value === "png" || value === "jxl";
 }
-let selectedExportFormat: "pdf" | ImageArchiveFormat = "pdf";
+let selectedExportFormat: ExportFormat = "pdf";
 try {
   const storedFormat = localStorage.getItem(exportFormatPreferenceKey);
   if (storedFormat && isExportFormat(storedFormat)) selectedExportFormat = storedFormat;
 } catch { /* Keep PDF as the default when browser storage is unavailable. */ }
-exportFormat.value = selectedExportFormat;
+for (const {format, input} of exportFormatInputs) input.checked = format === selectedExportFormat;
 try { includeSourcePage.checked = localStorage.getItem(sourcePagePreferenceKey) === "true"; }
 catch { includeSourcePage.checked = false; }
 includeSourcePage.addEventListener("change", () => {
@@ -38,16 +44,15 @@ includeSourcePage.addEventListener("change", () => {
   catch { setStatus(t("errorSavePreference"), "error"); }
   render();
 });
-exportFormat.addEventListener("change", () => {
-  if (!isExportFormat(exportFormat.value)) {
-    exportFormat.value = selectedExportFormat;
-    return;
-  }
-  selectedExportFormat = exportFormat.value;
-  try { localStorage.setItem(exportFormatPreferenceKey, selectedExportFormat); }
-  catch { setStatus(t("errorSaveFormatPreference"), "error"); }
-  render();
-});
+for (const {format, input} of exportFormatInputs) {
+  input.addEventListener("change", () => {
+    if (!input.checked) return;
+    selectedExportFormat = format;
+    try { localStorage.setItem(exportFormatPreferenceKey, selectedExportFormat); }
+    catch { setStatus(t("errorSaveFormatPreference"), "error"); }
+    render();
+  });
+}
 const viewerToggleButton = required<HTMLButtonElement>("#viewer-toggle");
 const viewerElement = required<HTMLElement>("#viewer");
 const resultsElement = required<HTMLElement>(".results");
@@ -169,7 +174,7 @@ function setBusy(value: boolean): void {
   scanButton.disabled = value;
   sourceDrop.disabled = value;
   sourceUrl.disabled = value;
-  exportFormat.disabled = value;
+  for (const {input} of exportFormatInputs) input.disabled = value;
   includeSourcePage.disabled = value;
   resetButton.disabled = value;
   exportButton.disabled = value || !imageCollection.hasSelection;
@@ -314,7 +319,7 @@ function render(): void {
   else exportButton.textContent = t("save");
   exportButton.title = exportButton.textContent;
   sourcePageOption.hidden = selectedExportFormat !== "pdf";
-  exportFormat.value = selectedExportFormat;
+  for (const {format, input} of exportFormatInputs) input.checked = format === selectedExportFormat;
   failuresElement.hidden = !pendingExport?.failed.size;
   failedImagesElement.replaceChildren(...(pendingExport?.selected.filter(item => pendingExport!.failed.has(item)) ?? []).map(item => {
     const row = document.createElement("li");
@@ -349,7 +354,7 @@ function render(): void {
   allSelectionCheckbox.setAttribute("aria-label", t(allSelectionCheckbox.checked ? "clearAll" : "selectAll"));
   resetOrderButton.disabled = busy || imageCollection.matchesInitialOrderAndSelection();
   exportButton.disabled = busy || !imageCollection.hasSelection;
-  exportFormat.disabled = busy;
+  for (const {input} of exportFormatInputs) input.disabled = busy;
   imageListView.render(pendingExport ? new Set(pendingExport.failed.keys()) : undefined, sourcePreview());
   viewerController.render();
 }
