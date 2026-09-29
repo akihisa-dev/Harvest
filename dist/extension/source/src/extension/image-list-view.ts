@@ -44,6 +44,14 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
   let visibleImages: readonly ImageItem[] = [];
   let previewOrder: ImageItem[] = [];
   let rows = new Map<string, HTMLLIElement>();
+  let dragRects = new Map<string, DOMRect>();
+  let dragIsSingleColumn = true;
+
+  function refreshDragGeometry(): void {
+    dragRects = new Map([...rows].map(([url, row]) => [url, row.getBoundingClientRect()]));
+    const first = dragRects.values().next().value as DOMRect | undefined;
+    dragIsSingleColumn = !first || [...dragRects.values()].every(rect => Math.abs(rect.left - first.left) < 1);
+  }
 
   function requestFocus(target: FocusTarget): void {
     focusTarget = target;
@@ -152,10 +160,20 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
   }
 
   function showInsertion(order: ImageItem[]): void {
+    const changedItems = order.filter((item, index) => previewOrder[index] !== item);
+    const changedRows = changedItems.flatMap(item => {
+      const row = rows.get(item.url);
+      return row ? [row] : [];
+    });
     previewOrder = order;
-    animateLayoutChange([...rows.values()], () => {
+    const updatedRects = animateLayoutChange(changedRows, () => {
       order.forEach((item, index) => { rows.get(item.url)!.style.order = String(index); });
     }, draggedImage ? rows.get(draggedImage.url) : undefined);
+    for (const item of changedItems) {
+      const row = rows.get(item.url);
+      const rect = row ? updatedRects.get(row) : undefined;
+      if (rect) dragRects.set(item.url, rect);
+    }
   }
 
   function moveImage(source: ImageItem, target: ImageItem): void {
@@ -170,9 +188,9 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
     const row = rows.get(target.url);
     if (!row) return;
-    const rect = row.getBoundingClientRect();
-    const isSingleColumn = [...rows.values()].every(value => Math.abs(value.getBoundingClientRect().left - rect.left) < 1);
-    const after = isSingleColumn ? event.clientY >= rect.top + rect.height / 2 : event.clientX >= rect.left + rect.width / 2;
+    const rect = dragRects.get(target.url);
+    if (!rect) return;
+    const after = dragIsSingleColumn ? event.clientY >= rect.top + rect.height / 2 : event.clientX >= rect.left + rect.width / 2;
     const order = previewOrder.filter(item => item !== draggedImage);
     order.splice(order.indexOf(target) + (after ? 1 : 0), 0, draggedImage);
     if (order.some((item, index) => item !== previewOrder[index])) showInsertion(order);
@@ -184,6 +202,7 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     const source = draggedImage;
     collection.applyVisibleOrder(visibleImages, previewOrder);
     draggedImage = null;
+    dragRects.clear();
     requestFocus({kind: "image", url: source.url, action: "drag"});
     options.onChange();
   }
@@ -225,6 +244,7 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
       const item = currentItem();
       suppressThumbnailClick = true;
       draggedImage = item;
+      refreshDragGeometry();
       if (event.dataTransfer) {
         event.dataTransfer.setDragImage(preview, preview.width / 2, preview.height / 2);
         event.dataTransfer.effectAllowed = "move";
@@ -237,6 +257,7 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     row.addEventListener("dragend", () => {
       if (!draggedImage) return;
       draggedImage = null;
+      dragRects.clear();
       row.classList.remove("dragging");
       showInsertion([...visibleImages]);
     });
@@ -316,8 +337,7 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
       event.preventDefault();
       let nearest: ImageItem | null = null;
       let distance = Infinity;
-      for (const [url, row] of rows) {
-        const rect = row.getBoundingClientRect();
+      for (const [url, rect] of dragRects) {
         const dx = Math.max(rect.left - event.clientX, 0, event.clientX - rect.right);
         const dy = Math.max(rect.top - event.clientY, 0, event.clientY - rect.bottom);
         if (dx * dx + dy * dy < distance) {

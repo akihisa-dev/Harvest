@@ -111,19 +111,25 @@ export function reconcileKeyedChildren<T, K extends string, E extends HTMLElemen
 }
 
 /** Retarget a drag preview from the current visual position, including mid-flight changes. */
-export function animateLayoutChange(elements: readonly HTMLElement[], update: () => void, skip?: HTMLElement): void {
+export function animateLayoutChange(
+  elements: readonly HTMLElement[],
+  update: () => void,
+  skip?: HTMLElement,
+): ReadonlyMap<HTMLElement, DOMRect> {
   const before = new Map(elements.map(element => [element, element.getBoundingClientRect()]));
   elements.forEach(cancelMotion);
   update();
-  if (prefersReducedMotion()) return;
+  const after = new Map(elements.map(element => [element, element.getBoundingClientRect()]));
+  if (prefersReducedMotion()) return after;
   for (const element of elements) {
     if (element === skip) continue;
     const previous = before.get(element)!;
-    const current = element.getBoundingClientRect();
+    const current = after.get(element)!;
     const x = previous.left - current.left;
     const y = previous.top - current.top;
     if (x || y) startMotion(element, [{transform: `translate(${x}px, ${y}px)`}, {transform: "translate(0, 0)"}], defaultMotion);
   }
+  return after;
 }
 
 export function setMotionText(element: HTMLElement, text: string): void {

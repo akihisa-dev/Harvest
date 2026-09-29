@@ -98,18 +98,20 @@ export function animateLayoutChange(elements, update, skip) {
     const before = new Map(elements.map(element => [element, element.getBoundingClientRect()]));
     elements.forEach(cancelMotion);
     update();
+    const after = new Map(elements.map(element => [element, element.getBoundingClientRect()]));
     if (prefersReducedMotion())
-        return;
+        return after;
     for (const element of elements) {
         if (element === skip)
             continue;
         const previous = before.get(element);
-        const current = element.getBoundingClientRect();
+        const current = after.get(element);
         const x = previous.left - current.left;
         const y = previous.top - current.top;
         if (x || y)
             startMotion(element, [{ transform: `translate(${x}px, ${y}px)` }, { transform: "translate(0, 0)" }], defaultMotion);
     }
+    return after;
 }
 export function setMotionText(element, text) {
     if (element.textContent === text)

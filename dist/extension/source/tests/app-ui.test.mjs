@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ImageCollection } from "../dist/extension/core/image-collection.js";
 
 class StubElement {
   constructor(tagName, owner) {
@@ -36,6 +37,8 @@ class StubElement {
   releasePointerCapture(pointerId) { this.pointerCaptures.delete(pointerId); }
   scrollIntoView() {}
   getBoundingClientRect() {
+    this.owner.rectMeasurements = (this.owner.rectMeasurements ?? 0) + 1;
+    if (this.owner.rectFor) return this.owner.rectFor(this);
     const order = Number(this.style.order || 0);
     return {left: 0, right: 150, top: order * 100, bottom: order * 100 + 100, width: 150, height: 100, x: 0, y: order * 100};
   }
@@ -125,8 +128,69 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   let rejectScan = false;
   const createdUrls = [];
   globalThis.document = document;
+  const {createImageListView} = await import("../dist/extension/app/image-list-view.js");
   globalThis.window = {setTimeout: (callback, delay) => setTimeout(callback, delay === 60000 ? 0 : delay), clearTimeout, matchMedia: () => ({matches: false})};
   globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {}});
+  const measuredCollection = new ImageCollection();
+  measuredCollection.replace(Array.from({length: 500}, (_, index) =>
+    `https://example.com/pages/${String(index + 1).padStart(4, "0")}.jpg`), "https://example.com/pages/");
+  const measuredRows = document.createElement("ol");
+  const measuredList = createImageListView({
+    collection: measuredCollection,
+    allVisibilityButton: document.createElement("button"),
+    groupsElement: document.createElement("div"),
+    imagesElement: measuredRows,
+    isBusy: () => false,
+    getFilename: url => url.split("/").pop(),
+    onChange() {},
+  });
+  measuredList.showInitialGroup(null);
+  measuredList.render();
+  assert.equal(measuredRows.children.length, 500, "measurement fixture contains hundreds of image rows");
+  document.rectMeasurements = 0;
+  measuredRows.children[250].dispatch("dragstart");
+  assert.equal(document.rectMeasurements, 500, "drag start measures each row once");
+  const measuredTarget = measuredRows.children[249];
+  measuredTarget.dispatch("dragover", {clientX: 75, clientY: 24_925});
+  const measurementsAfterLayoutChange = document.rectMeasurements;
+  assert.equal(measurementsAfterLayoutChange - 500, 4,
+    "an adjacent move measures only the two rows that change slots, before and after animation");
+  for (let index = 0; index < 10; index++) {
+    measuredTarget.dispatch("dragover", {clientX: 75, clientY: 24_925});
+    measuredRows.dispatch("dragover", {clientX: 75, clientY: 24_925});
+  }
+  assert.equal(document.rectMeasurements, measurementsAfterLayoutChange,
+    "repeated dragover events across a 500-row list reuse cached rectangles when order is unchanged");
+  measuredRows.children[250].dispatch("dragend");
+
+  document.rectFor = element => {
+    const order = Number(element.style.order || 0);
+    const left = order % 2 * 200;
+    const top = Math.floor(order / 2) * 100;
+    return {left, right: left + 150, top, bottom: top + 100, width: 150, height: 100, x: left, y: top};
+  };
+  const gridCollection = new ImageCollection();
+  const gridUrls = Array.from({length: 4}, (_, index) => `https://example.com/pages/grid-${index + 1}.jpg`);
+  gridCollection.replace(gridUrls, "https://example.com/pages/");
+  const gridRows = document.createElement("ol");
+  const gridList = createImageListView({
+    collection: gridCollection,
+    allVisibilityButton: document.createElement("button"),
+    groupsElement: document.createElement("div"),
+    imagesElement: gridRows,
+    isBusy: () => false,
+    getFilename: url => url.split("/").pop(),
+    onChange() {},
+  });
+  gridList.showInitialGroup(null);
+  gridList.render();
+  gridRows.children[0].dispatch("dragstart");
+  gridRows.children[1].dispatch("dragover", {clientX: 300, clientY: 25});
+  gridRows.children[1].dispatch("drop");
+  assert.deepEqual(gridCollection.items.map(item => item.url), [gridUrls[1], gridUrls[0], gridUrls[2], gridUrls[3]],
+    "multi-column drag placement uses the horizontal pointer position");
+  document.rectFor = undefined;
+
   let connected;
   let capturedMessage;
   let disconnected;
