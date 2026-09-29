@@ -164,7 +164,7 @@ test("英語画面で解析・分類・選択・エラー表示が翻訳され�
     root.querySelector("#scan").dispatch("click");
     await waitForScan();
     assert.ok(descendants(root.querySelector("#groups")).some(button => button.textContent === "Series\n(2 images)"));
-    assert.equal(root.querySelector("#export").textContent, "Save (2)");
+    assert.equal(root.querySelector("#export").textContent, "Save PDF");
     assert.equal((await import(`../dist/extension/app/localization.js?source=${Date.now()}`)).t("includeSourcePage"), "Add a source page at the end");
     const row = root.querySelector("#images").children[0];
     assert.match(row.getAttribute("aria-label"), /^001.jpg, number 1/);

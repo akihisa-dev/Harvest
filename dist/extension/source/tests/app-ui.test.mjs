@@ -365,7 +365,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     exportFormat.value = "pdf";
     exportFormat.dispatch("change");
     document.querySelector("#all-visibility").dispatch("click");
-    assert.equal(document.querySelector("#export").textContent, "保存（2枚）");
+    assert.equal(document.querySelector("#export").textContent, "PDFを保存");
     const resetOrder = document.querySelector("#reset-order");
     assert.equal(resetOrder.disabled, true);
 
@@ -637,7 +637,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#source-url").value, "https://example.com/next", "保存失敗時は再試行のためURLを残す");
     assert.equal(document.querySelector("#failures").hidden, false);
     assert.deepEqual(document.querySelector("#failed-images").children.map(row => row.textContent), ["3番 001.jpg — 画像を取得できませんでした。通信状態と画像URLを確認してください。"]);
-    assert.equal(document.querySelector("#export").textContent, "失敗した1枚を再試行");
+    assert.equal(document.querySelector("#export").textContent, "失敗分を再試行");
     assert.equal(document.querySelector("#images").children.find(row => row.children[0].src === failedUrl).className.includes("failed"), true);
     // Failed re-analysis must preserve both the user's work and prepared PDF pages.
     rejectScan = true;
@@ -650,7 +650,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), busyOrder);
     assert.match(document.querySelector("#status").textContent, /前の収集結果を保持/);
     assert.equal(document.querySelector("#status").title, document.querySelector("#status").textContent, "画面で省略された状態文も全文を確認できる");
-    assert.equal(document.querySelector("#export").textContent, "失敗した1枚を再試行");
+    assert.equal(document.querySelector("#export").textContent, "失敗分を再試行");
     rejectScan = false;
     failOnce = false;
     createdUrls.length = 0;
@@ -660,12 +660,15 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(exportOverlay.hidden, false, "再試行中もビュアーにオーバーレイを重ねる");
     await waitUntil(() => document.downloads.length === 1);
     await waitUntil(() => exportButton.dataset.saving === "false");
-    assert.equal(exportButton.textContent, "保存（4枚）", "保存開始後は通常のボタン名に戻す");
+    assert.equal(exportButton.textContent, "保存しました", "保存完了は保存ボタン内に表示する");
+    assert.equal(exportButton.dataset.saved, "true", "保存完了状態を保存ボタンへ設定する");
     assert.equal(exportOverlay.hidden, true, "保存開始後はビュアーのオーバーレイを消す");
     assert.deepEqual(fetches, [...busyOrder, failedUrl]);
     assert.deepEqual(document.downloads, ["ページ.pdf"]);
     assert.equal(document.querySelector("#failures").hidden, true);
     assert.equal(document.querySelector("#status").dataset.state, "success");
+    assert.equal(document.querySelector("#status").textContent, "", "保存完了文はビュアー欄の状態表示に出さない");
+    assert.equal(document.querySelector("#status").title, "", "保存完了文をビュアー欄のツールチップにも出さない");
     assert.equal(document.querySelector("#source-url").value, "", "再試行後に保存できたらURLを消す");
     assert.equal(includeSourcePage.checked, false, "PDF保存後も出典ページの設定を保つ");
     assert.equal(document.querySelector("#source-drop").dataset.hasUrl, "false");
@@ -677,6 +680,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     const savedSelection = document.querySelector("#images").children.find(row => row.getAttribute("aria-pressed") === "true");
     savedSelection.dispatch("pointerdown");
     savedSelection.dispatch("click");
+    assert.equal(exportButton.dataset.saved, "false", "保存対象が変わったら保存完了状態を外す");
+    assert.equal(exportButton.textContent, "PDFを保存", "保存対象が変わったら保存操作を表示する");
     savedSelection.dispatch("pointerdown");
     savedSelection.dispatch("click");
     rejectScan = true;

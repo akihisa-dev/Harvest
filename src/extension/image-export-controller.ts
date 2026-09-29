@@ -138,7 +138,7 @@ export function createImageExportController(options: ImageExportControllerOption
       download(archive, options.getZipFilename());
       options.onClearSourceUrl();
       pending = null;
-      reportStatus(t("imageZipSaved", {count: entries.length, plural: formatPlural(entries.length)}), "success");
+      reportStatus(t("exportSaved"), "success");
     } catch (error) {
       if (options.isDisposed() || controller.signal.aborted) return;
       reportStatus(

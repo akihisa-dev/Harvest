@@ -4,7 +4,7 @@ import { createSourcePageLayout } from "../core/pdf.js";
 import { createCollectionController } from "./collection-controller.js";
 import { scanTab, scanUrl } from "./page-access.js";
 import { prefersReducedMotion, setMotionText } from "./motion.js";
-import { formatPlural, localizeErrorMessage, t } from "./localization.js";
+import { localizeErrorMessage, t } from "./localization.js";
 import { createViewerController } from "./viewer-controller.js";
 import { createImageListView } from "./image-list-view.js";
 import { createPdfExportController } from "./pdf-export-controller.js";
@@ -90,6 +90,7 @@ const emptyLogoElement = required("#empty-logo");
 const emptyMessageElement = required("#empty-message");
 const statusElement = required("#status");
 const imageCollection = new ImageCollection();
+let completedExport = null;
 let pageTitle = t("imageFallback");
 let busy = false;
 let disposed = false;
@@ -145,6 +146,15 @@ function clearSourceUrl() {
     hideSourceInput();
 }
 function setStatus(message, state = "info", progress = "") {
+    if (state === "success") {
+        completedExport = { format: selectedExportFormat, selected: [...imageCollection.selectedItems] };
+        setMotionText(statusElement, "");
+        statusElement.setAttribute("aria-label", "");
+        statusElement.dataset["state"] = state;
+        statusElement.title = "";
+        return;
+    }
+    completedExport = null;
     setMotionText(statusElement, state === "busy" ? progress : message);
     statusElement.setAttribute("aria-label", state === "busy" ? message : "");
     statusElement.dataset["state"] = state;
@@ -278,6 +288,7 @@ function previewName(item) {
 function render() {
     collectionController.publishState();
     const selected = imageCollection.selectedItems;
+    const selectedCount = selected.length;
     const pdfSelectionChanged = pdfExportController?.discardIfSelectionChanged(selected) ?? false;
     const imageSelectionChanged = imageExportController?.discardIfSelectionChanged(selected) ?? false;
     const selectionChanged = pdfSelectionChanged || imageSelectionChanged;
@@ -293,7 +304,9 @@ function render() {
     const exportProgress = selectedExportFormat === "pdf"
         ? pdfExportController?.progress ?? ""
         : imageExportController?.progress ?? "";
-    const selectedCount = selected.length;
+    const exportSaved = completedExport?.format === selectedExportFormat
+        && completedExport.selected.length === selected.length
+        && completedExport.selected.every((item, index) => item === selected[index]);
     scanButton.dataset["scanning"] = String(scanController !== null);
     scanButton.textContent = scanController ? "" : t("scan");
     if (scanController)
@@ -301,13 +314,19 @@ function render() {
     else
         scanButton.removeAttribute("aria-label");
     exportButton.dataset["saving"] = String(exportRunning);
+    exportButton.dataset["saved"] = String(exportSaved && !exportRunning);
     if (!exportRunning)
         exportButton.removeAttribute("aria-label");
-    exportButton.textContent = exportRunning ? exportProgress : pendingExport?.failed.size
-        ? t("exportRetry", { count: pendingExport.failed.size, plural: formatPlural(pendingExport.failed.size) })
-        : selectedCount
-            ? t("exportCount", { count: selectedCount, plural: formatPlural(selectedCount) })
-            : t("save");
+    if (exportRunning)
+        exportButton.textContent = exportProgress;
+    else if (pendingExport?.failed.size)
+        exportButton.textContent = t("exportRetry");
+    else if (exportSaved)
+        exportButton.textContent = t("exportSaved");
+    else if (selected.length)
+        exportButton.textContent = t("exportAction", { format: selectedExportFormat.toUpperCase() });
+    else
+        exportButton.textContent = t("save");
     exportButton.title = exportButton.textContent;
     sourcePageOption.hidden = selectedExportFormat !== "pdf";
     exportFormat.value = selectedExportFormat;
@@ -347,6 +366,7 @@ function render() {
     viewerController.render();
 }
 function startExport() {
+    completedExport = null;
     if (selectedExportFormat === "pdf")
         void pdfExportController?.export();
     else

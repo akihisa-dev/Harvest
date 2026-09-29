@@ -111,7 +111,7 @@ export function createPdfExportController(options: PdfExportControllerOptions): 
       download(blob, filename);
       options.onClearSourceUrl();
       pending = null;
-      reportStatus(t("pdfSaved", {count: pages.length, plural: formatPlural(pages.length)}), "success");
+      reportStatus(t("exportSaved"), "success");
     } catch (error) {
       if (options.isDisposed()) return;
       pending = work.prepared.size || work.failed.size ? work : null;
