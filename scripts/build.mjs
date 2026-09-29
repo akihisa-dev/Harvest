@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { access, cp, copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { access, cp, copyFile, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import process from "node:process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,19 @@ const backup = join(dist, ".extension-backup-" + process.pid);
 const manifest = JSON.parse(await readFile(join(root, "manifest.template.json"), "utf8"));
 const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 let movedOldOutput = false;
+
+async function trimVendorJavaScript(directory) {
+  for (const entry of await readdir(directory, {withFileTypes: true})) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await trimVendorJavaScript(path);
+    } else if (entry.isFile() && entry.name.endsWith(".js")) {
+      const source = await readFile(path, "utf8");
+      const trimmed = source.replace(/[ \t]+(?=\r?$)/gm, "");
+      if (trimmed !== source) await writeFile(path, trimmed);
+    }
+  }
+}
 
 if (manifest.version !== packageJson.version) {
   throw new Error("package.jsonとmanifest.template.jsonのversionが一致しません。");
@@ -51,8 +64,36 @@ try {
       ? join(stage, "background.js")
       : join(stage, "app", file === "app.js" ? "index.js" : file);
     await mkdir(dirname(destination), { recursive: true });
-    await copyFile(source, destination);
+    if (file === "jxl-codec.js") {
+      const code = (await readFile(source, "utf8")).replace('import("harvest-vendor-jxl")', 'import("./vendor/jxl/encode.js")');
+      if (code.includes("harvest-vendor-jxl")) throw new Error("JXLエンコーダーの参照を拡張機能内のファイルへ変換できません。");
+      await writeFile(destination, code);
+    } else {
+      await copyFile(source, destination);
+    }
   }
+  const jxlPackage = join(root, "node_modules", "@jsquash", "jxl");
+  const jxlVendor = join(stage, "app", "vendor", "jxl");
+  const jxlRealPath = await realpath(jxlPackage);
+  const wasmDetectPackage = join(dirname(dirname(jxlRealPath)), "wasm-feature-detect");
+  const wasmDetectVendor = join(stage, "app", "vendor", "wasm-feature-detect");
+  await mkdir(join(jxlVendor, "codec"), {recursive: true});
+  await cp(join(jxlPackage, "codec", "enc"), join(jxlVendor, "codec", "enc"), {recursive: true});
+  for (const file of ["encode.js", "meta.js", "utils.js", "LICENSE"]) {
+    await copyFile(join(jxlPackage, file), join(jxlVendor, file));
+  }
+  await mkdir(join(wasmDetectVendor, "dist", "esm"), {recursive: true});
+  const featureDetect = await readFile(join(wasmDetectPackage, "dist", "esm", "index.js"), "utf8");
+  await writeFile(join(wasmDetectVendor, "dist", "esm", "index.js"), featureDetect);
+  await copyFile(join(wasmDetectPackage, "LICENSE"), join(wasmDetectVendor, "LICENSE"));
+  const jxlEncode = join(jxlVendor, "encode.js");
+  const jxlCode = (await readFile(jxlEncode, "utf8")).replace(
+    "from 'wasm-feature-detect'",
+    "from '../wasm-feature-detect/dist/esm/index.js'",
+  );
+  if (jxlCode.includes("from 'wasm-feature-detect'")) throw new Error("JXLの機能検出参照を拡張機能内のファイルへ変換できません。");
+  await writeFile(jxlEncode, jxlCode);
+  await trimVendorJavaScript(join(stage, "app", "vendor"));
   await cp(join(stage, ".compiled", "core"), join(stage, "core"), { recursive: true });
   await copyFile(join(root, "app", "index.html"), join(stage, "app", "index.html"));
   await copyFile(join(root, "app", "style.css"), join(stage, "app", "style.css"));

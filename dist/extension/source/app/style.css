@@ -61,7 +61,7 @@ body { margin: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: 
 .url-drop-content img { width: 64px; height: 64px; flex: none; opacity: .28; }
 body:has(#url-drop-overlay:not([hidden])) #empty-logo { visibility: hidden; }
 @media (prefers-color-scheme: dark) { .url-drop-content img { filter: invert(1); } }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button {
   min-height: 36px;
   padding: 7px 12px;
@@ -75,7 +75,7 @@ button {
 }
 button:hover:not(:disabled) { background: var(--hover); border-color: var(--ink); }
 button:disabled { color: var(--disabled-ink); background: var(--disabled); border-color: var(--line); cursor: default; }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 input[type="checkbox"] { width: 16px; height: 16px; margin: 0; flex: none; accent-color: var(--ink); cursor: pointer; }
 input:disabled { cursor: default; }
 h1, h2, p { margin: 0; }
@@ -87,7 +87,9 @@ section, aside { min-width: 0; }
 .header-input-column { display: block; min-width: 0; }
 .controls { padding: 8px var(--sidebar-padding) 8px 0; }
 .save-area { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 0 0 8px; border-bottom: 1px solid var(--line); }
-.save-area #export { width: 100%; }
+.export-control { display: flex; gap: 6px; min-width: 0; }
+.export-control select { flex: 0 0 72px; min-width: 0; height: 36px; padding: 4px 6px; border: 1px solid var(--control-line); border-radius: var(--radius); color: var(--ink); background: var(--surface); }
+.export-control #export { flex: 1; width: auto; min-width: 0; overflow: hidden; padding-inline: 6px; text-overflow: ellipsis; white-space: nowrap; }
 .source-page-option { display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; }
 .source-row { display: grid; grid-template-columns: minmax(0, 1fr) calc(1px + var(--sidebar-padding)) auto; }
 .source-row #source-drop, .source-row #source-url { grid-column: 1; grid-row: 1; }
@@ -262,6 +264,8 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
   :root { --sidebar-width: 148px; --stage-sidebar-width: 0px; --stage-gap: 0px; }
   .results-area { grid-template-rows: minmax(0, 1fr); }
   .workspace-sidebar { max-height: none; }
+  .export-control #export { padding-inline: 4px; }
+  #export[data-saving="true"]::after { display: none; }
   .toolbar, .group-chip { gap: 4px; }
   .viewer-page { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 8px; }
   .viewer-sidebar { max-height: 30dvh; }

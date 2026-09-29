@@ -63,9 +63,10 @@ function visualRows(imagesElement) {
 }
 
 async function waitUntil(predicate) {
-  for (let attempt = 0; attempt < 100; attempt++) {
+  const deadline = Date.now() + 1_000;
+  while (Date.now() < deadline) {
     if (predicate()) return;
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise(resolve => setTimeout(resolve, 0));
   }
   assert.fail("処理が完了しませんでした");
 }
@@ -225,6 +226,17 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     await import(`../dist/extension/app/index.js?ui=${Date.now()}`);
     const includeSourcePage = document.querySelector("#include-source-page");
     assert.equal(includeSourcePage.checked, true, "保存済みの設定を再び開いたパネルへ反映する");
+    const exportFormat = document.querySelector("#export-format");
+    const sourcePageOption = document.querySelector(".source-page-option");
+    assert.equal(exportFormat.value, "pdf", "初回は既存どおりPDFを選ぶ");
+    exportFormat.value = "jxl";
+    exportFormat.dispatch("change");
+    assert.equal(savedPreferences.get("harvest.exportFormat"), "jxl", "保存形式だけをブラウザー内に記録する");
+    assert.equal(sourcePageOption.hidden, true, "出典ページ設定は画像形式では隠す");
+    assert.equal(includeSourcePage.checked, true, "保存形式を変えてもPDFの出典設定を保つ");
+    exportFormat.value = "pdf";
+    exportFormat.dispatch("change");
+    assert.equal(sourcePageOption.hidden, false, "PDFへ戻すと出典ページ設定を再表示する");
     includeSourcePage.checked = false;
     includeSourcePage.dispatch("change");
     assert.equal(savedPreferences.get("harvest.includeSourcePage"), "false");
@@ -344,8 +356,16 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#status").textContent, "");
     assert.equal(document.querySelector("#images").children.length, 2);
     assert.equal(document.querySelector("#groups").children[0].children[0].textContent, "シリーズ\n(2枚)");
+    const orderBeforeFormatChange = document.querySelector("#images").children.map(row => row.children[0].src);
+    const selectionBeforeFormatChange = document.querySelector("#images").children.map(row => row.getAttribute("aria-pressed"));
+    exportFormat.value = "png";
+    exportFormat.dispatch("change");
+    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), orderBeforeFormatChange);
+    assert.deepEqual(document.querySelector("#images").children.map(row => row.getAttribute("aria-pressed")), selectionBeforeFormatChange);
+    exportFormat.value = "pdf";
+    exportFormat.dispatch("change");
     document.querySelector("#all-visibility").dispatch("click");
-    assert.equal(document.querySelector("#export").textContent, "PDFを保存（2枚）");
+    assert.equal(document.querySelector("#export").textContent, "保存（2枚）");
     const resetOrder = document.querySelector("#reset-order");
     assert.equal(resetOrder.disabled, true);
 
@@ -492,7 +512,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     const groupButton = prefix => groupChips.find(chip => chip.children[0].textContent.startsWith(prefix))?.children[1];
     const coverFilter = groupButton("表紙");
     const coverPdfCheckbox = getPdfGroupCheckbox(coverFilter.getAttribute("data-focus-key"));
-    assert.match(coverPdfCheckbox.getAttribute("aria-label"), /PDFに含める 表紙/);
+    assert.match(coverPdfCheckbox.getAttribute("aria-label"), /保存対象に含める 表紙/);
     coverPdfCheckbox.checked = true;
     coverPdfCheckbox.dispatch("change");
     assert.equal(document.activeElement.getAttribute("data-focus-kind"), "pdf-group");
@@ -640,7 +660,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(exportOverlay.hidden, false, "再試行中もビュアーにオーバーレイを重ねる");
     await waitUntil(() => document.downloads.length === 1);
     await waitUntil(() => exportButton.dataset.saving === "false");
-    assert.equal(exportButton.textContent, "PDFを保存（4枚）", "保存開始後は通常のボタン名に戻す");
+    assert.equal(exportButton.textContent, "保存（4枚）", "保存開始後は通常のボタン名に戻す");
     assert.equal(exportOverlay.hidden, true, "保存開始後はビュアーのオーバーレイを消す");
     assert.deepEqual(fetches, [...busyOrder, failedUrl]);
     assert.deepEqual(document.downloads, ["ページ.pdf"]);
@@ -688,7 +708,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
       selectedRow.dispatch("click");
     }
     assert.equal(document.querySelector("#export").disabled, true);
-    assert.equal(document.querySelector("#export").textContent, "PDFを保存");
+    assert.equal(document.querySelector("#export").textContent, "保存");
     document.querySelector("#reset").dispatch("click");
     assert.equal(empty.hidden, false);
     assert.equal(document.querySelector("#status").textContent, "");

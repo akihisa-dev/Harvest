@@ -53,7 +53,8 @@ async function inspectLayout(page, width, height, label) {
     return {
       viewport: { width: innerWidth, height: innerHeight, bodyWidth: document.body.scrollWidth, bodyHeight: document.body.scrollHeight },
       header: rect(".app-header"), main: rect("main"), sidebar: rect(".workspace-sidebar"), controls: rect(".results-controls"),
-      heading: rect(".results-heading"), groupBar: rect(".group-bar"), groups: rect("#groups"),
+      heading: rect(".results-heading"), groupBar: rect(".group-bar"), groups: rect("#groups"), exportControl: rect(".export-control"),
+      saveArea: rect(".save-area"), exportSelect: rect("#export-format"), sourceOption: rect(".source-page-option"),
       viewerControls: rect(".viewer-controls"), status: rect("#status"), clear: rect("#reset"),
       source: rect("#source-drop"), scan: rect("#scan"), collect: rect("#collection-toggle"), export: rect("#export"), viewer: rect("#viewer-toggle"),
       allVisibility: rect("#all-visibility"), allSelection: rect(".toolbar-check"), resetOrder: rect("#reset-order"),
@@ -77,18 +78,19 @@ async function inspectLayout(page, width, height, label) {
   }
   assert.ok(result.source.right <= result.scan.x && result.scan.right <= result.clear.x && result.clear.right <= result.collect.x,
     `${label}: URL, analyze, clear, and collect must stay in this order`);
-  assert.ok(Math.abs(result.scan.x - result.export.x) <= 1, `${label}: header actions and save button must share the left edge (${result.scan.x}, ${result.export.x})`);
-  assert.ok(Math.abs(result.collect.right - result.export.right) <= 1, `${label}: header actions and save button must share the right edge (${result.collect.right}, ${result.export.right})`);
+  assert.ok(Math.abs(result.scan.x - result.exportControl.x) <= 1, `${label}: header actions and format/save control must share the left edge (${result.scan.x}, ${result.exportControl.x})`);
+  assert.ok(Math.abs(result.collect.right - result.exportControl.right) <= 1, `${label}: header actions and format/save control must share the right edge (${result.collect.right}, ${result.exportControl.right})`);
   assert.ok(Math.abs(result.source.x - result.main.x) <= 1, `${label}: URL field and gray area must share the left edge (${result.source.x}, ${result.main.x})`);
   assert.ok(Math.abs(result.source.right - result.main.right) <= 1, `${label}: URL field and gray area must share the right edge (${result.source.right}, ${result.main.right})`);
   assert.ok(result.sidebar.x >= result.main.right - 1, `${label}: controls must be to the right of the image`);
   assert.ok(result.sidebar.right <= width + 1, `${label}: sidebar must fit within viewport`);
-  assert.ok(result.sidebar.scrollWidth <= result.sidebar.clientWidth + 1, `${label}: sidebar must not scroll horizontally`);
-  for (const [name, box] of Object.entries({heading: result.headingText, pdf: result.export, viewer: result.viewer})) {
+  assert.ok(result.sidebar.scrollWidth <= result.sidebar.clientWidth + 1,
+    `${label}: sidebar must not scroll horizontally (${result.sidebar.scrollWidth}/${result.sidebar.clientWidth}; save=${result.saveArea.scrollWidth}/${result.saveArea.clientWidth}; select=${result.exportSelect.scrollWidth}/${result.exportSelect.clientWidth}; source=${result.sourceOption.scrollWidth}/${result.sourceOption.clientWidth})`);
+  for (const [name, box] of Object.entries({heading: result.headingText, pdf: result.exportControl, viewer: result.viewer})) {
     assert.ok(box.width > 0 && box.height > 0, `${label}: ${name} must be laid out`);
     assert.ok(box.x >= result.sidebar.x && box.right <= result.sidebar.right + 1, `${label}: ${name} must fit in sidebar width`);
   }
-  assert.ok(result.export.y < result.viewer.y && result.viewer.y < result.headingText.y,
+  assert.ok(result.exportControl.y < result.viewer.y && result.viewer.y < result.headingText.y,
     `${label}: PDF, list toggle, and image groups must be arranged vertically`);
   assert.ok(result.headingText.bottom <= result.resetOrder.y, `${label}: heading must stay above selection actions`);
   assert.ok(result.resetOrder.right <= result.allVisibility.x && result.allVisibility.right <= result.allSelection.x,

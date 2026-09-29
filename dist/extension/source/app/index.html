@@ -37,7 +37,7 @@
         <ol id="images" class="image-list"></ol>
       </section>
       <section id="viewer" class="viewer" data-i18n-aria-label="viewer" aria-label="選択した画像のビュアー" hidden>
-        <p id="viewer-empty" data-i18n="viewerEmpty">PDFに含める画像が選択されていません。</p>
+        <p id="viewer-empty" data-i18n="viewerEmpty">保存する画像が選択されていません。</p>
         <div id="viewer-page" class="viewer-page" hidden>
           <div id="viewer-stage" class="viewer-stage" data-i18n-aria-label="viewerStage" aria-label="画像。ホイールで拡大縮小、拡大中はドラッグで移動">
             <img id="viewer-image" alt="" referrerpolicy="no-referrer" draggable="false">
@@ -62,8 +62,17 @@
     </main>
     <aside class="workspace-sidebar" data-i18n-aria-label="workspaceControls" aria-label="画像と保存の操作">
       <aside class="save-area" aria-labelledby="export-heading">
-        <h2 id="export-heading" class="visually-hidden" data-i18n="savePdf">PDFを保存</h2>
-        <div class="export-control"><button id="export" type="button" disabled data-i18n="savePdf">PDFを保存</button></div>
+        <h2 id="export-heading" class="visually-hidden" data-i18n="exportHeading">保存形式と保存</h2>
+        <div class="export-control">
+          <label class="visually-hidden" for="export-format" data-i18n="exportFormat">保存形式</label>
+          <select id="export-format" data-i18n-aria-label="exportFormat" aria-label="保存形式">
+            <option value="pdf">PDF</option>
+            <option value="jpg">JPG</option>
+            <option value="png">PNG</option>
+            <option value="jxl">JXL</option>
+          </select>
+          <button id="export" type="button" disabled data-i18n="save">保存</button>
+        </div>
         <label class="source-page-option"><input id="include-source-page" type="checkbox"><span data-i18n="includeSourcePage">末尾に出典ページを追加</span></label>
       </aside>
       <aside class="viewer-controls" data-i18n-aria-label="viewerMode" aria-label="ビュアーモード">
@@ -79,7 +88,7 @@
             <label class="toolbar-check"><input id="all-selection" type="checkbox" aria-label="すべて選択" disabled></label>
           </div>
         </div>
-        <div class="group-bar"><div id="groups" class="groups" role="group" data-i18n-aria-label="groupControls" aria-label="画像の表示とPDFへの選択" hidden></div></div>
+        <div class="group-bar"><div id="groups" class="groups" role="group" data-i18n-aria-label="groupControls" aria-label="画像の表示と保存対象の選択" hidden></div></div>
       </div>
     </aside>
     <div id="scan-overlay" aria-hidden="true" hidden></div>

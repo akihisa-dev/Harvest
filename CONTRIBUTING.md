@@ -15,6 +15,8 @@ commit件名は`<type>[!]: <version> <日本語の説明>`です。typeは`feat`
 
 Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion一致・同一commit登録を確認し、`pre-push`で`pnpm verify:full`を実行します。新しいcloneでhookを有効にするには`pnpm setup:hooks`を実行してください。`pnpm verify`などの通常確認も、hook未設定または別の場所を指している場合は`pnpm setup:hooks`の実行方法を案内して停止します。GitHub Actionsは使いません。release前は`pnpm verify:release`を実行します。
 
+JXL出力には`@jsquash/jxl` 1.3.0を使用し、同梱される`wasm-feature-detect` 1.9.0とともにApache-2.0で配布します。ビルドはエンコーダーとWebAssemblyを拡張機能へ含め、実行時に外部からコードを取得しません。今回の追加分は非圧縮で約6.4 MBです。両ライブラリのライセンスは拡張機能内の「ライセンスとソース」画面から確認できます。
+
 Chrome権限や対象サイトを広げる場合は必要な操作を説明してください。利用者情報を扱う場合は取得内容、保存先、保持期間、削除方法を文書化します。依存追加前に必要性、保守状況、脆弱性、ライセンスを確認し、版を固定してlockfileを更新します。
 
 ## push前のローカル検証

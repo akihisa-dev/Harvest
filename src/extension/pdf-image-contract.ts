@@ -1,4 +1,4 @@
-import type { PdfImagePage } from "../core/pdf-types.js";
+import type { PdfImagePage, PdfJpegImagePage } from "../core/pdf-types.js";
 
 export type PdfImageErrorKind = "http" | "network" | "timeout" | "cancelled" | "invalid-image";
 
@@ -31,7 +31,7 @@ export interface PdfImagePreparationOptions extends PdfImageOptions {
 export type PdfImagePreparationResult = PdfImagePage | PdfImageError;
 
 export type FetchedImage =
-  | { readonly kind: "original"; readonly page: PdfImagePage }
+  | { readonly kind: "original"; readonly page: PdfJpegImagePage }
   | { readonly kind: "bitmap"; readonly blob: Blob };
 
 export function invalidImage(message: string): PdfImageError {

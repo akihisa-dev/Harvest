@@ -8,14 +8,29 @@ import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { createViewerController } from "./viewer-controller.js";
 import { createImageListView } from "./image-list-view.js";
 import { createPdfExportController } from "./pdf-export-controller.js";
+import { createImageExportController } from "./image-export-controller.js";
 const sourceUrl = required("#source-url");
 const sourceDrop = required("#source-drop");
 const urlDropOverlay = required("#url-drop-overlay");
 const collectionButton = required("#collection-toggle");
 const scanButton = required("#scan");
 const exportButton = required("#export");
+const exportFormat = required("#export-format");
+const sourcePageOption = required(".source-page-option");
 const includeSourcePage = required("#include-source-page");
 const sourcePagePreferenceKey = "harvest.includeSourcePage";
+const exportFormatPreferenceKey = "harvest.exportFormat";
+function isExportFormat(value) {
+    return value === "pdf" || value === "jpg" || value === "png" || value === "jxl";
+}
+let selectedExportFormat = "pdf";
+try {
+    const storedFormat = localStorage.getItem(exportFormatPreferenceKey);
+    if (storedFormat && isExportFormat(storedFormat))
+        selectedExportFormat = storedFormat;
+}
+catch { /* Keep PDF as the default when browser storage is unavailable. */ }
+exportFormat.value = selectedExportFormat;
 try {
     includeSourcePage.checked = localStorage.getItem(sourcePagePreferenceKey) === "true";
 }
@@ -28,6 +43,20 @@ includeSourcePage.addEventListener("change", () => {
     }
     catch {
         setStatus(t("errorSavePreference"), "error");
+    }
+    render();
+});
+exportFormat.addEventListener("change", () => {
+    if (!isExportFormat(exportFormat.value)) {
+        exportFormat.value = selectedExportFormat;
+        return;
+    }
+    selectedExportFormat = exportFormat.value;
+    try {
+        localStorage.setItem(exportFormatPreferenceKey, selectedExportFormat);
+    }
+    catch {
+        setStatus(t("errorSaveFormatPreference"), "error");
     }
     render();
 });
@@ -66,11 +95,13 @@ let busy = false;
 let disposed = false;
 let scanController = null;
 let pdfExportController = null;
+let imageExportController = null;
 window.addEventListener?.("pagehide", () => {
     disposed = true;
     collectionController.stop();
     scanController?.abort();
     pdfExportController?.abort();
+    imageExportController?.abort();
 });
 let scanState = "initial";
 const imageListView = createImageListView({
@@ -118,7 +149,8 @@ function setStatus(message, state = "info", progress = "") {
     statusElement.setAttribute("aria-label", state === "busy" ? message : "");
     statusElement.dataset["state"] = state;
     statusElement.title = message;
-    if (pdfExportController?.isRunning && state === "busy") {
+    const activeExport = selectedExportFormat === "pdf" ? pdfExportController : imageExportController;
+    if (activeExport?.isRunning && state === "busy") {
         exportButton.textContent = progress;
         exportButton.setAttribute("aria-label", message);
     }
@@ -128,6 +160,7 @@ function setBusy(value) {
     scanButton.disabled = value;
     sourceDrop.disabled = value;
     sourceUrl.disabled = value;
+    exportFormat.disabled = value;
     includeSourcePage.disabled = value;
     resetButton.disabled = value;
     exportButton.disabled = value || !imageCollection.hasSelection;
@@ -180,6 +213,7 @@ async function startScan(collectionLink) {
             collectionController.markAnalyzedUrl(collectionLink, session);
         pageTitle = result.title || t("imageFallback");
         pdfExportController?.clear();
+        imageExportController?.clear();
         const initialGroup = defaultDisplayedImageGroup(imageCollection.groups);
         imageListView.showInitialGroup(initialGroup);
         viewerController.setOpen(false);
@@ -210,13 +244,19 @@ function imageFilename(url) {
         return url;
     }
 }
+function exportFileBaseName() {
+    return pageTitle.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) || t("imageFallback");
+}
 function pdfFilename() {
-    return `${pageTitle.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) || t("imageFallback")}.pdf`;
+    return `${exportFileBaseName()}.pdf`;
+}
+function zipFilename() {
+    return `${exportFileBaseName()}.zip`;
 }
 /** A local preview only; the PDF itself continues to contain selectable text. */
 function sourcePreview() {
     const first = imageCollection.selectedItems[0];
-    if (!includeSourcePage.checked || !first)
+    if (selectedExportFormat !== "pdf" || !includeSourcePage.checked || !first)
         return null;
     const layout = createSourcePageLayout({ heading: t("sourceHeading"), filename: pdfFilename(), url: first.sourcePage });
     const escape = (value) => value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[character]);
@@ -238,11 +278,21 @@ function previewName(item) {
 function render() {
     collectionController.publishState();
     const selected = imageCollection.selectedItems;
-    const selectionChanged = pdfExportController?.discardIfSelectionChanged(selected) ?? false;
+    const pdfSelectionChanged = pdfExportController?.discardIfSelectionChanged(selected) ?? false;
+    const imageSelectionChanged = imageExportController?.discardIfSelectionChanged(selected) ?? false;
+    const selectionChanged = pdfSelectionChanged || imageSelectionChanged;
     if (selectionChanged && !busy)
         setStatus(t("selectionChanged"), "info");
-    const pendingExport = pdfExportController?.pending ?? null;
-    const exportRunning = pdfExportController?.isRunning ?? false;
+    const imagePending = imageExportController?.pending;
+    const pendingExport = selectedExportFormat === "pdf"
+        ? pdfExportController?.pending ?? null
+        : imagePending?.format === selectedExportFormat ? imagePending : null;
+    const exportRunning = selectedExportFormat === "pdf"
+        ? pdfExportController?.isRunning ?? false
+        : imageExportController?.isRunning ?? false;
+    const exportProgress = selectedExportFormat === "pdf"
+        ? pdfExportController?.progress ?? ""
+        : imageExportController?.progress ?? "";
     const selectedCount = selected.length;
     scanButton.dataset["scanning"] = String(scanController !== null);
     scanButton.textContent = scanController ? "" : t("scan");
@@ -253,16 +303,21 @@ function render() {
     exportButton.dataset["saving"] = String(exportRunning);
     if (!exportRunning)
         exportButton.removeAttribute("aria-label");
-    exportButton.textContent = exportRunning ? pdfExportController?.progress ?? "" : pendingExport?.failed.size
+    exportButton.textContent = exportRunning ? exportProgress : pendingExport?.failed.size
         ? t("exportRetry", { count: pendingExport.failed.size, plural: formatPlural(pendingExport.failed.size) })
-        : selectedCount ? t("exportCount", { count: selectedCount, plural: formatPlural(selectedCount) }) : t("savePdf");
+        : selectedCount
+            ? t("exportCount", { count: selectedCount, plural: formatPlural(selectedCount) })
+            : t("save");
+    exportButton.title = exportButton.textContent;
+    sourcePageOption.hidden = selectedExportFormat !== "pdf";
+    exportFormat.value = selectedExportFormat;
     failuresElement.hidden = !pendingExport?.failed.size;
     failedImagesElement.replaceChildren(...(pendingExport?.selected.filter(item => pendingExport.failed.has(item)) ?? []).map(item => {
         const row = document.createElement("li");
         row.textContent = t("failedRow", {
             index: imageCollection.positionOf(item) + 1,
             filename: imageFilename(item.url),
-            reason: localizeErrorMessage(pendingExport.failed.get(item) ?? t("errorPdfFetch")),
+            reason: localizeErrorMessage(pendingExport.failed.get(item) ?? t(selectedExportFormat === "pdf" ? "errorPdfFetch" : "errorImageConvert"), selectedExportFormat === "pdf" ? "errorPdfFetch" : "errorImageConvert"),
         });
         row.title = item.url;
         return row;
@@ -287,8 +342,15 @@ function render() {
     allSelectionCheckbox.setAttribute("aria-label", t(allSelectionCheckbox.checked ? "clearAll" : "selectAll"));
     resetOrderButton.disabled = busy || imageCollection.matchesInitialOrderAndSelection();
     exportButton.disabled = busy || !imageCollection.hasSelection;
+    exportFormat.disabled = busy;
     imageListView.render(pendingExport ? new Set(pendingExport.failed.keys()) : undefined, sourcePreview());
     viewerController.render();
+}
+function startExport() {
+    if (selectedExportFormat === "pdf")
+        void pdfExportController?.export();
+    else
+        void imageExportController?.export(selectedExportFormat);
 }
 const collectionController = createCollectionController({
     button: collectionButton,
@@ -303,7 +365,7 @@ const collectionController = createCollectionController({
         updateSourceDrop();
         void startScan(url);
     },
-    onExport() { void pdfExportController?.export(); },
+    onExport: startExport,
     onError(error) {
         setStatus(error instanceof Error ? localizeErrorMessage(error.message, "errorCollectionStart", true) : t("errorCollectionStart"), "error");
     },
@@ -340,6 +402,19 @@ pdfExportController = createPdfExportController({
             ? { heading: t("sourceHeading"), filename, url: firstSelected.sourcePage }
             : undefined;
     },
+    isBusy: () => busy,
+    isDisposed: () => disposed,
+    onBusyChange: setBusy,
+    onStatus: setStatus,
+    onCloseViewer: () => viewerController.setOpen(false),
+    onClearSourceUrl: clearSourceUrl,
+    onScrollToFailures() {
+        failuresElement.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth" });
+    },
+});
+imageExportController = createImageExportController({
+    getSelectedItems: () => imageCollection.selectedItems,
+    getZipFilename: zipFilename,
     isBusy: () => busy,
     isDisposed: () => disposed,
     onBusyChange: setBusy,
@@ -398,7 +473,7 @@ document.addEventListener("drop", event => {
     hideSourceInput();
     void startScan();
 });
-exportButton.addEventListener("click", () => { void pdfExportController?.export(); });
+exportButton.addEventListener("click", startExport);
 allSelectionCheckbox.addEventListener("change", () => {
     if (busy)
         return;
@@ -418,6 +493,7 @@ resetButton.addEventListener("click", () => {
     collectionController.clearAnalyzedUrl();
     imageCollection.clear();
     pdfExportController?.clear();
+    imageExportController?.clear();
     imageListView.clearVisibleGroups();
     viewerController.setOpen(false);
     viewerController.clearCurrentPage();
