@@ -55,6 +55,20 @@ async function inspectLayout(page, width, height, label) {
       header: rect(".app-header"), main: rect("main"), sidebar: rect(".workspace-sidebar"), controls: rect(".results-controls"),
       heading: rect(".results-heading"), groupBar: rect(".group-bar"), groups: rect("#groups"), exportControl: rect(".export-control"),
       saveArea: rect(".save-area"), exportSelect: rect("#export-format"), sourceOption: rect(".source-page-option"),
+      exportSegments: (() => {
+        const control = document.querySelector(".export-control");
+        const format = control.querySelector("select");
+        const save = control.querySelector("button");
+        const formatStyle = getComputedStyle(format);
+        const saveStyle = getComputedStyle(save);
+        return {
+          gap: getComputedStyle(control).columnGap,
+          formatRight: format.getBoundingClientRect().right,
+          saveLeft: save.getBoundingClientRect().left,
+          formatInnerCorners: [formatStyle.borderTopRightRadius, formatStyle.borderBottomRightRadius],
+          saveInnerCorners: [saveStyle.borderTopLeftRadius, saveStyle.borderBottomLeftRadius],
+        };
+      })(),
       viewerControls: rect(".viewer-controls"), status: rect("#status"), clear: rect("#reset"),
       source: rect("#source-drop"), scan: rect("#scan"), collect: rect("#collection-toggle"), export: rect("#export"), viewer: rect("#viewer-toggle"),
       allVisibility: rect("#all-visibility"), allSelection: rect(".toolbar-check"), resetOrder: rect("#reset-order"),
@@ -80,6 +94,10 @@ async function inspectLayout(page, width, height, label) {
     `${label}: URL, analyze, clear, and collect must stay in this order`);
   assert.ok(Math.abs(result.scan.x - result.exportControl.x) <= 1, `${label}: header actions and format/save control must share the left edge (${result.scan.x}, ${result.exportControl.x})`);
   assert.ok(Math.abs(result.collect.right - result.exportControl.right) <= 1, `${label}: header actions and format/save control must share the right edge (${result.collect.right}, ${result.exportControl.right})`);
+  assert.equal(result.exportSegments.gap, "0px", `${label}: format and save must form one control without a gap`);
+  assert.equal(result.exportSegments.formatRight, result.exportSegments.saveLeft, `${label}: format and save segments must touch`);
+  assert.deepEqual(result.exportSegments.formatInnerCorners, ["0px", "0px"], `${label}: format segment must use square inner corners`);
+  assert.deepEqual(result.exportSegments.saveInnerCorners, ["0px", "0px"], `${label}: save segment must use square inner corners`);
   assert.ok(Math.abs(result.source.x - result.main.x) <= 1, `${label}: URL field and gray area must share the left edge (${result.source.x}, ${result.main.x})`);
   assert.ok(Math.abs(result.source.right - result.main.right) <= 1, `${label}: URL field and gray area must share the right edge (${result.source.right}, ${result.main.right})`);
   assert.ok(result.sidebar.x >= result.main.right - 1, `${label}: controls must be to the right of the image`);
