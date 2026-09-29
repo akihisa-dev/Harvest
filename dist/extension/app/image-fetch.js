@@ -1,5 +1,6 @@
 import { getOriginalJpegPage } from "../core/jpeg.js";
 import { checkCancelled, IMAGE_TOO_LARGE_MESSAGE, imageDimensionsError, invalidImage, ImageDataError, MAX_IMAGE_BYTES, } from "./image-data-contract.js";
+import { getImageFetchCredentials, ImageFetchTargetError, validateImageFetchTarget } from "./image-fetch-policy.js";
 const DEFAULT_TIMEOUT_MS = 20_000;
 function timeoutValue(options) {
     const value = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -88,6 +89,15 @@ export async function readImageBytes(response, requestedLimit = MAX_IMAGE_BYTES)
 }
 export async function fetchImage(url, options) {
     checkCancelled(options.signal);
+    try {
+        validateImageFetchTarget(url, options.sourcePage);
+    }
+    catch (error) {
+        if (error instanceof ImageFetchTargetError)
+            throw invalidImage(error.message);
+        throw error;
+    }
+    const credentials = getImageFetchCredentials(url, options.sourcePage);
     const timeoutMs = timeoutValue(options);
     const controller = new AbortController();
     let response;
@@ -109,7 +119,13 @@ export async function fetchImage(url, options) {
     }
     const operation = (async () => {
         try {
-            response = await fetch(url, { credentials: "include", signal: controller.signal });
+            response = await fetch(url, {
+                credentials,
+                // A credentialed request must not follow a page-controlled redirect
+                // into an unrelated origin, where another site's cookies could be sent.
+                redirect: credentials === "include" ? "error" : "follow",
+                signal: controller.signal,
+            });
             if (!response.ok) {
                 const error = responseError(response.status);
                 void cancelResponse(response);

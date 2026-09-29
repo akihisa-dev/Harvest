@@ -4,6 +4,7 @@ import { prefersReducedMotion, setMotionText } from "./motion.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { createViewerController } from "./viewer-controller.js";
 import { createImageListView } from "./image-list-view.js";
+import { createImagePreviewLoader } from "./image-preview.js";
 import { createPdfExportController } from "./pdf-export-controller.js";
 import { createImageExportController } from "./image-export-controller.js";
 import { queryAppElements } from "./app-elements.js";
@@ -39,8 +40,10 @@ let disposed = false;
 let scanSessionController = null;
 let pdfExportController = null;
 let imageExportController = null;
+const imagePreviewLoader = createImagePreviewLoader();
 window.addEventListener?.("pagehide", () => {
     disposed = true;
+    imagePreviewLoader.clear();
     collectionController.stop();
     scanSessionController?.abort();
     pdfExportController?.abort();
@@ -53,6 +56,7 @@ const imageListView = createImageListView({
     imagesElement,
     isBusy: () => busy,
     getFilename: imageFilename,
+    previewLoader: imagePreviewLoader,
     onChange: render,
 });
 function updateSourceDrop() {
@@ -262,6 +266,7 @@ const viewerController = createViewerController({
     getPageLabel: previewName,
     isBusy: () => busy,
     getImageCount: () => imageCollection.items.length,
+    previewLoader: imagePreviewLoader,
     onChange: render,
 });
 pdfExportController = createPdfExportController({
@@ -308,6 +313,7 @@ scanSessionController = createScanSessionController({
     onBusyChange: setBusy,
     onStatus: setStatus,
     onResults(nextPageTitle, initialGroup) {
+        imagePreviewLoader.clear();
         pageTitle = nextPageTitle;
         pdfExportController?.clear();
         imageExportController?.clear();
@@ -383,6 +389,7 @@ resetOrderButton.addEventListener("click", () => {
 resetButton.addEventListener("click", () => {
     if (busy)
         return;
+    imagePreviewLoader.clear();
     clearSourceUrl();
     collectionController.clearAnalyzedUrl();
     imageCollection.clear();

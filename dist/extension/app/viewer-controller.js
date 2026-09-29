@@ -10,6 +10,15 @@ export function createViewerController(options) {
     let pointer = null;
     let lastThumbnailWheelAt = -Infinity;
     const thumbnailRows = new Map();
+    function clearThumbnails() {
+        for (const row of thumbnailRows.values()) {
+            const image = row.children[0]?.children[0];
+            if (image)
+                options.previewLoader.clearImage(image);
+        }
+        thumbnailRows.clear();
+        elements.thumbnails.replaceChildren();
+    }
     function updateTransform() {
         elements.image.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
         elements.zoomReset.textContent = `${Math.round(zoom * 100)}%`;
@@ -50,9 +59,14 @@ export function createViewerController(options) {
     }
     function renderThumbnails(pages, activeUrl) {
         const pageUrls = new Set(pages.map(item => item.url));
-        for (const url of thumbnailRows.keys())
-            if (!pageUrls.has(url))
-                thumbnailRows.delete(url);
+        for (const [url, row] of thumbnailRows) {
+            if (pageUrls.has(url))
+                continue;
+            const image = row.children[0]?.children[0];
+            if (image)
+                options.previewLoader.clearImage(image);
+            thumbnailRows.delete(url);
+        }
         const rows = pages.map((item, index) => {
             let row = thumbnailRows.get(item.url);
             if (!row) {
@@ -63,7 +77,6 @@ export function createViewerController(options) {
                 thumbnail.loading = "lazy";
                 thumbnail.referrerPolicy = "no-referrer";
                 thumbnail.draggable = false;
-                thumbnail.src = item.url;
                 const number = document.createElement("span");
                 number.className = "viewer-thumb-number";
                 button.append(thumbnail, number);
@@ -78,6 +91,8 @@ export function createViewerController(options) {
             const number = button.children[1];
             button.setAttribute("aria-current", String(item.url === activeUrl));
             button.setAttribute("aria-label", t("thumbnailAria", { index: index + 1, filename: options.getPageLabel(item) }));
+            const thumbnail = button.children[0];
+            options.previewLoader.set(thumbnail, item, item.url === activeUrl);
             number.textContent = String(index + 1);
             return row;
         });
@@ -102,9 +117,9 @@ export function createViewerController(options) {
         elements.page.hidden = !open || !current;
         if (!open || !current) {
             renderedUrl = null;
-            thumbnailRows.clear();
-            elements.thumbnails.replaceChildren();
+            clearThumbnails();
             resetTransform();
+            options.previewLoader.clearImage(elements.image);
             elements.image.removeAttribute("src");
             elements.image.alt = "";
             elements.position.textContent = "";
@@ -114,8 +129,7 @@ export function createViewerController(options) {
         if (renderedUrl !== current.url)
             resetTransform();
         renderThumbnails(pages, current.url);
-        if (elements.image.src !== current.url)
-            elements.image.src = current.url;
+        options.previewLoader.set(elements.image, current, true);
         renderedUrl = current.url;
         elements.image.alt = t("selectedImageAlt", { index: currentIndex + 1 });
         elements.position.textContent = `${currentIndex + 1} / ${pages.length}`;

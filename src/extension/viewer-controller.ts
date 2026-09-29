@@ -1,5 +1,6 @@
 import type { ImageItem } from "../core/images.js";
 import { t } from "./localization.js";
+import type { ImagePreviewLoader } from "./image-preview.js";
 
 export interface ViewerElements {
   readonly toggle: HTMLButtonElement;
@@ -25,6 +26,7 @@ export interface ViewerControllerOptions {
   readonly getPageLabel: (item: ImageItem) => string;
   readonly isBusy: () => boolean;
   readonly getImageCount: () => number;
+  readonly previewLoader: ImagePreviewLoader;
   readonly onChange: () => void;
 }
 
@@ -46,6 +48,15 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
   let pointer: {id: number; x: number; y: number; panX: number; panY: number} | null = null;
   let lastThumbnailWheelAt = -Infinity;
   const thumbnailRows = new Map<string, HTMLLIElement>();
+
+  function clearThumbnails(): void {
+    for (const row of thumbnailRows.values()) {
+      const image = row.children[0]?.children[0] as HTMLImageElement | undefined;
+      if (image) options.previewLoader.clearImage(image);
+    }
+    thumbnailRows.clear();
+    elements.thumbnails.replaceChildren();
+  }
 
   function updateTransform(): void {
     elements.image.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
@@ -85,7 +96,12 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
 
   function renderThumbnails(pages: readonly ImageItem[], activeUrl: string): void {
     const pageUrls = new Set(pages.map(item => item.url));
-    for (const url of thumbnailRows.keys()) if (!pageUrls.has(url)) thumbnailRows.delete(url);
+    for (const [url, row] of thumbnailRows) {
+      if (pageUrls.has(url)) continue;
+      const image = row.children[0]?.children[0] as HTMLImageElement | undefined;
+      if (image) options.previewLoader.clearImage(image);
+      thumbnailRows.delete(url);
+    }
     const rows = pages.map((item, index) => {
       let row = thumbnailRows.get(item.url);
       if (!row) {
@@ -96,7 +112,6 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
         thumbnail.loading = "lazy";
         thumbnail.referrerPolicy = "no-referrer";
         thumbnail.draggable = false;
-        thumbnail.src = item.url;
         const number = document.createElement("span");
         number.className = "viewer-thumb-number";
         button.append(thumbnail, number);
@@ -111,6 +126,8 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
       const number = button.children[1] as HTMLSpanElement;
       button.setAttribute("aria-current", String(item.url === activeUrl));
       button.setAttribute("aria-label", t("thumbnailAria", {index: index + 1, filename: options.getPageLabel(item)}));
+      const thumbnail = button.children[0] as HTMLImageElement;
+      options.previewLoader.set(thumbnail, item, item.url === activeUrl);
       number.textContent = String(index + 1);
       return row;
     });
@@ -136,9 +153,9 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
     elements.page.hidden = !open || !current;
     if (!open || !current) {
       renderedUrl = null;
-      thumbnailRows.clear();
-      elements.thumbnails.replaceChildren();
+      clearThumbnails();
       resetTransform();
+      options.previewLoader.clearImage(elements.image);
       elements.image.removeAttribute("src");
       elements.image.alt = "";
       elements.position.textContent = "";
@@ -147,7 +164,7 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
     }
     if (renderedUrl !== current.url) resetTransform();
     renderThumbnails(pages, current.url);
-    if (elements.image.src !== current.url) elements.image.src = current.url;
+    options.previewLoader.set(elements.image, current, true);
     renderedUrl = current.url;
     elements.image.alt = t("selectedImageAlt", {index: currentIndex + 1});
     elements.position.textContent = `${currentIndex + 1} / ${pages.length}`;

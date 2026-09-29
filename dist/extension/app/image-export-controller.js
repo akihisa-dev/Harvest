@@ -37,7 +37,7 @@ export function createImageExportController(options) {
                         return;
                     const item = remaining[index];
                     try {
-                        const fetched = await fetchImage(item.url, { signal: run.signal });
+                        const fetched = await fetchImage(item.url, { signal: run.signal, sourcePage: item.sourcePage });
                         const blob = await convertImage(fetched, format, run.signal);
                         if (run.stopped)
                             return;

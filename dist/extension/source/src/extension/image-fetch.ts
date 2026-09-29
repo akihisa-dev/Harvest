@@ -9,6 +9,7 @@ import {
   type FetchedImage,
   type ImageDataOptions,
 } from "./image-data-contract.js";
+import { getImageFetchCredentials, ImageFetchTargetError, validateImageFetchTarget } from "./image-fetch-policy.js";
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 
@@ -102,6 +103,13 @@ export async function readImageBytes(response: Response, requestedLimit = MAX_IM
 
 export async function fetchImage(url: string, options: ImageDataOptions): Promise<FetchedImage> {
   checkCancelled(options.signal);
+  try {
+    validateImageFetchTarget(url, options.sourcePage);
+  } catch (error) {
+    if (error instanceof ImageFetchTargetError) throw invalidImage(error.message);
+    throw error;
+  }
+  const credentials = getImageFetchCredentials(url, options.sourcePage);
   const timeoutMs = timeoutValue(options);
   const controller = new AbortController();
   let response: Response | undefined;
@@ -124,7 +132,13 @@ export async function fetchImage(url: string, options: ImageDataOptions): Promis
 
   const operation = (async (): Promise<FetchedImage> => {
     try {
-      response = await fetch(url, { credentials: "include", signal: controller.signal });
+      response = await fetch(url, {
+        credentials,
+        // A credentialed request must not follow a page-controlled redirect
+        // into an unrelated origin, where another site's cookies could be sent.
+        redirect: credentials === "include" ? "error" : "follow",
+        signal: controller.signal,
+      });
       if (!response.ok) {
         const error = responseError(response.status);
         void cancelResponse(response);

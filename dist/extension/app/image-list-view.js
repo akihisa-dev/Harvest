@@ -264,7 +264,8 @@ export function createImageListView(options) {
     }
     function renderImages(failedItems, sourcePreview) {
         previewOrder = [...visibleImages];
-        rows = reconcileKeyedChildren(imagesElement, visibleImages, item => item.url, createImageRow, (row, item, index) => {
+        const previousRows = rows;
+        const nextRows = reconcileKeyedChildren(imagesElement, visibleImages, item => item.url, createImageRow, (row, item, index) => {
             const parts = imageRowParts.get(row);
             if (!parts)
                 return;
@@ -295,8 +296,7 @@ export function createImageListView(options) {
                 filename: options.getFilename(item.url), index: overallIndex + 1,
                 failed: formatFailedAria(failed),
             }));
-            if (parts.preview.src !== item.url)
-                parts.preview.src = item.url;
+            options.previewLoader.set(parts.preview, item);
             parts.preview.alt = t("imageAlt", { index: index + 1 });
             parts.order.textContent = `${overallIndex + 1}`;
             parts.order.setAttribute("aria-label", t("imagePosition", { index: overallIndex + 1 }));
@@ -305,6 +305,14 @@ export function createImageListView(options) {
             parts.selectedMark.hidden = false;
             parts.failedMark.hidden = !failed;
         });
+        for (const [url, row] of previousRows) {
+            if (nextRows.has(url))
+                continue;
+            const parts = imageRowParts.get(row);
+            if (parts)
+                options.previewLoader.clearImage(parts.preview);
+        }
+        rows = nextRows;
         if (sourcePreview) {
             const row = document.createElement("li");
             row.className = "source-preview";

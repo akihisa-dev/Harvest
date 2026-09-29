@@ -3,6 +3,7 @@ import type { ImageItem } from "../core/images.js";
 import { animateLayoutChange, reconcileKeyedChildren } from "./motion.js";
 import { formatFailedAria, formatGroupLabel, t } from "./localization.js";
 import { createPreviewOrder, findNearestByRect, isPointerAfter } from "./image-reorder.js";
+import type { ImagePreviewLoader } from "./image-preview.js";
 
 interface ImageRowParts {
   preview: HTMLImageElement;
@@ -24,6 +25,7 @@ export interface ImageListViewOptions {
   readonly imagesElement: HTMLOListElement;
   readonly isBusy: () => boolean;
   readonly getFilename: (url: string) => string;
+  readonly previewLoader: ImagePreviewLoader;
   readonly onChange: () => void;
 }
 
@@ -285,7 +287,8 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
 
   function renderImages(failedItems: ReadonlySet<ImageItem>, sourcePreview: ImageItem | null): void {
     previewOrder = [...visibleImages];
-    rows = reconcileKeyedChildren(imagesElement, visibleImages, item => item.url, createImageRow, (row, item, index) => {
+    const previousRows = rows;
+    const nextRows = reconcileKeyedChildren(imagesElement, visibleImages, item => item.url, createImageRow, (row, item, index) => {
       const parts = imageRowParts.get(row);
       if (!parts) return;
       const overallIndex = collection.positionOf(item)!;
@@ -310,7 +313,7 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
         filename: options.getFilename(item.url), index: overallIndex + 1,
         failed: formatFailedAria(failed),
       }));
-      if (parts.preview.src !== item.url) parts.preview.src = item.url;
+      options.previewLoader.set(parts.preview, item);
       parts.preview.alt = t("imageAlt", {index: index + 1});
       parts.order.textContent = `${overallIndex + 1}`;
       parts.order.setAttribute("aria-label", t("imagePosition", {index: overallIndex + 1}));
@@ -319,6 +322,12 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
       parts.selectedMark.hidden = false;
       parts.failedMark.hidden = !failed;
     });
+    for (const [url, row] of previousRows) {
+      if (nextRows.has(url)) continue;
+      const parts = imageRowParts.get(row);
+      if (parts) options.previewLoader.clearImage(parts.preview);
+    }
+    rows = nextRows;
     if (sourcePreview) {
       const row = document.createElement("li");
       row.className = "source-preview";

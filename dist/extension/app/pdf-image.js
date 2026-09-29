@@ -201,7 +201,10 @@ export async function preparePdfImages(items, onResult, options = {}) {
                     const item = items[index];
                     let fetched;
                     try {
-                        fetched = await fetchImage(item.url, operationOptions);
+                        fetched = await fetchImage(item.url, {
+                            ...operationOptions,
+                            ...(item.sourcePage === undefined ? {} : { sourcePage: item.sourcePage }),
+                        });
                     }
                     catch (error) {
                         setResult(index, error instanceof PdfImageError ? error : new PdfImageError("network", "画像を取得できませんでした。通信状態と画像URLを確認してください。"));

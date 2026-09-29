@@ -62,6 +62,10 @@ function visualRows(imagesElement) {
   return [...imagesElement.children].sort((a, b) => Number(a.style.order || 0) - Number(b.style.order || 0));
 }
 
+function previewUrl(image) {
+  return image.dataset.previewUrl ?? image.src;
+}
+
 async function waitUntil(predicate) {
   const deadline = Date.now() + 1_000;
   while (Date.now() < deadline) {
@@ -135,6 +139,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   const createdUrls = [];
   globalThis.document = document;
   const {createImageListView} = await import("../dist/extension/app/image-list-view.js");
+  const inertPreviewLoader = {set() {}, clearImage() {}, clear() {}};
   globalThis.window = {setTimeout: (callback, delay) => setTimeout(callback, delay === 60000 ? 0 : delay), clearTimeout, matchMedia: () => ({matches: false})};
   globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {}});
   const measuredCollection = new ImageCollection();
@@ -148,6 +153,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     imagesElement: measuredRows,
     isBusy: () => false,
     getFilename: url => url.split("/").pop(),
+    previewLoader: inertPreviewLoader,
     onChange() {},
   });
   measuredList.showInitialGroup(null);
@@ -186,6 +192,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     imagesElement: gridRows,
     isBusy: () => false,
     getFilename: url => url.split("/").pop(),
+    previewLoader: inertPreviewLoader,
     onChange() {},
   });
   gridList.showInitialGroup(null);
@@ -343,13 +350,13 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     const exportOverlay = document.querySelector("#export-overlay");
     assert.equal(exportOverlay.hidden, true, "PDF保存前はビュアーのオーバーレイを隠す");
     assert.equal(scanButton.textContent, "解析", "通常時は解析ボタンに文字を表示する");
-    const thumbnailsBeforeScan = document.querySelector("#images").children.map(row => row.children[0].src);
+    const thumbnailsBeforeScan = document.querySelector("#images").children.map(row => previewUrl(row.children[0]));
     scanButton.dispatch("click");
     assert.equal(scanButton.dataset.scanning, "true", "解析中はボタンのロード表示を有効にする");
     assert.equal(scanButton.textContent, "", "解析中はボタンの文字を消す");
     assert.equal(scanButton.getAttribute("aria-label"), "ページを調べています…", "解析中のボタンには読み上げ名を残す");
     assert.equal(scanOverlay.hidden, false, "既存画像を表示中でも解析リングを重ねる");
-    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), thumbnailsBeforeScan, "解析中も既存画像を保持する");
+    assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), thumbnailsBeforeScan, "解析中も既存画像を保持する");
     assert.equal(document.querySelector("#status").dataset.state, "busy");
     assert.equal(document.querySelector("#status").textContent, "", "解析中は状態文を画面に出さない");
     assert.equal(document.querySelector("#status").getAttribute("aria-label"), "ページを調べています…", "解析中の状態文は読み上げ用に残す");
@@ -365,11 +372,11 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#status").textContent, "");
     assert.equal(document.querySelector("#images").children.length, 2);
     assert.equal(document.querySelector("#groups").children[0].children[0].textContent, "シリーズ\n(2枚)");
-    const orderBeforeFormatChange = document.querySelector("#images").children.map(row => row.children[0].src);
+    const orderBeforeFormatChange = document.querySelector("#images").children.map(row => previewUrl(row.children[0]));
     const selectionBeforeFormatChange = document.querySelector("#images").children.map(row => row.getAttribute("aria-pressed"));
     exportFormat.value = "png";
     exportFormat.dispatch("change");
-    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), orderBeforeFormatChange);
+    assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), orderBeforeFormatChange);
     assert.deepEqual(document.querySelector("#images").children.map(row => row.getAttribute("aria-pressed")), selectionBeforeFormatChange);
     exportFormat.value = "pdf";
     exportFormat.dispatch("change");
@@ -401,7 +408,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector(".results").hidden, true);
     assert.equal(viewerPage.hidden, false);
     assert.equal(viewerEmpty.hidden, true);
-    assert.equal(viewerImage.src, resultImages[0]);
+    assert.equal(previewUrl(viewerImage), resultImages[0]);
     assert.equal(viewerPosition.textContent, "1 / 2");
     assert.equal(viewerThumbnails.children.length, 2);
     includeSourcePage.checked = true;
@@ -412,7 +419,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     sourceThumbnail.dispatch("click");
     assert.equal(viewerPosition.textContent, "3 / 3");
     assert.equal(viewerNext.disabled, true);
-    const sourceSvg = decodeURIComponent(viewerImage.src.split(",")[1]);
+    const sourceSvg = decodeURIComponent(previewUrl(viewerImage).split(",")[1]);
     assert.match(sourceSvg, /Source/);
     assert.match(sourceSvg, /ページ\.pdf/);
     assert.match(sourceSvg, /https:\/\/example.com\/view/);
@@ -447,21 +454,21 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(viewerPrevious.disabled, true);
     assert.equal(viewerNext.disabled, false);
     viewerNext.dispatch("click");
-    assert.equal(viewerImage.src, resultImages[1]);
+    assert.equal(previewUrl(viewerImage), resultImages[1]);
     assert.equal(viewerPosition.textContent, "2 / 2");
     assert.equal(viewerPrevious.disabled, false);
     assert.equal(viewerNext.disabled, true);
     descendants(viewerThumbnails).filter(element => element.tagName === "button")[0].dispatch("click");
-    assert.equal(viewerImage.src, resultImages[0]);
+    assert.equal(previewUrl(viewerImage), resultImages[0]);
     assert.equal(viewerPosition.textContent, "1 / 2");
     viewerThumbnails.dispatch("wheel", {deltaY: 120, deltaX: 0, timeStamp: 1000});
-    assert.equal(viewerImage.src, resultImages[1], "一覧のスクロールで次の画像を表示する");
+    assert.equal(previewUrl(viewerImage), resultImages[1], "一覧のスクロールで次の画像を表示する");
     assert.equal(viewerPosition.textContent, "2 / 2");
     assert.equal(viewerThumbnails.children[1].children[0].getAttribute("aria-current"), "true");
     viewerThumbnails.dispatch("wheel", {deltaY: 600, deltaX: 0, timeStamp: 1050});
     assert.equal(viewerPosition.textContent, "2 / 2", "連続したスクロールでは画像を飛ばさない");
     viewerThumbnails.dispatch("wheel", {deltaY: -120, deltaX: 0, timeStamp: 1300});
-    assert.equal(viewerImage.src, resultImages[0], "逆方向のスクロールで前の画像を表示する");
+    assert.equal(previewUrl(viewerImage), resultImages[0], "逆方向のスクロールで前の画像を表示する");
     assert.equal(viewerPosition.textContent, "1 / 2");
 
     const initialTransform = viewerImage.style.transform;
@@ -483,7 +490,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     viewerZoomOut.dispatch("click");
     assert.match(viewerImage.style.transform, /scale\(1\)/);
     viewerPrevious.dispatch("click");
-    assert.equal(viewerImage.src, resultImages[0]);
+    assert.equal(previewUrl(viewerImage), resultImages[0]);
     assert.equal(viewerPosition.textContent, "1 / 2");
     assert.equal(viewerPrevious.disabled, true);
     assert.equal(viewerNext.disabled, false);
@@ -506,7 +513,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     allSelection.dispatch("change");
     assert.equal(viewerEmpty.hidden, true);
     assert.equal(viewerPage.hidden, false);
-    assert.equal(viewerImage.src, resultImages[0]);
+    assert.equal(previewUrl(viewerImage), resultImages[0]);
     assert.equal(viewerPosition.textContent, "1 / 4");
     viewerToggle.dispatch("click");
     assert.equal(viewer.hidden, true);
@@ -549,8 +556,8 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     const allButton = document.querySelector("#all-visibility");
     allButton.dispatch("click");
     const firstRow = document.querySelector("#images").children[0];
-    const firstUrl = firstRow.children[0].src;
-    const initialOrder = document.querySelector("#images").children.map(row => row.children[0].src);
+    const firstUrl = previewUrl(firstRow.children[0]);
+    const initialOrder = document.querySelector("#images").children.map(row => previewUrl(row.children[0]));
     assert.equal(firstRow.draggable, true);
     assert.equal(firstRow.children[0].draggable, false);
     assert.equal(descendants(firstRow).some(element => element.tagName === "button"), false);
@@ -560,26 +567,26 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     const lastRowBeforeDrop = document.querySelector("#images").children[3];
     lastRowBeforeDrop.dispatch("dragover", {clientX: 75, clientY: 350});
     const imagesElement = document.querySelector("#images");
-    assert.deepEqual(imagesElement.children.map(row => row.children[0].src), initialOrder);
-    assert.deepEqual(visualRows(imagesElement).map(row => row.children[0].src), [resultImages[1], resultImages[2], resultImages[3], firstUrl]);
+    assert.deepEqual(imagesElement.children.map(row => previewUrl(row.children[0])), initialOrder);
+    assert.deepEqual(visualRows(imagesElement).map(row => previewUrl(row.children[0])), [resultImages[1], resultImages[2], resultImages[3], firstUrl]);
     assert.ok(document.animations.length > 0);
     lastRowBeforeDrop.dispatch("drop", {clientX: 75, clientY: 350});
-    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), [resultImages[1], resultImages[2], resultImages[3], firstUrl]);
+    assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), [resultImages[1], resultImages[2], resultImages[3], firstUrl]);
     assert.equal(resetOrder.disabled, false);
     document.querySelector("#images").children[3].dispatch("click");
     assert.equal(document.activeElement.getAttribute("data-focus-url"), firstUrl);
     assert.equal(document.activeElement.getAttribute("data-focus-action"), "drag");
     const lastRow = document.querySelector("#images").children[3];
     lastRow.dispatch("keydown", {target: lastRow, altKey: true, key: "ArrowUp"});
-    assert.equal(document.querySelector("#images").children[2].children[0].src, firstUrl);
+    assert.equal(previewUrl(document.querySelector("#images").children[2].children[0]), firstUrl);
 
-    const beforeCancel = document.querySelector("#images").children.map(row => row.children[0].src);
+    const beforeCancel = document.querySelector("#images").children.map(row => previewUrl(row.children[0]));
     const cancelSource = document.querySelector("#images").children[1];
     cancelSource.dispatch("dragstart");
     document.querySelector("#images").children[3].dispatch("dragover", {clientX: 75, clientY: 350});
-    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), beforeCancel);
+    assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), beforeCancel);
     cancelSource.dispatch("dragend");
-    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), beforeCancel);
+    assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), beforeCancel);
     assert.equal(cancelSource.className.includes("dragging"), false);
     cancelSource.dispatch("click");
     cancelSource.dispatch("pointerdown");
@@ -590,16 +597,16 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     groupButton("シリーズ").dispatch("click");
     const coverRows = document.querySelector("#images").children;
     const hiddenUrl = resultImages[0];
-    assert.equal([...coverRows].some(row => row.children[0].src === hiddenUrl), false);
+    assert.equal([...coverRows].some(row => previewUrl(row.children[0]) === hiddenUrl), false);
     coverRows[1].dispatch("dragstart");
     coverRows[0].dispatch("dragover", {clientX: 75, clientY: 25});
     assert.equal(document.querySelector("#status").textContent, "");
     coverRows[0].dispatch("drop", {clientX: 75, clientY: 25});
     allButton.dispatch("click");
-    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), [resultImages[1], resultImages[3], firstUrl, resultImages[2]]);
-    const beforeExternalDrop = document.querySelector("#images").children.map(row => row.children[0].src);
+    assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), [resultImages[1], resultImages[3], firstUrl, resultImages[2]]);
+    const beforeExternalDrop = document.querySelector("#images").children.map(row => previewUrl(row.children[0]));
     document.querySelector("#images").children[0].dispatch("drop");
-    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), beforeExternalDrop);
+    assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), beforeExternalDrop);
 
     const failedUrl = resultImages[0];
     const fetches = [];
@@ -629,12 +636,12 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(resetOrder.disabled, true);
     document.querySelector("#images").children[0].dispatch("pointerdown");
     document.querySelector("#images").children[0].dispatch("click");
-    const busyOrder = document.querySelector("#images").children.map(row => row.children[0].src);
+    const busyOrder = document.querySelector("#images").children.map(row => previewUrl(row.children[0]));
     document.querySelector("#images").children[0].dispatch("dragstart");
     document.querySelector("#images").children[1].dispatch("dragover", {clientX: 75, clientY: 150});
     document.querySelector("#images").children[1].dispatch("drop", {clientX: 75, clientY: 150});
     assert.equal(document.querySelector("#status").dataset.state, "busy");
-    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), busyOrder);
+    assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), busyOrder);
     await waitUntil(() => exportButton.textContent === "2 / 4");
     assert.equal(exportButton.getAttribute("aria-label"), "画像を準備しています… 2 / 4", "処理に合わせてボタンの進捗が更新される");
     releaseFailedFetch();
@@ -647,7 +654,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#failures").hidden, false);
     assert.deepEqual(document.querySelector("#failed-images").children.map(row => row.textContent), ["3番 001.jpg — 画像を取得できませんでした。通信状態と画像URLを確認してください。"]);
     assert.equal(document.querySelector("#export").textContent, "失敗分を再試行");
-    assert.equal(document.querySelector("#images").children.find(row => row.children[0].src === failedUrl).className.includes("failed"), true);
+    assert.equal(document.querySelector("#images").children.find(row => previewUrl(row.children[0]) === failedUrl).className.includes("failed"), true);
     // Failed re-analysis must preserve both the user's work and prepared PDF pages.
     rejectScan = true;
     document.querySelector("#scan").dispatch("click");
@@ -656,7 +663,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     allSelection.dispatch("change");
     document.querySelector("#images").children[0].dispatch("keydown", {altKey: true, key: "ArrowDown"});
     await waitUntil(() => !document.querySelector("#scan").disabled);
-    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), busyOrder);
+    assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), busyOrder);
     assert.match(document.querySelector("#status").textContent, /前の収集結果を保持/);
     assert.equal(document.querySelector("#status").title, document.querySelector("#status").textContent, "画面で省略された状態文も全文を確認できる");
     assert.equal(document.querySelector("#export").textContent, "失敗分を再試行");
@@ -672,7 +679,9 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(exportButton.textContent, "4件保存しました", "保存完了は保存件数とともに保存ボタン内へ表示する");
     assert.equal(exportButton.dataset.saved, "true", "保存完了状態を保存ボタンへ設定する");
     assert.equal(exportOverlay.hidden, true, "保存開始後はビュアーのオーバーレイを消す");
-    assert.deepEqual(fetches, [...busyOrder, failedUrl]);
+    assert.equal(fetches.at(-1), failedUrl, "再試行では失敗した画像を取得する");
+    assert.equal(fetches.every(url => busyOrder.includes(url)), true, "プレビューと保存は一覧にある画像だけを取得する");
+    assert.equal(fetches.filter(url => url === failedUrl).length >= 2, true, "失敗画像は保存の再試行で再取得する");
     assert.deepEqual(document.downloads, ["ページ.pdf"]);
     assert.equal(document.querySelector("#failures").hidden, true);
     assert.equal(document.querySelector("#status").dataset.state, "success");
@@ -701,9 +710,9 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     groupButton("シリーズ").dispatch("click");
     resetOrder.dispatch("click");
     assert.equal(resetOrder.disabled, true);
-    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), resultImages.slice(2));
+    assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), resultImages.slice(2));
     allButton.dispatch("click");
-    assert.deepEqual(document.querySelector("#images").children.map(row => row.children[0].src), resultImages);
+    assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), resultImages);
 
     // Reusing a row after a successful scan of the same URLs must target the new items.
     document.querySelector("#scan").dispatch("click");

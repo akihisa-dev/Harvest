@@ -24,6 +24,8 @@ export interface ImageDataOptions {
   readonly timeoutMs?: number;
   readonly pixelRowsPerChunk?: number;
   readonly signal?: AbortSignal;
+  /** The page that supplied the image URL; only this origin may use site credentials. */
+  readonly sourcePage?: string;
 }
 
 export type FetchedImage =

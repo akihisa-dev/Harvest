@@ -140,7 +140,7 @@ class ResultWindow {
  * conversion at a time. Results are delivered in input order, so callers can
  * retain successful pages and retry only the items reported as errors.
  */
-export async function preparePdfImages<T extends { readonly url: string }>(
+export async function preparePdfImages<T extends { readonly url: string; readonly sourcePage?: string }>(
   items: readonly T[],
   onResult: (item: T, result: PdfImagePreparationResult) => void,
   options: PdfImagePreparationOptions = {},
@@ -197,7 +197,10 @@ export async function preparePdfImages<T extends { readonly url: string }>(
           const item = items[index]!;
           let fetched: FetchedImage;
           try {
-            fetched = await fetchImage(item.url, operationOptions);
+            fetched = await fetchImage(item.url, {
+              ...operationOptions,
+              ...(item.sourcePage === undefined ? {} : {sourcePage: item.sourcePage}),
+            });
           } catch (error) {
             setResult(index, error instanceof PdfImageError ? error : new PdfImageError("network", "画像を取得できませんでした。通信状態と画像URLを確認してください。"));
             transferred = true;
