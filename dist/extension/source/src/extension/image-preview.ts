@@ -18,6 +18,8 @@ interface PreviewEntry {
 
 interface BoundPreview {
   readonly key: string;
+  visible: boolean;
+  eager: boolean;
 }
 
 export interface ImagePreviewLoader {
@@ -40,20 +42,65 @@ function previewBlob(item: Awaited<ReturnType<typeof fetchImage>>): Blob {
 /** Loads all remote previews through the shared, policy-controlled image fetcher. */
 export function createImagePreviewLoader(): ImagePreviewLoader {
   const maximumConcurrentFetches = 3;
+  // Bound cached previews while keeping currently visible and eager images available.
+  const maximumRetainedPreviews = 24;
   const entries = new Map<string, PreviewEntry>();
   const bindings = new Map<HTMLImageElement, BoundPreview>();
+  const cachedEntries = new Map<string, PreviewEntry>();
   const queue: PreviewEntry[] = [];
   let activeFetches = 0;
+  let retainedPreviewCount = 0;
   const observer = typeof IntersectionObserver === "undefined"
     ? null
     : new IntersectionObserver(changes => {
       for (const change of changes) {
-        if (!change.isIntersecting) continue;
-        const key = bindings.get(change.target as HTMLImageElement)?.key;
-        const entry = key ? entries.get(key) : undefined;
-        if (entry) start(entry);
+        const binding = bindings.get(change.target as HTMLImageElement);
+        const entry = binding ? entries.get(binding.key) : undefined;
+        if (!binding || !entry) continue;
+        const wasPinned = isPinned(entry);
+        binding.visible = change.isIntersecting;
+        const isNowPinned = isPinned(entry);
+        if (isNowPinned) cachedEntries.delete(entry.key);
+        else if (wasPinned && entry.objectUrl) cache(entry);
+        if (change.isIntersecting) start(entry);
       }
     });
+
+  function isPinned(entry: PreviewEntry): boolean {
+    for (const image of entry.elements) {
+      const binding = bindings.get(image);
+      if (binding?.visible || binding?.eager) return true;
+    }
+    return false;
+  }
+
+  function revoke(entry: PreviewEntry): void {
+    if (!entry.objectUrl) return;
+    const objectUrl = entry.objectUrl;
+    for (const image of entry.elements) {
+      if (image.src === objectUrl) image.removeAttribute("src");
+    }
+    delete entry.objectUrl;
+    retainedPreviewCount -= 1;
+    URL.revokeObjectURL(objectUrl);
+  }
+
+  function enforceRetentionLimit(): void {
+    while (retainedPreviewCount > maximumRetainedPreviews) {
+      const oldest = cachedEntries.values().next().value as PreviewEntry | undefined;
+      if (!oldest) return;
+      cachedEntries.delete(oldest.key);
+      revoke(oldest);
+      oldest.started = false;
+    }
+  }
+
+  function cache(entry: PreviewEntry): void {
+    if (!entry.objectUrl || isPinned(entry)) return;
+    cachedEntries.delete(entry.key);
+    cachedEntries.set(entry.key, entry);
+    enforceRetentionLimit();
+  }
 
   function pumpQueue(): void {
     while (activeFetches < maximumConcurrentFetches && queue.length) {
@@ -67,11 +114,15 @@ export function createImagePreviewLoader(): ImagePreviewLoader {
         if (entries.get(entry.key) !== entry || !entry.elements.size) return;
         const objectUrl = URL.createObjectURL(previewBlob(fetched));
         entry.objectUrl = objectUrl;
+        retainedPreviewCount += 1;
         for (const image of entry.elements) {
           image.src = objectUrl;
           image.dataset["previewUrl"] = entry.item.url;
           delete image.dataset["previewFailed"];
         }
+        if (isPinned(entry)) cachedEntries.delete(entry.key);
+        else cache(entry);
+        enforceRetentionLimit();
       }).catch(() => {
         if (entries.get(entry.key) !== entry) return;
         for (const image of entry.elements) image.dataset["previewFailed"] = "true";
@@ -93,20 +144,25 @@ export function createImagePreviewLoader(): ImagePreviewLoader {
     observer?.unobserve(image);
     const binding = bindings.get(image);
     if (!binding) return;
+    const entry = entries.get(binding.key);
+    const wasPinned = entry ? isPinned(entry) : false;
     bindings.delete(image);
     delete image.dataset["previewUrl"];
-    const entry = entries.get(binding.key);
     if (!entry) return;
     entry.elements.delete(image);
     if (entry.objectUrl && image.src === entry.objectUrl) image.removeAttribute("src");
-    if (entry.elements.size) return;
+    if (entry.elements.size) {
+      if (wasPinned && !isPinned(entry) && entry.objectUrl) cache(entry);
+      return;
+    }
     entry.controller.abort();
     if (entry.queued) {
       const queueIndex = queue.indexOf(entry);
       if (queueIndex >= 0) queue.splice(queueIndex, 1);
       entry.queued = false;
     }
-    if (entry.objectUrl) URL.revokeObjectURL(entry.objectUrl);
+    cachedEntries.delete(entry.key);
+    revoke(entry);
     entries.delete(entry.key);
   }
 
@@ -123,7 +179,14 @@ export function createImagePreviewLoader(): ImagePreviewLoader {
       const current = bindings.get(image);
       if (current?.key === key) {
         const entry = entries.get(key);
-        if (eager && entry) start(entry);
+        if (entry) {
+          const wasPinned = isPinned(entry);
+          current.eager = eager;
+          const isNowPinned = isPinned(entry);
+          if (isNowPinned) cachedEntries.delete(entry.key);
+          else if (wasPinned && entry.objectUrl) cache(entry);
+          if (eager) start(entry);
+        }
         return;
       }
       release(image);
@@ -143,19 +206,23 @@ export function createImagePreviewLoader(): ImagePreviewLoader {
         entries.set(key, entry);
       }
       entry.elements.add(image);
-      bindings.set(image, {key});
-      if (entry.objectUrl) image.src = entry.objectUrl;
-      else if (eager || !observer) start(entry);
-      else observer?.observe(image);
+      bindings.set(image, {key, visible: false, eager});
+      observer?.observe(image);
+      if (entry.objectUrl) {
+        image.src = entry.objectUrl;
+        if (isPinned(entry)) cachedEntries.delete(entry.key);
+      } else if (eager || !observer) start(entry);
     },
     clearImage,
     clear() {
       for (const image of [...bindings.keys()]) clearImage(image);
       for (const entry of entries.values()) {
         entry.controller.abort();
-        if (entry.objectUrl) URL.revokeObjectURL(entry.objectUrl);
+        cachedEntries.delete(entry.key);
+        revoke(entry);
       }
       entries.clear();
+      cachedEntries.clear();
     },
   };
 }

@@ -8,22 +8,70 @@ function previewBlob(item) {
 /** Loads all remote previews through the shared, policy-controlled image fetcher. */
 export function createImagePreviewLoader() {
     const maximumConcurrentFetches = 3;
+    // Bound cached previews while keeping currently visible and eager images available.
+    const maximumRetainedPreviews = 24;
     const entries = new Map();
     const bindings = new Map();
+    const cachedEntries = new Map();
     const queue = [];
     let activeFetches = 0;
+    let retainedPreviewCount = 0;
     const observer = typeof IntersectionObserver === "undefined"
         ? null
         : new IntersectionObserver(changes => {
             for (const change of changes) {
-                if (!change.isIntersecting)
+                const binding = bindings.get(change.target);
+                const entry = binding ? entries.get(binding.key) : undefined;
+                if (!binding || !entry)
                     continue;
-                const key = bindings.get(change.target)?.key;
-                const entry = key ? entries.get(key) : undefined;
-                if (entry)
+                const wasPinned = isPinned(entry);
+                binding.visible = change.isIntersecting;
+                const isNowPinned = isPinned(entry);
+                if (isNowPinned)
+                    cachedEntries.delete(entry.key);
+                else if (wasPinned && entry.objectUrl)
+                    cache(entry);
+                if (change.isIntersecting)
                     start(entry);
             }
         });
+    function isPinned(entry) {
+        for (const image of entry.elements) {
+            const binding = bindings.get(image);
+            if (binding?.visible || binding?.eager)
+                return true;
+        }
+        return false;
+    }
+    function revoke(entry) {
+        if (!entry.objectUrl)
+            return;
+        const objectUrl = entry.objectUrl;
+        for (const image of entry.elements) {
+            if (image.src === objectUrl)
+                image.removeAttribute("src");
+        }
+        delete entry.objectUrl;
+        retainedPreviewCount -= 1;
+        URL.revokeObjectURL(objectUrl);
+    }
+    function enforceRetentionLimit() {
+        while (retainedPreviewCount > maximumRetainedPreviews) {
+            const oldest = cachedEntries.values().next().value;
+            if (!oldest)
+                return;
+            cachedEntries.delete(oldest.key);
+            revoke(oldest);
+            oldest.started = false;
+        }
+    }
+    function cache(entry) {
+        if (!entry.objectUrl || isPinned(entry))
+            return;
+        cachedEntries.delete(entry.key);
+        cachedEntries.set(entry.key, entry);
+        enforceRetentionLimit();
+    }
     function pumpQueue() {
         while (activeFetches < maximumConcurrentFetches && queue.length) {
             const entry = queue.shift();
@@ -38,11 +86,17 @@ export function createImagePreviewLoader() {
                     return;
                 const objectUrl = URL.createObjectURL(previewBlob(fetched));
                 entry.objectUrl = objectUrl;
+                retainedPreviewCount += 1;
                 for (const image of entry.elements) {
                     image.src = objectUrl;
                     image.dataset["previewUrl"] = entry.item.url;
                     delete image.dataset["previewFailed"];
                 }
+                if (isPinned(entry))
+                    cachedEntries.delete(entry.key);
+                else
+                    cache(entry);
+                enforceRetentionLimit();
             }).catch(() => {
                 if (entries.get(entry.key) !== entry)
                     return;
@@ -66,16 +120,20 @@ export function createImagePreviewLoader() {
         const binding = bindings.get(image);
         if (!binding)
             return;
+        const entry = entries.get(binding.key);
+        const wasPinned = entry ? isPinned(entry) : false;
         bindings.delete(image);
         delete image.dataset["previewUrl"];
-        const entry = entries.get(binding.key);
         if (!entry)
             return;
         entry.elements.delete(image);
         if (entry.objectUrl && image.src === entry.objectUrl)
             image.removeAttribute("src");
-        if (entry.elements.size)
+        if (entry.elements.size) {
+            if (wasPinned && !isPinned(entry) && entry.objectUrl)
+                cache(entry);
             return;
+        }
         entry.controller.abort();
         if (entry.queued) {
             const queueIndex = queue.indexOf(entry);
@@ -83,8 +141,8 @@ export function createImagePreviewLoader() {
                 queue.splice(queueIndex, 1);
             entry.queued = false;
         }
-        if (entry.objectUrl)
-            URL.revokeObjectURL(entry.objectUrl);
+        cachedEntries.delete(entry.key);
+        revoke(entry);
         entries.delete(entry.key);
     }
     function clearImage(image) {
@@ -99,8 +157,17 @@ export function createImagePreviewLoader() {
             const current = bindings.get(image);
             if (current?.key === key) {
                 const entry = entries.get(key);
-                if (eager && entry)
-                    start(entry);
+                if (entry) {
+                    const wasPinned = isPinned(entry);
+                    current.eager = eager;
+                    const isNowPinned = isPinned(entry);
+                    if (isNowPinned)
+                        cachedEntries.delete(entry.key);
+                    else if (wasPinned && entry.objectUrl)
+                        cache(entry);
+                    if (eager)
+                        start(entry);
+                }
                 return;
             }
             release(image);
@@ -120,13 +187,15 @@ export function createImagePreviewLoader() {
                 entries.set(key, entry);
             }
             entry.elements.add(image);
-            bindings.set(image, { key });
-            if (entry.objectUrl)
+            bindings.set(image, { key, visible: false, eager });
+            observer?.observe(image);
+            if (entry.objectUrl) {
                 image.src = entry.objectUrl;
+                if (isPinned(entry))
+                    cachedEntries.delete(entry.key);
+            }
             else if (eager || !observer)
                 start(entry);
-            else
-                observer?.observe(image);
         },
         clearImage,
         clear() {
@@ -134,10 +203,11 @@ export function createImagePreviewLoader() {
                 clearImage(image);
             for (const entry of entries.values()) {
                 entry.controller.abort();
-                if (entry.objectUrl)
-                    URL.revokeObjectURL(entry.objectUrl);
+                cachedEntries.delete(entry.key);
+                revoke(entry);
             }
             entries.clear();
+            cachedEntries.clear();
         },
     };
 }

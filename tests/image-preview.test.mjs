@@ -124,6 +124,111 @@ test("プレビュー取得は最大3件まで並行し、待機中に不要に�
   loader.clear();
 });
 
+test("画面外プレビューを24件まで保持し、共有中のURLを避けて再表示時に再取得する", async t => {
+  const previousFetch = globalThis.fetch;
+  const previousObserver = globalThis.IntersectionObserver;
+  const createObjectUrlDescriptor = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
+  const revokeObjectUrlDescriptor = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
+  const requests = [];
+  const created = [];
+  const revoked = [];
+  const alive = new Set();
+  const observers = [];
+  let nextObjectUrl = 0;
+  class FakeIntersectionObserver {
+    constructor(callback) { this.callback = callback; this.observed = new Set(); observers.push(this); }
+    observe(image) { this.observed.add(image); }
+    unobserve(image) { this.observed.delete(image); }
+    intersect(image, isIntersecting) { this.callback([{target: image, isIntersecting}]); }
+  }
+  Object.defineProperty(globalThis, "IntersectionObserver", {configurable: true, writable: true, value: FakeIntersectionObserver});
+  Object.defineProperty(URL, "createObjectURL", {configurable: true, writable: true, value: () => {
+    const objectUrl = `blob:bounded-${++nextObjectUrl}`;
+    created.push(objectUrl);
+    alive.add(objectUrl);
+    return objectUrl;
+  }});
+  Object.defineProperty(URL, "revokeObjectURL", {configurable: true, writable: true, value: objectUrl => {
+    revoked.push(objectUrl);
+    alive.delete(objectUrl);
+  }});
+  globalThis.fetch = async (url, options) => {
+    requests.push({url, options});
+    return new Response(new Uint8Array([1, 2, 3]), {headers: {"content-type": "image/png"}});
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousObserver === undefined) delete globalThis.IntersectionObserver;
+    else Object.defineProperty(globalThis, "IntersectionObserver", {configurable: true, writable: true, value: previousObserver});
+    if (createObjectUrlDescriptor) Object.defineProperty(URL, "createObjectURL", createObjectUrlDescriptor);
+    else delete URL.createObjectURL;
+    if (revokeObjectUrlDescriptor) Object.defineProperty(URL, "revokeObjectURL", revokeObjectUrlDescriptor);
+    else delete URL.revokeObjectURL;
+  });
+
+  const loader = createImagePreviewLoader();
+  const observer = observers[0];
+  const sharedItem = {url: "https://cdn.example/shared.png", sourcePage: "https://reader.example/book", selected: true};
+  const sharedListImage = new PreviewImage();
+  const viewerImage = new PreviewImage();
+  loader.set(sharedListImage, sharedItem);
+  observer.intersect(sharedListImage, true);
+  loader.set(viewerImage, sharedItem, true);
+  await waitFor(() => sharedListImage.src.startsWith("blob:") && viewerImage.src.startsWith("blob:"));
+  const sharedObjectUrl = viewerImage.src;
+  observer.intersect(sharedListImage, false);
+
+  const images = Array.from({length: 32}, (_, index) => new PreviewImage());
+  const items = images.map((_, index) => ({
+    url: `https://cdn.example/${index + 1}.png`,
+    sourcePage: sharedItem.sourcePage,
+    selected: true,
+  }));
+  for (let index = 0; index < images.length; index += 1) {
+    const image = images[index];
+    loader.set(image, items[index]);
+    observer.intersect(image, true);
+    await waitFor(() => image.src.startsWith("blob:"));
+    observer.intersect(image, false);
+  }
+
+  assert.equal(alive.size, 24, "共有中のビュアー画像を含め保持URLは上限内に収まる");
+  assert.equal(revoked.includes(sharedObjectUrl), false, "一覧とビュアーで共有中のURLは破棄しない");
+  assert.equal(viewerImage.src, sharedObjectUrl);
+  assert.equal(images[0].src, "", "古い画面外画像はURL解放時にsrcも外す");
+  assert.equal(revoked.includes(created[1]), true, "上限を超えた最古の画面外URLを解放する");
+
+  observer.intersect(images[0], true);
+  await waitFor(() => images[0].src.startsWith("blob:") && images[0].src !== created[1]);
+  assert.equal(requests.filter(request => request.url === items[0].url).length, 2, "再表示時はプレビューを再取得する");
+  assert.equal(alive.size, 24, "再取得しても保持URL数の上限を保つ");
+
+  loader.clearImage(viewerImage);
+  assert.equal(revoked.includes(sharedObjectUrl), false, "ビュアー解除後も一覧参照が残るURLは保持する");
+  for (const image of images) loader.clearImage(image);
+  assert.equal(alive.size, 1, "他の一覧画像を外しても共有項目の一覧URLを保持する");
+
+  const laterImages = Array.from({length: 24}, (_, index) => new PreviewImage());
+  for (let index = 0; index < laterImages.length; index += 1) {
+    const image = laterImages[index];
+    const item = {
+      url: `https://cdn.example/later-${index + 1}.png`,
+      sourcePage: sharedItem.sourcePage,
+      selected: true,
+    };
+    loader.set(image, item);
+    observer.intersect(image, true);
+    await waitFor(() => image.src.startsWith("blob:"));
+    observer.intersect(image, false);
+  }
+  assert.equal(revoked.includes(sharedObjectUrl), true, "ビュアー解除後の一覧URLも上限超過で追放する");
+  assert.equal(sharedListImage.src, "", "追放した共有項目の一覧srcを外す");
+  assert.equal(alive.size, 24);
+
+  loader.clear();
+  assert.equal(alive.size, 0, "パネル終了時に残りのURLをすべて解放する");
+});
+
 async function waitFor(predicate) {
   const deadline = Date.now() + 1_000;
   while (Date.now() < deadline) {
