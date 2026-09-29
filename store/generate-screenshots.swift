@@ -2,8 +2,8 @@ import AppKit
 
 // Deterministic store illustrations. The gallery and results are fictional;
 // the controls and their labels follow the current extension UI.
-let width = 1280
-let height = 800
+var width = 1280
+var height = 800
 
 func color(_ value: String) -> NSColor {
     let hex = UInt64(value.dropFirst(), radix: 16)!
@@ -36,6 +36,13 @@ func triangle(_ points: [(CGFloat, CGFloat)], _ fill: NSColor) {
     let path = NSBezierPath()
     path.move(to: NSPoint(x: points[0].0, y: CGFloat(height) - points[0].1))
     for p in points.dropFirst() { path.line(to: NSPoint(x: p.0, y: CGFloat(height) - p.1)) }
+    path.close(); fill.setFill(); path.fill()
+}
+
+func polygon(_ points: [(CGFloat, CGFloat)], _ fill: NSColor) {
+    let path = NSBezierPath()
+    path.move(to: NSPoint(x: points[0].0, y: CGFloat(height) - points[0].1))
+    for point in points.dropFirst() { path.line(to: NSPoint(x: point.0, y: CGFloat(height) - point.1)) }
     path.close(); fill.setFill(); path.fill()
 }
 
@@ -87,57 +94,57 @@ func render(english: Bool, output: String) throws {
     label("sample.example / field-notes", 96, 15, 11, muted)
     label(english ? "Sample page" : "サンプル画面", 1190, 16, 10, muted)
 
-    box(0, 44, 820, 756, color("#faf9f6"))
-    label("F I E L D   N O T E S", 36, 78, 10, muted)
-    label(english ? "Landscape Notes" : "風景の記録", 36, 110, 28, color("#202020"), bold: true)
+    box(0, 96, 950, 704, color("#faf9f6"))
+    label("F I E L D   N O T E S", 36, 130, 10, muted)
+    label(english ? "Landscape Notes" : "風景の記録", 36, 162, 28, color("#202020"), bold: true)
     label(english ? "A sample gallery of six landscapes." : "色とかたちで描く、6つの風景。このページは掲載用のサンプルです。",
-          36, 152, 12, muted)
+          36, 204, 12, muted)
     for i in 0..<6 {
         let col = i % 3, row = i / 3
-        let x = CGFloat(36 + col * 259), y = CGFloat(204 + row * 272)
-        landscape(x, y, 241, 220, i)
+        let x = CGFloat(36 + col * 294), y = CGFloat(256 + row * 272)
+        landscape(x, y, 274, 220, i)
         label(String(format: "%02d", i + 1) + (english ? " / landscape" : " / 風景"), x, y + 232, 11, muted)
     }
 
-    box(820, 44, 460, 756, color("#f5f5f5"))
-    box(820, 44, 1, 756, line)
-    box(821, 44, 459, 222, .white)
-    box(821, 266, 459, 1, line)
-    button(english ? "Collect" : "収集", 836, 54, 60)
-    button(english ? "Drop a page URL" : "ページURLをドロップ", 902, 54, 128, size: english ? 9 : 8)
-    button(english ? "Analyze" : "解析", 1036, 54, 64, dark: true)
-    button(english ? "Save PDF (6 images)" : "PDFを保存（6枚）", 1126, 54, 140, dark: true, size: 10)
-    box(821, 96, 459, 1, line)
-    label(english ? "Images" : "画像", 836, 107, 14, color("#202020"), bold: true)
-    label(english ? "6 / 7 images selected · 6 displayed" : "6 / 7枚を選択・6枚を表示", 894, 109, 10, muted)
-    label(english ? "Select all" : "すべて選択", 837, 135, 10)
-    label(english ? "Clear selection" : "選択を解除", 922, 135, 10)
-    label(english ? "Reset order" : "並び順を戻す", 1032, 135, 10)
-    label(english ? "Display" : "表示", 836, 170, 10, muted)
-    button(english ? "Show all" : "すべて表示", 891, 160, 75, size: 9)
-    button(english ? "Uploaded (6)" : "アップロード済み (6枚)", 972, 160, 168, dark: true, size: 9)
-    button(english ? "Other (1)" : "その他 (1枚)", 1147, 160, 119, size: 9)
-    label("PDF", 836, 213, 10, muted)
-    box(891, 202, 214, 30, .white, radius: 5, stroke: line)
-    checkbox(900, 209, checked: true)
-    label(english ? "Uploaded (6)" : "アップロード済み (6枚)", 922, 209, 9)
-    box(1112, 202, 154, 30, .white, radius: 5, stroke: line)
-    checkbox(1121, 209, checked: false)
-    label(english ? "Other (1)" : "その他 (1枚)", 1143, 209, 9)
-    button(english ? "Viewer mode" : "ビュアーモード", 836, 275, 211, size: 10)
-    button(english ? "Clear" : "クリア", 1055, 275, 211, size: 10)
+    // The screenshot follows the live layout: page URL and source actions in
+    // the header, image cards in the main area, and save/group controls right.
+    button(english ? "Click to enter a page URL" : "クリックしてページURLを入力", 18, 54, 790, size: 11)
+    button(english ? "Analyze" : "解析", 969, 54, 86, dark: true)
+    button(english ? "Clear" : "クリア", 1063, 54, 86)
+    button(english ? "Collect" : "収集", 1157, 54, 105)
+
+    box(950, 96, 330, 704, color("#f5f5f5"))
+    box(950, 96, 1, 704, line)
+    label(english ? "Save format" : "保存形式", 968, 112, 11, muted)
+    let formats = ["PDF", "JPG", "PNG", "JXL"]
     for i in 0..<4 {
-        let col = i % 2, row = i / 2
-        let x = CGFloat(836 + col * 219), y = CGFloat(321 + row * 276)
-        box(x, y, 211, 264, .white, radius: 5, stroke: color("#202020"))
-        landscape(x + 1, y + 1, 209, 262, i)
-        box(x + 8, y + 8, 25, 23, .white, radius: 4, stroke: line)
-        label("\(i + 1)", x + 15, y + 11, 11, color("#202020"), bold: true)
-        box(x + 176, y + 8, 23, 23, color("#202020"), radius: 4)
-        label("✓", x + 180, y + 6, 17, .white, bold: true)
-        box(x + 1, y + 231, 209, 32, color("#202020"))
-        label(String(format: "%03d.jpg", i + 1), x + 11, y + 238, 11, .white)
+        let x = CGFloat(966 + i * 75)
+        box(x, 133, 70, 34, .white, radius: 5, stroke: i == 0 ? color("#202020") : line)
+        checkbox(x + 8, 142, checked: i == 0)
+        label(formats[i], x + 28, 141, 11, color("#202020"), bold: i == 0)
     }
+    button(english ? "Save" : "保存", 966, 174, 298, dark: true)
+    checkbox(968, 220, checked: false)
+    label(english ? "Add source page at end" : "末尾に出典ページを追加", 991, 220, 10)
+    box(950, 253, 330, 1, line)
+    button(english ? "Viewer mode" : "ビュアーモード", 966, 264, 298, size: 11)
+    label(english ? "Image groups" : "画像グループ", 966, 318, 14, color("#202020"), bold: true)
+    // The real toolbar uses compact icon buttons: restore order, visibility,
+    // and select all. Their accessible names are shown as small captions here.
+    button(english ? "↶  Restore order" : "↶  全部元に戻す", 966, 343, 94, size: 8)
+    button(english ? "◉  All images" : "◉  すべての画像を表示", 1066, 343, 100, size: 8)
+    button(english ? "☑  Select all" : "☑  すべて選択", 1172, 343, 92, size: 8)
+    for i in 0..<2 {
+        let y = CGFloat(391 + i * 58)
+        box(966, y, 298, 48, .white, radius: 5, stroke: line)
+        label(i == 0 ? (english ? "Uploaded (6)" : "アップロード済み (6枚)") :
+              (english ? "Other (1)" : "その他 (1枚)"), 978, y + 12, 10)
+        label(english ? "Show" : "表示", 1150, y + 13, 9, muted)
+        circle(1201, y + 15, 16, i == 0 ? color("#202020") : color("#929292"))
+        label(i == 0 ? "✓" : "–", 1205, y + 14, 12, .white, bold: true)
+        checkbox(1234, y + 15, checked: i == 0)
+    }
+    label(english ? "6 / 7 selected · 6 displayed" : "7枚中6枚を選択・6枚を表示", 967, 516, 10, muted)
     NSGraphicsContext.current?.flushGraphics()
     NSGraphicsContext.restoreGraphicsState()
     let temporary = URL(fileURLWithPath: output + ".jpg")
@@ -155,3 +162,44 @@ func render(english: Bool, output: String) throws {
 
 try render(english: false, output: "store/assets/screenshot-ja.png")
 try render(english: true, output: "store/assets/screenshot-global.png")
+
+func renderPromo() throws {
+    width = 440; height = 280
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+                               bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                               isPlanar: false, colorSpaceName: .deviceRGB,
+                               bytesPerRow: 0, bitsPerPixel: 0)!
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    box(0, 0, 440, 280, color("#f7f6f3"))
+    box(0, 0, 10, 280, color("#202020"))
+    label("HARVEST  /  CHROME EXTENSION", 28, 20, 10, color("#686868"), bold: true)
+    label("欲しい画像だけを、", 28, 58, 24, color("#202020"), bold: true)
+    label("収穫する。", 28, 91, 30, color("#202020"), bold: true)
+    label("Webページの画像を集めて、選んで、", 29, 145, 13, color("#484848"))
+    label("好きな形式で保存。", 29, 166, 13, color("#484848"))
+    for i in 0..<4 {
+        let x = CGFloat(29 + i * 64)
+        box(x, 207, 56, 28, .white, radius: 5, stroke: color("#c8c8c8"))
+        label(["PDF", "JPG", "PNG", "JXL"][i], x + 12, 214, 11, color("#202020"), bold: true)
+    }
+    // The geometric grain mark leads the large brand treatment. The familiar
+    // image-file app icon remains small and serves only as the toolbar cue.
+    let ink = color("#202020")
+    polygon([(342, 45), (359, 68), (342, 91), (325, 68)], ink)
+    polygon([(292, 78), (324, 82), (337, 105), (307, 101)], ink)
+    polygon([(392, 78), (360, 82), (347, 105), (377, 101)], ink)
+    polygon([(292, 111), (324, 115), (337, 138), (307, 134)], ink)
+    polygon([(392, 111), (360, 115), (347, 138), (377, 134)], ink)
+    polygon([(302, 144), (328, 148), (338, 165), (313, 161)], ink)
+    polygon([(382, 144), (356, 148), (346, 165), (371, 161)], ink)
+    box(338, 90, 8, 84, ink)
+    let icon = NSImage(contentsOfFile: "assets/icons/icon-128.png")!
+    icon.draw(in: NSRect(x: 368, y: CGFloat(height) - 230 - 42, width: 42, height: 42))
+    NSGraphicsContext.current?.flushGraphics()
+    NSGraphicsContext.restoreGraphicsState()
+    let data = rep.representation(using: .png, properties: [:])!
+    try data.write(to: URL(fileURLWithPath: "store/assets/promo-small.png"))
+}
+
+try renderPromo()
