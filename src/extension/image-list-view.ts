@@ -288,6 +288,9 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
   function renderImages(failedItems: ReadonlySet<ImageItem>, sourcePreview: ImageItem | null): void {
     previewOrder = [...visibleImages];
     const previousRows = rows;
+    const previousUrls = [...previousRows.keys()];
+    const layoutChanged = previousUrls.length !== visibleImages.length ||
+      visibleImages.some((item, index) => previousUrls[index] !== item.url);
     const nextRows = reconcileKeyedChildren(imagesElement, visibleImages, item => item.url, createImageRow, (row, item, index) => {
       const parts = imageRowParts.get(row);
       if (!parts) return;
@@ -321,7 +324,7 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
       parts.name.title = item.url;
       parts.selectedMark.hidden = false;
       parts.failedMark.hidden = !failed;
-    });
+    }, {animateLayout: layoutChanged});
     for (const [url, row] of previousRows) {
       if (nextRows.has(url)) continue;
       const parts = imageRowParts.get(row);

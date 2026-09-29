@@ -1,9 +1,11 @@
 export interface MotionOptions {
   duration?: number;
   easing?: string;
+  /** Set false when keyed children keep the same positions and only their state changes. */
+  animateLayout?: boolean;
 }
 
-const defaultMotion: Required<MotionOptions> = {
+const defaultMotion: Required<Pick<MotionOptions, "duration" | "easing">> = {
   duration: 240,
   easing: "cubic-bezier(.22,1,.36,1)",
 };
@@ -55,7 +57,8 @@ export function reconcileKeyedChildren<T, K extends string, E extends HTMLElemen
   update: (element: E, item: T, index: number) => void,
   options: MotionOptions = {},
 ): Map<K, E> {
-  const motion = {...defaultMotion, ...options};
+  const {animateLayout = true, ...motionOptions} = options;
+  const motion = {...defaultMotion, ...motionOptions};
   const before = new Map<K, DOMRect>();
   const opacity = new Map<K, number>();
   const existing = new Map<K, E>();
@@ -65,11 +68,13 @@ export function reconcileKeyedChildren<T, K extends string, E extends HTMLElemen
     const key = element.dataset["motionKey"];
     if (key !== undefined) {
       existing.set(key as K, element);
-      before.set(key as K, element.getBoundingClientRect());
-      if (runningMotion.has(element) && typeof getComputedStyle === "function") opacity.set(key as K, Number(getComputedStyle(element).opacity));
-      // Measure the current visual position before removing our transform.
-      // Leave color/selection CSS transitions running.
-      cancelMotion(element);
+      if (animateLayout) {
+        before.set(key as K, element.getBoundingClientRect());
+        if (runningMotion.has(element) && typeof getComputedStyle === "function") opacity.set(key as K, Number(getComputedStyle(element).opacity));
+        // Measure the current visual position before removing our transform.
+        // Leave color/selection CSS transitions running.
+        cancelMotion(element);
+      }
     }
   }
 
@@ -82,7 +87,7 @@ export function reconcileKeyedChildren<T, K extends string, E extends HTMLElemen
     next.set(key, element);
   });
   for (const [key, element] of existing) {
-    if (!next.has(key)) fadeRemoved(element, before.get(key)!, motion);
+    if (!next.has(key) && animateLayout) fadeRemoved(element, before.get(key)!, motion);
   }
   const nextChildren = [...next.values()];
   const currentChildren = Array.from(parent.children);
@@ -90,7 +95,7 @@ export function reconcileKeyedChildren<T, K extends string, E extends HTMLElemen
   if (currentChildren.length !== nextChildren.length || currentChildren.some((child, index) => child !== nextChildren[index])) {
     parent.replaceChildren(...nextChildren);
   }
-  if (prefersReducedMotion()) return next;
+  if (!animateLayout || prefersReducedMotion()) return next;
   for (const [key, element] of next) {
     const previous = before.get(key);
     if (!previous) {

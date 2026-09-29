@@ -38,7 +38,8 @@ function fadeRemoved(element, rect, options) {
 }
 /** Reuses keyed children and animates their layout movement without replaying entry motion. */
 export function reconcileKeyedChildren(parent, items, keyOf, create, update, options = {}) {
-    const motion = { ...defaultMotion, ...options };
+    const { animateLayout = true, ...motionOptions } = options;
+    const motion = { ...defaultMotion, ...motionOptions };
     const before = new Map();
     const opacity = new Map();
     const existing = new Map();
@@ -49,12 +50,14 @@ export function reconcileKeyedChildren(parent, items, keyOf, create, update, opt
         const key = element.dataset["motionKey"];
         if (key !== undefined) {
             existing.set(key, element);
-            before.set(key, element.getBoundingClientRect());
-            if (runningMotion.has(element) && typeof getComputedStyle === "function")
-                opacity.set(key, Number(getComputedStyle(element).opacity));
-            // Measure the current visual position before removing our transform.
-            // Leave color/selection CSS transitions running.
-            cancelMotion(element);
+            if (animateLayout) {
+                before.set(key, element.getBoundingClientRect());
+                if (runningMotion.has(element) && typeof getComputedStyle === "function")
+                    opacity.set(key, Number(getComputedStyle(element).opacity));
+                // Measure the current visual position before removing our transform.
+                // Leave color/selection CSS transitions running.
+                cancelMotion(element);
+            }
         }
     }
     const next = new Map();
@@ -66,7 +69,7 @@ export function reconcileKeyedChildren(parent, items, keyOf, create, update, opt
         next.set(key, element);
     });
     for (const [key, element] of existing) {
-        if (!next.has(key))
+        if (!next.has(key) && animateLayout)
             fadeRemoved(element, before.get(key), motion);
     }
     const nextChildren = [...next.values()];
@@ -75,7 +78,7 @@ export function reconcileKeyedChildren(parent, items, keyOf, create, update, opt
     if (currentChildren.length !== nextChildren.length || currentChildren.some((child, index) => child !== nextChildren[index])) {
         parent.replaceChildren(...nextChildren);
     }
-    if (prefersReducedMotion())
+    if (!animateLayout || prefersReducedMotion())
         return next;
     for (const [key, element] of next) {
         const previous = before.get(key);

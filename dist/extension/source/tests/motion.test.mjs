@@ -7,8 +7,10 @@ class MotionElement {
     this.style = {order: String(order)};
     this.children = [];
     this.animations = [];
+    this.rectReads = 0;
   }
   getBoundingClientRect() {
+    this.rectReads++;
     const order = Number(this.style.order || 0);
     return {left: 0, top: order * 10, right: 10, bottom: order * 10 + 10};
   }
@@ -39,6 +41,23 @@ test("選択表示だけの更新では要素を切り離さずフォーカス�
     assert.equal(focused, original);
     assert.equal(focused.selected, false);
   } finally { globalThis.window = previousWindow; }
+});
+
+test("大量行の選択状態更新では位置計測を行わない", async () => {
+  globalThis.window = {matchMedia: () => ({matches: false})};
+  const {reconcileKeyedChildren} = await import("../dist/extension/app/motion.js?selection=" + Date.now());
+  const parent = new MotionParent();
+  const items = Array.from({length: 500}, (_, index) => ({id: String(index), selected: true}));
+  const update = (element, item) => { element.selected = item.selected; };
+  const first = reconcileKeyedChildren(parent, items, item => item.id, () => new MotionElement(), update);
+  const rows = [...first.values()];
+  rows.forEach(row => { row.rectReads = 0; });
+  reconcileKeyedChildren(parent, items.map((item, index) => ({...item, selected: index !== 0})), item => item.id,
+    () => new MotionElement(), update, {animateLayout: false});
+  assert.equal(rows.reduce((sum, row) => sum + row.rectReads, 0), 0);
+  assert.equal(parent.children.length, 500);
+  assert.equal(parent.children[0], rows[0]);
+  assert.equal(rows[0].selected, false);
 });
 
 test("キー付き要素を再利用し、並び替えだけを滑らかに動かす", async () => {
