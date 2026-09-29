@@ -76,7 +76,7 @@ class FixtureDocument {
   createTreeWalker(root) {
     const nodes = [];
     const visit = element => {
-      if (element.textContent) nodes.push({textContent: element.textContent});
+      if (element.textContent) nodes.push({textContent: element.textContent, parentElement: element});
       for (const child of element.children) visit(child);
     };
     visit(root);
@@ -521,9 +521,11 @@ test("削除された要素と子孫の候補を除き、現存する検出元�
   const sharedPresent = new FixtureElement("img", {src: `${base}shared.jpg`});
   const textRemoved = new FixtureElement("img", {src: `${base}text-shared.jpg`});
   const script = new FixtureElement("script", {}, [], {textContent: `const image = "${base}text-shared.jpg";`});
+  const removedScript = new FixtureElement("script", {}, [], {textContent: `const image = "${base}removed-script.jpg";`});
+  const removedStyle = new FixtureElement("style", {}, [], {textContent: `background: url("${base}removed-style.jpg")`});
   const moved = new FixtureElement("img", {src: `${base}moved.jpg`});
   const late = new FixtureElement("img", {src: `${base}late.jpg`});
-  const root = new FixtureElement("html", {}, [removedImage, removedParent, sharedRemoved, sharedPresent, textRemoved, script, moved]);
+  const root = new FixtureElement("html", {}, [removedImage, removedParent, sharedRemoved, sharedPresent, textRemoved, script, removedScript, removedStyle, moved]);
   let observerCallback;
   let mutated = false;
   class RemovingObserver extends EmptyMutationObserver {
@@ -535,7 +537,7 @@ test("削除された要素と子孫の候補を除き、現存する検出元�
       if (delay === 800) return 1;
       if (delay === 250 && !mutated) {
         mutated = true;
-        const removed = [removedImage, removedParent, sharedRemoved, textRemoved, moved];
+        const removed = [removedImage, removedParent, sharedRemoved, textRemoved, removedScript, removedStyle, moved];
         root.children = root.children.filter(child => !removed.includes(child));
         for (const element of removed) element.parentElement = null;
         root.appendChild(moved);
@@ -549,7 +551,7 @@ test("削除された要素と子孫の候補を除き、現存する検出元�
     return scanDocument();
   });
 
-  for (const name of ["removed", "child"]) assert.equal(result.images.includes(`${base}${name}.jpg`), false, name);
+  for (const name of ["removed", "child", "removed-script", "removed-style"]) assert.equal(result.images.includes(`${base}${name}.jpg`), false, name);
   for (const name of ["shared", "text-shared", "moved", "late"]) {
     assert.ok(result.images.includes(`${base}${name}.jpg`), name);
   }

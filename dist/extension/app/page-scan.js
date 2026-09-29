@@ -449,17 +449,20 @@ export async function scanDocument() {
             if (start + chunkSize < elements.length)
                 await yieldToPage();
         }
-        for (const node of Array.from(document.querySelectorAll("script, style"))) {
-            checkDeadline();
-            scanText(node.textContent);
-        }
         if (root && typeof document.createTreeWalker === "function") {
             const walker = document.createTreeWalker(root, 4);
             let textNode = walker.nextNode();
             let textCount = 0;
             while (textNode) {
                 checkDeadline();
-                scanText(textNode.textContent);
+                const parent = textNode.parentElement;
+                const parentTag = parent?.tagName.toLowerCase();
+                // Script and style text is collected with its owning element above.
+                // Associate ordinary page text with its parent too, so removing that
+                // element can remove candidates found only in its text.
+                if (parentTag !== "script" && parentTag !== "style") {
+                    scanText(textNode.textContent, undefined, parent ?? undefined);
+                }
                 textCount += 1;
                 if (textCount % chunkSize === 0)
                     await yieldToPage();
