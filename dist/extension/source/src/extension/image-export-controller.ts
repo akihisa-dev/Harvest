@@ -2,8 +2,59 @@ import type { ImageItem } from "../core/images.js";
 import { createStoredZip } from "../core/stored-zip.js";
 import { fetchImage } from "./image-fetch.js";
 import { convertImage, type ImageArchiveFormat } from "./image-format.js";
+import type { FetchedImage } from "./image-data-contract.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { createExportLifecycle, downloadBlob, type MutablePendingExport } from "./export-lifecycle.js";
+
+const IMAGE_FETCH_CONCURRENCY = 3;
+
+type ImageFetchOutcome =
+  | { readonly ok: true; readonly fetched: FetchedImage }
+  | { readonly ok: false; readonly error: unknown };
+
+interface Deferred<T> {
+  readonly promise: Promise<T>;
+  resolve(value: T): void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(resolvePromise => { resolve = resolvePromise; });
+  return {promise, resolve};
+}
+
+/** Limits fetched and in-flight results together until ordered conversion consumes them. */
+class ImageFetchWindow {
+  private available: number;
+  private readonly waiters: Array<{resolve: () => void; reject: (error: unknown) => void}> = [];
+  private closed = false;
+
+  constructor(capacity: number) {
+    this.available = capacity;
+  }
+
+  acquire(): Promise<void> {
+    if (this.closed) return Promise.reject(new Error("image fetch window closed"));
+    if (this.available > 0) {
+      this.available -= 1;
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve, reject) => this.waiters.push({resolve, reject}));
+  }
+
+  release(): void {
+    if (this.closed) return;
+    const waiter = this.waiters.shift();
+    if (waiter) waiter.resolve();
+    else this.available += 1;
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    while (this.waiters.length) this.waiters.shift()!.reject(new Error("image fetch window closed"));
+  }
+}
 
 export interface PendingImageExport {
   readonly format: ImageArchiveFormat;
@@ -74,25 +125,81 @@ export function createImageExportController(options: ImageExportControllerOption
       async run => {
         try {
           work.failed.clear();
-          for (let index = 0; index < remaining.length; index += 1) {
-            if (run.stopped) return;
-            const item = remaining[index]!;
-            try {
-              const fetched = await fetchImage(item.url, {signal: run.signal, sourcePage: item.sourcePage});
-              const blob = await convertImage(fetched, format, run.signal);
-              if (run.stopped) return;
-              work.prepared.set(item, blob);
-            } catch (error) {
-              if (run.stopped) return;
-              const reason = error instanceof Error ? error.message : t("errorImageConvert");
-              work.failed.set(item, reason);
+          const workerCount = Math.min(IMAGE_FETCH_CONCURRENCY, remaining.length);
+          const resultWindow = new ImageFetchWindow(workerCount);
+          const fetchedResults = remaining.map(() => createDeferred<ImageFetchOutcome>());
+          let nextFetchIndex = 0;
+          const cancelledFetchResults = Symbol("cancelled fetch results");
+          let resolveCancellation!: () => void;
+          const cancellationPromise = new Promise<typeof cancelledFetchResults>(resolve => {
+            resolveCancellation = () => resolve(cancelledFetchResults);
+          });
+          const closeWindow = (): void => {
+            resultWindow.close();
+            resolveCancellation();
+          };
+          const fetchWorker = async (): Promise<void> => {
+            while (true) {
+              try {
+                await resultWindow.acquire();
+              } catch {
+                return;
+              }
+              if (run.stopped) {
+                resultWindow.release();
+                return;
+              }
+              const index = nextFetchIndex++;
+              if (index >= remaining.length) {
+                resultWindow.release();
+                return;
+              }
+              const item = remaining[index]!;
+              let outcome: ImageFetchOutcome;
+              try {
+                outcome = {
+                  ok: true,
+                  fetched: await fetchImage(item.url, {signal: run.signal, sourcePage: item.sourcePage}),
+                };
+              } catch (error) {
+                outcome = {ok: false, error};
+              }
+              fetchedResults[index]!.resolve(outcome);
+              // The permit stays occupied until this result has been converted or rejected.
             }
-            if (!options.isDisposed()) {
-              run.reportStatus(t(retry ? "retryImages" : "prepareImages", {
-                completed: index + 1,
-                total: remaining.length,
-              }), "busy", `${index + 1} / ${remaining.length}`);
+          };
+          const workers = Array.from({length: workerCount}, () => fetchWorker());
+          if (run.signal.aborted) closeWindow();
+          else run.signal.addEventListener("abort", closeWindow, {once: true});
+          try {
+            for (let index = 0; index < remaining.length; index += 1) {
+              if (run.stopped) return;
+              const outcome = await Promise.race([fetchedResults[index]!.promise, cancellationPromise]);
+              if (outcome === cancelledFetchResults || run.stopped) return;
+              const item = remaining[index]!;
+              try {
+                if (!outcome.ok) throw outcome.error;
+                const blob = await convertImage(outcome.fetched, format, run.signal);
+                if (run.stopped) return;
+                work.prepared.set(item, blob);
+              } catch (error) {
+                if (run.stopped) return;
+                const reason = error instanceof Error ? error.message : t("errorImageConvert");
+                work.failed.set(item, reason);
+              } finally {
+                resultWindow.release();
+              }
+              if (!options.isDisposed()) {
+                run.reportStatus(t(retry ? "retryImages" : "prepareImages", {
+                  completed: index + 1,
+                  total: remaining.length,
+                }), "busy", `${index + 1} / ${remaining.length}`);
+              }
             }
+          } finally {
+            run.signal.removeEventListener("abort", closeWindow);
+            resultWindow.close();
+            await Promise.all(workers);
           }
           if (run.stopped) return;
           if (work.failed.size) {

@@ -359,10 +359,108 @@ test("image export downloads one ordered ZIP, saves only selected images, and re
   }
 });
 
-test("aborting an image export prevents ZIP download", async () => {
+test("image export prefetches at most three images while converting in input order", {timeout: 5_000}, async () => {
+  const previousFetch = globalThis.fetch;
+  const previousCreateImageBitmap = globalThis.createImageBitmap;
+  const previousCreateObjectURL = URL.createObjectURL;
+  const previousRevokeObjectURL = URL.revokeObjectURL;
+  const previousCreateElement = pageDocument.createElement;
+  const urls = Array.from({length: 6}, (_, index) => `https://example.test/${index}`);
+  const selected = urls.map(url => ({url}));
+  const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  const deferred = () => {
+    let resolve;
+    const promise = new Promise(done => { resolve = done; });
+    return {promise, resolve};
+  };
+  const responseGates = Array.from({length: 3}, deferred);
+  const firstDecodeStarted = deferred();
+  const firstDecodeGate = deferred();
+  const started = [];
+  const saved = [];
+  const decoded = [];
+  let activeFetches = 0;
+  let maximumFetches = 0;
+  let activeDecodes = 0;
+  let maximumDecodes = 0;
+  let busy = false;
+  pageDocument.createElement = tag => tag === "a" ? {
+    href: "", download: "", click() {}, remove() {},
+  } : previousCreateElement(tag);
+  globalThis.fetch = async url => {
+    const index = Number(new URL(url).pathname.slice(1));
+    started.push(index);
+    activeFetches += 1;
+    maximumFetches = Math.max(maximumFetches, activeFetches);
+    try {
+      if (index < responseGates.length) await responseGates[index].promise;
+      return new Response(new Uint8Array([...pngSignature, index]), {headers: {"Content-Type": "image/png"}});
+    } finally {
+      activeFetches -= 1;
+    }
+  };
+  globalThis.createImageBitmap = async blob => {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const index = bytes[8];
+    decoded.push(index);
+    activeDecodes += 1;
+    maximumDecodes = Math.max(maximumDecodes, activeDecodes);
+    try {
+      if (index === 0) {
+        firstDecodeStarted.resolve();
+        await firstDecodeGate.promise;
+      }
+      return {width: 1, height: 1, close() {}};
+    } finally {
+      activeDecodes -= 1;
+    }
+  };
+  URL.createObjectURL = blob => { saved.push(blob); return "blob:archive"; };
+  URL.revokeObjectURL = () => {};
+  try {
+    const controller = createImageExportController({
+      getSelectedItems: () => selected,
+      getZipFilename: () => "Artwork.zip",
+      isBusy: () => busy,
+      isDisposed: () => false,
+      onBusyChange(value) { busy = value; },
+      onStatus() {},
+      onCloseViewer() {},
+      onClearSourceUrl() {},
+      onScrollToFailures() {},
+    });
+    const work = controller.export("png");
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(started, [0, 1, 2], "the first three network requests start together");
+    responseGates[0].resolve();
+    await firstDecodeStarted.promise;
+    responseGates[1].resolve();
+    responseGates[2].resolve();
+    for (let turn = 0; turn < 4; turn += 1) await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(started, [0, 1, 2], "completed prefetch results stay within the three-item window during conversion");
+    firstDecodeGate.resolve();
+    await work;
+    assert.deepEqual(started, [0, 1, 2, 3, 4, 5]);
+    assert.equal(maximumFetches, 3, "no more than three fetch requests are in flight");
+    assert.equal(maximumDecodes, 1, "image conversion remains sequential");
+    assert.deepEqual(decoded, [0, 1, 2, 3, 4, 5], "prefetched images are converted in input order");
+    const entries = await readStoredZip(saved[0]);
+    assert.deepEqual(entries.map(entry => entry.name), ["001.png", "002.png", "003.png", "004.png", "005.png", "006.png"]);
+    assert.deepEqual(entries.map(entry => entry.data[8]), [0, 1, 2, 3, 4, 5]);
+  } finally {
+    pageDocument.createElement = previousCreateElement;
+    globalThis.fetch = previousFetch;
+    globalThis.createImageBitmap = previousCreateImageBitmap;
+    URL.createObjectURL = previousCreateObjectURL;
+    URL.revokeObjectURL = previousRevokeObjectURL;
+  }
+});
+
+test("aborting an image export stops concurrent fetches and prevents ZIP download", async () => {
   const previousFetch = globalThis.fetch;
   const previousCreateObjectURL = URL.createObjectURL;
   let busy = false;
+  const selected = Array.from({length: 5}, (_, index) => ({url: `https://example.test/hanging-${index}.png`}));
   let requests = 0;
   globalThis.fetch = async (_url, options) => {
     requests += 1;
@@ -371,7 +469,7 @@ test("aborting an image export prevents ZIP download", async () => {
   URL.createObjectURL = () => { throw new Error("cancelled export must not create a download"); };
   try {
     const controller = createImageExportController({
-      getSelectedItems: () => [{url: "https://example.test/hanging.png"}],
+      getSelectedItems: () => selected,
       getZipFilename: () => "Artwork.zip",
       isBusy: () => busy,
       isDisposed: () => false,
@@ -385,8 +483,40 @@ test("aborting an image export prevents ZIP download", async () => {
     await new Promise(resolve => setImmediate(resolve));
     controller.abort();
     await work;
-    assert.equal(requests, 1);
+    assert.equal(requests, 3, "only the bounded prefetch window starts before cancellation");
     assert.equal(busy, false);
+    assert.equal(controller.isRunning, false);
+  } finally {
+    globalThis.fetch = previousFetch;
+    URL.createObjectURL = previousCreateObjectURL;
+  }
+});
+
+test("aborting immediately after an image export starts does not wait for an unstarted fetch result", {timeout: 5_000}, async () => {
+  const previousFetch = globalThis.fetch;
+  const previousCreateObjectURL = URL.createObjectURL;
+  const selected = Array.from({length: 4}, (_, index) => ({url: `https://example.test/early-${index}.png`}));
+  let controller;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    return new Response("unexpected");
+  };
+  URL.createObjectURL = () => { throw new Error("cancelled export must not create a download"); };
+  try {
+    controller = createImageExportController({
+      getSelectedItems: () => selected,
+      getZipFilename: () => "Artwork.zip",
+      isBusy: () => false,
+      isDisposed: () => false,
+      onBusyChange() {},
+      onStatus() { queueMicrotask(() => controller.abort()); },
+      onCloseViewer() {},
+      onClearSourceUrl() {},
+      onScrollToFailures() {},
+    });
+    await controller.export("png");
+    assert.equal(requests, 0, "the scheduled cancellation wins before any fetch starts");
     assert.equal(controller.isRunning, false);
   } finally {
     globalThis.fetch = previousFetch;
