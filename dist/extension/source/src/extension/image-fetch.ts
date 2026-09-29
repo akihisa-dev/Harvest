@@ -1,9 +1,9 @@
 import { getOriginalJpegPage } from "../core/jpeg.js";
-import { checkCancelled, invalidImage, PdfImageError, type FetchedImage, type PdfImageOptions } from "./pdf-image-contract.js";
+import { checkCancelled, invalidImage, ImageDataError, type FetchedImage, type ImageDataOptions } from "./image-data-contract.js";
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 
-function timeoutValue(options: PdfImageOptions): number {
+function timeoutValue(options: ImageDataOptions): number {
   const value = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   if (!Number.isFinite(value) || value <= 0) {
     throw new RangeError("timeoutMs must be a positive finite number.");
@@ -11,17 +11,17 @@ function timeoutValue(options: PdfImageOptions): number {
   return value;
 }
 
-function responseError(status: number): PdfImageError {
+function responseError(status: number): ImageDataError {
   if (status === 401 || status === 403) {
-    return new PdfImageError("http", "画像へのアクセスが拒否されました。", status);
+    return new ImageDataError("http", "画像へのアクセスが拒否されました。", status);
   }
   if (status === 404 || status === 410) {
-    return new PdfImageError("http", "画像が見つかりませんでした。", status);
+    return new ImageDataError("http", "画像が見つかりませんでした。", status);
   }
   if (status === 408 || status === 429 || status >= 500) {
-    return new PdfImageError("http", "画像サーバーが応答できませんでした。", status);
+    return new ImageDataError("http", "画像サーバーが応答できませんでした。", status);
   }
-  return new PdfImageError("http", "画像を取得できませんでした。", status);
+  return new ImageDataError("http", "画像を取得できませんでした。", status);
 }
 
 function isAbortError(error: unknown): boolean {
@@ -36,7 +36,7 @@ async function cancelResponse(response: Response | undefined): Promise<void> {
   }
 }
 
-export async function fetchImage(url: string, options: PdfImageOptions): Promise<FetchedImage> {
+export async function fetchImage(url: string, options: ImageDataOptions): Promise<FetchedImage> {
   checkCancelled(options.signal);
   const timeoutMs = timeoutValue(options);
   const controller = new AbortController();
@@ -52,7 +52,7 @@ export async function fetchImage(url: string, options: PdfImageOptions): Promise
   else if (sourceSignal) {
     const abort = () => {
       controller.abort();
-      rejectAbort?.(new PdfImageError("cancelled", "画像の取得を中止しました。"));
+      rejectAbort?.(new ImageDataError("cancelled", "画像の取得を中止しました。"));
     };
     sourceSignal.addEventListener("abort", abort, { once: true });
     removeAbortListener = () => sourceSignal.removeEventListener("abort", abort);
@@ -80,15 +80,15 @@ export async function fetchImage(url: string, options: PdfImageOptions): Promise
       return { kind: "bitmap", blob: new Blob([bytes], {type: contentType}) };
     } catch (error) {
       void cancelResponse(response);
-      if (error instanceof PdfImageError) throw error;
+      if (error instanceof ImageDataError) throw error;
       if (sourceSignal?.aborted) {
-        throw new PdfImageError("cancelled", "画像の取得を中止しました。");
+        throw new ImageDataError("cancelled", "画像の取得を中止しました。");
       }
       if (controller.signal.aborted || isAbortError(error)) {
         // The timeout promise below wins the race when it caused the abort.
-        throw new PdfImageError("timeout", "画像の取得に時間がかかりすぎたため中止しました。");
+        throw new ImageDataError("timeout", "画像の取得に時間がかかりすぎたため中止しました。");
       }
-      throw new PdfImageError("network", "画像を取得できませんでした。通信状態と画像URLを確認してください。");
+      throw new ImageDataError("network", "画像を取得できませんでした。通信状態と画像URLを確認してください。");
     }
   })();
 
@@ -97,7 +97,7 @@ export async function fetchImage(url: string, options: PdfImageOptions): Promise
       timedOut = true;
       controller.abort();
       void cancelResponse(response);
-      reject(new PdfImageError("timeout", "画像の取得に時間がかかりすぎたため中止しました。"));
+      reject(new ImageDataError("timeout", "画像の取得に時間がかかりすぎたため中止しました。"));
     }, timeoutMs);
   });
 
@@ -105,7 +105,7 @@ export async function fetchImage(url: string, options: PdfImageOptions): Promise
     return await Promise.race([operation, timeout, cancelled]);
   } catch (error) {
     if (timedOut) {
-      throw new PdfImageError("timeout", "画像の取得に時間がかかりすぎたため中止しました。");
+      throw new ImageDataError("timeout", "画像の取得に時間がかかりすぎたため中止しました。");
     }
     throw error;
   } finally {

@@ -1,0 +1,157 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+const {loadExportPreferences, saveExportFormat, saveSourcePagePreference} = await import("../dist/extension/app/export-preferences.js");
+const {deriveExportViewState, exportFileBaseName, imageFilename, createSourcePreview} = await import("../dist/extension/app/export-presentation.js");
+const {createExportLifecycle} = await import("../dist/extension/app/export-lifecycle.js");
+
+function memoryStorage(entries = []) {
+  const values = new Map(entries);
+  return {
+    values,
+    getItem(key) { return values.get(key) ?? null; },
+    setItem(key, value) { values.set(key, String(value)); },
+  };
+}
+
+test("export preferences use safe defaults and persist only supported choices", () => {
+  assert.deepEqual(loadExportPreferences(memoryStorage()), {format: "pdf", includeSourcePage: false});
+  assert.deepEqual(loadExportPreferences(memoryStorage([
+    ["harvest.exportFormat", "jxl"],
+    ["harvest.includeSourcePage", "true"],
+  ])), {format: "jxl", includeSourcePage: true});
+  assert.deepEqual(loadExportPreferences(memoryStorage([
+    ["harvest.exportFormat", "unsupported"],
+    ["harvest.includeSourcePage", "yes"],
+  ])), {format: "pdf", includeSourcePage: false});
+
+  const storage = memoryStorage();
+  assert.equal(saveExportFormat("png", storage), true);
+  assert.equal(saveSourcePagePreference(true, storage), true);
+  assert.deepEqual(loadExportPreferences(storage), {format: "png", includeSourcePage: true});
+  assert.equal(saveSourcePagePreference(false, storage), true);
+  assert.equal(loadExportPreferences(storage).includeSourcePage, false);
+});
+
+test("unavailable preference storage falls back cleanly and reports writes that fail", () => {
+  const unreadable = {getItem() { throw new Error("storage unavailable"); }, setItem() { throw new Error("storage unavailable"); }};
+  assert.deepEqual(loadExportPreferences(unreadable), {format: "pdf", includeSourcePage: false});
+  assert.equal(saveExportFormat("jxl", unreadable), false);
+  assert.equal(saveSourcePagePreference(true, unreadable), false);
+});
+
+function pending(format, failed = new Map()) {
+  return {format, selected: [image], prepared: new Map(), failed};
+}
+
+const image = {url: "https://example.test/image.png", sourcePage: "https://example.test/gallery"};
+function viewState(overrides = {}) {
+  return deriveExportViewState({
+    format: "pdf", selected: [], completed: null,
+    pdfPending: null, imagePending: null,
+    pdfRunning: false, imageRunning: false,
+    pdfProgress: "", imageProgress: "",
+    ...overrides,
+  });
+}
+
+test("export presentation follows empty, ready, running, retry, saved, and format compatibility states", () => {
+  assert.equal(viewState().phase, "empty");
+  assert.equal(viewState({selected: [image]}).phase, "ready");
+  const pdfWork = pending(undefined, new Map([[image, "failed"]]));
+  assert.deepEqual(viewState({selected: [image], pdfRunning: true, pdfProgress: "1 / 2", pdfPending: pdfWork}), {
+    phase: "running", pending: pdfWork, progress: "1 / 2",
+  });
+  assert.deepEqual(viewState({selected: [image], pdfPending: pdfWork}), {phase: "retry-required", pending: pdfWork, progress: ""});
+  assert.equal(viewState({selected: [image], completed: {format: "pdf", selected: [image]}}).phase, "saved");
+  assert.equal(viewState({selected: [image], completed: {format: "jpg", selected: [image]}}).phase, "ready");
+  assert.equal(viewState({selected: [image], completed: {format: "pdf", selected: [{...image}]}}).phase, "ready",
+    "a result is saved only while the same image objects remain selected in the same order");
+
+  const pngWork = pending("png", new Map([[image, "failed"]]));
+  assert.equal(viewState({format: "jpg", selected: [image], imagePending: pngWork}).phase, "ready",
+    "pending image work for a different format must not block the selected format");
+  assert.equal(viewState({format: "png", selected: [image], imagePending: pngWork}).phase, "retry-required");
+});
+
+test("file labels and source preview safely represent URLs and XML text", () => {
+  assert.equal(imageFilename("https://example.test/files/a%20b%26c.png?size=2"), "a b&c.png");
+  assert.equal(exportFileBaseName('A/B:C*D?E"F<G>H|I', "Harvest"), "A_B_C_D_E_F_G_H_I");
+  assert.equal(exportFileBaseName("////", "Harvest"), "____");
+  assert.equal(exportFileBaseName("x".repeat(120), "Harvest").length, 100);
+
+  const preview = createSourcePreview([image], "pdf", true, "Source <&> \"'", "file<&>.pdf");
+  assert.ok(preview);
+  assert.equal(preview.sourcePage, image.sourcePage);
+  assert.equal(preview.selected, true);
+  const svg = decodeURIComponent(preview.url.slice(preview.url.indexOf(",") + 1));
+  assert.match(svg, /Source &lt;&amp;&gt; &quot;&apos;/);
+  assert.match(svg, /file&lt;&amp;&gt;\.pdf/);
+  assert.match(svg, /https:\/\/example\.test\/gallery/);
+  assert.equal(createSourcePreview([image], "jpg", true, "Source", "file.jpg"), null);
+  assert.equal(createSourcePreview([image], "pdf", false, "Source", "file.pdf"), null);
+  assert.equal(createSourcePreview([], "pdf", true, "Source", "file.pdf"), null);
+});
+
+test("shared export lifecycle discards changed selections and cleans up aborted work", async () => {
+  const statuses = [];
+  const busyChanges = [];
+  let scrolledToFailures = 0;
+  let disposed = false;
+  const lifecycle = createExportLifecycle({
+    isBusy: () => false,
+    isDisposed: () => disposed,
+    onBusyChange: value => busyChanges.push(value),
+    onStatus: (...args) => statuses.push(args),
+    onScrollToFailures: () => { scrolledToFailures += 1; },
+  });
+  const changedImage = {url: "https://example.test/changed.png"};
+  const work = lifecycle.resolveWork([image], () => ({selected: [image], prepared: new Map(), failed: new Map()}));
+  assert.equal(lifecycle.pending, work);
+  assert.equal(lifecycle.discardIfSelectionChanged([image]), false);
+  assert.equal(lifecycle.discardIfSelectionChanged([changedImage]), true);
+  assert.equal(lifecycle.pending, null);
+
+  const runWork = lifecycle.resolveWork([image], () => ({selected: [image], prepared: new Map(), failed: new Map()}));
+  let runSignal;
+  let stoppedAfterAbort = false;
+  const execution = lifecycle.run(runWork, "Preparing", "0 / 1", async run => {
+    runSignal = run.signal;
+    await new Promise(resolve => runSignal.addEventListener("abort", resolve, {once: true}));
+    stoppedAfterAbort = run.stopped;
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(lifecycle.isRunning, true);
+  assert.equal(lifecycle.progress, "0 / 1");
+  lifecycle.abort();
+  await execution;
+  assert.equal(runSignal.aborted, true);
+  assert.equal(stoppedAfterAbort, true);
+  assert.equal(lifecycle.isRunning, false);
+  assert.equal(lifecycle.progress, "");
+  assert.deepEqual(busyChanges, [true, false]);
+  assert.deepEqual(statuses[0], ["Preparing", "busy", "0 / 1"]);
+  assert.equal(scrolledToFailures, 0);
+});
+
+test("export lifecycle replaces incompatible pending work and scrolls to retained failures", async () => {
+  let scrolledToFailures = 0;
+  const lifecycle = createExportLifecycle({
+    isBusy: () => false,
+    isDisposed: () => false,
+    onBusyChange() {},
+    onStatus() {},
+    onScrollToFailures: () => { scrolledToFailures += 1; },
+  });
+  const first = lifecycle.resolveWork([image], () => ({format: "png", selected: [image], prepared: new Map(), failed: new Map()}));
+  const replacement = lifecycle.resolveWork([image], () => ({format: "jpg", selected: [image], prepared: new Map(), failed: new Map()}), work => work.format === "jpg");
+  assert.notEqual(replacement, first);
+  assert.equal(lifecycle.pending, replacement);
+  replacement.failed.set(image, "Could not prepare image");
+  await lifecycle.run(replacement, "Retrying", "0 / 1", async run => {
+    assert.equal(run.retry, true);
+    run.reportStatus("Could not prepare image", "error");
+  });
+  assert.equal(lifecycle.pending, replacement);
+  assert.equal(scrolledToFailures, 1);
+});

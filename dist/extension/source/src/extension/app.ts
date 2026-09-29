@@ -1,106 +1,66 @@
-import { defaultDisplayedImageGroup, normalizeImageUrls, type ImageItem } from "../core/images.js";
+import type { ImageItem } from "../core/images.js";
 import { ImageCollection } from "../core/image-collection.js";
-import { createSourcePageLayout } from "../core/pdf.js";
 import { createCollectionController } from "./collection-controller.js";
-import { scanTab, scanUrl } from "./page-access.js";
 import { prefersReducedMotion, setMotionText } from "./motion.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { createViewerController } from "./viewer-controller.js";
 import { createImageListView } from "./image-list-view.js";
 import { createPdfExportController, type PdfExportController } from "./pdf-export-controller.js";
 import { createImageExportController, type ImageExportController } from "./image-export-controller.js";
-import type { ImageArchiveFormat } from "./image-format.js";
+import { queryAppElements } from "./app-elements.js";
+import { loadExportPreferences, saveExportFormat, saveSourcePagePreference } from "./export-preferences.js";
+import {
+  createSourcePreview,
+  deriveExportViewState,
+  exportFileBaseName,
+  imageFilename,
+  type CompletedExport,
+} from "./export-presentation.js";
+import { createScanSessionController, type ScanSessionController } from "./scan-session-controller.js";
 
-const sourceUrl = required<HTMLInputElement>("#source-url");
-const sourceDrop = required<HTMLButtonElement>("#source-drop");
-const urlDropOverlay = required<HTMLDivElement>("#url-drop-overlay");
-const collectionButton = required<HTMLButtonElement>("#collection-toggle");
-const scanButton = required<HTMLButtonElement>("#scan");
-const exportButton = required<HTMLButtonElement>("#export");
-type ExportFormat = "pdf" | ImageArchiveFormat;
-const exportFormatInputs: ReadonlyArray<{format: ExportFormat; input: HTMLInputElement}> = [
-  {format: "pdf", input: required<HTMLInputElement>("#export-format-pdf")},
-  {format: "jpg", input: required<HTMLInputElement>("#export-format-jpg")},
-  {format: "png", input: required<HTMLInputElement>("#export-format-png")},
-  {format: "jxl", input: required<HTMLInputElement>("#export-format-jxl")},
-];
-const sourcePageOption = required<HTMLLabelElement>(".source-page-option");
-const includeSourcePage = required<HTMLInputElement>("#include-source-page");
-const sourcePagePreferenceKey = "harvest.includeSourcePage";
-const exportFormatPreferenceKey = "harvest.exportFormat";
-function isExportFormat(value: string): value is ExportFormat {
-  return value === "pdf" || value === "jpg" || value === "png" || value === "jxl";
-}
-let selectedExportFormat: ExportFormat = "pdf";
-try {
-  const storedFormat = localStorage.getItem(exportFormatPreferenceKey);
-  if (storedFormat && isExportFormat(storedFormat)) selectedExportFormat = storedFormat;
-} catch { /* Keep PDF as the default when browser storage is unavailable. */ }
+const {
+  sourceUrl, sourceDrop, urlDropOverlay, collectionButton, scanButton, exportButton,
+  exportFormatInputs, sourcePageOption, includeSourcePage,
+  viewerToggleButton, viewerElement, resultsElement, viewerEmptyElement, viewerPageElement,
+  viewerPreviousButton, viewerNextButton, viewerPositionElement, viewerStageElement, exportOverlay,
+  viewerImageElement, viewerFilenameElement, viewerThumbnailsElement, viewerZoomInButton,
+  viewerZoomOutButton, viewerZoomResetButton, allVisibilityButton, allSelectionCheckbox,
+  resetOrderButton, resetButton, failuresElement, failedImagesElement, imagesElement, groupsElement,
+  scanOverlay, emptyElement, emptyLogoElement, emptyMessageElement, statusElement,
+} = queryAppElements();
+
+const preferences = loadExportPreferences();
+let selectedExportFormat = preferences.format;
 for (const {format, input} of exportFormatInputs) input.checked = format === selectedExportFormat;
-try { includeSourcePage.checked = localStorage.getItem(sourcePagePreferenceKey) === "true"; }
-catch { includeSourcePage.checked = false; }
+includeSourcePage.checked = preferences.includeSourcePage;
 includeSourcePage.addEventListener("change", () => {
-  try { localStorage.setItem(sourcePagePreferenceKey, String(includeSourcePage.checked)); }
-  catch { setStatus(t("errorSavePreference"), "error"); }
+  if (!saveSourcePagePreference(includeSourcePage.checked)) setStatus(t("errorSavePreference"), "error");
   render();
 });
 for (const {format, input} of exportFormatInputs) {
   input.addEventListener("change", () => {
     if (!input.checked) return;
     selectedExportFormat = format;
-    try { localStorage.setItem(exportFormatPreferenceKey, selectedExportFormat); }
-    catch { setStatus(t("errorSaveFormatPreference"), "error"); }
+    if (!saveExportFormat(selectedExportFormat)) setStatus(t("errorSaveFormatPreference"), "error");
     render();
   });
 }
-const viewerToggleButton = required<HTMLButtonElement>("#viewer-toggle");
-const viewerElement = required<HTMLElement>("#viewer");
-const resultsElement = required<HTMLElement>(".results");
-const viewerEmptyElement = required<HTMLParagraphElement>("#viewer-empty");
-const viewerPageElement = required<HTMLDivElement>("#viewer-page");
-const viewerPreviousButton = required<HTMLButtonElement>("#viewer-previous");
-const viewerNextButton = required<HTMLButtonElement>("#viewer-next");
-const viewerPositionElement = required<HTMLSpanElement>("#viewer-position");
-const viewerStageElement = required<HTMLDivElement>("#viewer-stage");
-const exportOverlay = required<HTMLDivElement>("#export-overlay");
-const viewerImageElement = required<HTMLImageElement>("#viewer-image");
-const viewerFilenameElement = required<HTMLParagraphElement>("#viewer-filename");
-const viewerThumbnailsElement = required<HTMLOListElement>("#viewer-thumbnails");
-const viewerZoomInButton = required<HTMLButtonElement>("#viewer-zoom-in");
-const viewerZoomOutButton = required<HTMLButtonElement>("#viewer-zoom-out");
-const viewerZoomResetButton = required<HTMLButtonElement>("#viewer-zoom-reset");
-const allVisibilityButton = required<HTMLButtonElement>("#all-visibility");
-const allSelectionCheckbox = required<HTMLInputElement>("#all-selection");
-const resetOrderButton = required<HTMLButtonElement>("#reset-order");
-const resetButton = required<HTMLButtonElement>("#reset");
-const failuresElement = required<HTMLElement>("#failures");
-const failedImagesElement = required<HTMLUListElement>("#failed-images");
-const imagesElement = required<HTMLOListElement>("#images");
-const groupsElement = required<HTMLDivElement>("#groups");
-const scanOverlay = required<HTMLElement>("#scan-overlay");
-const emptyElement = required<HTMLElement>("#empty");
-const emptyLogoElement = required<HTMLImageElement>("#empty-logo");
-const emptyMessageElement = required<HTMLParagraphElement>("#empty-message");
-const statusElement = required<HTMLParagraphElement>("#status");
 
 const imageCollection = new ImageCollection();
-let completedExport: {format: "pdf" | ImageArchiveFormat; selected: readonly ImageItem[]} | null = null;
+let completedExport: CompletedExport | null = null;
 let pageTitle = t("imageFallback");
 let busy = false;
 let disposed = false;
-let scanController: AbortController | null = null;
+let scanSessionController: ScanSessionController | null = null;
 let pdfExportController: PdfExportController | null = null;
 let imageExportController: ImageExportController | null = null;
 window.addEventListener?.("pagehide", () => {
   disposed = true;
   collectionController.stop();
-  scanController?.abort();
+  scanSessionController?.abort();
   pdfExportController?.abort();
   imageExportController?.abort();
 });
-
-type ScanState = "initial" | "scanning" | "results" | "empty" | "error";
-let scanState: ScanState = "initial";
 
 type StatusState = "info" | "busy" | "success" | "error";
 const imageListView = createImageListView({
@@ -112,16 +72,6 @@ const imageListView = createImageListView({
   getFilename: imageFilename,
   onChange: render,
 });
-
-function required<T extends Element>(selector: string): T {
-  const element = document.querySelector<T>(selector);
-  if (!element) throw new Error(`Missing element: ${selector}`);
-  return element;
-}
-
-function isWebUrl(url: string | undefined): url is string {
-  return url !== undefined && /^https?:\/\//i.test(url);
-}
 
 function updateSourceDrop(): void {
   const url = sourceUrl.value.trim();
@@ -181,97 +131,27 @@ function setBusy(value: boolean): void {
   render();
 }
 
-async function startScan(collectionLink?: string): Promise<void> {
-  if (busy) return;
-  const session = collectionController.session;
-  const enteredUrl = sourceUrl.value.trim();
-  let targetUrl = "";
-  if (enteredUrl) {
-    try {
-      const parsed = new URL(enteredUrl);
-      if (!isWebUrl(parsed.href)) throw new Error();
-      targetUrl = parsed.href;
-    } catch {
-      setStatus(t("errorInvalidUrl"), "error");
-      showSourceInput();
-      return;
-    }
-  }
-  collectionController.clearAnalyzedUrl();
-  hideSourceInput();
-  const controller = new AbortController();
-  scanController = controller;
-  scanState = "scanning";
-  setBusy(true);
-  setStatus(t("scanBusy"), "busy");
-  try {
-    let result;
-    if (targetUrl) {
-      result = await scanUrl(targetUrl, controller.signal);
-    } else {
-      const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
-      if (activeTab?.id === undefined || !isWebUrl(activeTab.url)) {
-        throw new Error(t("errorNoActivePage"));
-      }
-      result = await scanTab(activeTab.id, controller.signal);
-    }
-    if (disposed || controller.signal.aborted || scanController !== controller) return;
-    const urls = normalizeImageUrls(result.images, result.url);
-    // Publish only a complete scan. A rejected scan keeps the previous working set.
-    imageCollection.replace(urls, result.url);
-    if (collectionLink) collectionController.markAnalyzedUrl(collectionLink, session);
-    pageTitle = result.title || t("imageFallback");
-    pdfExportController?.clear();
-    imageExportController?.clear();
-    const initialGroup = defaultDisplayedImageGroup(imageCollection.groups);
-    imageListView.showInitialGroup(initialGroup);
-    viewerController.setOpen(false);
-    viewerController.clearCurrentPage();
-    scanState = imageCollection.items.length ? "results" : "empty";
-    setStatus(imageCollection.items.length ? "" : t("scanEmpty"), "info");
-  } catch (error) {
-    if (disposed || controller.signal.aborted || scanController !== controller) return;
-    scanState = imageCollection.items.length ? "results" : "error";
-    const reason = error instanceof Error ? localizeErrorMessage(error.message, "errorPageRead", true) : t("errorPageRead");
-    setStatus(reason + (imageCollection.items.length ? t("previousResults") : ""), "error");
-  } finally {
-    if (scanController === controller) {
-      scanController = null;
-      if (!disposed) setBusy(false);
-    }
-  }
-}
-
-function imageFilename(url: string): string {
-  try { return decodeURIComponent(new URL(url).pathname.split("/").pop() || url); }
-  catch { return url; }
-}
-
-function exportFileBaseName(): string {
-  return pageTitle.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) || t("imageFallback");
+function fileBaseName(): string {
+  return exportFileBaseName(pageTitle, t("imageFallback"));
 }
 
 function pdfFilename(): string {
-  return `${exportFileBaseName()}.pdf`;
+  return `${fileBaseName()}.pdf`;
 }
 
 function zipFilename(): string {
-  return `${exportFileBaseName()}.zip`;
+  return `${fileBaseName()}.zip`;
 }
 
 /** A local preview only; the PDF itself continues to contain selectable text. */
 function sourcePreview(): ImageItem | null {
-  const first = imageCollection.selectedItems[0];
-  if (selectedExportFormat !== "pdf" || !includeSourcePage.checked || !first) return null;
-  const layout = createSourcePageLayout({heading: t("sourceHeading"), filename: pdfFilename(), url: first.sourcePage});
-  const escape = (value: string): string => value.replace(/[&<>"']/g, character =>
-    ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;"})[character]!);
-  const text = layout.lines.map(line => {
-    const textLength = line.text ? ` textLength="${line.width.toFixed(3)}" lengthAdjust="spacingAndGlyphs"` : "";
-    return `<text x="${line.x.toFixed(3)}" y="${(layout.height - line.y).toFixed(3)}" font-size="${line.size}"${textLength} xml:space="preserve">${escape(line.text)}</text>`;
-  }).join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${layout.width}" height="${layout.height}"><rect width="${layout.width}" height="${layout.height}" fill="white"/><g fill="black" font-family="monospace">${text}</g></svg>`;
-  return {url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, sourcePage: first.sourcePage, selected: true};
+  return createSourcePreview(
+    imageCollection.selectedItems,
+    selectedExportFormat,
+    includeSourcePage.checked,
+    t("sourceHeading"),
+    pdfFilename(),
+  );
 }
 
 function viewerPages(): ImageItem[] {
@@ -286,34 +166,37 @@ function previewName(item: ImageItem): string {
 
 function render(): void {
   collectionController.publishState();
+  const scanState = scanSessionController?.state ?? "initial";
+  const scanRunning = scanSessionController?.isRunning ?? false;
   const selected = imageCollection.selectedItems;
   const selectedCount = selected.length;
   const pdfSelectionChanged = pdfExportController?.discardIfSelectionChanged(selected) ?? false;
   const imageSelectionChanged = imageExportController?.discardIfSelectionChanged(selected) ?? false;
   const selectionChanged = pdfSelectionChanged || imageSelectionChanged;
   if (selectionChanged && !busy) setStatus(t("selectionChanged"), "info");
-  const imagePending = imageExportController?.pending;
-  const pendingExport = selectedExportFormat === "pdf"
-    ? pdfExportController?.pending ?? null
-    : imagePending?.format === selectedExportFormat ? imagePending : null;
-  const exportRunning = selectedExportFormat === "pdf"
-    ? pdfExportController?.isRunning ?? false
-    : imageExportController?.isRunning ?? false;
-  const exportProgress = selectedExportFormat === "pdf"
-    ? pdfExportController?.progress ?? ""
-    : imageExportController?.progress ?? "";
-  const exportSaved = completedExport?.format === selectedExportFormat
-    && completedExport.selected.length === selected.length
-    && completedExport.selected.every((item, index) => item === selected[index]);
-  scanButton.dataset["scanning"] = String(scanController !== null);
-  scanButton.textContent = scanController ? "" : t("scan");
-  if (scanController) scanButton.setAttribute("aria-label", t("scanBusy"));
+  const exportState = deriveExportViewState({
+    format: selectedExportFormat,
+    selected,
+    completed: completedExport,
+    pdfPending: pdfExportController?.pending ?? null,
+    imagePending: imageExportController?.pending ?? null,
+    pdfRunning: pdfExportController?.isRunning ?? false,
+    imageRunning: imageExportController?.isRunning ?? false,
+    pdfProgress: pdfExportController?.progress ?? "",
+    imageProgress: imageExportController?.progress ?? "",
+  });
+  const pendingExport = exportState.pending;
+  const exportRunning = exportState.phase === "running";
+  const exportSaved = exportState.phase === "saved";
+  scanButton.dataset["scanning"] = String(scanRunning);
+  scanButton.textContent = scanRunning ? "" : t("scan");
+  if (scanRunning) scanButton.setAttribute("aria-label", t("scanBusy"));
   else scanButton.removeAttribute("aria-label");
   exportButton.dataset["saving"] = String(exportRunning);
   exportButton.dataset["saved"] = String(exportSaved && !exportRunning);
   if (!exportRunning) exportButton.removeAttribute("aria-label");
-  if (exportRunning) exportButton.textContent = exportProgress;
-  else if (pendingExport?.failed.size) exportButton.textContent = t("exportRetry");
+  if (exportRunning) exportButton.textContent = exportState.progress;
+  else if (exportState.phase === "retry-required") exportButton.textContent = t("exportRetry");
   else if (exportSaved) exportButton.textContent = t("exportSaved", {count: selectedCount, plural: formatPlural(selectedCount)});
   else if (selected.length) exportButton.textContent = t("exportAction", {format: selectedExportFormat.toUpperCase()});
   else exportButton.textContent = t("save");
@@ -376,7 +259,7 @@ const collectionController = createCollectionController({
   onScanUrl(url) {
     sourceUrl.value = url;
     updateSourceDrop();
-    void startScan(url);
+    void scanSessionController?.start(url);
   },
   onExport: startExport,
   onError(error) {
@@ -438,12 +321,36 @@ imageExportController = createImageExportController({
     failuresElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"});
   },
 });
+scanSessionController = createScanSessionController({
+  collection: imageCollection,
+  getEnteredUrl: () => sourceUrl.value.trim(),
+  getCollectionSession: () => collectionController.session,
+  clearAnalyzedUrl: collectionController.clearAnalyzedUrl,
+  markAnalyzedUrl: collectionController.markAnalyzedUrl,
+  isBusy: () => busy,
+  isDisposed: () => disposed,
+  onHideSourceInput: hideSourceInput,
+  onShowSourceInput: showSourceInput,
+  onBusyChange: setBusy,
+  onStatus: setStatus,
+  onResults(nextPageTitle, initialGroup) {
+    pageTitle = nextPageTitle;
+    pdfExportController?.clear();
+    imageExportController?.clear();
+    imageListView.showInitialGroup(initialGroup);
+    viewerController.setOpen(false);
+    viewerController.clearCurrentPage();
+  },
+});
 
-scanButton.addEventListener("click", () => { void startScan(); });
+scanButton.addEventListener("click", () => { void scanSessionController?.start(); });
 sourceDrop.addEventListener("click", showSourceInput);
 sourceUrl.addEventListener("input", updateSourceDrop);
 sourceUrl.addEventListener("blur", hideSourceInput);
-sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter") void startScan(); });
+sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter") void scanSessionController?.start(); });
+function isWebUrl(url: string | undefined): url is string {
+  return url !== undefined && /^https?:\/\//i.test(url);
+}
 function isPageUrlDrag(event: DragEvent): boolean {
   return Boolean(event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain"));
 }
@@ -478,7 +385,7 @@ document.addEventListener("drop", event => {
   if (busy || imageListView.isDragging) return;
   sourceUrl.value = url;
   hideSourceInput();
-  void startScan();
+  void scanSessionController?.start();
 });
 exportButton.addEventListener("click", startExport);
 allSelectionCheckbox.addEventListener("change", () => {
@@ -501,7 +408,7 @@ resetButton.addEventListener("click", () => {
   imageListView.clearVisibleGroups();
   viewerController.setOpen(false);
   viewerController.clearCurrentPage();
-  scanState = "initial";
+  scanSessionController?.reset();
   pageTitle = t("imageFallback");
   setStatus("", "info");
   render();

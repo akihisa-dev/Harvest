@@ -1,7 +1,8 @@
 import type { PdfImagePage } from "../core/pdf-types.js";
 import { fetchImage } from "./image-fetch.js";
 import { decodeImage } from "./image-decode.js";
-import { checkCancelled, invalidImage, validatePositiveInteger, PdfImageError, type FetchedImage, type PdfImageOptions, type PdfImagePreparationOptions, type PdfImagePreparationResult } from "./pdf-image-contract.js";
+import { checkCancelled, invalidImage, validatePositiveInteger, type FetchedImage } from "./image-data-contract.js";
+import { PdfImageError, type PdfImageOptions, type PdfImagePreparationOptions, type PdfImagePreparationResult } from "./pdf-image-contract.js";
 
 export { PdfImageError } from "./pdf-image-contract.js";
 export type { PdfImageErrorKind, PdfImageOptions, PdfImagePreparationOptions, PdfImagePreparationResult } from "./pdf-image-contract.js";

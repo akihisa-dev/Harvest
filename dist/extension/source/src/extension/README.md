@@ -1,10 +1,12 @@
 # 画面とブラウザーへの接続
 
-`app.ts` は画面全体の操作を接続し、解析後の画像集合と画面状態を管理します。`image-list-view.ts` は画像グループの表示、選択操作、ドラッグ・キー操作による並べ替えと一覧DOMを担当し、`viewer-controller.ts` はプレビュー操作を担当します。`pdf-export-controller.ts` はPDF向け画像の準備、失敗分の再試行、PDFの作成と保存を管理します。`image-export-controller.ts` は画像形式の準備、失敗分の再試行、ZIPの作成と保存を管理します。`image-format.ts` はJPG・PNG・JXLへの変換を担当し、`jxl-encoder.ts` と `jxl-encode-worker.ts` はJXL変換を画面操作と分けて実行します。画像の選択と順序を判断する処理、ZIPの組み立ては `src/core/` に置き、画面やChromeの状態を参照させません。
+`app.ts` は画面全体の接続役です。DOM要素の契約は `app-elements.ts`、保存設定は `export-preferences.ts`、保存ボタン・失敗表示に使う状態とファイル名・Sourceプレビューは `export-presentation.ts`、解析の開始・中断・結果公開は `scan-session-controller.ts` が所有します。`image-list-view.ts` は画像グループの表示、選択操作、ドラッグ・キー操作による並べ替えと一覧DOMを担当し、DOMを使わない挿入位置の計算は `image-reorder.ts` に分けています。`viewer-controller.ts` はプレビュー操作を担当します。
+
+`pdf-export-controller.ts` はPDF向け画像の準備とPDF組み立て、`image-export-controller.ts` はJPG・PNG・JXLの準備とZIP組み立てを担当します。両方に共通する選択一致、保留中の準備結果、失敗分だけの再試行、中断、進捗、終了時の後始末、Blobのダウンロードは `export-lifecycle.ts` が一元管理します。形式固有の準備と組み立ては共通処理へ混ぜません。`image-format.ts` はJPG・PNG・JXLへの変換を担当し、`jxl-encoder.ts` と `jxl-encode-worker.ts` はJXL変換を画面操作と分けて実行します。画像の選択と確定した順序、ZIPの組み立ては `src/core/` に置き、画面やChromeの状態を参照させません。
 
 `viewer-controller.ts` はプレビューのページ位置・ズーム・移動とその表示を管理し、選択画像は画像集合から受け取ります。`collection-controller.ts` は開始したタブと接続の識別情報を管理し、許可した接続だけを解析・保存操作へ渡します。`app.ts` は処理中・終了済みの状態を渡し、パネルを閉じたときには収集接続を切り、解析と画像準備を中断します。
 
-PDF画像準備は `pdf-image.ts` が並行取得と逐次変換を制御し、結果を入力順に通知します。未通知結果を含む処理中の画像数は取得並列数以内に保ち、先頭画像の遅延でJPEG結果が蓄積し続けないようにします。`image-fetch.ts` が通信と時間制限・中断・応答の後始末を担当します。取得したバイト列でJPEGを判定し、無変換で使える場合はそのバイト列をPDFへ渡します。その他の画像だけデコード用のBlobを作り、`image-decode.ts` が画素の読み取り・圧縮と画像メモリの解放を担当します。RGB画素は最大262,144画素ずつ圧縮へ渡し、画像全体ぶんの未圧縮RGB配列は作りません。共通の入力形式と失敗理由は `pdf-image-contract.ts` に置き、既存の利用側には `pdf-image.ts` から同じ関数・型・エラーを公開します。
+PDF画像準備は `pdf-image.ts` が並行取得と逐次変換を制御し、結果を入力順に通知します。未通知結果を含む処理中の画像数は取得並列数以内に保ち、先頭画像の遅延でJPEG結果が蓄積し続けないようにします。`image-fetch.ts` が通信と時間制限・中断・応答の後始末を担当します。取得したバイト列でJPEGを判定し、無変換で使える場合はそのバイト列をPDFへ渡します。その他の画像だけデコード用のBlobを作り、`image-decode.ts` が画素の読み取り・圧縮と画像メモリの解放を担当します。RGB画素は最大262,144画素ずつ圧縮へ渡し、画像全体ぶんの未圧縮RGB配列は作りません。PDFと画像ZIPに共通する取得済み画像、失敗理由、中断の契約は `image-data-contract.ts`、PDF準備固有の型は `pdf-image-contract.ts` に置きます。既存の利用側には `pdf-image.ts` から従来と同じPDF向けの型とエラー名を公開します。
 
 `page-access.ts` は解析用のウィンドウとタブの寿命、読み取りの時間制限、中断を管理します。`page-scan.ts` と `collection-mode.ts` の注入関数はChromeが関数単体をページへコピーして実行するため、外側の変数やimportに依存しない形を保ちます。この制約のある関数内の処理を、通常のモジュール分割で外へ移すことは避けます。
 

@@ -1,4 +1,4 @@
-import { checkCancelled, invalidImage, validatePositiveInteger } from "./pdf-image-contract.js";
+import { checkCancelled, invalidImage, validatePositiveInteger } from "./image-data-contract.js";
 const DEFAULT_PIXEL_CHUNK_PIXELS = 262_144;
 function yieldToEventLoop() {
     return new Promise((resolve) => setTimeout(resolve, 0));

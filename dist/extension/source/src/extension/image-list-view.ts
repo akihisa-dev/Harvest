@@ -2,6 +2,7 @@ import type { ImageCollection } from "../core/image-collection.js";
 import type { ImageItem } from "../core/images.js";
 import { animateLayoutChange, reconcileKeyedChildren } from "./motion.js";
 import { formatFailedAria, formatGroupLabel, t } from "./localization.js";
+import { createPreviewOrder, findNearestByRect, isPointerAfter } from "./image-reorder.js";
 
 interface ImageRowParts {
   preview: HTMLImageElement;
@@ -190,9 +191,9 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     if (!row) return;
     const rect = dragRects.get(target.url);
     if (!rect) return;
-    const after = dragIsSingleColumn ? event.clientY >= rect.top + rect.height / 2 : event.clientX >= rect.left + rect.width / 2;
-    const order = previewOrder.filter(item => item !== draggedImage);
-    order.splice(order.indexOf(target) + (after ? 1 : 0), 0, draggedImage);
+    const order = createPreviewOrder(previewOrder, draggedImage, target,
+      isPointerAfter(rect, event, dragIsSingleColumn));
+    if (!order) return;
     if (order.some((item, index) => item !== previewOrder[index])) showInsertion(order);
   }
 
@@ -335,16 +336,8 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     imagesElement.ondragover = event => {
       if (!draggedImage || options.isBusy()) return;
       event.preventDefault();
-      let nearest: ImageItem | null = null;
-      let distance = Infinity;
-      for (const [url, rect] of dragRects) {
-        const dx = Math.max(rect.left - event.clientX, 0, event.clientX - rect.right);
-        const dy = Math.max(rect.top - event.clientY, 0, event.clientY - rect.bottom);
-        if (dx * dx + dy * dy < distance) {
-          nearest = collection.itemForUrl(url) ?? null;
-          distance = dx * dx + dy * dy;
-        }
-      }
+      const nearestUrl = findNearestByRect(dragRects, event);
+      const nearest = nearestUrl ? collection.itemForUrl(nearestUrl) ?? null : null;
       if (nearest) previewInsertion(nearest, event);
     };
     imagesElement.ondrop = finishDrop;

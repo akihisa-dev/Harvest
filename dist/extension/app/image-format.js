@@ -1,4 +1,4 @@
-import { checkCancelled } from "./pdf-image-contract.js";
+import { checkCancelled } from "./image-data-contract.js";
 import { encodeJxl } from "./jxl-encoder.js";
 export class ImageFormatError extends Error {
     constructor(message) {

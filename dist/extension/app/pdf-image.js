@@ -1,6 +1,7 @@
 import { fetchImage } from "./image-fetch.js";
 import { decodeImage } from "./image-decode.js";
-import { checkCancelled, invalidImage, validatePositiveInteger, PdfImageError } from "./pdf-image-contract.js";
+import { checkCancelled, invalidImage, validatePositiveInteger } from "./image-data-contract.js";
+import { PdfImageError } from "./pdf-image-contract.js";
 export { PdfImageError } from "./pdf-image-contract.js";
 const DEFAULT_FETCH_CONCURRENCY = 3;
 /**
