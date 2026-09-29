@@ -37,6 +37,25 @@ async function isDecodablePng(blob, signal) {
         bitmap.close();
     }
 }
+async function validateOriginalJpeg(blob, signal) {
+    let bitmap;
+    try {
+        bitmap = await createImageBitmap(blob);
+    }
+    catch {
+        checkCancelled(signal);
+        throw new ImageFormatError("画像を読み込めませんでした。形式が対応していないか、データが壊れています。");
+    }
+    try {
+        checkCancelled(signal);
+        const dimensionsError = imageDimensionsError(bitmap.width, bitmap.height);
+        if (dimensionsError)
+            throw new ImageFormatError(dimensionsError);
+    }
+    finally {
+        bitmap.close();
+    }
+}
 function fetchedBlob(fetched) {
     return fetched.kind === "original"
         ? new Blob([fetched.page.jpeg.buffer], { type: "image/jpeg" })
@@ -56,6 +75,10 @@ export async function convertImage(fetched, format, signal) {
             throw new ImageFormatError(dimensionsError);
         if (format === "jpg")
             return fetchedBlob(fetched);
+    }
+    if (format === "jpg" && fetched.kind === "bitmap" && fetched.originalJpeg) {
+        await validateOriginalJpeg(fetched.blob, signal);
+        return fetched.blob;
     }
     if (format === "png" && fetched.kind === "bitmap" && await isDecodablePng(fetched.blob, signal))
         return fetched.blob;

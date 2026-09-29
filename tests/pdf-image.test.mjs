@@ -249,6 +249,34 @@ test("対応するJFIF JPEGは取得したバイト列と寸法をそのまま�
   }
 });
 
+test("EXIF付きJPEGはPDF用には画素へ変換し、JPG保存用の元データは保持する", async () => {
+  const previous = {fetch: globalThis.fetch, document: globalThis.document, createImageBitmap: globalThis.createImageBitmap};
+  const jpeg = new Uint8Array([
+    0xff, 0xd8,
+    0xff, 0xe0, 0x00, 0x07, 0x4a, 0x46, 0x49, 0x46, 0x00,
+    0xff, 0xe1, 0x00, 0x08, 0x45, 0x78, 0x69, 0x66, 0x00, 0x00,
+    0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x01, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
+    0xff, 0xda, 0x00, 0x08, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x00, 0xff, 0xd9,
+  ]);
+  let closed = 0;
+  globalThis.fetch = async () => new Response(jpeg, {headers: {"content-type": "image/jpeg"}});
+  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() { closed += 1; }});
+  globalThis.document = {createElement: () => ({
+    width: 0, height: 0,
+    getContext: () => ({fillRect() {}, drawImage() {}, getImageData: () => ({data: new Uint8ClampedArray([12, 34, 56, 255])})}),
+  })};
+  try {
+    const page = await toPdfPage("https://example.test/exif.jpg");
+    assert.equal(page.width, 1);
+    assert.equal(page.height, 1);
+    assert.equal("jpeg" in page, false, "EXIF付きJPEGをPDFへ無変換で埋め込まない");
+    assert.deepEqual([...inflateSync(page.rgbFlate)], [12, 34, 56]);
+    assert.equal(closed, 1);
+  } finally {
+    Object.assign(globalThis, previous);
+  }
+});
+
 test("HTTP失敗・通信失敗・画像形式不正を利用者向け理由へ変換する", async () => {
   const previous = { fetch: globalThis.fetch };
   try {

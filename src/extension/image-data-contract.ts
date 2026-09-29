@@ -30,7 +30,7 @@ export interface ImageDataOptions {
 
 export type FetchedImage =
   | {readonly kind: "original"; readonly page: PdfJpegImagePage}
-  | {readonly kind: "bitmap"; readonly blob: Blob};
+  | {readonly kind: "bitmap"; readonly blob: Blob; readonly originalJpeg?: boolean};
 
 export function invalidImage(message: string): ImageDataError {
   return new ImageDataError("invalid-image", message);

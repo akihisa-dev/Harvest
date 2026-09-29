@@ -24,6 +24,7 @@ globalThis.chrome = {i18n: {getUILanguage: () => "en"}};
 globalThis.window = {setTimeout() {}};
 
 const {convertImage} = await import("../dist/extension/app/image-format.js");
+const {fetchImage} = await import("../dist/extension/app/image-fetch.js");
 const {IMAGE_TOO_LARGE_MESSAGE, MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS, imageDimensionsError} = await import("../dist/extension/app/image-data-contract.js");
 const {encodeJxlPixels} = await import("../dist/extension/app/jxl-codec.js");
 const {createImageExportController, createImageZipEntries} = await import("../dist/extension/app/image-export-controller.js");
@@ -84,6 +85,43 @@ test("reuses JPEG and PNG source bytes when they already match the selected form
     assert.equal(closed, 1, "the source PNG is decoded only to verify it is usable, then released");
   } finally {
     globalThis.createImageBitmap = previousCreateImageBitmap;
+  }
+});
+
+test("EXIFを含むJPEGはJPGのZIP保存で元のバイト列を保持し、再エンコードしない", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousBitmap = globalThis.createImageBitmap;
+  const previousCreateElement = globalThis.document.createElement;
+  const jpeg = new Uint8Array([
+    0xff, 0xd8,
+    0xff, 0xe0, 0x00, 0x07, 0x4a, 0x46, 0x49, 0x46, 0x00,
+    0xff, 0xe1, 0x00, 0x08, 0x45, 0x78, 0x69, 0x66, 0x00, 0x00,
+    0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x02, 0x00, 0x03, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
+    0xff, 0xda, 0x00, 0x08, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x00, 0xff, 0xd9,
+  ]);
+  let decoded = 0;
+  let closed = 0;
+  globalThis.fetch = async () => new Response(jpeg, {headers: {"content-type": "image/jpeg"}});
+  globalThis.createImageBitmap = async blob => {
+    decoded += 1;
+    assert.equal(blob.type, "image/jpeg");
+    return {width: 3, height: 2, close() { closed += 1; }};
+  };
+  globalThis.document.createElement = () => { throw new Error("Canvasで再エンコードしてはいけません"); };
+  try {
+    const fetched = await fetchImage("https://example.test/exif.jpg", {sourcePage: "https://example.test/gallery"});
+    assert.equal(fetched.kind, "bitmap", "EXIF付きJPEGはPDFへ直接埋め込まない");
+    const saved = await convertImage(fetched, "jpg");
+    assert.deepEqual([...new Uint8Array(await saved.arrayBuffer())], [...jpeg]);
+    const archive = await createStoredZip([{filename: "001.jpg", blob: saved}]);
+    const entries = await readStoredZip(archive);
+    assert.deepEqual([...entries[0].data], [...jpeg]);
+    assert.equal(decoded, 1);
+    assert.equal(closed, 1);
+  } finally {
+    globalThis.fetch = previousFetch;
+    globalThis.createImageBitmap = previousBitmap;
+    globalThis.document.createElement = previousCreateElement;
   }
 });
 

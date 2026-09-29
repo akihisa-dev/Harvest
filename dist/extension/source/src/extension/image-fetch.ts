@@ -159,7 +159,15 @@ export async function fetchImage(url: string, options: ImageDataOptions): Promis
         if (dimensionsError) throw invalidImage(dimensionsError);
         return { kind: "original", page: original };
       }
-      return { kind: "bitmap", blob: new Blob([bytes.buffer as ArrayBuffer], {type: contentType}) };
+      // PDF embedding has stricter JPEG requirements than saving a JPEG file.
+      // Preserve other JPEGs so JPG export can validate and reuse their bytes.
+      const originalJpeg = bytes.byteLength >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 &&
+        bytes[bytes.byteLength - 2] === 0xff && bytes[bytes.byteLength - 1] === 0xd9;
+      return {
+        kind: "bitmap",
+        blob: new Blob([bytes.buffer as ArrayBuffer], {type: originalJpeg ? "image/jpeg" : contentType}),
+        originalJpeg,
+      };
     } catch (error) {
       void cancelResponse(response);
       if (error instanceof ImageDataError) throw error;
