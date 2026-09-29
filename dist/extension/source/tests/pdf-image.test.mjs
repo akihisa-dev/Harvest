@@ -54,6 +54,117 @@ test("設定なしで元の画素と寸法を保ち、JPEGへ再圧縮しない"
   }
 });
 
+test("非JPEG画像は画素を小分けに圧縮し、画像全体のRGB配列を作らない", async () => {
+  const previous = {
+    fetch: globalThis.fetch,
+    document: globalThis.document,
+    createImageBitmap: globalThis.createImageBitmap,
+    CompressionStream: globalThis.CompressionStream,
+  };
+  const width = 4;
+  const height = 3;
+  const rgba = new Uint8ClampedArray(Array.from({length: width * height}, (_, index) => [index + 1, index + 21, index + 41, 255]).flat());
+  const reads = [];
+  const compressedInputSizes = [];
+  const canvas = {
+    width: 0, height: 0,
+    getContext: () => ({
+      fillRect() {}, drawImage() {},
+      getImageData(x, y, chunkWidth, rows) {
+        reads.push({x, y, width: chunkWidth, height: rows});
+        const data = new Uint8ClampedArray(chunkWidth * rows * 4);
+        let target = 0;
+        for (let row = y; row < y + rows; row += 1) {
+          for (let column = x; column < x + chunkWidth; column += 1) {
+            const source = (row * width + column) * 4;
+            data.set(rgba.subarray(source, source + 4), target);
+            target += 4;
+          }
+        }
+        return {data};
+      },
+    }),
+  };
+  globalThis.fetch = async () => new Response(new Uint8Array([1]), {headers: {"Content-Type": "image/webp"}});
+  globalThis.document = {createElement: () => canvas};
+  globalThis.createImageBitmap = async () => ({width, height, close() {}});
+  globalThis.CompressionStream = class {
+    constructor(format) {
+      assert.equal(format, "deflate");
+      return new TransformStream({
+        transform(chunk, output) {
+          compressedInputSizes.push(chunk.byteLength);
+          output.enqueue(chunk);
+        },
+      });
+    }
+  };
+  try {
+    const page = await toPdfPage("https://example.com/image.webp", {pixelRowsPerChunk: 1});
+    const expectedRgb = [];
+    for (let index = 0; index < rgba.length; index += 4) expectedRgb.push(rgba[index], rgba[index + 1], rgba[index + 2]);
+    const fullImageRgbBytes = width * height * 3;
+    assert.equal(page.width, width);
+    assert.equal(page.height, height);
+    assert.deepEqual([...page.rgbFlate], expectedRgb, "RGB values and row-major order are preserved");
+    assert.deepEqual(reads, [0, 1, 2].map(y => ({x: 0, y, width, height: 1})));
+    assert.equal(compressedInputSizes.length, height, "compression receives each row as it is converted");
+    assert.ok(Math.max(...compressedInputSizes) < fullImageRgbBytes, "the largest RGB buffer is smaller than the complete image");
+  } finally {
+    Object.assign(globalThis, previous);
+  }
+});
+
+test("大きな画像も既定の画素上限ごとにRGBを圧縮へ渡す", async () => {
+  const previous = {
+    fetch: globalThis.fetch,
+    document: globalThis.document,
+    createImageBitmap: globalThis.createImageBitmap,
+    CompressionStream: globalThis.CompressionStream,
+  };
+  const width = 512;
+  const height = 1_536;
+  const reads = [];
+  const compressedInputSizes = [];
+  const canvas = {
+    width: 0, height: 0,
+    getContext: () => ({
+      fillRect() {}, drawImage() {},
+      getImageData(x, y, chunkWidth, rows) {
+        reads.push({x, y, width: chunkWidth, height: rows});
+        return {data: new Uint8ClampedArray(chunkWidth * rows * 4)};
+      },
+    }),
+  };
+  globalThis.fetch = async () => new Response(new Uint8Array([1]), {headers: {"Content-Type": "image/png"}});
+  globalThis.document = {createElement: () => canvas};
+  globalThis.createImageBitmap = async () => ({width, height, close() {}});
+  globalThis.CompressionStream = class {
+    constructor(format) {
+      assert.equal(format, "deflate");
+      return new TransformStream({
+        transform(chunk, output) {
+          compressedInputSizes.push(chunk.byteLength);
+          output.enqueue(chunk);
+        },
+      });
+    }
+  };
+  try {
+    const page = await toPdfPage("https://example.com/large.png");
+    const rgbBytesPerChunk = 512 * 512 * 3;
+    const fullImageRgbBytes = width * height * 3;
+    assert.equal(page.width, width);
+    assert.equal(page.height, height);
+    assert.equal(page.rgbFlate.byteLength, fullImageRgbBytes);
+    assert.deepEqual(reads, [0, 512, 1_024].map(y => ({x: 0, y, width, height: 512})));
+    assert.deepEqual(compressedInputSizes, [rgbBytesPerChunk, rgbBytesPerChunk, rgbBytesPerChunk]);
+    assert.ok(Math.max(...compressedInputSizes) < fullImageRgbBytes, "the default path never sends one image-sized RGB chunk");
+  } finally {
+    Object.assign(globalThis, previous);
+  }
+});
+
 test("画素変換後の圧縮中に中止すると、完了を待たずに画像と描画領域を解放する", async () => {
   const previous = {
     fetch: globalThis.fetch,

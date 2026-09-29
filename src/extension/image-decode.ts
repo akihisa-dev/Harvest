@@ -43,35 +43,72 @@ export async function decodeImage(fetched: FetchedImage, options: PdfImageOption
     context.fillRect(0, 0, width, height);
     context.drawImage(bitmap, 0, 0);
 
-    const rgb = new Uint8Array(pixelCount * 3);
     const requestedRows = options.pixelRowsPerChunk;
     if (requestedRows !== undefined) validatePositiveInteger(requestedRows, "pixelRowsPerChunk");
-    const rowsPerChunk = requestedRows ?? Math.max(1, Math.floor(DEFAULT_PIXEL_CHUNK_PIXELS / width));
-    for (let y = 0; y < height; y += rowsPerChunk) {
-      checkCancelled(options.signal);
-      const rows = Math.min(rowsPerChunk, height - y);
-      let pixels: Uint8ClampedArray;
-      try {
-        pixels = context.getImageData(0, y, width, rows).data;
-      } catch {
-        throw invalidImage("画像をPDF用に変換できませんでした。");
-      }
-      const expectedLength = width * rows * 4;
-      if (pixels.length < expectedLength) {
-        throw invalidImage("画像をPDF用に変換できませんでした。");
-      }
-      const start = y * width * 3;
-      for (let source = 0, target = start; source < expectedLength; source += 4) {
-        rgb[target++] = pixels[source] ?? 0;
-        rgb[target++] = pixels[source + 1] ?? 0;
-        rgb[target++] = pixels[source + 2] ?? 0;
-      }
-      if (y + rows < height) await yieldToEventLoop();
-    }
+    const maximumRowsPerChunk = Math.max(1, Math.floor(DEFAULT_PIXEL_CHUNK_PIXELS / width));
+    const rowsPerChunk = Math.min(requestedRows ?? maximumRowsPerChunk, maximumRowsPerChunk);
+    let nextY = 0;
+    let nextX = 0;
 
     try {
       checkCancelled(options.signal);
-      const stream = new Blob([rgb.buffer]).stream().pipeThrough(new CompressionStream("deflate"), options.signal ? { signal: options.signal } : undefined);
+      const pixels = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          try {
+            checkCancelled(options.signal);
+            if (nextY >= height) {
+              controller.close();
+              return;
+            }
+
+            // Very wide images are also split across columns so even a single row
+            // cannot create a large temporary RGB array.
+            const splitColumns = width > DEFAULT_PIXEL_CHUNK_PIXELS;
+            const x = splitColumns ? nextX : 0;
+            const chunkWidth = splitColumns
+              ? Math.min(DEFAULT_PIXEL_CHUNK_PIXELS, width - nextX)
+              : width;
+            const rows = splitColumns ? 1 : Math.min(rowsPerChunk, height - nextY);
+            let rgba: Uint8ClampedArray;
+            try {
+              rgba = context.getImageData(x, nextY, chunkWidth, rows).data;
+            } catch {
+              throw invalidImage("画像をPDF用に変換できませんでした。");
+            }
+            const expectedLength = chunkWidth * rows * 4;
+            if (rgba.length < expectedLength) {
+              throw invalidImage("画像をPDF用に変換できませんでした。");
+            }
+            const rgb = new Uint8Array((expectedLength / 4) * 3);
+            for (let source = 0, target = 0; source < expectedLength; source += 4) {
+              rgb[target++] = rgba[source] ?? 0;
+              rgb[target++] = rgba[source + 1] ?? 0;
+              rgb[target++] = rgba[source + 2] ?? 0;
+            }
+
+            if (splitColumns) {
+              nextX += chunkWidth;
+              if (nextX === width) {
+                nextX = 0;
+                nextY += 1;
+              }
+            } else {
+              nextY += rows;
+            }
+            controller.enqueue(rgb);
+            if (nextY < height) await yieldToEventLoop();
+          } catch (error) {
+            controller.error(error);
+          }
+        },
+      });
+      // CompressionStream's DOM declaration accepts any BufferSource, although
+      // this stream deliberately feeds and reads byte arrays only.
+      const compressor = new CompressionStream("deflate") as unknown as TransformStream<Uint8Array, Uint8Array>;
+      const stream = pixels.pipeThrough(
+        compressor,
+        options.signal ? { signal: options.signal } : undefined,
+      );
       const reader = stream.getReader();
       const cancelRead = (): void => { void reader.cancel().catch(() => {}); };
       options.signal?.addEventListener("abort", cancelRead, { once: true });
