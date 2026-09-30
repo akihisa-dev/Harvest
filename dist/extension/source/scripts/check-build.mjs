@@ -31,7 +31,8 @@ for (const path of [
   "icons/icon-48.png",
   "icons/icon-128.png",
   "_locales/ja/messages.json",
-  "_locales/en/messages.json"
+  "_locales/en/messages.json",
+  "source/scripts/windows-zip.ps1"
 ]) {
   await access(join(output, path));
 }

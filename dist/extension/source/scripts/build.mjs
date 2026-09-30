@@ -109,6 +109,7 @@ try {
       await copyFile(join(root, directory, file), join(stage, "source", directory, file));
     }
   }
+  await copyFile(join(root, "scripts", "windows-zip.ps1"), join(stage, "source", "scripts", "windows-zip.ps1"));
   await copyFile(join(root, "assets", "brand", "harvest-logo-master.png"), join(stage, "source", "assets", "brand", "harvest-logo-master.png"));
   await copyFile(join(root, "assets", "brand", "harvest-geometric-logo.svg"), join(stage, "source", "assets", "brand", "harvest-geometric-logo.svg"));
   for (const size of [16, 32, 48, 128]) {
