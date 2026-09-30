@@ -1,4 +1,5 @@
 import { pdfStreamObject, pdfText } from "./pdf-objects.js";
+const MAX_DEFAULT_USER_SPACE_PAGE_DIMENSION = 14_400;
 export function validatePdfImage(image, index) {
     if (image === null || typeof image !== "object") {
         throw new TypeError(`Image ${index} must be an image page.`);
@@ -29,9 +30,10 @@ export function createPdfImagePageObjects(image, index, pageObject) {
     const { data, filter } = validatePdfImage(image, index);
     const contentsObject = pageObject + 1;
     const imageObject = pageObject + 2;
-    const contents = pdfText(`q\n${image.width} 0 0 ${image.height} 0 0 cm\n/Im0 Do\nQ\n`);
+    const pageDimensions = getPageDimensions(image.width, image.height);
+    const contents = pdfText(`q\n${pageDimensions.width} 0 0 ${pageDimensions.height} 0 0 cm\n/Im0 Do\nQ\n`);
     const page = pdfText(`${pageObject} 0 obj\n` +
-        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${image.width} ${image.height}] ` +
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageDimensions.width} ${pageDimensions.height}] ` +
         `/Resources << /XObject << /Im0 ${imageObject} 0 R >> >> ` +
         `/Contents ${contentsObject} 0 R >>\nendobj\n`);
     const contentsStream = pdfStreamObject(`${contentsObject} 0 obj\n<< /Length ${contents.byteLength} >>\nstream\n`, contents);
@@ -40,4 +42,30 @@ export function createPdfImagePageObjects(image, index, pageObject) {
         `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /${filter} ` +
         `/Length ${data.byteLength} >>\nstream\n`, data, "\nendstream\nendobj\n");
     return [page, contentsStream, imageStream];
+}
+function getPageDimensions(width, height) {
+    const largestDimension = Math.max(width, height);
+    if (largestDimension <= MAX_DEFAULT_USER_SPACE_PAGE_DIMENSION) {
+        return { width: String(width), height: String(height) };
+    }
+    const scale = MAX_DEFAULT_USER_SPACE_PAGE_DIMENSION / largestDimension;
+    return {
+        width: width === largestDimension ? String(MAX_DEFAULT_USER_SPACE_PAGE_DIMENSION) : formatPdfNumber(width * scale),
+        height: height === largestDimension ? String(MAX_DEFAULT_USER_SPACE_PAGE_DIMENSION) : formatPdfNumber(height * scale),
+    };
+}
+function formatPdfNumber(value) {
+    const text = value.toString();
+    if (!/[eE]/.test(text))
+        return text;
+    const [coefficient, exponentText] = text.toLowerCase().split("e");
+    const exponent = Number(exponentText);
+    const decimalPoint = coefficient.indexOf(".");
+    const digits = coefficient.replace(".", "");
+    const integerDigits = (decimalPoint === -1 ? coefficient.length : decimalPoint) + exponent;
+    if (integerDigits <= 0)
+        return `0.${"0".repeat(-integerDigits)}${digits}`;
+    if (integerDigits >= digits.length)
+        return `${digits}${"0".repeat(integerDigits - digits.length)}`;
+    return `${digits.slice(0, integerDigits)}.${digits.slice(integerDigits)}`;
 }
