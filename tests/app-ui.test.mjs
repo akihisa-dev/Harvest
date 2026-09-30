@@ -626,9 +626,9 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     document.querySelector("#export").dispatch("click");
     assert.equal(exportButton.dataset.saving, "true", "PDF保存中はボタンにロードマークを出す");
     assert.equal(exportButton.textContent, "0 / 4", "保存中はボタンに処理済み枚数と対象枚数を表示する");
-    assert.equal(exportButton.getAttribute("aria-label"), "画像を準備しています… 0 / 4", "保存中のボタンは進捗の意味を読み上げられる");
+    assert.equal(exportButton.getAttribute("aria-label"), "画像を準備しています… 0 / 4 もう一度押すと保存を中止します", "保存中のボタンは進捗と中止方法を読み上げられる");
     assert.equal(exportOverlay.hidden, false, "PDF保存中はビュアーにオーバーレイを重ねる");
-    assert.equal(exportButton.disabled, true, "保存中は重複して押せない");
+    assert.equal(exportButton.disabled, false, "保存中も再クリックで中止できる");
     assert.equal(document.querySelector("#status").textContent, "0 / 4", "PDF作成中も枚数の進捗を画面に表示する");
     assert.equal(document.querySelector("#status").getAttribute("aria-label"), "画像を準備しています… 0 / 4", "PDF作成の状態と進捗を読み上げ用に残す");
     assert.equal(document.querySelector("#images").children.every(row => !row.draggable), true);
@@ -643,7 +643,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#status").dataset.state, "busy");
     assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), busyOrder);
     await waitUntil(() => exportButton.textContent === "2 / 4");
-    assert.equal(exportButton.getAttribute("aria-label"), "画像を準備しています… 2 / 4", "処理に合わせてボタンの進捗が更新される");
+    assert.equal(exportButton.getAttribute("aria-label"), "画像を準備しています… 2 / 4 もう一度押すと保存を中止します", "処理に合わせて進捗と中止方法が更新される");
     releaseFailedFetch();
     await waitUntil(() => document.querySelector("#failures").hidden === false);
     assert.equal(exportButton.dataset.saving, "false", "保存失敗後はロードマークを消す");
@@ -690,6 +690,30 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#source-url").value, "", "再試行後に保存できたらURLを消す");
     assert.equal(includeSourcePage.checked, false, "PDF保存後も出典ページの設定を保つ");
     assert.equal(document.querySelector("#source-drop").dataset.hasUrl, "false");
+
+    const completedDownloadCount = document.downloads.length;
+    let cancelledFetches = 0;
+    globalThis.fetch = async (_url, options) => {
+      cancelledFetches += 1;
+      return new Promise((_resolve, reject) => options.signal.addEventListener("abort", () => reject(new DOMException("cancelled", "AbortError")), {once: true}));
+    };
+    exportButton.dispatch("click");
+    await waitUntil(() => cancelledFetches > 0);
+    const cancelProgress = exportButton.textContent;
+    assert.match(cancelProgress, /^\d+ \/ \d+$/);
+    assert.equal(exportButton.disabled, false, "PDF保存中のボタンは中止操作を受け付ける");
+    exportButton.dispatch("click");
+    assert.equal(exportButton.textContent, cancelProgress, "再クリック後も中止処理が終わるまで進捗を保つ");
+    assert.equal(exportButton.getAttribute("aria-label"), `画像を準備しています… ${cancelProgress} もう一度押すと保存を中止します`);
+    await waitUntil(() => exportButton.dataset.saving === "false");
+    assert.equal(document.downloads.length, completedDownloadCount, "中止したPDFをダウンロードしない");
+    assert.equal(document.querySelector("#status").dataset.state, "info", "中止は失敗ではなく案内として表示する");
+
+    globalThis.fetch = async () => new Response(new Uint8Array([1]), {headers: {"Content-Type": "image/png"}});
+    exportButton.dispatch("click");
+    await waitUntil(() => document.downloads.length === completedDownloadCount + 1);
+    await waitUntil(() => exportButton.dataset.saving === "false");
+    assert.equal(document.downloads.at(-1), "ページ.pdf", "中止後にPDFを最初から保存できる");
 
     includeSourcePage.checked = true;
     includeSourcePage.dispatch("change");

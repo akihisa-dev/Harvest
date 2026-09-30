@@ -54,7 +54,7 @@ export function createImageZipEntries(selected, prepared, format) {
 }
 /** Prepares selected image files in order, retries only failures, and writes one ZIP. */
 export function createImageExportController(options) {
-    const lifecycle = createExportLifecycle(options);
+    const lifecycle = createExportLifecycle({ ...options, cancelledMessage: t("exportCancelled") });
     async function exportImages(format) {
         if (options.isBusy())
             return;

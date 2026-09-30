@@ -123,7 +123,8 @@ function setStatus(message: string, state: StatusState = "info", progress = ""):
   const activeExport = selectedExportFormat === "pdf" ? pdfExportController : imageExportController;
   if (activeExport?.isRunning && state === "busy") {
     exportButton.textContent = progress;
-    exportButton.setAttribute("aria-label", message);
+    exportButton.title = `${progress} — ${t("exportCancelHint")}`;
+    exportButton.setAttribute("aria-label", `${message} ${t("exportCancelHint")}`);
   }
 }
 
@@ -135,7 +136,6 @@ function setBusy(value: boolean): void {
   for (const {input} of exportFormatInputs) input.disabled = value;
   includeSourcePage.disabled = value;
   resetButton.disabled = value;
-  exportButton.disabled = value || !imageCollection.hasSelection;
   render();
 }
 
@@ -209,7 +209,9 @@ function render(): void {
   else if (exportSaved) exportButton.textContent = t("exportSaved", {count: selectedCount, plural: formatPlural(selectedCount)});
   else if (selected.length) exportButton.textContent = t("exportAction", {format: selectedExportFormat.toUpperCase()});
   else exportButton.textContent = t("save");
-  exportButton.title = exportButton.textContent;
+  exportButton.title = exportRunning
+    ? `${exportState.progress} — ${t("exportCancelHint")}`
+    : exportButton.textContent;
   sourcePageOption.hidden = selectedExportFormat !== "pdf";
   for (const {format, input} of exportFormatInputs) input.checked = format === selectedExportFormat;
   failuresElement.hidden = !pendingExport?.failed.size;
@@ -245,7 +247,7 @@ function render(): void {
   allSelectionCheckbox.title = t(allSelectionCheckbox.checked ? "clearAllTitle" : "selectAllTitle");
   allSelectionCheckbox.setAttribute("aria-label", t(allSelectionCheckbox.checked ? "clearAll" : "selectAll"));
   resetOrderButton.disabled = busy || imageCollection.matchesInitialOrderAndSelection();
-  exportButton.disabled = busy || !imageCollection.hasSelection;
+  exportButton.disabled = (busy && !exportRunning) || !imageCollection.hasSelection;
   for (const {input} of exportFormatInputs) input.disabled = busy;
   imageListView.render(pendingExport ? new Set(pendingExport.failed.keys()) : undefined, sourcePreview());
   viewerController.render();
@@ -398,7 +400,14 @@ document.addEventListener("drop", event => {
   hideSourceInput();
   void scanSessionController?.start();
 });
-exportButton.addEventListener("click", startExport);
+exportButton.addEventListener("click", () => {
+  const activeExport = selectedExportFormat === "pdf" ? pdfExportController : imageExportController;
+  if (activeExport?.isRunning) {
+    activeExport.abort();
+    return;
+  }
+  if (!busy) startExport();
+});
 allSelectionCheckbox.addEventListener("change", () => {
   if (busy) return;
   imageCollection.setAllSelected(allSelectionCheckbox.checked);

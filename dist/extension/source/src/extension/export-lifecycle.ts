@@ -9,6 +9,7 @@ export interface MutablePendingExport<TPrepared> {
 }
 
 export interface ExportLifecycleOptions {
+  readonly cancelledMessage: string;
   readonly isBusy: () => boolean;
   readonly isDisposed: () => boolean;
   readonly onBusyChange: (busy: boolean) => void;
@@ -104,6 +105,12 @@ export function createExportLifecycle<TPrepared, TWork extends MutablePendingExp
       } finally {
         if (activeController === controller) activeController = null;
         progress = "";
+        if (controller.signal.aborted) {
+          work.prepared.clear();
+          work.failed.clear();
+          if (pending === work) pending = null;
+          if (!options.isDisposed()) reportStatus(options.cancelledMessage, "info");
+        }
         if (!options.isDisposed()) {
           options.onBusyChange(false);
           if (pending === work && work.failed.size) options.onScrollToFailures();

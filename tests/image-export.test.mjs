@@ -492,6 +492,93 @@ test("aborting an image export stops concurrent fetches and prevents ZIP downloa
   }
 });
 
+test("取消した画像形式の保存は進捗を保ち、作業を捨てて同じ形式を最初から保存できる", {timeout: 5_000}, async () => {
+  const previousFetch = globalThis.fetch;
+  const previousCreateImageBitmap = globalThis.createImageBitmap;
+  const previousDocument = globalThis.document;
+  const previousWorker = globalThis.Worker;
+  const previousCreateObjectURL = URL.createObjectURL;
+  const previousRevokeObjectURL = URL.revokeObjectURL;
+  const previousSetTimeout = globalThis.setTimeout;
+  const previousClearTimeout = globalThis.clearTimeout;
+  const previousCreateElement = pageDocument.createElement;
+  const formats = ["jpg", "png", "jxl"];
+  const statuses = [];
+  const downloads = [];
+  let busy = false;
+  let fetchRound = 0;
+  const selected = [{url: "https://example.test/restart.png"}];
+  const {canvas} = canvasFor();
+  pageDocument.createElement = tag => tag === "a" ? {
+    href: "", download: "", click() { downloads.push(this.download); }, remove() {},
+  } : previousCreateElement(tag);
+  globalThis.document = {...pageDocument, createElement: tag => tag === "canvas" ? canvas : pageDocument.createElement(tag)};
+  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {}});
+  globalThis.Worker = class {
+    onmessage = null;
+    onerror = null;
+    onmessageerror = null;
+    postMessage(message) { queueMicrotask(() => this.onmessage({data: {id: message.id, buffer: new ArrayBuffer(3)}})); }
+    terminate() {}
+  };
+  globalThis.setTimeout = () => 1;
+  globalThis.clearTimeout = () => {};
+  globalThis.fetch = async (_url, options) => {
+    fetchRound += 1;
+    if (fetchRound === 1) {
+      return new Promise((_resolve, reject) => options.signal.addEventListener("abort", () => reject(new DOMException("cancelled", "AbortError")), {once: true}));
+    }
+    return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), {headers: {"Content-Type": "image/png"}});
+  };
+  URL.createObjectURL = blob => { downloads.push(blob.type); return "blob:archive"; };
+  URL.revokeObjectURL = () => {};
+  try {
+    for (const format of formats) {
+      fetchRound = 0;
+      downloads.length = 0;
+      statuses.length = 0;
+      const controller = createImageExportController({
+        getSelectedItems: () => selected,
+        getZipFilename: () => `Artwork-${format}.zip`,
+        isBusy: () => busy,
+        isDisposed: () => false,
+        onBusyChange(value) { busy = value; },
+        onStatus(...status) { statuses.push(status); },
+        onCloseViewer() {},
+        onClearSourceUrl() {},
+        onScrollToFailures() {},
+      });
+      assert.equal(busy, false, `${format}: fixture starts idle`);
+      const work = controller.export(format);
+      assert.equal(controller.isRunning, true, `${format}: export begins before cancellation`);
+      await new Promise(resolve => setImmediate(resolve));
+      const progressWhileSaving = controller.progress;
+      assert.equal(progressWhileSaving, "0 / 1", `${format}: initial progress is visible while preparing`);
+      controller.abort();
+      assert.equal(controller.progress, progressWhileSaving, `${format}: the current progress remains visible until cancellation settles`);
+      await work;
+      assert.equal(controller.pending, null, `${format}: cancellation drops pending work`);
+      assert.equal(controller.progress, "", `${format}: progress clears after cancellation settles`);
+      assert.equal(downloads.length, 0, `${format}: cancellation produces no partial archive`);
+      assert.ok(statuses.some(([, state]) => state === "info"), `${format}: cancellation is reported as an informational state`);
+
+      await controller.export(format);
+      assert.equal(fetchRound, 2, `${format}: re-save starts a fresh fetch`);
+      assert.ok(downloads.includes("application/zip"), `${format}: the complete retry creates a ZIP archive`);
+      assert.ok(downloads.includes(`Artwork-${format}.zip`), `${format}: the complete retry downloads the expected filename`);
+      assert.equal(controller.pending, null, `${format}: successful re-save clears pending work`);
+      assert.equal(busy, false);
+    }
+  } finally {
+    pageDocument.createElement = previousCreateElement;
+    Object.assign(globalThis, {fetch: previousFetch, createImageBitmap: previousCreateImageBitmap, document: previousDocument, Worker: previousWorker});
+    URL.createObjectURL = previousCreateObjectURL;
+    URL.revokeObjectURL = previousRevokeObjectURL;
+    globalThis.setTimeout = previousSetTimeout;
+    globalThis.clearTimeout = previousClearTimeout;
+  }
+});
+
 test("aborting immediately after an image export starts does not wait for an unstarted fetch result", {timeout: 5_000}, async () => {
   const previousFetch = globalThis.fetch;
   const previousCreateObjectURL = URL.createObjectURL;

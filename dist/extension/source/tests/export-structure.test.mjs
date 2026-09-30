@@ -106,6 +106,7 @@ test("shared export lifecycle discards changed selections and cleans up aborted 
   let scrolledToFailures = 0;
   let disposed = false;
   const lifecycle = createExportLifecycle({
+    cancelledMessage: "Saving cancelled",
     isBusy: () => false,
     isDisposed: () => disposed,
     onBusyChange: value => busyChanges.push(value),
@@ -124,6 +125,8 @@ test("shared export lifecycle discards changed selections and cleans up aborted 
   let stoppedAfterAbort = false;
   const execution = lifecycle.run(runWork, "Preparing", "0 / 1", async run => {
     runSignal = run.signal;
+    runWork.prepared.set(image, new Blob(["prepared image"]));
+    runWork.failed.set(changedImage, "failed image");
     await new Promise(resolve => runSignal.addEventListener("abort", resolve, {once: true}));
     stoppedAfterAbort = run.stopped;
   });
@@ -134,6 +137,10 @@ test("shared export lifecycle discards changed selections and cleans up aborted 
   await execution;
   assert.equal(runSignal.aborted, true);
   assert.equal(stoppedAfterAbort, true);
+  assert.equal(lifecycle.pending, null, "cancelled work is discarded before another save");
+  assert.equal(runWork.prepared.size, 0, "prepared image memory is released on cancellation");
+  assert.equal(runWork.failed.size, 0, "cancelled failures do not turn the next save into a retry");
+  assert.equal(statuses.at(-1)[1], "info", "cancellation is not reported as an error");
   assert.equal(lifecycle.isRunning, false);
   assert.equal(lifecycle.progress, "");
   assert.deepEqual(busyChanges, [true, false]);
@@ -144,6 +151,7 @@ test("shared export lifecycle discards changed selections and cleans up aborted 
 test("export lifecycle replaces incompatible pending work and scrolls to retained failures", async () => {
   let scrolledToFailures = 0;
   const lifecycle = createExportLifecycle({
+    cancelledMessage: "Saving cancelled",
     isBusy: () => false,
     isDisposed: () => false,
     onBusyChange() {},

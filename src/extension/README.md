@@ -2,7 +2,7 @@
 
 `app.ts` は画面全体の接続役です。DOM要素の契約は `app-elements.ts`、保存設定は `export-preferences.ts`、保存ボタン・失敗表示に使う状態とファイル名・Sourceプレビューは `export-presentation.ts`、解析の開始・中断・結果公開は `scan-session-controller.ts` が所有します。`image-list-view.ts` は画像グループの表示、選択操作、ドラッグ・キー操作による並べ替えと一覧DOMを担当し、DOMを使わない挿入位置の計算は `image-reorder.ts` に分けています。`viewer-controller.ts` はプレビュー操作を担当します。
 
-`pdf-export-controller.ts` はPDF向け画像の準備とPDF組み立て、`image-export-controller.ts` はJPG・PNG・JXLの準備とZIP組み立てを担当します。両方に共通する選択一致、保留中の準備結果、失敗分だけの再試行、中断、進捗、終了時の後始末、Blobのダウンロードは `export-lifecycle.ts` が一元管理します。形式固有の準備と組み立ては共通処理へ混ぜません。`image-format.ts` はJPG・PNG・JXLへの変換を担当し、`jxl-encoder.ts` と `jxl-encode-worker.ts` はJXL変換を画面操作と分けて実行します。画像の選択と確定した順序、ZIPの組み立ては `src/core/` に置き、画面やChromeの状態を参照させません。
+`pdf-export-controller.ts` はPDF向け画像の準備とPDF組み立て、`image-export-controller.ts` はJPG・PNG・JXLの準備とZIP組み立てを担当します。両方に共通する選択一致、保留中の準備結果、失敗分だけの再試行、中断、進捗、終了時の後始末、Blobのダウンロードは `export-lifecycle.ts` が一元管理します。保存中も保存ボタンだけは有効にし、再クリックで進行中の保存を中止します。進捗表示は維持し、中止後は通信・変換の終了を待って準備済み画像と失敗情報を破棄し、エラーにせず通常の保存可能状態へ戻します。収集モードからの保存要求はこの中止操作と分けます。形式固有の準備と組み立ては共通処理へ混ぜません。`image-format.ts` はJPG・PNG・JXLへの変換を担当し、`jxl-encoder.ts` と `jxl-encode-worker.ts` はJXL変換を画面操作と分けて実行します。画像の選択と確定した順序、ZIPの組み立ては `src/core/` に置き、画面やChromeの状態を参照させません。
 
 `viewer-controller.ts` はプレビューのページ位置・ズーム・移動とその表示を管理し、選択画像は画像集合から受け取ります。`collection-controller.ts` は開始したタブと接続の識別情報を管理し、許可した接続だけを解析・保存操作へ渡します。`app.ts` は処理中・終了済みの状態を渡し、パネルを閉じたときには収集接続を切り、解析と画像準備を中断します。
 

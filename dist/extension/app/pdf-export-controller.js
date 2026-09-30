@@ -6,7 +6,7 @@ import { prefersReducedMotion } from "./motion.js";
 import { createExportLifecycle, downloadBlob } from "./export-lifecycle.js";
 /** Owns image preparation, retry state, PDF assembly, and browser download. */
 export function createPdfExportController(options) {
-    const lifecycle = createExportLifecycle(options);
+    const lifecycle = createExportLifecycle({ ...options, cancelledMessage: t("exportCancelled") });
     async function exportPdf() {
         if (options.isBusy())
             return;
@@ -55,7 +55,7 @@ export function createPdfExportController(options) {
                 run.reportStatus(t("exportSaved"), "success");
             }
             catch (error) {
-                if (options.isDisposed())
+                if (run.stopped)
                     return;
                 if (!work.prepared.size && !work.failed.size)
                     lifecycle.clear();

@@ -40,7 +40,7 @@ export interface PdfExportController {
 
 /** Owns image preparation, retry state, PDF assembly, and browser download. */
 export function createPdfExportController(options: PdfExportControllerOptions): PdfExportController {
-  const lifecycle = createExportLifecycle<PdfImagePage, MutablePendingPdfExport>(options);
+  const lifecycle = createExportLifecycle<PdfImagePage, MutablePendingPdfExport>({...options, cancelledMessage: t("exportCancelled")});
 
   async function exportPdf(): Promise<void> {
     if (options.isBusy()) return;
@@ -93,7 +93,7 @@ export function createPdfExportController(options: PdfExportControllerOptions): 
           lifecycle.clear();
           run.reportStatus(t("exportSaved"), "success");
         } catch (error) {
-          if (options.isDisposed()) return;
+          if (run.stopped) return;
           if (!work.prepared.size && !work.failed.size) lifecycle.clear();
           run.reportStatus(
             error instanceof Error ? localizeErrorMessage(error.message, "errorPdfCreate", true) : t("errorPdfCreate"),

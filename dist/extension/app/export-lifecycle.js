@@ -63,6 +63,14 @@ export function createExportLifecycle(options) {
                 if (activeController === controller)
                     activeController = null;
                 progress = "";
+                if (controller.signal.aborted) {
+                    work.prepared.clear();
+                    work.failed.clear();
+                    if (pending === work)
+                        pending = null;
+                    if (!options.isDisposed())
+                        reportStatus(options.cancelledMessage, "info");
+                }
                 if (!options.isDisposed()) {
                     options.onBusyChange(false);
                     if (pending === work && work.failed.size)
