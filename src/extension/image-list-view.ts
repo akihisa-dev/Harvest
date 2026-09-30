@@ -54,6 +54,7 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
   let visibleImages: readonly ImageItem[] = [];
   let previewOrder: ImageItem[] = [];
   let rows = new Map<string, HTMLLIElement>();
+  let renderedListKeys: string[] = [];
   let dragRects = new Map<string, DOMRect>();
   let dragIsSingleColumn = true;
 
@@ -298,11 +299,11 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
   function renderImages(failedItems: ReadonlySet<ImageItem>, sourcePreview: ImageItem | null): void {
     previewOrder = [...visibleImages];
     const previousRows = rows;
-    const previousUrls = [...previousRows.keys()];
-    const layoutChanged = previousUrls.length !== visibleImages.length ||
-      visibleImages.some((item, index) => previousUrls[index] !== item.url);
     const listItems: RenderedListItem[] = visibleImages.map(image => ({kind: "image", image}));
     if (sourcePreview) listItems.push({kind: "source", image: sourcePreview});
+    const nextKeys = listItems.map(listItemKey);
+    const layoutChanged = renderedListKeys.length !== nextKeys.length ||
+      nextKeys.some((key, index) => renderedListKeys[index] !== key);
     const nextListRows = reconcileKeyedChildren(imagesElement, listItems, listItemKey,
       item => item.kind === "image" ? createImageRow(item.image) : document.createElement("li"),
       (row, listItem, index) => {
@@ -358,6 +359,7 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
       parts.selectedMark.hidden = false;
       parts.failedMark.hidden = !failed;
     }, {animateLayout: layoutChanged});
+    renderedListKeys = nextKeys;
     const nextRows = new Map<string, HTMLLIElement>();
     for (const item of visibleImages) {
       const row = nextListRows.get(`image:${item.url}`);

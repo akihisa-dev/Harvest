@@ -15,6 +15,7 @@ export function createImageListView(options) {
     let visibleImages = [];
     let previewOrder = [];
     let rows = new Map();
+    let renderedListKeys = [];
     let dragRects = new Map();
     let dragIsSingleColumn = true;
     function refreshDragGeometry() {
@@ -271,12 +272,12 @@ export function createImageListView(options) {
     function renderImages(failedItems, sourcePreview) {
         previewOrder = [...visibleImages];
         const previousRows = rows;
-        const previousUrls = [...previousRows.keys()];
-        const layoutChanged = previousUrls.length !== visibleImages.length ||
-            visibleImages.some((item, index) => previousUrls[index] !== item.url);
         const listItems = visibleImages.map(image => ({ kind: "image", image }));
         if (sourcePreview)
             listItems.push({ kind: "source", image: sourcePreview });
+        const nextKeys = listItems.map(listItemKey);
+        const layoutChanged = renderedListKeys.length !== nextKeys.length ||
+            nextKeys.some((key, index) => renderedListKeys[index] !== key);
         const nextListRows = reconcileKeyedChildren(imagesElement, listItems, listItemKey, item => item.kind === "image" ? createImageRow(item.image) : document.createElement("li"), (row, listItem, index) => {
             if (listItem.kind === "source") {
                 row.className = "source-preview";
@@ -338,6 +339,7 @@ export function createImageListView(options) {
             parts.selectedMark.hidden = false;
             parts.failedMark.hidden = !failed;
         }, { animateLayout: layoutChanged });
+        renderedListKeys = nextKeys;
         const nextRows = new Map();
         for (const item of visibleImages) {
             const row = nextListRows.get(`image:${item.url}`);
