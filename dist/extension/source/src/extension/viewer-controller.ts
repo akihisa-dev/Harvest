@@ -333,13 +333,13 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
   });
   elements.thumbnails.addEventListener("wheel", event => {
     if (!open || !currentUrl || options.isBusy()) return;
-    event.preventDefault();
     const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
     if (delta === 0 || event.timeStamp - lastThumbnailWheelAt < 180) return;
     const pages = options.getPages();
     const index = pages.findIndex(item => item.url === currentUrl);
     const nextIndex = Math.max(0, Math.min(pages.length - 1, index + Math.sign(delta)));
     if (index < 0 || nextIndex === index) return;
+    event.preventDefault();
     lastThumbnailWheelAt = event.timeStamp;
     currentUrl = pages[nextIndex]!.url;
     render();
