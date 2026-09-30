@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {readFile} from 'node:fs/promises';
+import {createServer} from 'node:http';
+import {resolve, sep} from 'node:path';
+import {chromium} from 'playwright';
+
+test('ボタンのラベルと処理中表示、チェックと中間状態は同じ要素で遷移する', async () => {
+  const base = resolve('dist/extension');
+  const css = await readFile(new URL('../app/style.css', import.meta.url),'utf8');
+  const server = createServer(async (req,res) => {
+    if (req.url === '/') {res.setHeader('content-type','text/html');res.end(`<style>${css}</style><button id="scan">解析</button><button id="export">保存</button><input type="checkbox" id="check">`);return;}
+    try {
+      const path=resolve(base, '.'+req.url);
+      if (!path.startsWith(base+sep)) throw Error();
+      res.setHeader('content-type','text/javascript');res.end(await readFile(path));
+    } catch {res.writeHead(404).end();}
+  });
+  await new Promise(r=>server.listen(0,'127.0.0.1',r));
+  const browser = await chromium.launch({channel:'chrome',headless:true});
+  try {
+    const page=await browser.newPage();await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.evaluate(async () => {
+      const {setButtonLabel}=await import('/app/button-state.js');window.setButtonLabel=setButtonLabel;
+      setButtonLabel(document.querySelector('#scan'),'解析');setButtonLabel(document.querySelector('#export'),'保存');
+      window.label=document.querySelector('#scan .button-label');
+    });
+    await page.waitForTimeout(220);
+    await page.locator('#scan').evaluate(e=>{e.dataset.scanning='true';e.setAttribute('aria-label','解析中');getComputedStyle(e).opacity;e.getAnimations({subtree:true}).forEach(a=>{a.pause();a.currentTime=50;});});
+    const state=await page.evaluate(()=>({same:window.label===document.querySelector('#scan .button-label'),text:document.querySelector('#scan').textContent,label:Number(getComputedStyle(window.label).opacity),spinner:Number(getComputedStyle(document.querySelector('#scan'),'::before').opacity)}));
+    assert.equal(state.same,true);assert.equal(state.text,'解析');assert.ok(state.label>0 && state.label<1);assert.ok(state.spinner>0 && state.spinner<1);
+    await page.locator('#export').evaluate(e=>{window.setButtonLabel(e,'再試行');e.getAnimations({subtree:true}).forEach(a=>{a.pause();a.currentTime=50;});});
+    const mid=await page.locator('#export .button-label').evaluate(e=>Number(getComputedStyle(e).opacity));
+    assert.ok(mid>0 && mid<1);
+    const connected=await page.locator('#export').evaluate(e=>{window.setButtonLabel(e,'保存完了');return e.textContent;});assert.equal(connected,'保存完了');
+    await page.locator('#check').evaluate(e=>{e.checked=true;});await page.waitForTimeout(260);
+    await page.locator('#check').evaluate(e=>{e.indeterminate=true;getComputedStyle(e,'::before').opacity;getComputedStyle(e,'::after').opacity;e.getAnimations({subtree:true}).forEach(a=>{a.pause();a.currentTime=50;});});
+    const marks=await page.locator('#check').evaluate(e=>[Number(getComputedStyle(e,'::before').opacity),Number(getComputedStyle(e,'::after').opacity)]);
+    assert.ok(marks.every(x=>x>0 && x<1),JSON.stringify({marks,animations:await page.locator('#check').evaluate(e=>e.getAnimations({subtree:true}).map(a=>({time:a.currentTime,state:a.playState,frames:a.effect.getKeyframes()})))}));
+    await page.emulateMedia({reducedMotion:'reduce'});
+    await page.locator('#export').evaluate(e=>window.setButtonLabel(e,'保存'));
+    assert.equal(await page.locator('#export .button-label').evaluate(e=>e.getAnimations().length),0);
+  } finally {await browser.close();await new Promise(r=>server.close(r));}
+});

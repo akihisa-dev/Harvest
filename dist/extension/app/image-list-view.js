@@ -46,27 +46,30 @@ export function createImageListView(options) {
         }
     }
     function renderEye(button, shown, label) {
-        const eye = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        eye.classList.add("eye-icon");
-        eye.setAttribute("viewBox", "0 0 24 24");
-        eye.setAttribute("aria-hidden", "true");
-        const outline = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        outline.setAttribute("d", "M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z");
-        const pupil = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        pupil.setAttribute("cx", "12");
-        pupil.setAttribute("cy", "12");
-        pupil.setAttribute("r", "2.5");
-        eye.append(outline, pupil);
-        if (!shown) {
-            const gap = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            gap.setAttribute("d", "M3 21 21 3");
-            gap.classList.add("eye-slash-gap");
-            const slash = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            slash.setAttribute("d", "M3 21 21 3");
-            slash.classList.add("eye-slash");
-            eye.append(gap, slash);
+        if (button.children.length === 0) {
+            const eye = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            eye.classList.add("eye-icon");
+            eye.setAttribute("viewBox", "0 0 24 24");
+            eye.setAttribute("aria-hidden", "true");
+            const outline = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            outline.setAttribute("d", "M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z");
+            const pupil = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            pupil.setAttribute("cx", "12");
+            pupil.setAttribute("cy", "12");
+            pupil.setAttribute("r", "2.5");
+            eye.append(outline, pupil);
+            {
+                const gap = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                gap.setAttribute("d", "M3 21 21 3");
+                gap.classList.add("eye-slash-gap");
+                const slash = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                slash.setAttribute("d", "M3 21 21 3");
+                slash.classList.add("eye-slash");
+                eye.append(gap, slash);
+            }
+            button.replaceChildren(eye);
         }
-        button.replaceChildren(eye);
+        button.dataset["shown"] = String(shown);
         button.title = t(shown ? "hideGroup" : "displayGroup", { label });
         button.setAttribute("aria-label", button.title);
         button.setAttribute("aria-pressed", String(shown));

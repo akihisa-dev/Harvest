@@ -1,3 +1,4 @@
+import { setButtonLabel } from "./button-state.js";
 import type { ImageItem } from "../core/images.js";
 import { ImageCollection } from "../core/image-collection.js";
 import { createCollectionController } from "./collection-controller.js";
@@ -122,7 +123,7 @@ function setStatus(message: string, state: StatusState = "info", progress = ""):
   statusElement.title = message;
   const activeExport = selectedExportFormat === "pdf" ? pdfExportController : imageExportController;
   if (activeExport?.isRunning && state === "busy") {
-    exportButton.textContent = progress;
+    setButtonLabel(exportButton, progress);
     exportButton.title = `${progress} — ${t("exportCancelHint")}`;
     exportButton.setAttribute("aria-label", `${message} ${t("exportCancelHint")}`);
   }
@@ -198,17 +199,17 @@ function render(): void {
   const exportRunning = exportState.phase === "running";
   const exportSaved = exportState.phase === "saved";
   scanButton.dataset["scanning"] = String(scanRunning);
-  scanButton.textContent = scanRunning ? "" : t("scan");
+  setButtonLabel(scanButton, t("scan"));
   if (scanRunning) scanButton.setAttribute("aria-label", t("scanBusy"));
   else scanButton.removeAttribute("aria-label");
   exportButton.dataset["saving"] = String(exportRunning);
   exportButton.dataset["saved"] = String(exportSaved && !exportRunning);
   if (!exportRunning) exportButton.removeAttribute("aria-label");
-  if (exportRunning) exportButton.textContent = exportState.progress;
-  else if (exportState.phase === "retry-required") exportButton.textContent = t("exportRetry");
-  else if (exportSaved) exportButton.textContent = t("exportSaved", {count: selectedCount, plural: formatPlural(selectedCount)});
-  else if (selected.length) exportButton.textContent = t("exportAction", {format: selectedExportFormat.toUpperCase()});
-  else exportButton.textContent = t("save");
+  if (exportRunning) setButtonLabel(exportButton, exportState.progress);
+  else if (exportState.phase === "retry-required") setButtonLabel(exportButton, t("exportRetry"));
+  else if (exportSaved) setButtonLabel(exportButton, t("exportSaved", {count: selectedCount, plural: formatPlural(selectedCount)}));
+  else if (selected.length) setButtonLabel(exportButton, t("exportAction", {format: selectedExportFormat.toUpperCase()}));
+  else setButtonLabel(exportButton, t("save"));
   exportButton.title = exportRunning
     ? `${exportState.progress} — ${t("exportCancelHint")}`
     : exportButton.textContent;

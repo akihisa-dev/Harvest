@@ -239,6 +239,7 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
             const ring = getComputedStyle(document.querySelector("#scan-overlay"), "::before");
             return {
               scanButtonText: scanButton.textContent,
+              scanLabelOpacity: getComputedStyle(scanButton.querySelector(".button-label")).opacity,
               scanButtonLabel: scanButton.getAttribute("aria-label"),
               scanButtonState: scanButton.dataset.scanning,
               scanButtonRingContent: buttonRing.content,
@@ -260,7 +261,8 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
               overlayRingWidth: ring.width,
             };
           });
-          assert.equal(spinnerState.scanButtonText, "", `${caseName}: analyzing button should show no text`);
+          assert.equal(spinnerState.scanButtonText, locale === "ja-JP" ? "解析" : "Analyze", `${caseName}: analyzing button should retain the same label`);
+          assert.equal(spinnerState.scanLabelOpacity, "0", `${caseName}: analyzing label should be visually hidden`);
           assert.equal(spinnerState.scanButtonLabel, locale === "ja-JP" ? "ページを調べています…" : "Analyzing the page…", `${caseName}: analyzing button should keep an accessible name`);
           assert.equal(spinnerState.scanButtonState, "true", `${caseName}: analyzing button should enter loading state`);
           assert.notEqual(spinnerState.scanButtonRingContent, "none", `${caseName}: analyzing button should show a loading ring`);

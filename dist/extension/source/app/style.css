@@ -341,18 +341,20 @@ input[type="checkbox"]::before {
     transform var(--motion-duration) var(--motion-easing);
 }
 input[type="checkbox"]:checked::before { opacity: 1; transform: rotate(45deg) scale(1); }
-input[type="checkbox"]:indeterminate::before {
-  left: 3px; top: 6px; width: 8px; height: 0;
-  border-width: 0 0 2px;
-  opacity: 1; transform: rotate(0) scale(1);
+input[type="checkbox"]:indeterminate::before { opacity: 0; transform: rotate(45deg) scale(.6); }
+input[type="checkbox"]::after {
+  content: ""; position: absolute; left: 3px; top: 6px; width: 8px; height: 2px;
+  background: var(--pressed-ink); opacity: 0; transform: scale(.6);
+  transition: opacity 180ms var(--motion-easing), transform 180ms var(--motion-easing);
 }
+input[type="checkbox"]:indeterminate::after { opacity: 1; transform: scale(1); }
 input[type="checkbox"]:disabled { opacity: .55; }
 @media (prefers-reduced-motion: reduce) {
-  input[type="checkbox"], input[type="checkbox"]::before { transition: none; }
+  input[type="checkbox"], input[type="checkbox"]::before, input[type="checkbox"]::after { transition: none; }
 }
 @media (forced-colors: active) {
   input[type="checkbox"] { appearance: auto; }
-  input[type="checkbox"]::before { display: none; }
+  input[type="checkbox"]::before, input[type="checkbox"]::after { display: none; }
 }
 
 /* Chrome keeps hidden elements in the render tree only for their exit transition. */
@@ -428,4 +430,25 @@ input[type="checkbox"]:disabled { opacity: .55; }
 @media (prefers-reduced-motion: reduce) {
   #source-drop, #source-url, .source-page-option, #failures,
   #scan-overlay, #export-overlay, #url-drop-overlay { transition: none; }
+}
+
+.eye-slash, .eye-slash-gap {
+  stroke-dasharray: 26; stroke-dashoffset: 26; opacity: 0;
+  transition: stroke-dashoffset 180ms var(--motion-easing), opacity 180ms var(--motion-easing);
+}
+button[data-shown="false"] .eye-slash, button[data-shown="false"] .eye-slash-gap { stroke-dashoffset: 0; opacity: 1; }
+#scan, #export { position: relative; }
+.button-label { display: inline-block; }
+.button-label-previous { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; opacity: 0; }
+.button-label-previous::before { content: attr(data-label); }
+#scan .button-label { transition: opacity 180ms var(--motion-easing), transform 180ms var(--motion-easing); }
+#scan[data-scanning="true"] .button-label { opacity: 0; transform: scale(.9); }
+#scan::before {
+  content: ""; position: absolute; left: calc(50% - 8px); top: calc(50% - 8px);
+  width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; opacity: 0; transition: opacity 180ms var(--motion-easing);
+}
+#scan[data-scanning="true"]::before { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .eye-slash, .eye-slash-gap, #scan .button-label, #scan::before { transition: none; }
 }

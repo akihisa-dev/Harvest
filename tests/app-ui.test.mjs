@@ -383,7 +383,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     const thumbnailsBeforeScan = document.querySelector("#images").children.map(row => previewUrl(row.children[0]));
     scanButton.dispatch("click");
     assert.equal(scanButton.dataset.scanning, "true", "解析中はボタンのロード表示を有効にする");
-    assert.equal(scanButton.textContent, "", "解析中はボタンの文字を消す");
+    assert.equal(scanButton.textContent, "解析", "解析中も同じラベルを保持し、見た目だけ処理中へ移す");
     assert.equal(scanButton.getAttribute("aria-label"), "ページを調べています…", "解析中のボタンには読み上げ名を残す");
     assert.equal(scanOverlay.hidden, false, "既存画像を表示中でも解析リングを重ねる");
     assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), thumbnailsBeforeScan, "解析中も既存画像を保持する");
@@ -584,7 +584,12 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#images").children.length, 2);
 
     const allButton = document.querySelector("#all-visibility");
+    const retainedEye = allButton.children[0];
+    const retainedSlash = retainedEye.children[3];
     allButton.dispatch("click");
+    assert.equal(allButton.children[0], retainedEye, "表示切替でも同じ目の要素を保持する");
+    assert.equal(retainedEye.children[3], retainedSlash, "斜線を作り直さず表示状態だけ変える");
+    assert.equal(allButton.dataset.shown, allButton.getAttribute("aria-pressed"));
     const firstRow = document.querySelector("#images").children[0];
     const firstUrl = previewUrl(firstRow.children[0]);
     const initialOrder = document.querySelector("#images").children.map(row => previewUrl(row.children[0]));
