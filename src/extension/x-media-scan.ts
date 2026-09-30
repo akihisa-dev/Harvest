@@ -5,7 +5,7 @@ export interface XMediaCandidate {
 }
 
 /**
- * Read video URLs from data already attached to X/Twitter articles.
+ * Read video URLs from data already attached to X/Twitter posts and players.
  *
  * This function is passed directly to chrome.scripting.executeScript in the
  * page's MAIN world. Keep every helper inside it so it remains serializable.
@@ -17,6 +17,7 @@ export function scanXMedia(): XMediaCandidate[] {
 
   const deadline = performance.now() + 2_500;
   const maxArticles = 60;
+  const maxMediaElements = 40;
   const maxNodes = 18_000;
   const maxDepth = 36;
   let visitedNodes = 0;
@@ -60,8 +61,7 @@ export function scanXMedia(): XMediaCandidate[] {
     return undefined;
   };
 
-  const addVideoInfo = (videoInfo: object, mediaObject: object): boolean => {
-    const variants = dataValue(videoInfo, "variants");
+  const addVideoVariants = (variants: unknown, mediaObject: object): boolean => {
     if (!Array.isArray(variants)) return false;
     let best: {url: string; bitrate: number} | undefined;
     const variantCount = dataValue(variants, "length");
@@ -101,12 +101,69 @@ export function scanXMedia(): XMediaCandidate[] {
     return true;
   };
 
+  const isMp4Url = (url: string, rawContentType: unknown): boolean => {
+    const contentType = typeof rawContentType === "string" ? rawContentType.toLowerCase() : "";
+    if (/^video\/mp4(?:\s*;|$)/i.test(contentType)) return true;
+    try {
+      return /\.mp4$/i.test(new URL(url).pathname);
+    } catch {
+      return false;
+    }
+  };
+
+  const addVideoSource = (source: object, mediaObject: object): boolean => {
+    const url = httpUrl(dataValue(source, "src"));
+    if (!url || !isMp4Url(url,
+      dataValue(source, "content_type") ?? dataValue(source, "mime_type") ?? dataValue(source, "type"))) return false;
+    const candidate: XMediaCandidate = {url, kind: "video"};
+    for (const key of ["media_url_https", "media_url", "thumbnail_url", "preview_image_url", "poster"]) {
+      const preview = previewUrl(dataValue(mediaObject, key));
+      if (preview) {
+        candidate.previewUrl = preview;
+        break;
+      }
+    }
+    const existing = resultByUrl.get(candidate.url);
+    if (!existing || (!existing.previewUrl && candidate.previewUrl)) resultByUrl.set(candidate.url, candidate);
+    return true;
+  };
+
+  const addDirectVideoSource = (rawUrl: unknown, owner: object): boolean => {
+    const url = httpUrl(rawUrl);
+    if (!url || !isMp4Url(url,
+      dataValue(owner, "content_type") ?? dataValue(owner, "mime_type") ?? dataValue(owner, "type"))) return false;
+    const candidate: XMediaCandidate = {url, kind: "video"};
+    const preview = previewUrl(dataValue(owner, "poster"));
+    if (preview) candidate.previewUrl = preview;
+    if (!resultByUrl.has(candidate.url)) resultByUrl.set(candidate.url, candidate);
+    return true;
+  };
+
+  const addVideoInfo = (videoInfo: object, mediaObject: object): boolean =>
+    addVideoVariants(dataValue(videoInfo, "variants"), mediaObject);
+
+  const addAttachedMedia = (mediaObject: object, includeDirectVariants: boolean): boolean => {
+    let foundVideo = false;
+    const videoInfo = dataValue(mediaObject, "video_info") ?? dataValue(mediaObject, "videoInfo");
+    if (typeof videoInfo === "object" && videoInfo !== null && addVideoInfo(videoInfo, mediaObject)) {
+      foundVideo = true;
+    }
+    if (includeDirectVariants && addVideoVariants(dataValue(mediaObject, "variants"), mediaObject)) {
+      foundVideo = true;
+    }
+    if (includeDirectVariants && !foundVideo) {
+      const source = dataValue(mediaObject, "source");
+      if (typeof source === "object" && source !== null && addVideoSource(source, mediaObject)) foundVideo = true;
+    }
+    return foundVideo;
+  };
+
   // Only follow fields that belong to a tweet and its media. In particular,
   // do not recursively inspect arbitrary React props such as app stores,
   // caches, clients, event handlers, or unrelated page state.
   const tweetPropKeys = [
     "tweet", "tweetResult", "tweet_results", "tweetResults", "tweet_result",
-    "post", "mediaDetails", "media_details", "legacy", "extended_entities",
+    "post", "media", "mediaDetails", "media_details", "legacy", "extended_entities",
     "extendedEntities", "video_info", "videoInfo",
   ];
   const tweetDataKeys = [
@@ -116,9 +173,9 @@ export function scanXMedia(): XMediaCandidate[] {
     "entities", "media", "video_info", "videoInfo",
   ];
 
-  const inspectPostTree = (roots: unknown[]): boolean => {
-    const pending: Array<{value: unknown; depth: number}> = [];
-    for (let index = roots.length - 1; index >= 0; index -= 1) pending.push({value: roots[index], depth: 0});
+  const inspectPostTree = (roots: Array<{value: unknown; mediaObject: boolean}>): boolean => {
+    const pending: Array<{value: unknown; depth: number; mediaObject: boolean}> = [];
+    for (let index = roots.length - 1; index >= 0; index -= 1) pending.push({ ...roots[index]!, depth: 0 });
     const seenInTree = new WeakSet<object>();
     let foundVideo = false;
     while (pending.length > 0 && !timedOut()) {
@@ -136,36 +193,105 @@ export function scanXMedia(): XMediaCandidate[] {
           for (let index = length - 1; index >= 0; index -= 1) {
             if (timedOut()) break;
             const child = dataValue(value, String(index));
-            if (typeof child === "object" && child !== null) pending.push({value: child, depth: entry.depth + 1});
+            if (typeof child === "object" && child !== null) {
+              pending.push({value: child, depth: entry.depth + 1, mediaObject: entry.mediaObject});
+            }
           }
         }
         continue;
       }
 
-      const videoInfo = dataValue(value, "video_info") ?? dataValue(value, "videoInfo");
-      if (typeof videoInfo === "object" && videoInfo !== null && addVideoInfo(videoInfo, value)) foundVideo = true;
+      if (addAttachedMedia(value, entry.mediaObject)) foundVideo = true;
       if (entry.depth >= maxDepth) continue;
 
       for (const key of tweetDataKeys) {
         if (timedOut()) break;
         const child = dataValue(value, key);
-        if (typeof child === "object" && child !== null) pending.push({value: child, depth: entry.depth + 1});
+        if (typeof child === "object" && child !== null) {
+          const mediaObject = entry.mediaObject
+            || key === "media"
+            || key === "mediaDetails"
+            || key === "media_details";
+          pending.push({value: child, depth: entry.depth + 1, mediaObject});
+        }
       }
     }
     return foundVideo;
   };
 
   const inspectTweetProps = (props: object): boolean => {
-    const directVideoInfo = dataValue(props, "video_info") ?? dataValue(props, "videoInfo");
-    if (typeof directVideoInfo === "object" && directVideoInfo !== null && addVideoInfo(directVideoInfo, props)) return true;
-    const roots: unknown[] = [];
+    if (addAttachedMedia(props, false)) return true;
+    const roots: Array<{value: unknown; mediaObject: boolean}> = [];
     for (const key of tweetPropKeys) {
       if (timedOut()) break;
       const value = dataValue(props, key);
-      if (typeof value === "object" && value !== null) roots.push(value);
+      if (typeof value === "object" && value !== null) {
+        roots.push({
+          value,
+          mediaObject: key === "media" || key === "mediaDetails" || key === "media_details",
+        });
+      }
     }
     return inspectPostTree(roots);
   };
+
+  const inspectPlayerProps = (props: object): boolean => {
+    let foundVideo = addAttachedMedia(props, true);
+    if (addDirectVideoSource(dataValue(props, "src"), props)) foundVideo = true;
+    if (!foundVideo && inspectTweetProps(props)) foundVideo = true;
+    return foundVideo;
+  };
+
+  // On X's expanded-video route, the target player may exist without an
+  // article. Inspect the dialog/player elements first so their media stays
+  // ahead of background posts in the returned candidates.
+  const mediaSelectors = [
+    "dialog video",
+    '[role="dialog"] video',
+    '[data-testid="videoPlayer"]',
+    "video[data-testid]",
+  ];
+  if (/\/status\/[^/]+\/video\/\d+\/?$/i.test(location.pathname)) mediaSelectors.push("video");
+  const seenMediaElements = new WeakSet<object>();
+  let inspectedMediaElements = 0;
+  for (const selector of mediaSelectors) {
+    if (timedOut() || inspectedMediaElements >= maxMediaElements) break;
+    const mediaElements = document.querySelectorAll(selector);
+    for (let mediaIndex = 0; mediaIndex < mediaElements.length && inspectedMediaElements < maxMediaElements && !timedOut(); mediaIndex += 1) {
+      const mediaElement = mediaElements[mediaIndex];
+      if (!mediaElement || seenMediaElements.has(mediaElement)) continue;
+      seenMediaElements.add(mediaElement);
+      inspectedMediaElements += 1;
+      let ownKeys: string[];
+      try {
+        ownKeys = Object.getOwnPropertyNames(mediaElement);
+      } catch {
+        continue;
+      }
+      for (const key of ownKeys) {
+        if (timedOut()) break;
+        const directProps = key.startsWith("__reactProps$") ? dataValue(mediaElement, key) : undefined;
+        if (typeof directProps === "object" && directProps !== null) inspectPlayerProps(directProps);
+      }
+      for (const key of ownKeys) {
+        if (timedOut()) break;
+        if (!key.startsWith("__reactFiber$") && !key.startsWith("__reactInternalInstance$")) continue;
+        let fiber = dataValue(mediaElement, key);
+        for (let ancestor = 0; typeof fiber === "object" && fiber !== null && ancestor < 40 && !timedOut(); ancestor += 1) {
+          const memoizedProps = dataValue(fiber, "memoizedProps");
+          let foundInProps = typeof memoizedProps === "object" && memoizedProps !== null
+            ? inspectPlayerProps(memoizedProps)
+            : false;
+          const pendingProps = dataValue(fiber, "pendingProps");
+          if (!foundInProps && typeof pendingProps === "object" && pendingProps !== null && pendingProps !== memoizedProps) {
+            foundInProps = inspectPlayerProps(pendingProps);
+          }
+          if (foundInProps) break;
+          fiber = dataValue(fiber, "return");
+        }
+      }
+    }
+  }
 
   const articles = document.querySelectorAll("article");
   const articleCount = Math.min(articles.length, maxArticles);

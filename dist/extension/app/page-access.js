@@ -1,3 +1,4 @@
+import { waitForXPage } from "./x-page-state.js";
 import { scanXMedia } from "./x-media-scan.js";
 import { scanDocument } from "./page-scan.js";
 const timeoutMs = 20000;
@@ -35,8 +36,8 @@ function bounded(start, signal) {
         }
     });
 }
-export async function scanTab(tabId, signal) {
-    const result = await bounded((resolve, reject) => {
+export async function scanTab(tabId, signal, requestedUrl) {
+    let result = await bounded((resolve, reject) => {
         const onRemoved = (id) => {
             if (id === tabId)
                 reject(new Error("解析中のタブが閉じられました。"));
@@ -50,20 +51,44 @@ export async function scanTab(tabId, signal) {
         }, () => reject(new Error("このページを読み取れませんでした。Chromeで開けるWebページを指定してください。")));
         return () => chrome.tabs.onRemoved.removeListener(onRemoved);
     }, signal);
-    // X keeps media variants in its page runtime. Read only data already attached
-    // to visible post elements, without making requests through private endpoints.
     if (/^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(result.url)) {
-        try {
-            const extra = await bounded((resolve, reject) => {
-                void chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: scanXMedia })
-                    .then(([injection]) => resolve(injection?.result ?? []), () => reject(new Error("動画情報を読み取れませんでした。")));
+        const expectVideo = /\/status\/\d+\/video\/\d+(?:[?#]|$)/i.test(requestedUrl ?? result.url);
+        const isPost = /\/status\/\d+(?:[/?#]|$)/i.test(requestedUrl ?? result.url);
+        if (isPost) {
+            const state = await bounded((resolve, reject) => {
+                void chrome.scripting.executeScript({ target: { tabId }, func: waitForXPage, args: [expectVideo] })
+                    .then(([injection]) => injection?.result ? resolve(injection.result) : reject(new Error("Xの投稿を読み取れませんでした。")), () => reject(new Error("Xの投稿を読み取れませんでした。")));
             }, signal);
-            result.media = [...(result.media ?? []), ...extra];
+            if (state.status === "restricted")
+                throw new Error("Xがこの投稿の表示を制限しています。Chromeで投稿を表示できる状態にしてから解析してください。");
+            if (state.status === "unavailable")
+                throw new Error("Xの投稿が削除されているか、表示できません。");
+            if (state.status !== "ready")
+                throw new Error("Xの投稿の読み込みが完了しませんでした。Chromeで投稿を開いてから解析し直してください。");
+            result = await bounded((resolve, reject) => {
+                void chrome.scripting.executeScript({ target: { tabId }, func: scanDocument })
+                    .then(([injection]) => injection?.result ? resolve(injection.result) : reject(new Error("Xの投稿を読み取れませんでした。")), () => reject(new Error("Xの投稿を読み取れませんでした。")));
+            }, signal);
         }
-        catch {
-            // Preserve ordinary page results if the site's runtime is unavailable.
-            if (signal?.aborted)
-                throw new Error("ページの解析を終了しました。");
+        const extra = await bounded((resolve, reject) => {
+            void chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: scanXMedia })
+                .then(([injection]) => resolve(injection?.result ?? []), () => reject(new Error("Xの動画情報を読み取れませんでした。")));
+        }, signal);
+        result.media = [...(result.media ?? []), ...extra];
+        const isProfileImage = (url) => {
+            try {
+                return /\/profile_(?:images|banners)\//i.test(new URL(url).pathname);
+            }
+            catch {
+                return false;
+            }
+        };
+        if (isPost) {
+            result.images = result.images.filter(url => !isProfileImage(url));
+            result.media = result.media.filter(item => !isProfileImage(item.url));
+        }
+        if (expectVideo && !result.media.some(item => item.kind === "video")) {
+            throw new Error("動画は表示されていますが、保存できるMP4のURLを取得できませんでした。");
         }
     }
     await bounded((resolve, reject) => {
@@ -114,7 +139,7 @@ export async function scanUrl(url, signal) {
                 chrome.tabs.onRemoved.removeListener(onRemoved);
             };
         }, signal);
-        return await scanTab(tabId, signal);
+        return await scanTab(tabId, signal, url);
     }
     finally {
         if (windowId !== undefined)

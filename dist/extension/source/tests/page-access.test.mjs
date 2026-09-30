@@ -127,3 +127,60 @@ test("読み込み後の解析中にタブが閉じられても即座に失敗�
   await rejected;
   assert.equal(state.removed.size, 0);
 });
+
+test("X動画ページは投稿の読み込みを待って再解析し、MAINでプレイヤー情報を読む", async t => {
+  const url = "https://x.com/example/status/123/video/1";
+  fixture(t, {get: async () => ({url})});
+  const calls = [];
+  let pageScans = 0;
+  chrome.scripting.executeScript = async injection => {
+    calls.push({name: injection.func.name, world: injection.world, args: injection.args});
+    if (injection.func.name === "waitForXPage") return [{result: {status: "ready"}}];
+    if (injection.func.name === "scanXMedia") return [{result: [{url: "https://video.twimg.com/example.mp4", kind: "video"}]}];
+    pageScans++;
+    return [{result: {url, title: "post", images: pageScans === 1 ? ["https://pbs.twimg.com/profile_images/1/avatar.jpg"] : ["https://pbs.twimg.com/media/photo.jpg", "https://pbs.twimg.com/profile_images/1/avatar.jpg"]}}];
+  };
+  const result = await scanTab(8, undefined, url);
+  assert.equal(pageScans, 2);
+  assert.deepEqual(result.images, ["https://pbs.twimg.com/media/photo.jpg"]);
+  assert.deepEqual(result.media, [{url: "https://video.twimg.com/example.mp4", kind: "video"}]);
+  assert.deepEqual(calls.map(call => call.name), ["scanDocument", "waitForXPage", "scanDocument", "scanXMedia"]);
+  assert.deepEqual(calls[1].args, [true]);
+  assert.equal(calls[3].world, "MAIN");
+});
+
+test("Xが投稿を制限している場合、プロフィール画像を成功した結果として返さない", async t => {
+  const url = "https://x.com/example/status/123";
+  fixture(t, {get: async () => ({url})});
+  chrome.scripting.executeScript = async ({func}) => [{result: func.name === "waitForXPage" ? {status: "restricted"} : {url, title: "post", images: ["https://pbs.twimg.com/profile_images/1/avatar.jpg"]}}];
+  await assert.rejects(scanTab(8), /表示を制限/);
+});
+
+test("X動画ページでMP4を読めない場合は理由を示し、画像だけの成功にしない", async t => {
+  const url = "https://x.com/example/status/123/video/1";
+  fixture(t, {get: async () => ({url})});
+  chrome.scripting.executeScript = async ({func}) => {
+    if (func.name === "waitForXPage") return [{result: {status: "ready"}}];
+    if (func.name === "scanXMedia") return [{result: []}];
+    return [{result: {url, title: "post", images: []}}];
+  };
+  await assert.rejects(scanTab(8), /MP4のURLを取得できません/);
+});
+
+test("Xの読み込み待機中の中止で遅い結果を採用しない", async t => {
+  const url = "https://x.com/example/status/123/video/1";
+  fixture(t, {get: async () => ({url})});
+  let finish;
+  chrome.scripting.executeScript = async ({func}) => {
+    if (func.name === "waitForXPage") return new Promise(resolve => { finish = resolve; });
+    return [{result: {url, title: "post", images: []}}];
+  };
+  const controller = new AbortController();
+  const work = scanTab(8, controller.signal, url);
+  const rejected = assert.rejects(work, /終了しました/);
+  for (let index = 0; index < 10 && !finish; index++) await Promise.resolve();
+  assert.ok(finish);
+  controller.abort();
+  await rejected;
+  finish([{result: {status: "ready"}}]);
+});

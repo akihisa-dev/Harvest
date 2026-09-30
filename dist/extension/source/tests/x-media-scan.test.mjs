@@ -2,13 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { scanXMedia } from "../dist/extension/app/x-media-scan.js";
 
-async function runOnPage(hostname, articles, callback = scanXMedia) {
+async function runOnPage(hostname, articles, callback = scanXMedia, mediaElements = [], pathname = "/home") {
   const previous = {
     document: globalThis.document,
     location: globalThis.location,
   };
-  globalThis.document = {querySelectorAll: selector => selector === "article" ? articles : []};
-  globalThis.location = {hostname, href: `https://${hostname}/home`};
+  globalThis.document = {
+    querySelectorAll: selector => selector === "article"
+      ? articles
+      : mediaElements.filter(entry => entry.selectors.includes(selector)).map(entry => entry.element),
+  };
+  globalThis.location = {hostname, href: `https://${hostname}${pathname}`, pathname};
   try {
     return callback();
   } finally {
@@ -77,6 +81,54 @@ test("article自身のfiberから親のmemoizedPropsをたどり、getterを呼�
     {url: "https://video.twimg.com/parent.mp4", kind: "video"},
   ]);
   assert.equal(getterCalls, 0);
+});
+
+test("articleがない動画プレイヤーのprops.media.variantsから最高bitrateのMP4を読む", async () => {
+  const player = {};
+  Object.defineProperty(player, "__reactProps$player", {
+    value: {
+      media: {
+        media_url_https: "https://pbs.twimg.com/media/player-preview.jpg?format=jpg",
+        variants: [
+          {content_type: "video/mp4", bitrate: 400_000, url: "https://video.twimg.com/player-low.mp4"},
+          {content_type: "application/x-mpegURL", bitrate: 9_000_000, url: "https://video.twimg.com/player.m3u8"},
+          {content_type: "video/mp4", bitrate: 1_600_000, url: "https://video.twimg.com/player-high.mp4"},
+        ],
+      },
+      cache: {variants: [{content_type: "video/mp4", bitrate: 99_000_000, url: "https://video.twimg.com/cache.mp4"}]},
+    },
+  });
+
+  assert.deepEqual(await runOnPage("x.com", [], scanXMedia, [{element: player, selectors: ['[data-testid="videoPlayer"]']}], "/status/person/123/video/1"), [
+    {
+      url: "https://video.twimg.com/player-high.mp4",
+      kind: "video",
+      previewUrl: "https://pbs.twimg.com/media/player-preview.jpg?format=jpg",
+    },
+  ]);
+});
+
+test("video/1のdialog player props.source.srcを記事の候補より先に返す", async () => {
+  const article = {};
+  Object.defineProperty(article, "__reactProps$article", {
+    value: {
+      tweet: {legacy: {extended_entities: {media: [{video_info: {variants: [
+        {content_type: "video/mp4", bitrate: 800_000, url: "https://video.twimg.com/background.mp4"},
+      ]}}]}}},
+    },
+  });
+  const video = {};
+  Object.defineProperty(video, "__reactFiber$video", {
+    value: {
+      memoizedProps: {role: "video", source: {src: "https://video.twimg.com/expanded.mp4?tag=12"}},
+      return: null,
+    },
+  });
+
+  assert.deepEqual(await runOnPage("x.com", [article], scanXMedia, [{element: video, selectors: ["dialog video"]}], "/status/person/123/video/1"), [
+    {url: "https://video.twimg.com/expanded.mp4?tag=12", kind: "video"},
+    {url: "https://video.twimg.com/background.mp4", kind: "video"},
+  ]);
 });
 
 test("投稿動画を見つけたら祖先探索を止め、store・cache・clientの投稿外動画を拾わない", async () => {

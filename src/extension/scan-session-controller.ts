@@ -67,7 +67,7 @@ export function createScanSessionController(options: ScanSessionControllerOption
       } else {
         const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
         if (activeTab?.id === undefined || !isWebUrl(activeTab.url)) throw new Error(t("errorNoActivePage"));
-        result = await scanTab(activeTab.id, controller.signal);
+        result = await scanTab(activeTab.id, controller.signal, activeTab.url);
       }
       if (options.isDisposed() || controller.signal.aborted || activeController !== controller) return;
       const urls = normalizeImageUrls([...result.images, ...(result.media ?? []).map(item => item.url)], result.url);
