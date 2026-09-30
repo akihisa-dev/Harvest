@@ -33,6 +33,8 @@ function setup() {
   let resizeObserver;
   let frameSequence = 0;
   const frames = new Map();
+  let timerSequence = 0;
+  const timers = new Map();
   const port = {
     postMessage(message) { messages.push(message); },
     onMessage: {addListener(listener) { port.messageListener = listener; }},
@@ -58,6 +60,8 @@ function setup() {
     removeEventListener() {},
     requestAnimationFrame(callback) { const id = ++frameSequence; frames.set(id, callback); return id; },
     cancelAnimationFrame(id) { frames.delete(id); },
+    setTimeout(callback) { const id = ++timerSequence; timers.set(id, callback); return id; },
+    clearTimeout(id) { timers.delete(id); },
   };
   globalThis.location = {href: "https://example.test/current"};
   globalThis.document = {
@@ -100,6 +104,11 @@ function setup() {
       const callbacks = [...frames.values()];
       frames.clear();
       for (const callback of callbacks) callback(0);
+    },
+    flushTimers() {
+      const callbacks = [...timers.values()];
+      timers.clear();
+      for (const callback of callbacks) callback();
     },
     get pendingFrames() { return frames.size; },
     click(anchor, options = {}) {
@@ -186,11 +195,14 @@ test("収集できるリンクだけ文字なしで発光し、離脱・解析�
     assert.equal(fixture.glow.style.width, "100px");
     assert.equal(fixture.glow.textContent, undefined);
     fixture.leave();
+    assert.equal(fixture.glow.style.opacity, "0", "離脱時は不透明度を下げてから隠す");
+    fixture.flushTimers();
     assert.equal(fixture.glow.style.display, "none");
     fixture.hover(new Anchor("mailto:user@example.test"));
     assert.equal(fixture.glow.style.display, "none");
     fixture.hover(new Anchor("/picked"));
     fixture.port.messageListener({busy: true});
+    fixture.flushTimers();
     assert.equal(fixture.glow.style.display, "none");
     fixture.hover(new Anchor("/picked"));
     assert.equal(fixture.glow.style.display, "none");
@@ -208,6 +220,8 @@ test("解析リンクは水色、PDF保存リンクだけ強い金色になり�
     const scanGlow = fixture.glow.style.boxShadow;
     fixture.click(picked);
     fixture.port.messageListener({busy: true, pdfUrl: null, canExport: false});
+    assert.equal(fixture.glow.style.opacity, "0");
+    fixture.flushTimers();
     assert.equal(fixture.glow.style.display, "none");
     fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/picked", canExport: true});
     const pdfGlow = fixture.glow.style.boxShadow;
@@ -309,6 +323,7 @@ test("ページ内レイアウト変化を1フレームにまとめて保存表�
     const target = new Anchor("/moving");
     fixture.click(target);
     fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/moving", canExport: true});
+    fixture.flushAnimationFrame();
     fixture.hover(target);
     assert.equal(fixture.overlays[0].style.top, "20px");
     assert.equal(fixture.glow.style.top, "20px");

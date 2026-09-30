@@ -14,6 +14,33 @@ export function captureCollectionLinks(session) {
     const markedTargets = new Map();
     const targetAnchors = new WeakMap();
     const overlayElements = new WeakSet();
+    const motionAnimations = new Set();
+    const motionElements = new Set();
+    const hoverGhosts = new Set();
+    const ghostAnimations = new Map();
+    const motionFrames = new Set();
+    let hideTimer = null;
+    const prefersReducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    const animateOut = (overlay) => {
+        if (prefersReducedMotion() || typeof overlay.animate !== "function") {
+            overlay.remove();
+            return;
+        }
+        const style = getComputedStyle(overlay);
+        const animation = overlay.animate([
+            { opacity: style.opacity, transform: style.transform },
+            { opacity: "0", transform: "scale(.78)" },
+        ], { duration: 160, easing: "cubic-bezier(.2,.75,.25,1)" });
+        motionAnimations.add(animation);
+        motionElements.add(overlay);
+        const finish = () => {
+            motionAnimations.delete(animation);
+            motionElements.delete(overlay);
+            overlay.remove();
+        };
+        animation.onfinish = finish;
+        animation.oncancel = finish;
+    };
     const resolveLinkUrl = (anchor) => {
         const href = anchor.getAttribute("href");
         if (!href)
@@ -37,7 +64,7 @@ export function captureCollectionLinks(session) {
         }
         const state = markedTargets.get(target);
         if (state?.url === url) {
-            state.overlay.remove();
+            animateOut(state.overlay);
             markedTargets.delete(target);
         }
     };
@@ -73,7 +100,6 @@ export function captureCollectionLinks(session) {
             }
         }
         redrawMarkedTargets();
-        hovered = null;
         if (busy)
             hideGlow();
         else
@@ -82,15 +108,38 @@ export function captureCollectionLinks(session) {
     const glow = document.createElement("div");
     overlayElements.add(glow);
     glow.setAttribute("aria-hidden", "true");
-    glow.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;display:none;border-radius:5px;box-shadow:inset 0 0 0 3px rgba(125,235,255,.95),0 0 0 2px rgba(125,235,255,.9),0 0 12px 5px rgba(70,210,255,.7),0 0 26px 8px rgba(70,210,255,.35);background:transparent;";
+    glow.setAttribute("data-harvest-collection-hover", "true");
+    glow.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;display:none;opacity:0;transform:scale(.82);transform-origin:center;border-radius:5px;transition:opacity 160ms cubic-bezier(.2,.75,.25,1),transform 160ms cubic-bezier(.2,.75,.25,1),box-shadow 160ms ease;background:transparent;";
     document.documentElement.append(glow);
     let hovered = null;
-    const hideGlow = () => { hovered = null; glow.style.display = "none"; };
+    let visualTarget = null;
+    const hideGlow = () => {
+        hovered = null;
+        if (hideTimer !== null)
+            window.clearTimeout(hideTimer);
+        if (glow.style.display === "none")
+            return;
+        if (prefersReducedMotion()) {
+            glow.style.display = "none";
+            glow.style.opacity = "0";
+            visualTarget = null;
+            return;
+        }
+        glow.style.opacity = "0";
+        glow.style.transform = "scale(.82)";
+        hideTimer = window.setTimeout(() => {
+            hideTimer = null;
+            if (hovered === null) {
+                glow.style.display = "none";
+                visualTarget = null;
+            }
+        }, 180);
+    };
     const pruneDetachedTargets = () => {
         for (const [target, state] of markedTargets) {
             if (target.isConnected)
                 continue;
-            state.overlay.remove();
+            animateOut(state.overlay);
             markedTargets.delete(target);
         }
         for (const links of [pendingClicks, analyzedLinks]) {
@@ -162,10 +211,28 @@ export function captureCollectionLinks(session) {
             const overlay = document.createElement("div");
             overlayElements.add(overlay);
             overlay.setAttribute("aria-hidden", "true");
-            overlay.style.cssText = "position:fixed;pointer-events:none;z-index:2147483646;display:block;border-radius:5px;background:transparent;";
+            overlay.setAttribute("data-harvest-collection-marker", "true");
+            overlay.style.cssText = "position:fixed;pointer-events:none;z-index:2147483646;display:block;opacity:0;transform:scale(.88);transform-origin:center;border-radius:5px;transition:opacity 180ms cubic-bezier(.2,.75,.25,1),transform 180ms cubic-bezier(.2,.75,.25,1),box-shadow 180ms ease;background:transparent;";
             document.documentElement.append(overlay);
+            if (!prefersReducedMotion())
+                void overlay.offsetWidth;
             state = { url, anchor, overlay };
             markedTargets.set(target, state);
+            if (!prefersReducedMotion()) {
+                const frame = window.requestAnimationFrame(() => {
+                    motionFrames.delete(frame);
+                    if (markedTargets.get(target)?.overlay !== overlay)
+                        return;
+                    overlay.style.opacity = "1";
+                    overlay.style.transform = "scale(1)";
+                });
+                motionFrames.add(frame);
+            }
+            else {
+                overlay.style.transition = "none";
+                overlay.style.opacity = "1";
+                overlay.style.transform = "scale(1)";
+            }
         }
         else {
             state.url = url;
@@ -180,6 +247,9 @@ export function captureCollectionLinks(session) {
                 unlinkTargetForUrl(target, state.url);
                 continue;
             }
+            state.overlay.style.transition = prefersReducedMotion()
+                ? "none"
+                : "opacity 180ms cubic-bezier(.2,.75,.25,1),transform 180ms cubic-bezier(.2,.75,.25,1),box-shadow 180ms ease";
             state.overlay.style.boxShadow = desiredGlow(state.url);
             positionGlow(target, state.overlay);
         }
@@ -222,9 +292,68 @@ export function captureCollectionLinks(session) {
             return;
         }
         const { target, url } = state;
-        if (hovered === target)
+        if (hovered === target || (visualTarget === target && glow.style.display !== "none")) {
+            if (hideTimer !== null) {
+                window.clearTimeout(hideTimer);
+                hideTimer = null;
+            }
+            hovered = target;
+            glow.style.transition = prefersReducedMotion()
+                ? "none"
+                : "opacity 160ms cubic-bezier(.2,.75,.25,1),transform 160ms cubic-bezier(.2,.75,.25,1),box-shadow 160ms ease";
+            if (prefersReducedMotion()) {
+                glow.style.opacity = "1";
+                glow.style.transform = "scale(1)";
+            }
+            else {
+                glow.style.opacity = "1";
+                glow.style.transform = "scale(1)";
+            }
+            glow.style.boxShadow = desiredGlow(url.href);
+            positionGlow(target, glow);
             return;
+        }
+        if (hideTimer !== null) {
+            window.clearTimeout(hideTimer);
+            hideTimer = null;
+        }
+        if (glow.style.display !== "none" && !prefersReducedMotion() && typeof glow.animate === "function") {
+            const oldGlow = glow.cloneNode(false);
+            overlayElements.add(oldGlow);
+            oldGlow.setAttribute("data-harvest-collection-motion-ghost", "true");
+            oldGlow.style.transition = "none";
+            document.documentElement.append(oldGlow);
+            const oldStyle = getComputedStyle(glow);
+            const animation = oldGlow.animate([
+                { opacity: oldStyle.opacity, transform: oldStyle.transform },
+                { opacity: "0", transform: "scale(.78)" },
+            ], { duration: 140, easing: "cubic-bezier(.2,.75,.25,1)" });
+            motionAnimations.add(animation);
+            motionElements.add(oldGlow);
+            const finish = () => {
+                motionAnimations.delete(animation);
+                motionElements.delete(oldGlow);
+                hoverGhosts.delete(oldGlow);
+                ghostAnimations.delete(oldGlow);
+                oldGlow.remove();
+            };
+            animation.onfinish = finish;
+            animation.oncancel = finish;
+            hoverGhosts.add(oldGlow);
+            ghostAnimations.set(oldGlow, animation);
+            while (hoverGhosts.size > 3) {
+                const oldestGhost = hoverGhosts.values().next().value;
+                if (!oldestGhost)
+                    break;
+                ghostAnimations.get(oldestGhost)?.cancel();
+                hoverGhosts.delete(oldestGhost);
+                ghostAnimations.delete(oldestGhost);
+                motionElements.delete(oldestGhost);
+                oldestGhost.remove();
+            }
+        }
         hovered = target;
+        visualTarget = target;
         glow.style.boxShadow = desiredGlow(url.href);
         const rect = target.getBoundingClientRect();
         glow.style.left = `${rect.left}px`;
@@ -232,11 +361,30 @@ export function captureCollectionLinks(session) {
         glow.style.width = `${rect.width}px`;
         glow.style.height = `${rect.height}px`;
         glow.style.display = "block";
+        if (prefersReducedMotion()) {
+            glow.style.transition = "none";
+            glow.style.opacity = "1";
+            glow.style.transform = "scale(1)";
+            return;
+        }
+        glow.style.transition = "none";
+        glow.style.opacity = "0";
+        glow.style.transform = "scale(.82)";
+        void glow.offsetWidth;
+        glow.style.transition = "opacity 160ms cubic-bezier(.2,.75,.25,1),transform 160ms cubic-bezier(.2,.75,.25,1),box-shadow 160ms ease";
+        glow.style.opacity = "1";
+        glow.style.transform = "scale(1)";
     };
     const redrawHover = () => {
         if (!lastHover)
             return;
-        hovered = null;
+        const url = resolveLinkUrl(lastHover.anchor);
+        if (!url || !lastHover.anchor.isConnected || !lastHover.target.isConnected) {
+            lastHover = null;
+            hideGlow();
+            return;
+        }
+        lastHover.url = url;
         drawHover(lastHover);
     };
     let redrawFrame = null;
@@ -285,8 +433,6 @@ export function captureCollectionLinks(session) {
     port.onDisconnect.addListener(() => {
         observer.disconnect();
         resizeObserver?.disconnect();
-        if (redrawFrame !== null)
-            window.cancelAnimationFrame(redrawFrame);
         document.fonts?.removeEventListener("loadingdone", scheduleRedraw);
         document.removeEventListener("click", onClick, true);
         document.removeEventListener("pointermove", onHover, true);
@@ -296,13 +442,31 @@ export function captureCollectionLinks(session) {
         document.removeEventListener("transitionend", scheduleRedraw, true);
         document.removeEventListener("animationend", scheduleRedraw, true);
         window.removeEventListener("resize", onResize);
+        if (redrawFrame !== null)
+            window.cancelAnimationFrame(redrawFrame);
+        if (hideTimer !== null)
+            window.clearTimeout(hideTimer);
+        for (const frame of motionFrames)
+            window.cancelAnimationFrame(frame);
+        motionFrames.clear();
+        for (const animation of motionAnimations)
+            animation.cancel();
+        motionAnimations.clear();
+        for (const element of [...motionElements])
+            element.remove();
+        motionElements.clear();
+        for (const ghost of hoverGhosts)
+            ghost.remove();
+        hoverGhosts.clear();
+        ghostAnimations.clear();
         for (const state of markedTargets.values())
-            state.overlay.remove();
+            animateOut(state.overlay);
         markedTargets.clear();
         pendingClicks.clear();
         analyzedLinks.clear();
         lastHover = null;
-        glow.remove();
+        visualTarget = null;
+        animateOut(glow);
     });
     document.addEventListener("click", onClick, true);
     document.addEventListener("pointermove", onHover, true);
