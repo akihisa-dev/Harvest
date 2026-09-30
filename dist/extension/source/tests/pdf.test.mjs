@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {deflateSync} from "node:zlib";
 import { createPdf, createPdfFromJpegs, createSourcePageLayout, getOriginalJpegPage } from "../dist/extension/core/pdf.js";
 
 const decode = (bytes) => new TextDecoder().decode(bytes);
@@ -57,6 +58,21 @@ function imageStreams(pdf) {
   return streams;
 }
 
+function assertValidXref(pdf) {
+  const source = decode(pdf);
+  const startxref = source.match(/startxref\n(\d+)\n%%EOF\n$/);
+  assert.ok(startxref, "the PDF contains a startxref entry");
+  const xrefOffset = Number(startxref[1]);
+  assert.equal(decode(pdf.subarray(xrefOffset, xrefOffset + 5)), "xref\n");
+  const xrefLines = decode(pdf.subarray(xrefOffset)).split("\n");
+  const objectCount = Number(xrefLines[1].split(" ")[1]);
+  assert.ok(Number.isSafeInteger(objectCount) && objectCount > 0);
+  for (let objectNumber = 1; objectNumber < objectCount; objectNumber += 1) {
+    const offset = Number(xrefLines[2 + objectNumber].slice(0, 10));
+    assert.equal(decode(pdf.subarray(offset, offset + `${objectNumber} 0 obj\n`.length)), `${objectNumber} 0 obj\n`);
+  }
+}
+
 function readSourceContentStream(source) {
   const pages = [...source.matchAll(/\/Type \/Page\b[^\n]*\/Contents (\d+) 0 R/g)];
   const contentsObject = Number(pages.at(-1)?.[1]);
@@ -90,6 +106,58 @@ test("creates ordered image pages with matching dimensions", async () => {
   const blob = createPdf([{ jpeg: first, width: 320, height: 240 }]);
   assert.equal(blob.type, "application/pdf");
   assert.equal((await blob.arrayBuffer()).byteLength > 0, true);
+});
+
+test("Blob経路はJPEGとFlate画像の元payloadをpartsとして保持し、従来APIと同じxrefを出力する", async () => {
+  const firstStorage = new Uint8Array(1_048_578).fill(0xa1);
+  const first = firstStorage.subarray(1, firstStorage.length - 1);
+  const rgbPixels = new Uint8Array(1_048_576);
+  let random = 0x1234_5678;
+  for (let index = 0; index < rgbPixels.length; index += 1) {
+    random = (Math.imul(random, 1_664_525) + 1_013_904_223) >>> 0;
+    rgbPixels[index] = random >>> 24;
+  }
+  const second = new Uint8Array(deflateSync(rgbPixels));
+  const images = [
+    {jpeg: first, width: 320, height: 240},
+    {rgbFlate: second, width: 640, height: 480},
+  ];
+  const nativeBlob = globalThis.Blob;
+  let blobParts = [];
+  let blob;
+  globalThis.Blob = class extends nativeBlob {
+    constructor(parts, options) {
+      blobParts = [...parts];
+      super(parts, options);
+    }
+  };
+  try {
+    blob = createPdf(images, {heading: "Source", filename: "large.pdf", url: "https://example.test/large.pdf"});
+  } finally {
+    globalThis.Blob = nativeBlob;
+  }
+
+  assert.equal(blob.type, "application/pdf");
+  assert.equal(blobParts.filter(part => part === first).length, 1);
+  assert.equal(blobParts.filter(part => part === second).length, 1);
+
+  const blobBytes = new Uint8Array(await blob.arrayBuffer());
+  const legacyBytes = createPdfFromJpegs(images, {heading: "Source", filename: "large.pdf", url: "https://example.test/large.pdf"});
+  assert.deepEqual(blobBytes, legacyBytes);
+  assertValidXref(blobBytes);
+  assert.match(decode(blobBytes), /\/Filter \/DCTDecode/);
+  assert.match(decode(blobBytes), /\/Filter \/FlateDecode/);
+  assert.deepEqual(imageStreams(blobBytes), [first, second]);
+});
+
+test("SharedArrayBufferを使う画像もBlobとUint8Array APIで同じ内容を保つ", async () => {
+  if (typeof SharedArrayBuffer === "undefined") return;
+  const jpeg = new Uint8Array(new SharedArrayBuffer(4));
+  jpeg.set([0xff, 0xd8, 0xff, 0xd9]);
+  const images = [{jpeg, width: 1, height: 1}];
+
+  const blobBytes = new Uint8Array(await createPdf(images).arrayBuffer());
+  assert.deepEqual(blobBytes, createPdfFromJpegs(images));
 });
 
 test("creates an empty PDF and rejects malformed image dimensions", () => {

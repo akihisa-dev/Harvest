@@ -34,23 +34,26 @@ export function joinChunks(chunks, totalLength) {
     return output;
 }
 export function pdfStreamObject(header, data, suffix = "endstream\nendobj\n") {
-    const headerBytes = pdfText(header);
-    const suffixBytes = pdfText(suffix);
-    return joinChunks([headerBytes, data, suffixBytes], headerBytes.byteLength + data.byteLength + suffixBytes.byteLength);
+    const chunks = pdfStreamObjectParts(header, data, suffix);
+    return joinChunks(chunks, chunks.reduce((length, chunk) => length + chunk.byteLength, 0));
 }
-/** Serializes a contiguous, one-based object list and builds the matching xref table. */
-export function serializePdfDocument(objects, hasSourcePage) {
+/** Keeps stream data as separate parts until a caller chooses the final output format. */
+export function pdfStreamObjectParts(header, data, suffix = "endstream\nendobj\n") {
+    return [pdfText(header), data, pdfText(suffix)];
+}
+/** Serializes one-based PDF objects as byte parts and builds matching xref offsets. */
+export function serializePdfDocumentParts(objects, hasSourcePage) {
     const objectCount = objects.length;
     const offsets = new Array(objectCount + 1).fill(0);
     const pdfHeader = hasSourcePage ? PDF_HEADER_1_5 : PDF_HEADER_1_3;
-    const chunks = [pdfHeader, ...objects];
-    let totalLength = pdfHeader.byteLength;
-    for (const object of objects)
-        totalLength += object.byteLength;
+    const chunks = [pdfHeader];
     let cursor = pdfHeader.byteLength;
     for (const [index, object] of objects.entries()) {
         offsets[index + 1] = cursor;
-        cursor += object.byteLength;
+        for (const part of object) {
+            chunks.push(part);
+            cursor += part.byteLength;
+        }
     }
     const xref = [
         `xref\n0 ${objectCount + 1}\n`,
@@ -60,6 +63,12 @@ export function serializePdfDocument(objects, hasSourcePage) {
     ].join("");
     const xrefBytes = pdfText(xref);
     chunks.push(xrefBytes);
-    totalLength += xrefBytes.byteLength;
+    return chunks;
+}
+/** Serializes objects contiguously for the legacy Uint8Array API. */
+export function serializePdfDocument(objects, hasSourcePage) {
+    const objectParts = objects.map(object => object instanceof Uint8Array ? [object] : object);
+    const chunks = serializePdfDocumentParts(objectParts, hasSourcePage);
+    const totalLength = chunks.reduce((length, chunk) => length + chunk.byteLength, 0);
     return joinChunks(chunks, totalLength);
 }

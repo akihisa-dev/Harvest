@@ -1,4 +1,4 @@
-import { pdfStreamObject, pdfText } from "./pdf-objects.js";
+import { pdfStreamObject, pdfStreamObjectParts, pdfText } from "./pdf-objects.js";
 const MAX_DEFAULT_USER_SPACE_PAGE_DIMENSION = 14_400;
 export function validatePdfImage(image, index) {
     if (image === null || typeof image !== "object") {
@@ -37,11 +37,11 @@ export function createPdfImagePageObjects(image, index, pageObject) {
         `/Resources << /XObject << /Im0 ${imageObject} 0 R >> >> ` +
         `/Contents ${contentsObject} 0 R >>\nendobj\n`);
     const contentsStream = pdfStreamObject(`${contentsObject} 0 obj\n<< /Length ${contents.byteLength} >>\nstream\n`, contents);
-    const imageStream = pdfStreamObject(`${imageObject} 0 obj\n` +
+    const imageStream = pdfStreamObjectParts(`${imageObject} 0 obj\n` +
         `<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} ` +
         `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /${filter} ` +
         `/Length ${data.byteLength} >>\nstream\n`, data, "\nendstream\nendobj\n");
-    return [page, contentsStream, imageStream];
+    return [[page], [contentsStream], imageStream];
 }
 function getPageDimensions(width, height) {
     const largestDimension = Math.max(width, height);
@@ -58,8 +58,9 @@ function formatPdfNumber(value) {
     const text = value.toString();
     if (!/[eE]/.test(text))
         return text;
-    const [coefficient, exponentText] = text.toLowerCase().split("e");
-    const exponent = Number(exponentText);
+    const exponentMarker = text.toLowerCase().indexOf("e");
+    const coefficient = text.slice(0, exponentMarker);
+    const exponent = Number(text.slice(exponentMarker + 1));
     const decimalPoint = coefficient.indexOf(".");
     const digits = coefficient.replace(".", "");
     const integerDigits = (decimalPoint === -1 ? coefficient.length : decimalPoint) + exponent;

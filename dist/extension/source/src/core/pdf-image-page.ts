@@ -1,5 +1,5 @@
 import type { PdfImagePage } from "./pdf-types.js";
-import { pdfStreamObject, pdfText } from "./pdf-objects.js";
+import { pdfStreamObject, pdfStreamObjectParts, pdfText } from "./pdf-objects.js";
 
 const MAX_DEFAULT_USER_SPACE_PAGE_DIMENSION = 14_400;
 
@@ -31,7 +31,7 @@ function validateDimension(value: number, name: string): void {
   }
 }
 
-export function createPdfImagePageObjects(image: PdfImagePage, index: number, pageObject: number): Uint8Array[] {
+export function createPdfImagePageObjects(image: PdfImagePage, index: number, pageObject: number): Uint8Array[][] {
   const {data, filter} = validatePdfImage(image, index);
   const contentsObject = pageObject + 1;
   const imageObject = pageObject + 2;
@@ -47,7 +47,7 @@ export function createPdfImagePageObjects(image: PdfImagePage, index: number, pa
     `${contentsObject} 0 obj\n<< /Length ${contents.byteLength} >>\nstream\n`,
     contents,
   );
-  const imageStream = pdfStreamObject(
+  const imageStream = pdfStreamObjectParts(
     `${imageObject} 0 obj\n` +
     `<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} ` +
     `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /${filter} ` +
@@ -55,7 +55,7 @@ export function createPdfImagePageObjects(image: PdfImagePage, index: number, pa
     data,
     "\nendstream\nendobj\n",
   );
-  return [page, contentsStream, imageStream];
+  return [[page], [contentsStream], imageStream];
 }
 
 function getPageDimensions(width: number, height: number): {width: string; height: string} {
@@ -75,11 +75,12 @@ function formatPdfNumber(value: number): string {
   const text = value.toString();
   if (!/[eE]/.test(text)) return text;
 
-  const [coefficient, exponentText] = text.toLowerCase().split("e");
-  const exponent = Number(exponentText);
-  const decimalPoint = coefficient!.indexOf(".");
-  const digits = coefficient!.replace(".", "");
-  const integerDigits = (decimalPoint === -1 ? coefficient!.length : decimalPoint) + exponent;
+  const exponentMarker = text.toLowerCase().indexOf("e");
+  const coefficient = text.slice(0, exponentMarker);
+  const exponent = Number(text.slice(exponentMarker + 1));
+  const decimalPoint = coefficient.indexOf(".");
+  const digits = coefficient.replace(".", "");
+  const integerDigits = (decimalPoint === -1 ? coefficient.length : decimalPoint) + exponent;
   if (integerDigits <= 0) return `0.${"0".repeat(-integerDigits)}${digits}`;
   if (integerDigits >= digits.length) return `${digits}${"0".repeat(integerDigits - digits.length)}`;
   return `${digits.slice(0, integerDigits)}.${digits.slice(integerDigits)}`;
