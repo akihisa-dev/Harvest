@@ -171,9 +171,18 @@ test("収集発光は出入りと状態を滑らかにつなぎ、追従を遅�
     });
     assert.ok(goldMidpoint && goldMidpoint.middle !== cyanShadow && goldMidpoint.middle !== goldMidpoint.final, `cyanからgoldの途中色を通ります: ${cyanShadow} -> ${JSON.stringify(goldMidpoint)}`);
 
+    await page.waitForFunction(() => document.querySelector("[data-harvest-collection-hover]:not([data-harvest-collection-motion-ghost])").style.boxShadow.includes("255, 235, 140"));
     await page.locator("#first").evaluate(element => element.setAttribute("href", "/replacement"));
-    await page.waitForFunction(() => getComputedStyle(document.querySelector("[data-harvest-collection-hover]:not([data-harvest-collection-motion-ghost])")).boxShadow.includes("125, 235, 255"));
-    assert.ok(await page.locator(hoverSelector).evaluate(element => getComputedStyle(element).boxShadow.includes("125, 235, 255")), "href変更後のhover色は新しいURLの状態へ戻る");
+    // Wait for the new URL's target style, not a rounded color on the previous transition.
+    await page.waitForFunction(() => document.querySelector("[data-harvest-collection-hover]:not([data-harvest-collection-motion-ghost])").style.boxShadow.includes("125, 235, 255"));
+    const changedHoverShadow = await page.locator(hoverSelector).evaluate(element => {
+      getComputedStyle(element).boxShadow;
+      for (const animation of element.getAnimations()) {
+        if (animation.transitionProperty === "box-shadow") animation.finish();
+      }
+      return getComputedStyle(element).boxShadow;
+    });
+    assert.ok(changedHoverShadow.includes("125, 235, 255"), `href変更後のhover色は新しいURLの状態へ戻る: ${changedHoverShadow}`);
     await page.waitForFunction(() => document.querySelector("[data-harvest-collection-marker]") === null);
 
     await page.emulateMedia({reducedMotion: "reduce"});
