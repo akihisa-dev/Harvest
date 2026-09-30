@@ -6,6 +6,7 @@ class FixtureElement {
   constructor(tagName, attributes = {}, children = [], properties = {}) {
     this.tagName = tagName.toUpperCase();
     this.nodeType = 1;
+    this.namespaceURI = properties.namespaceURI ?? "http://www.w3.org/1999/xhtml";
     this.attributesMap = new Map(Object.entries(attributes));
     this.children = [];
     this.parentElement = null;
@@ -325,6 +326,39 @@ test("非img要素の画像用途属性にある相対URLをページ基準で�
     "https://example.test/pages/001.jpg?size=large",
     "https://example.test/pages/002.jpg",
   ]);
+});
+
+test("SVG imageのhrefとxlink:hrefをページ基準で収集し、表示位置で並べる", async () => {
+  const svgNamespace = "http://www.w3.org/2000/svg";
+  const first = new FixtureElement("img", {src: "/pages/before.jpg"}, [], {
+    rect: {top: 10, left: 0, width: 10, height: 10},
+  });
+  const relative = new FixtureElement("image", {href: "/pages/001.jpg"}, [], {
+    namespaceURI: svgNamespace,
+    rect: {top: 20, left: 0, width: 10, height: 10},
+  });
+  const xlink = new FixtureElement("image", {"xlink:href": "../pages/002.webp"}, [], {
+    namespaceURI: svgNamespace,
+    rect: {top: 30, left: 0, width: 10, height: 10},
+  });
+  const absolute = new FixtureElement("image", {href: "https://cdn.example.test/pages/003.png"}, [], {
+    namespaceURI: svgNamespace,
+    rect: {top: 40, left: 0, width: 10, height: 10},
+  });
+  const nonSvgImage = new FixtureElement("image", {href: "/pages/not-svg.jpg"});
+  const ordinaryAnchor = new FixtureElement("a", {href: "/books/chapter/1"}, [], {
+    href: "/books/chapter/1",
+  });
+  const root = new FixtureElement("html", {}, [first, relative, xlink, absolute, nonSvgImage, ordinaryAnchor]);
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+
+  assert.deepEqual(result.images, [
+    "https://example.test/pages/before.jpg",
+    "https://example.test/pages/001.jpg",
+    "https://example.test/pages/002.webp",
+    "https://cdn.example.test/pages/003.png",
+  ]);
+  assert.equal(result.images.includes("https://example.test/books/chapter/1"), false);
 });
 
 test("srcsetの空白なし区切りとURL内のカンマを区別する", async () => {

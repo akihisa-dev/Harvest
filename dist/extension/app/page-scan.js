@@ -284,6 +284,13 @@ export async function scanDocument() {
                 add(image.currentSrc || image.src, positionElement, element);
             }
         }
+        else if (tagName === "image" && element.namespaceURI === "http://www.w3.org/2000/svg") {
+            // SVG image references may be relative to the page and are not covered
+            // by the generic absolute-URL scan. Keep ordinary anchor href handling
+            // separate so it does not broaden image discovery.
+            add(element.getAttribute("href"), element, element);
+            add(element.getAttribute("xlink:href"), element, element);
+        }
         else if (tagName === "a") {
             const anchor = element;
             const href = anchor.href || element.getAttribute("href") || "";
