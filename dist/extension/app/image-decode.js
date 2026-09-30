@@ -1,10 +1,17 @@
-import { checkCancelled, imageDimensionsError, invalidImage, validatePositiveInteger } from "./image-data-contract.js";
+import { checkCancelled, fetchedImageDimensions, imageDimensionsError, invalidImage, validatePositiveInteger } from "./image-data-contract.js";
 const DEFAULT_PIXEL_CHUNK_PIXELS = 262_144;
 function yieldToEventLoop() {
     return new Promise((resolve) => setTimeout(resolve, 0));
 }
 export async function decodeImage(fetched, options) {
     checkCancelled(options.signal);
+    const headerDimensions = await fetchedImageDimensions(fetched);
+    checkCancelled(options.signal);
+    if (headerDimensions) {
+        const dimensionsError = imageDimensionsError(headerDimensions.width, headerDimensions.height);
+        if (dimensionsError)
+            throw invalidImage(dimensionsError);
+    }
     if (fetched.kind === "original")
         return fetched.page;
     let bitmap;

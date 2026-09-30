@@ -1,5 +1,5 @@
 import type { PdfImagePage } from "../core/pdf-types.js";
-import { checkCancelled, imageDimensionsError, invalidImage, validatePositiveInteger, type FetchedImage, type ImageDataOptions } from "./image-data-contract.js";
+import { checkCancelled, fetchedImageDimensions, imageDimensionsError, invalidImage, validatePositiveInteger, type FetchedImage, type ImageDataOptions } from "./image-data-contract.js";
 
 const DEFAULT_PIXEL_CHUNK_PIXELS = 262_144;
 
@@ -9,6 +9,12 @@ function yieldToEventLoop(): Promise<void> {
 
 export async function decodeImage(fetched: FetchedImage, options: ImageDataOptions): Promise<PdfImagePage> {
   checkCancelled(options.signal);
+  const headerDimensions = await fetchedImageDimensions(fetched);
+  checkCancelled(options.signal);
+  if (headerDimensions) {
+    const dimensionsError = imageDimensionsError(headerDimensions.width, headerDimensions.height);
+    if (dimensionsError) throw invalidImage(dimensionsError);
+  }
   if (fetched.kind === "original") return fetched.page;
 
   let bitmap: ImageBitmap;

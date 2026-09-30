@@ -158,6 +158,33 @@ test("JPG・PNG・JXLは共通画素上限をCanvas前に適用し、PNG再利�
   }
 });
 
+test("上限超過寸法を含む小さなPNGヘッダーはJPG・PNG・JXLでデコード前に拒否する", async () => {
+  const previousDocument = globalThis.document;
+  const previousCreateImageBitmap = globalThis.createImageBitmap;
+  const bytes = new Uint8Array(24);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(8, 13);
+  bytes.set([73, 72, 68, 82], 12);
+  view.setUint32(16, 8_001);
+  view.setUint32(20, 8_000);
+  let decodes = 0;
+  let canvases = 0;
+  globalThis.document = {...pageDocument, createElement() { canvases += 1; throw new Error("canvas must not be created"); }};
+  globalThis.createImageBitmap = async () => { decodes += 1; throw new Error("bitmap must not be created"); };
+  try {
+    for (const format of ["jpg", "png", "jxl"]) {
+      await assert.rejects(convertImage({kind: "bitmap", blob: new Blob([bytes], {type: "image/png"})}, format),
+        error => error.message === IMAGE_TOO_LARGE_MESSAGE);
+    }
+    assert.equal(decodes, 0);
+    assert.equal(canvases, 0);
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.createImageBitmap = previousCreateImageBitmap;
+  }
+});
+
 test("JPG conversion uses maximum quality and composites transparency over white", async () => {
   const previousDocument = globalThis.document;
   const previousCreateImageBitmap = globalThis.createImageBitmap;

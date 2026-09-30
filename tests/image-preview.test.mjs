@@ -229,6 +229,37 @@ test("画面外プレビューを24件まで保持し、共有中のURLを避け
   assert.equal(alive.size, 0, "パネル終了時に残りのURLをすべて解放する");
 });
 
+test("上限超過寸法のPNGはプレビュー用Blob URLを作らない", async t => {
+  const previousFetch = globalThis.fetch;
+  const createObjectUrlDescriptor = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
+  let objectUrls = 0;
+  const pngHeader = new Uint8Array(24);
+  pngHeader.set([137, 80, 78, 71, 13, 10, 26, 10]);
+  const view = new DataView(pngHeader.buffer);
+  view.setUint32(8, 13);
+  pngHeader.set([73, 72, 68, 82], 12);
+  view.setUint32(16, 8_001);
+  view.setUint32(20, 8_000);
+  Object.defineProperty(URL, "createObjectURL", {configurable: true, writable: true, value() {
+    objectUrls += 1;
+    return "blob:oversized";
+  }});
+  globalThis.fetch = async () => new Response(pngHeader, {headers: {"content-type": "image/png"}});
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (createObjectUrlDescriptor) Object.defineProperty(URL, "createObjectURL", createObjectUrlDescriptor);
+    else delete URL.createObjectURL;
+  });
+
+  const loader = createImagePreviewLoader();
+  const image = new PreviewImage();
+  loader.set(image, {url: "https://cdn.example/oversized.png", sourcePage: "https://reader.example/book", selected: true}, true);
+  await waitFor(() => image.dataset.previewFailed === "true");
+  assert.equal(image.src, "", "上限超過画像をimg要素へ渡さない");
+  assert.equal(objectUrls, 0, "拒否した画像のBlob URLを作らない");
+  loader.clear();
+});
+
 async function waitFor(predicate) {
   const deadline = Date.now() + 1_000;
   while (Date.now() < deadline) {

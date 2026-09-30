@@ -1,7 +1,47 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {deflateSync} from "node:zlib";
 import {readImageBytes} from "../dist/extension/app/image-fetch.js";
 import {IMAGE_TOO_LARGE_MESSAGE, MAX_IMAGE_BYTES} from "../dist/extension/app/image-data-contract.js";
+
+function pngChunk(type, data) {
+  const chunk = new Uint8Array(12 + data.length);
+  const view = new DataView(chunk.buffer);
+  view.setUint32(0, data.length);
+  for (let index = 0; index < type.length; index += 1) chunk[4 + index] = type.charCodeAt(index);
+  chunk.set(data, 8);
+  let crc = 0xffff_ffff;
+  for (const byte of chunk.subarray(4, 8 + data.length)) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb8_8320 : 0);
+  }
+  view.setUint32(8 + data.length, (crc ^ 0xffff_ffff) >>> 0);
+  return chunk;
+}
+
+function compressedOversizedPng(width, height) {
+  const rowBytes = Math.ceil(width / 8);
+  const rawPixels = new Uint8Array((rowBytes + 1) * height);
+  const header = new Uint8Array(13);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, width);
+  view.setUint32(4, height);
+  header[8] = 1;
+  header[9] = 0;
+  const chunks = [
+    new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk("IHDR", header),
+    pngChunk("IDAT", deflateSync(rawPixels)),
+    pngChunk("IEND", new Uint8Array()),
+  ];
+  const png = new Uint8Array(chunks.reduce((length, chunk) => length + chunk.length, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    png.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return png;
+}
 
 test("応答が中断を無視してもキャンセルは即座に完了し、未開始画像を取得しない", async () => {
   const previousFetch = globalThis.fetch;
@@ -429,6 +469,30 @@ test("大きすぎるJPEGとデコード画像をCanvasへ渡さず、画像メ�
       && error.message === IMAGE_TOO_LARGE_MESSAGE);
     assert.equal(createdCanvases, 0, "non-JPEG images are rejected before canvas allocation");
     assert.equal(closedBitmaps, 1, "the decoded bitmap is released on a size failure");
+  } finally {
+    Object.assign(globalThis, previous);
+  }
+});
+
+test("圧縮後は小さいが画素数が上限を超えるPNGをデコード前に拒否する", async () => {
+  const previous = {fetch: globalThis.fetch, document: globalThis.document, createImageBitmap: globalThis.createImageBitmap};
+  const png = compressedOversizedPng(8_001, 8_000);
+  assert.ok(png.byteLength < 16_384, "圧縮された画像は16 KiB未満");
+  assert.ok(png.byteLength < MAX_IMAGE_BYTES);
+  let decodes = 0;
+  let canvases = 0;
+  globalThis.fetch = async () => new Response(png, {headers: {"content-type": "image/png"}});
+  globalThis.createImageBitmap = async () => {
+    decodes += 1;
+    throw new Error("上限判定より前にデコードしてはいけません");
+  };
+  globalThis.document = {createElement() { canvases += 1; throw new Error("canvas must not be created"); }};
+  try {
+    await assert.rejects(toPdfPage("https://example.com/tiny-oversized.png"), error => error instanceof PdfImageError
+      && error.kind === "invalid-image"
+      && error.message === IMAGE_TOO_LARGE_MESSAGE);
+    assert.equal(decodes, 0);
+    assert.equal(canvases, 0);
   } finally {
     Object.assign(globalThis, previous);
   }

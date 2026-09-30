@@ -1,4 +1,5 @@
 import { getOriginalJpegPage } from "../core/jpeg.js";
+import { getImageDimensions } from "../core/image-dimensions.js";
 import { checkCancelled, IMAGE_TOO_LARGE_MESSAGE, imageDimensionsError, invalidImage, ImageDataError, MAX_IMAGE_BYTES, } from "./image-data-contract.js";
 import { getImageFetchCredentials, getImageFetchTargetAddressSpace, ImageFetchTargetError, validateImageFetchTarget, } from "./image-fetch-policy.js";
 const DEFAULT_TIMEOUT_MS = 20_000;
@@ -141,11 +142,15 @@ export async function fetchImage(url, options) {
             // Keep one response buffer for JPEG detection and direct PDF embedding.
             // Only formats requiring pixel decoding need a Blob afterward.
             const bytes = await readImageBytes(response);
+            const headerDimensions = getImageDimensions(bytes);
             const original = getOriginalJpegPage(bytes);
-            if (original) {
-                const dimensionsError = imageDimensionsError(original.width, original.height);
+            const dimensions = headerDimensions ?? (original ? { width: original.width, height: original.height } : null);
+            if (dimensions) {
+                const dimensionsError = imageDimensionsError(dimensions.width, dimensions.height);
                 if (dimensionsError)
                     throw invalidImage(dimensionsError);
+            }
+            if (original) {
                 return { kind: "original", page: original };
             }
             // PDF embedding has stricter JPEG requirements than saving a JPEG file.
@@ -156,6 +161,7 @@ export async function fetchImage(url, options) {
                 kind: "bitmap",
                 blob: new Blob([bytes.buffer], { type: originalJpeg ? "image/jpeg" : contentType }),
                 originalJpeg,
+                dimensions,
             };
         }
         catch (error) {

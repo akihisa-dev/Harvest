@@ -1,4 +1,5 @@
 import { getOriginalJpegPage } from "../core/jpeg.js";
+import { getImageDimensions } from "../core/image-dimensions.js";
 import {
   checkCancelled,
   IMAGE_TOO_LARGE_MESSAGE,
@@ -162,10 +163,14 @@ export async function fetchImage(url: string, options: ImageDataOptions): Promis
       // Keep one response buffer for JPEG detection and direct PDF embedding.
       // Only formats requiring pixel decoding need a Blob afterward.
       const bytes = await readImageBytes(response);
+      const headerDimensions = getImageDimensions(bytes);
       const original = getOriginalJpegPage(bytes);
-      if (original) {
-        const dimensionsError = imageDimensionsError(original.width, original.height);
+      const dimensions = headerDimensions ?? (original ? {width: original.width, height: original.height} : null);
+      if (dimensions) {
+        const dimensionsError = imageDimensionsError(dimensions.width, dimensions.height);
         if (dimensionsError) throw invalidImage(dimensionsError);
+      }
+      if (original) {
         return { kind: "original", page: original };
       }
       // PDF embedding has stricter JPEG requirements than saving a JPEG file.
@@ -176,6 +181,7 @@ export async function fetchImage(url: string, options: ImageDataOptions): Promis
         kind: "bitmap",
         blob: new Blob([bytes.buffer as ArrayBuffer], {type: originalJpeg ? "image/jpeg" : contentType}),
         originalJpeg,
+        dimensions,
       };
     } catch (error) {
       void cancelResponse(response);

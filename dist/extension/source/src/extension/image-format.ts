@@ -1,4 +1,4 @@
-import { checkCancelled, imageDimensionsError, type FetchedImage } from "./image-data-contract.js";
+import { checkCancelled, fetchedImageDimensions, imageDimensionsError, type FetchedImage } from "./image-data-contract.js";
 import { encodeJxl } from "./jxl-encoder.js";
 
 export type ImageArchiveFormat = "jpg" | "png" | "jxl";
@@ -75,9 +75,13 @@ export async function convertImage(
   signal?: AbortSignal,
 ): Promise<Blob> {
   checkCancelled(signal);
-  if (fetched.kind === "original") {
-    const dimensionsError = imageDimensionsError(fetched.page.width, fetched.page.height);
+  const headerDimensions = await fetchedImageDimensions(fetched);
+  checkCancelled(signal);
+  if (headerDimensions) {
+    const dimensionsError = imageDimensionsError(headerDimensions.width, headerDimensions.height);
     if (dimensionsError) throw new ImageFormatError(dimensionsError);
+  }
+  if (fetched.kind === "original") {
     if (format === "jpg") return fetchedBlob(fetched);
   }
   if (format === "jpg" && fetched.kind === "bitmap" && fetched.originalJpeg) {

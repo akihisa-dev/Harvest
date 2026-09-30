@@ -1,4 +1,5 @@
 import type { PdfJpegImagePage } from "../core/pdf-types.js";
+import { getImageDimensions, type ImageDimensions } from "../core/image-dimensions.js";
 
 export const MAX_IMAGE_BYTES = 64 * 1024 * 1024;
 export const MAX_IMAGE_DIMENSION = 16_384;
@@ -30,7 +31,7 @@ export interface ImageDataOptions {
 
 export type FetchedImage =
   | {readonly kind: "original"; readonly page: PdfJpegImagePage}
-  | {readonly kind: "bitmap"; readonly blob: Blob; readonly originalJpeg?: boolean};
+  | {readonly kind: "bitmap"; readonly blob: Blob; readonly originalJpeg?: boolean; readonly dimensions?: ImageDimensions | null};
 
 export function invalidImage(message: string): ImageDataError {
   return new ImageDataError("invalid-image", message);
@@ -45,6 +46,13 @@ export function imageDimensionsError(width: number, height: number): string | nu
     return IMAGE_TOO_LARGE_MESSAGE;
   }
   return null;
+}
+
+/** Return already-inspected response dimensions, or inspect an untrusted Blob before decoding it. */
+export async function fetchedImageDimensions(fetched: FetchedImage): Promise<ImageDimensions | null> {
+  if (fetched.kind === "original") return {width: fetched.page.width, height: fetched.page.height};
+  if (fetched.dimensions !== undefined) return fetched.dimensions;
+  return getImageDimensions(new Uint8Array(await fetched.blob.arrayBuffer()));
 }
 
 export function validatePositiveInteger(value: number, name: string): number {

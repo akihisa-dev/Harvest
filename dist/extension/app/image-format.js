@@ -1,4 +1,4 @@
-import { checkCancelled, imageDimensionsError } from "./image-data-contract.js";
+import { checkCancelled, fetchedImageDimensions, imageDimensionsError } from "./image-data-contract.js";
 import { encodeJxl } from "./jxl-encoder.js";
 export class ImageFormatError extends Error {
     constructor(message) {
@@ -69,10 +69,14 @@ function toBlob(canvas, type, quality) {
 /** Convert one fetched image, releasing its decoded pixels before returning. */
 export async function convertImage(fetched, format, signal) {
     checkCancelled(signal);
-    if (fetched.kind === "original") {
-        const dimensionsError = imageDimensionsError(fetched.page.width, fetched.page.height);
+    const headerDimensions = await fetchedImageDimensions(fetched);
+    checkCancelled(signal);
+    if (headerDimensions) {
+        const dimensionsError = imageDimensionsError(headerDimensions.width, headerDimensions.height);
         if (dimensionsError)
             throw new ImageFormatError(dimensionsError);
+    }
+    if (fetched.kind === "original") {
         if (format === "jpg")
             return fetchedBlob(fetched);
     }
