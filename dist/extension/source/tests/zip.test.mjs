@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createStoredZip } from "../dist/extension/core/stored-zip.js";
+import { createStoredZip, storedZipDataLimit } from "../dist/extension/core/stored-zip.js";
 
 function crc32(bytes) {
   let crc = 0xffff_ffff;
@@ -80,4 +80,19 @@ test("ZIP creation honors cancellation and the ZIP32 entry-count limit", async (
   const empty = new Blob();
   const tooManyEntries = Array.from({length: 65_536}, (_, index) => ({filename: `${index}.jpg`, blob: empty}));
   await assert.rejects(createStoredZip(tooManyEntries), RangeError);
+});
+
+
+test("ZIP budget reserves UTF-8 names and all headers and rejects overflow before reading data", async () => {
+  const filenames = ["001.jpg", "画像.png"];
+  const overhead = 22 + filenames.reduce((size, name) => size + 76 + 2 * new TextEncoder().encode(name).length, 0);
+  assert.equal(storedZipDataLimit(filenames), 0xffff_ffff - overhead);
+  const limit = storedZipDataLimit(["001.jpg"]);
+  let reads = 0;
+  await assert.rejects(createStoredZip([{filename: "001.jpg", blob: {
+    size: limit + 1,
+    stream() { reads += 1; throw new Error("must not read an oversized archive"); },
+  }}]), /ZIP全体/);
+  assert.equal(reads, 0);
+  assert.throws(() => storedZipDataLimit(Array(65_536).fill("001.jpg")), /画像数/);
 });

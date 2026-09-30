@@ -1,5 +1,5 @@
 import type { ImageItem } from "../core/images.js";
-import { createStoredZip } from "../core/stored-zip.js";
+import { createStoredZip, storedZipDataLimit } from "../core/stored-zip.js";
 import { fetchImage } from "./image-fetch.js";
 import { convertImage, type ImageArchiveFormat } from "./image-format.js";
 import type { FetchedImage } from "./image-data-contract.js";
@@ -7,6 +7,15 @@ import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { createExportLifecycle, downloadBlob, type MutablePendingExport } from "./export-lifecycle.js";
 
 const IMAGE_FETCH_CONCURRENCY = 3;
+
+class ImageArchiveLimitError extends RangeError {
+  constructor() { super("ZIP全体がZIP形式の上限を超えています。"); }
+}
+
+function imageArchiveFilenames(count: number, format: ImageArchiveFormat): string[] {
+  const width = Math.max(3, String(count).length);
+  return Array.from({length: count}, (_, index) => `${String(index + 1).padStart(width, "0")}.${format}`);
+}
 
 type ImageFetchOutcome =
   | { readonly ok: true; readonly fetched: FetchedImage }
@@ -94,11 +103,11 @@ export function createImageZipEntries(
   prepared: ReadonlyMap<ImageItem, Blob>,
   format: ImageArchiveFormat,
 ): Array<{readonly filename: string; readonly blob: Blob}> {
-  const width = Math.max(3, String(selected.length).length);
+  const filenames = imageArchiveFilenames(selected.length, format);
   return selected.map((item, index) => {
     const blob = prepared.get(item);
     if (!blob) throw new RangeError("保存する画像が準備されていません。");
-    return {filename: `${String(index + 1).padStart(width, "0")}.${format}`, blob};
+    return {filename: filenames[index]!, blob};
   });
 }
 
@@ -124,10 +133,14 @@ export function createImageExportController(options: ImageExportControllerOption
       `0 / ${remaining.length}`,
       async run => {
         try {
+          const dataLimit = storedZipDataLimit(imageArchiveFilenames(work.selected.length, format));
+          let preparedSize = [...work.prepared.values()].reduce((size, blob) => size + blob.size, 0);
+          if (preparedSize > dataLimit) throw new ImageArchiveLimitError();
           work.failed.clear();
           const workerCount = Math.min(IMAGE_FETCH_CONCURRENCY, remaining.length);
           const resultWindow = new ImageFetchWindow(workerCount);
-          const fetchedResults = remaining.map(() => createDeferred<ImageFetchOutcome>());
+          const fetchedResults: Array<Deferred<ImageFetchOutcome> | undefined> = remaining.map(() => createDeferred<ImageFetchOutcome>());
+          const fetchController = new AbortController();
           let nextFetchIndex = 0;
           const cancelledFetchResults = Symbol("cancelled fetch results");
           let resolveCancellation!: () => void;
@@ -135,6 +148,7 @@ export function createImageExportController(options: ImageExportControllerOption
             resolveCancellation = () => resolve(cancelledFetchResults);
           });
           const closeWindow = (): void => {
+            fetchController.abort();
             resultWindow.close();
             resolveCancellation();
           };
@@ -159,7 +173,7 @@ export function createImageExportController(options: ImageExportControllerOption
               try {
                 outcome = {
                   ok: true,
-                  fetched: await fetchImage(item.url, {signal: run.signal, sourcePage: item.sourcePage}),
+                  fetched: await fetchImage(item.url, {signal: fetchController.signal, sourcePage: item.sourcePage}),
                 };
               } catch (error) {
                 outcome = {ok: false, error};
@@ -181,12 +195,16 @@ export function createImageExportController(options: ImageExportControllerOption
                 if (!outcome.ok) throw outcome.error;
                 const blob = await convertImage(outcome.fetched, format, run.signal);
                 if (run.stopped) return;
+                if (blob.size > dataLimit - preparedSize) throw new ImageArchiveLimitError();
                 work.prepared.set(item, blob);
+                preparedSize += blob.size;
               } catch (error) {
                 if (run.stopped) return;
+                if (error instanceof ImageArchiveLimitError) throw error;
                 const reason = error instanceof Error ? error.message : t("errorImageConvert");
                 work.failed.set(item, reason);
               } finally {
+                fetchedResults[index] = undefined;
                 resultWindow.release();
               }
               if (!options.isDisposed()) {
@@ -198,7 +216,7 @@ export function createImageExportController(options: ImageExportControllerOption
             }
           } finally {
             run.signal.removeEventListener("abort", closeWindow);
-            resultWindow.close();
+            closeWindow();
             await Promise.all(workers);
           }
           if (run.stopped) return;
@@ -224,6 +242,11 @@ export function createImageExportController(options: ImageExportControllerOption
           run.reportStatus(t("exportSaved"), "success");
         } catch (error) {
           if (run.stopped) return;
+          if (error instanceof RangeError) {
+            work.prepared.clear();
+            work.failed.clear();
+            lifecycle.clear();
+          }
           run.reportStatus(
             error instanceof Error ? localizeErrorMessage(error.message, "errorZipCreate", true) : t("errorZipCreate"),
             "error",

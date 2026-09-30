@@ -1,9 +1,16 @@
-import { createStoredZip } from "../core/stored-zip.js";
+import { createStoredZip, storedZipDataLimit } from "../core/stored-zip.js";
 import { fetchImage } from "./image-fetch.js";
 import { convertImage } from "./image-format.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { createExportLifecycle, downloadBlob } from "./export-lifecycle.js";
 const IMAGE_FETCH_CONCURRENCY = 3;
+class ImageArchiveLimitError extends RangeError {
+    constructor() { super("ZIP全体がZIP形式の上限を超えています。"); }
+}
+function imageArchiveFilenames(count, format) {
+    const width = Math.max(3, String(count).length);
+    return Array.from({ length: count }, (_, index) => `${String(index + 1).padStart(width, "0")}.${format}`);
+}
 function createDeferred() {
     let resolve;
     const promise = new Promise(resolvePromise => { resolve = resolvePromise; });
@@ -44,12 +51,12 @@ class ImageFetchWindow {
     }
 }
 export function createImageZipEntries(selected, prepared, format) {
-    const width = Math.max(3, String(selected.length).length);
+    const filenames = imageArchiveFilenames(selected.length, format);
     return selected.map((item, index) => {
         const blob = prepared.get(item);
         if (!blob)
             throw new RangeError("保存する画像が準備されていません。");
-        return { filename: `${String(index + 1).padStart(width, "0")}.${format}`, blob };
+        return { filename: filenames[index], blob };
     });
 }
 /** Prepares selected image files in order, retries only failures, and writes one ZIP. */
@@ -71,10 +78,15 @@ export function createImageExportController(options) {
         const remaining = work.selected.filter(item => !work.prepared.has(item));
         await lifecycle.run(work, t(retry ? "retryImages" : "prepareImages", { completed: 0, total: remaining.length }), `0 / ${remaining.length}`, async (run) => {
             try {
+                const dataLimit = storedZipDataLimit(imageArchiveFilenames(work.selected.length, format));
+                let preparedSize = [...work.prepared.values()].reduce((size, blob) => size + blob.size, 0);
+                if (preparedSize > dataLimit)
+                    throw new ImageArchiveLimitError();
                 work.failed.clear();
                 const workerCount = Math.min(IMAGE_FETCH_CONCURRENCY, remaining.length);
                 const resultWindow = new ImageFetchWindow(workerCount);
                 const fetchedResults = remaining.map(() => createDeferred());
+                const fetchController = new AbortController();
                 let nextFetchIndex = 0;
                 const cancelledFetchResults = Symbol("cancelled fetch results");
                 let resolveCancellation;
@@ -82,6 +94,7 @@ export function createImageExportController(options) {
                     resolveCancellation = () => resolve(cancelledFetchResults);
                 });
                 const closeWindow = () => {
+                    fetchController.abort();
                     resultWindow.close();
                     resolveCancellation();
                 };
@@ -107,7 +120,7 @@ export function createImageExportController(options) {
                         try {
                             outcome = {
                                 ok: true,
-                                fetched: await fetchImage(item.url, { signal: run.signal, sourcePage: item.sourcePage }),
+                                fetched: await fetchImage(item.url, { signal: fetchController.signal, sourcePage: item.sourcePage }),
                             };
                         }
                         catch (error) {
@@ -136,15 +149,21 @@ export function createImageExportController(options) {
                             const blob = await convertImage(outcome.fetched, format, run.signal);
                             if (run.stopped)
                                 return;
+                            if (blob.size > dataLimit - preparedSize)
+                                throw new ImageArchiveLimitError();
                             work.prepared.set(item, blob);
+                            preparedSize += blob.size;
                         }
                         catch (error) {
                             if (run.stopped)
                                 return;
+                            if (error instanceof ImageArchiveLimitError)
+                                throw error;
                             const reason = error instanceof Error ? error.message : t("errorImageConvert");
                             work.failed.set(item, reason);
                         }
                         finally {
+                            fetchedResults[index] = undefined;
                             resultWindow.release();
                         }
                         if (!options.isDisposed()) {
@@ -157,7 +176,7 @@ export function createImageExportController(options) {
                 }
                 finally {
                     run.signal.removeEventListener("abort", closeWindow);
-                    resultWindow.close();
+                    closeWindow();
                     await Promise.all(workers);
                 }
                 if (run.stopped)
@@ -187,6 +206,11 @@ export function createImageExportController(options) {
             catch (error) {
                 if (run.stopped)
                     return;
+                if (error instanceof RangeError) {
+                    work.prepared.clear();
+                    work.failed.clear();
+                    lifecycle.clear();
+                }
                 run.reportStatus(error instanceof Error ? localizeErrorMessage(error.message, "errorZipCreate", true) : t("errorZipCreate"), "error");
             }
         });

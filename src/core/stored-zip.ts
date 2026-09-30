@@ -51,18 +51,33 @@ function header(length: number): {bytes: Uint8Array; view: DataView} {
   return {bytes, view: new DataView(bytes.buffer)};
 }
 
-function validateEntry(entry: StoredZipEntry, names: Set<string>): Uint8Array {
-  if (!entry.filename || entry.filename === "." || entry.filename === ".." || /[\\/]/.test(entry.filename)) {
+function validateFilename(filename: string, names: Set<string>): Uint8Array {
+  if (!filename || filename === "." || filename === ".." || /[\\/]/.test(filename)) {
     throw new RangeError("ZIP内のファイル名は単一の安全な名前にしてください。");
   }
-  if (names.has(entry.filename)) throw new RangeError("ZIP内のファイル名が重複しています。");
-  names.add(entry.filename);
-  const name = utf8.encode(entry.filename);
+  if (names.has(filename)) throw new RangeError("ZIP内のファイル名が重複しています。");
+  names.add(filename);
+  const name = utf8.encode(filename);
   if (name.byteLength > 0xffff) throw new RangeError("ZIP内のファイル名が長すぎます。");
+  return name;
+}
+
+function validateEntry(entry: StoredZipEntry, names: Set<string>): Uint8Array {
+  const name = validateFilename(entry.filename, names);
   if (!Number.isSafeInteger(entry.blob.size) || entry.blob.size > ZIP32_MAX) {
     throw new RangeError("画像がZIP形式の上限を超えています。");
   }
   return name;
+}
+
+/** Maximum payload bytes after reserving all ZIP headers, names, and the directory. */
+export function storedZipDataLimit(filenames: readonly string[]): number {
+  if (filenames.length > ZIP_ENTRY_MAX) throw new RangeError("ZIPに含められる画像数の上限を超えています。");
+  const names = new Set<string>();
+  let overhead = 22;
+  for (const filename of filenames) overhead += 76 + 2 * validateFilename(filename, names).byteLength;
+  if (overhead > ZIP32_MAX) throw new RangeError("ZIP全体がZIP形式の上限を超えています。");
+  return ZIP32_MAX - overhead;
 }
 
 /** Create an uncompressed ZIP while retaining image Blobs as Blob parts. */
@@ -70,7 +85,15 @@ export async function createStoredZip(
   entries: readonly StoredZipEntry[],
   options: {readonly signal?: AbortSignal; readonly onProgress?: (completed: number, total: number) => void} = {},
 ): Promise<Blob> {
-  if (entries.length > ZIP_ENTRY_MAX) throw new RangeError("ZIPに含められる画像数の上限を超えています。");
+  const dataLimit = storedZipDataLimit(entries.map(entry => entry.filename));
+  let dataSize = 0;
+  for (const entry of entries) {
+    if (!Number.isSafeInteger(entry.blob.size) || entry.blob.size < 0 || entry.blob.size > ZIP32_MAX) {
+      throw new RangeError("画像がZIP形式の上限を超えています。");
+    }
+    dataSize += entry.blob.size;
+    if (dataSize > dataLimit) throw new RangeError("ZIP全体がZIP形式の上限を超えています。");
+  }
   const names = new Set<string>();
   const parts: BlobPart[] = [];
   const directory: Uint8Array[] = [];
