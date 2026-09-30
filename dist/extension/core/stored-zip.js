@@ -18,7 +18,7 @@ function checkCancelled(signal) {
     if (signal?.aborted)
         throw abortError();
 }
-async function checksum(blob, signal) {
+export async function storedZipChecksum(blob, signal) {
     checkCancelled(signal);
     const reader = blob.stream().getReader();
     const cancel = () => { void reader.cancel().catch(() => { }); };
@@ -76,8 +76,8 @@ export function storedZipDataLimit(filenames) {
         throw new RangeError("ZIP全体がZIP形式の上限を超えています。");
     return ZIP32_MAX - overhead;
 }
-/** Create an uncompressed ZIP while retaining image Blobs as Blob parts. */
 export async function createStoredZip(entries, options = {}) {
+    const calculateChecksum = options.checksum ?? storedZipChecksum;
     const dataLimit = storedZipDataLimit(entries.map(entry => entry.filename));
     let dataSize = 0;
     for (const entry of entries) {
@@ -97,7 +97,7 @@ export async function createStoredZip(entries, options = {}) {
         checkCancelled(options.signal);
         const entry = entries[index];
         const name = validateEntry(entry, names);
-        const crc = await checksum(entry.blob, options.signal);
+        const crc = await calculateChecksum(entry.blob, options.signal);
         const local = header(30 + name.byteLength);
         local.view.setUint32(0, 0x0403_4b50, true);
         local.view.setUint16(4, 20, true);

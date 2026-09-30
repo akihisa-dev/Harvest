@@ -25,7 +25,7 @@ function checkCancelled(signal?: AbortSignal): void {
   if (signal?.aborted) throw abortError();
 }
 
-async function checksum(blob: Blob, signal?: AbortSignal): Promise<number> {
+export async function storedZipChecksum(blob: Blob, signal?: AbortSignal): Promise<number> {
   checkCancelled(signal);
   const reader = blob.stream().getReader();
   const cancel = (): void => { void reader.cancel().catch(() => {}); };
@@ -45,6 +45,7 @@ async function checksum(blob: Blob, signal?: AbortSignal): Promise<number> {
     reader.releaseLock();
   }
 }
+
 
 function header(length: number): {bytes: Uint8Array; view: DataView} {
   const bytes = new Uint8Array(length);
@@ -81,10 +82,17 @@ export function storedZipDataLimit(filenames: readonly string[]): number {
 }
 
 /** Create an uncompressed ZIP while retaining image Blobs as Blob parts. */
+export interface StoredZipOptions {
+  readonly signal?: AbortSignal;
+  readonly onProgress?: (completed: number, total: number) => void;
+  readonly checksum?: (blob: Blob, signal?: AbortSignal) => Promise<number>;
+}
+
 export async function createStoredZip(
   entries: readonly StoredZipEntry[],
-  options: {readonly signal?: AbortSignal; readonly onProgress?: (completed: number, total: number) => void} = {},
+  options: StoredZipOptions = {},
 ): Promise<Blob> {
+  const calculateChecksum = options.checksum ?? storedZipChecksum;
   const dataLimit = storedZipDataLimit(entries.map(entry => entry.filename));
   let dataSize = 0;
   for (const entry of entries) {
@@ -104,7 +112,7 @@ export async function createStoredZip(
     checkCancelled(options.signal);
     const entry = entries[index]!;
     const name = validateEntry(entry, names);
-    const crc = await checksum(entry.blob, options.signal);
+    const crc = await calculateChecksum(entry.blob, options.signal);
     const local = header(30 + name.byteLength);
     local.view.setUint32(0, 0x0403_4b50, true);
     local.view.setUint16(4, 20, true);

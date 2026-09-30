@@ -1,3 +1,4 @@
+import {storedZipChecksum} from "../dist/extension/core/stored-zip.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -31,8 +32,12 @@ globalThis.document = {
 };
 globalThis.window = {setTimeout() {}};
 globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {}});
-globalThis.Worker = class {
-  postMessage(message) { queueMicrotask(() => this.onmessage({data: {id: message.id, buffer: new ArrayBuffer(1)}})); }
+globalThis.Worker = class extends EventTarget {
+  postMessage(message) {
+      if (message.blob) {
+        void storedZipChecksum(message.blob).then(checksum => this.dispatchEvent(new MessageEvent("message", {data: {id: message.id, checksum}})));
+      } else queueMicrotask(() => this.onmessage({data: {id: message.id, buffer: new ArrayBuffer(1)}}));
+    }
   terminate() {}
 };
 // Do not leave the successful JXL fixture's idle timer running after this test.

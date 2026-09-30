@@ -1,4 +1,5 @@
-import { createStoredZip, storedZipDataLimit } from "../core/stored-zip.js";
+import { storedZipDataLimit } from "../core/stored-zip.js";
+import { createStoredZipInWorker } from "./stored-zip-worker.js";
 import { fetchImage } from "./image-fetch.js";
 import { convertImage } from "./image-format.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
@@ -188,7 +189,7 @@ export function createImageExportController(options) {
                 }
                 const entries = createImageZipEntries(work.selected, work.prepared, format);
                 run.reportStatus(t("zipCreating"), "busy", t("zipCreatingShort"));
-                const archive = await createStoredZip(entries, {
+                const archive = await createStoredZipInWorker(entries, {
                     signal: run.signal,
                     onProgress(completed, total) {
                         if (options.isDisposed())

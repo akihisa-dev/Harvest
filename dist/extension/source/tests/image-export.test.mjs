@@ -1,3 +1,4 @@
+import {storedZipChecksum} from "../dist/extension/core/stored-zip.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test, { after } from "node:test";
@@ -541,11 +542,15 @@ test("取消した画像形式の保存は進捗を保ち、作業を捨てて�
   } : previousCreateElement(tag);
   globalThis.document = {...pageDocument, createElement: tag => tag === "canvas" ? canvas : pageDocument.createElement(tag)};
   globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {}});
-  globalThis.Worker = class {
+  globalThis.Worker = class extends EventTarget {
     onmessage = null;
     onerror = null;
     onmessageerror = null;
-    postMessage(message) { queueMicrotask(() => this.onmessage({data: {id: message.id, buffer: new ArrayBuffer(3)}})); }
+    postMessage(message) {
+      if (message.blob) {
+        void storedZipChecksum(message.blob).then(checksum => this.dispatchEvent(new MessageEvent("message", {data: {id: message.id, checksum}})));
+      } else queueMicrotask(() => this.onmessage({data: {id: message.id, buffer: new ArrayBuffer(3)}}));
+    }
     terminate() {}
   };
   globalThis.setTimeout = () => 1;
