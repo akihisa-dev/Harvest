@@ -260,6 +260,60 @@ test("上限超過寸法のPNGはプレビュー用Blob URLを作らない", asy
   loader.clear();
 });
 
+test("一覧とビュアーは一時失敗後に待ち時間を置いて同じプレビューを再試行する", async t => {
+  const previousFetch = globalThis.fetch;
+  const previousObserver = globalThis.IntersectionObserver;
+  const createObjectUrlDescriptor = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
+  const requests = [];
+  const observers = [];
+  let nextObjectUrl = 0;
+  class FakeIntersectionObserver {
+    constructor(callback) { this.callback = callback; observers.push(this); }
+    observe() {}
+    unobserve() {}
+    intersect(image, isIntersecting = true) { this.callback([{target: image, isIntersecting}]); }
+  }
+  Object.defineProperty(globalThis, "IntersectionObserver", {configurable: true, writable: true, value: FakeIntersectionObserver});
+  Object.defineProperty(URL, "createObjectURL", {configurable: true, writable: true, value: () => `blob:retry-${++nextObjectUrl}`});
+  globalThis.fetch = async (url, options) => {
+    requests.push({url, options});
+    if (requests.length === 1) throw new Error("temporary network failure");
+    return new Response(new Uint8Array([1, 2, 3]), {headers: {"content-type": "image/png"}});
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousObserver === undefined) delete globalThis.IntersectionObserver;
+    else Object.defineProperty(globalThis, "IntersectionObserver", {configurable: true, writable: true, value: previousObserver});
+    if (createObjectUrlDescriptor) Object.defineProperty(URL, "createObjectURL", createObjectUrlDescriptor);
+    else delete URL.createObjectURL;
+  });
+
+  const loader = createImagePreviewLoader();
+  const item = {url: "https://cdn.example/retry.png", sourcePage: "https://reader.example/book", selected: true};
+  const listImage = new PreviewImage();
+  const viewerImage = new PreviewImage();
+  loader.set(listImage, item);
+  observers[0].intersect(listImage);
+  await waitFor(() => listImage.dataset.previewFailed === "true");
+  assert.equal(requests.length, 1);
+
+  observers[0].intersect(listImage, false);
+  observers[0].intersect(listImage, true);
+  loader.set(viewerImage, item, true);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(requests.length, 1, "失敗直後の再表示とViewer表示では連続要求しない");
+
+  await new Promise(resolve => setTimeout(resolve, 1_000));
+  observers[0].intersect(listImage, false);
+  observers[0].intersect(listImage, true);
+  await waitFor(() => listImage.src.startsWith("blob:") && viewerImage.src.startsWith("blob:"));
+  assert.equal(requests.length, 2, "待ち時間後の再表示で再要求する");
+  assert.equal(listImage.src, viewerImage.src, "一覧とViewerは同じ再試行結果を共有する");
+  assert.equal(listImage.dataset.previewFailed, undefined, "成功後に一覧の失敗状態を解除する");
+  assert.equal(viewerImage.dataset.previewFailed, undefined, "成功後にViewerの失敗状態を解除する");
+  loader.clear();
+});
+
 async function waitFor(predicate) {
   const deadline = Date.now() + 1_000;
   while (Date.now() < deadline) {

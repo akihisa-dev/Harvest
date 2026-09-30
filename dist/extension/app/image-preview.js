@@ -8,6 +8,7 @@ function previewBlob(item) {
 /** Loads all remote previews through the shared, policy-controlled image fetcher. */
 export function createImagePreviewLoader() {
     const maximumConcurrentFetches = 3;
+    const retryDelayMs = 1_000;
     // Bound cached previews while keeping currently visible and eager images available.
     const maximumRetainedPreviews = 24;
     const entries = new Map();
@@ -102,6 +103,8 @@ export function createImagePreviewLoader() {
                     return;
                 for (const image of entry.elements)
                     image.dataset["previewFailed"] = "true";
+                entry.started = false;
+                entry.retryAfter = Date.now() + retryDelayMs;
             }).finally(() => {
                 activeFetches -= 1;
                 pumpQueue();
@@ -110,6 +113,8 @@ export function createImagePreviewLoader() {
     }
     function start(entry) {
         if (entry.started || entry.queued || entry.objectUrl || !entry.elements.size)
+            return;
+        if (Date.now() < entry.retryAfter)
             return;
         entry.queued = true;
         queue.push(entry);
@@ -183,7 +188,7 @@ export function createImagePreviewLoader() {
             image.loading = "lazy";
             let entry = entries.get(key);
             if (!entry) {
-                entry = { key, item, controller: new AbortController(), elements: new Set(), started: false, queued: false };
+                entry = { key, item, controller: new AbortController(), elements: new Set(), started: false, queued: false, retryAfter: 0 };
                 entries.set(key, entry);
             }
             entry.elements.add(image);
