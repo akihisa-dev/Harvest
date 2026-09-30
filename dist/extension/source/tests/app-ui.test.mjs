@@ -375,7 +375,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     const exportButton = document.querySelector("#export");
     assert.equal(exportButton.dataset.saving, "false", "通常時は保存中の表示を出さない");
     assert.equal(emptyLogo.hidden, false);
-    assert.equal(emptyMessage.hidden, true);
+    assert.equal(emptyMessage.hidden, false, "空状態のライブ領域を維持して文言の出入りを連続化する");
 
     const scanOverlay = document.querySelector("#scan-overlay");
     const scanButton = document.querySelector("#scan");
@@ -393,8 +393,9 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#status").textContent, "", "解析中は状態文を画面に出さない");
     assert.equal(document.querySelector("#status").getAttribute("aria-label"), "ページを調べています…", "解析中の状態文は読み上げ用に残す");
     assert.equal(empty.dataset.state, "scanning");
-    assert.equal(emptyLogo.hidden, true);
+    assert.equal(emptyLogo.getAttribute("aria-hidden"), "true", "解析中のロゴは読み上げ対象から外す");
     assert.equal(emptyMessage.textContent, "", "解析中は案内文を空にする");
+    assert.equal(emptyMessage.getAttribute("aria-label"), "ページを調べています…", "空状態の読み上げ文は解析開始と同時に更新する");
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(empty.hidden, true);
     assert.equal(scanOverlay.hidden, true, "解析完了後はリングを隠す");
@@ -819,14 +820,14 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(empty.hidden, false);
     assert.equal(document.querySelector("#status").textContent, "");
     assert.equal(emptyLogo.hidden, false);
-    assert.equal(emptyMessage.hidden, true);
+    assert.equal(emptyMessage.hidden, false);
     resultImages = [];
     globalThis.fetch = previousFetch;
     document.querySelector("#scan").dispatch("click");
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(empty.hidden, false);
-    assert.equal(emptyLogo.hidden, true);
-    assert.equal(emptyMessage.textContent, "画像が見つかりませんでした。");
+    assert.equal(emptyLogo.getAttribute("aria-hidden"), "true");
+    assert.equal(emptyMessage.getAttribute("aria-label"), "画像が見つかりませんでした。");
     assert.equal(executionCount, 5);
     assert.deepEqual(createdUrls, []);
     assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, true, "解析結果が空なら画面全体で受け付ける");

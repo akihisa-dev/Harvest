@@ -19,6 +19,7 @@ import {
   type CompletedExport,
 } from "./export-presentation.js";
 import { createScanSessionController, type ScanSessionController } from "./scan-session-controller.js";
+import { createEmptyStateView } from "./empty-state.js";
 
 const {
   sourceUrl, sourceDrop, urlDropOverlay, collectionButton, scanButton, exportButton,
@@ -58,6 +59,7 @@ let disposed = false;
 let scanSessionController: ScanSessionController | null = null;
 let pdfExportController: PdfExportController | null = null;
 let imageExportController: ImageExportController | null = null;
+const updateEmptyState = createEmptyStateView({container: emptyElement, logo: emptyLogoElement, message: emptyMessageElement});
 const imagePreviewLoader = createImagePreviewLoader();
 window.addEventListener?.("pagehide", () => {
   disposed = true;
@@ -236,16 +238,9 @@ function render(): void {
   scanOverlay.hidden = scanState !== "scanning";
   exportOverlay.hidden = !exportRunning;
   emptyElement.hidden = imageCollection.items.length > 0;
-  emptyLogoElement.hidden = scanState !== "initial";
-  emptyElement.dataset["state"] = scanState;
-  emptyMessageElement.hidden = scanState === "initial" || scanState === "scanning";
-  emptyMessageElement.textContent = scanState === "scanning"
-    ? ""
-    : scanState === "empty"
-      ? t("scanEmpty")
-      : scanState === "error"
-        ? t("scanErrorEmpty")
-        : "";
+  const emptyMessage = scanState === "empty" ? t("scanEmpty") : scanState === "error" ? t("scanErrorEmpty") : "";
+  const emptyAnnouncement = scanState === "scanning" ? t("scanBusy") : emptyMessage;
+  updateEmptyState(scanState, emptyMessage, emptyAnnouncement);
   allSelectionCheckbox.checked = imageCollection.items.length > 0 && selectedCount === imageCollection.items.length;
   allSelectionCheckbox.indeterminate = selectedCount > 0 && selectedCount < imageCollection.items.length;
   allSelectionCheckbox.disabled = busy || imageCollection.items.length === 0;

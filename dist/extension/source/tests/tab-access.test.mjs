@@ -14,6 +14,7 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
         addEventListener(name, callback) { listeners.set(`${selector}:${name}`, callback); },
         setAttribute() {},
         removeAttribute() {},
+        remove() {},
         focus() { globalThis.document.activeElement = this; },
         select() {},
         animate() { return {cancel() {}, finished: Promise.resolve()}; },
@@ -33,6 +34,7 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
   globalThis.document = {
     body: element("body"),
     querySelector: element,
+    createElement(tag) { return element(`${tag}-${elements.size}`); },
     createElementNS(_namespace, tag) { return element(tag); },
     querySelectorAll() { return []; },
     addEventListener(name, callback) { documentListeners.set(name, callback); },

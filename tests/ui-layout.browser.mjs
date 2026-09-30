@@ -256,7 +256,8 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
               appInkColor: getComputedStyle(document.documentElement).color,
               emptyState: empty.dataset.state,
               emptyMessage: document.querySelector("#empty-message").textContent,
-              emptyLogoHidden: document.querySelector("#empty-logo").hidden,
+              emptyLogoHidden: document.querySelector("#empty-logo").getAttribute("aria-hidden") === "true",
+              emptyLogoOpacity: getComputedStyle(document.querySelector("#empty-logo")).opacity,
               scanOverlayHidden: document.querySelector("#scan-overlay").hidden,
               overlayRingWidth: ring.width,
             };
@@ -288,7 +289,8 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           await page.emulateMedia({reducedMotion: "reduce"});
           assert.equal(spinnerState.emptyState, "scanning", `${caseName}: empty results should expose scanning state`);
           assert.equal(spinnerState.emptyMessage, "", `${caseName}: scanning should hide the empty message`);
-          assert.equal(spinnerState.emptyLogoHidden, true, `${caseName}: scanning should hide the logo`);
+          assert.equal(spinnerState.emptyLogoHidden, true, `${caseName}: scanning excludes the logo from accessibility`);
+          assert.equal(spinnerState.emptyLogoOpacity, "0", `${caseName}: reduced motion hides the logo immediately`);
           assert.equal(spinnerState.scanOverlayHidden, false, `${caseName}: overlay should be visible while scanning`);
           assert.equal(spinnerState.overlayRingWidth, "64px", `${caseName}: scanning overlay ring should be large`);
           await page.evaluate(() => window.__releaseScanFixture());

@@ -12,6 +12,7 @@ import { queryAppElements } from "./app-elements.js";
 import { loadExportPreferences, saveExportFormat, saveSourcePagePreference } from "./export-preferences.js";
 import { createSourcePreview, deriveExportViewState, exportFileBaseName, imageFilename, } from "./export-presentation.js";
 import { createScanSessionController } from "./scan-session-controller.js";
+import { createEmptyStateView } from "./empty-state.js";
 const { sourceUrl, sourceDrop, urlDropOverlay, collectionButton, scanButton, exportButton, exportFormatInputs, sourcePageOption, includeSourcePage, viewerToggleButton, viewerElement, resultsElement, viewerEmptyElement, viewerPageElement, viewerPreviousButton, viewerNextButton, viewerPositionElement, viewerStageElement, exportOverlay, viewerImageElement, viewerFilenameElement, viewerThumbnailsElement, viewerZoomInButton, viewerZoomOutButton, viewerZoomResetButton, allVisibilityButton, allSelectionCheckbox, resetOrderButton, resetButton, failuresElement, failedImagesElement, imagesElement, groupsElement, scanOverlay, emptyElement, emptyLogoElement, emptyMessageElement, statusElement, } = queryAppElements();
 const preferences = loadExportPreferences();
 let selectedExportFormat = preferences.format;
@@ -43,6 +44,7 @@ let disposed = false;
 let scanSessionController = null;
 let pdfExportController = null;
 let imageExportController = null;
+const updateEmptyState = createEmptyStateView({ container: emptyElement, logo: emptyLogoElement, message: emptyMessageElement });
 const imagePreviewLoader = createImagePreviewLoader();
 window.addEventListener?.("pagehide", () => {
     disposed = true;
@@ -209,16 +211,9 @@ function render() {
     scanOverlay.hidden = scanState !== "scanning";
     exportOverlay.hidden = !exportRunning;
     emptyElement.hidden = imageCollection.items.length > 0;
-    emptyLogoElement.hidden = scanState !== "initial";
-    emptyElement.dataset["state"] = scanState;
-    emptyMessageElement.hidden = scanState === "initial" || scanState === "scanning";
-    emptyMessageElement.textContent = scanState === "scanning"
-        ? ""
-        : scanState === "empty"
-            ? t("scanEmpty")
-            : scanState === "error"
-                ? t("scanErrorEmpty")
-                : "";
+    const emptyMessage = scanState === "empty" ? t("scanEmpty") : scanState === "error" ? t("scanErrorEmpty") : "";
+    const emptyAnnouncement = scanState === "scanning" ? t("scanBusy") : emptyMessage;
+    updateEmptyState(scanState, emptyMessage, emptyAnnouncement);
     allSelectionCheckbox.checked = imageCollection.items.length > 0 && selectedCount === imageCollection.items.length;
     allSelectionCheckbox.indeterminate = selectedCount > 0 && selectedCount < imageCollection.items.length;
     allSelectionCheckbox.disabled = busy || imageCollection.items.length === 0;

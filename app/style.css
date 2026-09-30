@@ -228,7 +228,12 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
 .image-list li.dragging { border: 1px dashed var(--control-line); background: var(--subtle); cursor: grabbing; }
 .image-list li.dragging::after { content: attr(data-drop-label); position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12px; font-weight: 600; }
 #empty { flex: 1; display: grid; place-items: center; padding: 44px 12px; color: var(--muted); font-size: 13px; line-height: 1.9; text-align: center; white-space: pre-line; }
+#empty-logo, #empty-message { grid-area: 1 / 1; }
 #empty-logo { display: block; width: clamp(120px, 18vw, 220px); max-width: 60%; height: auto; }
+#empty-message { display: grid; place-items: center; margin: 0; }
+.empty-message__visual { grid-area: 1 / 1; white-space: pre-line; }
+.empty-message__current { position: relative; z-index: 1; }
+.empty-message__outgoing { position: relative; z-index: 0; }
 @media (prefers-color-scheme: dark) {
   #empty-logo { filter: invert(1); }
 }
