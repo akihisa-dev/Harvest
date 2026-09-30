@@ -9,7 +9,10 @@ test('条件付き領域は途中の高さを持ち、逆操作と動きを減�
     const page = await browser.newPage();
     const css = await readFile(new URL('../app/style.css', import.meta.url), 'utf8');
     await page.setContent(`<style>${css}</style><div style="padding:20px"><section id="failures"><h3>失敗</h3><ul><li>画像を取得できません</li></ul></section><button id="after">後続</button><div id="url-drop-overlay" hidden>URL</div></div>`);
-    await page.waitForTimeout(250);
+    await page.locator("#failures").evaluate(async e => {
+      getComputedStyle(e).height;
+      await Promise.all(e.getAnimations().map(a => a.finished));
+    });
     const full = await page.locator('#failures').evaluate(e => e.getBoundingClientRect().height);
     await page.locator('#failures').evaluate(async e => {
       e.hidden = true; getComputedStyle(e).opacity;

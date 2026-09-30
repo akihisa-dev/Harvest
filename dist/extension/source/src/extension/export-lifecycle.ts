@@ -52,7 +52,8 @@ export function downloadBlob(blob: Blob, filename: string): void {
   document.body.append(link);
   link.click();
   link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  // Let Chrome consume the click in the current task before releasing the Blob reference.
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 /** Owns the retry work, cancellation, progress, and cleanup shared by every export format. */
