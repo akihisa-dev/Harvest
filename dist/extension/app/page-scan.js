@@ -180,7 +180,7 @@ export async function scanDocument() {
     };
     const orderedImages = () => {
         const documentOrder = new Map();
-        for (const [index, element] of Array.from(document.querySelectorAll("*")).entries()) {
+        for (const [index, element] of pageElements(root, false).entries()) {
             checkDeadline();
             documentOrder.set(element, index);
         }
@@ -194,7 +194,7 @@ export async function scanDocument() {
                 positionCache.set(element, result);
                 return result;
             }
-            for (let current = element; current; current = current.parentElement) {
+            for (let current = element; current; current = composedParent(current)) {
                 checkDeadline();
                 let style;
                 try {
@@ -339,6 +339,7 @@ export async function scanDocument() {
     };
     const root = document.documentElement;
     const chunkSize = 250;
+    const observedShadowRoots = new Set();
     const pendingElements = new Set();
     const pendingRemovedElements = new Set();
     let pendingFlushPromise;
@@ -376,10 +377,10 @@ export async function scanDocument() {
                 const removed = [...pendingRemovedElements];
                 pendingRemovedElements.clear();
                 for (const element of removed) {
-                    const tree = [element, ...Array.from(element.querySelectorAll("*"))];
+                    const tree = pageElements(element, false);
                     for (const node of tree) {
                         checkDeadline();
-                        if (root?.contains(node))
+                        if (isInPageTree(node))
                             continue;
                         for (const url of elementUrls.get(node) ?? []) {
                             const record = candidates.get(url);
@@ -393,9 +394,9 @@ export async function scanDocument() {
                 const batch = [...pendingElements];
                 pendingElements.clear();
                 for (const element of batch) {
-                    if (!root?.contains(element))
+                    if (!isInPageTree(element))
                         continue;
-                    const tree = [element, ...Array.from(element.querySelectorAll("*"))];
+                    const tree = pageElements(element, true);
                     checkDeadline();
                     for (let start = 0; start < tree.length; start += chunkSize) {
                         for (const node of tree.slice(start, start + chunkSize))
@@ -459,9 +460,54 @@ export async function scanDocument() {
         });
         maxTimer = setTimeout(finish, maxWaitMs);
     }
+    const composedParent = (element) => {
+        if (element.parentElement)
+            return element.parentElement;
+        const treeRoot = element.getRootNode?.();
+        return treeRoot && "host" in treeRoot ? treeRoot.host : null;
+    };
+    const isInPageTree = (element) => {
+        for (let current = element; current; current = composedParent(current)) {
+            checkDeadline();
+            if (current === root)
+                return true;
+        }
+        return false;
+    };
+    const pageElements = (start, observeRoots) => {
+        const elements = [];
+        const pending = [start];
+        const pushChildren = (parent) => {
+            const children = Array.from(parent.children);
+            for (let index = children.length - 1; index >= 0; index -= 1) {
+                const child = children[index];
+                if (child)
+                    pending.push(child);
+            }
+        };
+        while (pending.length > 0) {
+            checkDeadline();
+            const element = pending.pop();
+            if (!element)
+                continue;
+            elements.push(element);
+            const shadowRoot = element.shadowRoot;
+            if (shadowRoot) {
+                if (observeRoots && !observedShadowRoots.has(shadowRoot)) {
+                    observedShadowRoots.add(shadowRoot);
+                    observer?.observe(shadowRoot, { childList: true, subtree: true, attributes: true });
+                }
+                // Visit ordinary children first to preserve their existing document
+                // order, then include the host's open shadow tree.
+                pushChildren(shadowRoot);
+            }
+            pushChildren(element);
+        }
+        return elements;
+    };
     try {
         checkDeadline();
-        const elements = Array.from(document.querySelectorAll("*"));
+        const elements = pageElements(root, true);
         for (let start = 0; start < elements.length; start += chunkSize) {
             for (const element of elements.slice(start, start + chunkSize))
                 collectElement(element);
@@ -469,23 +515,28 @@ export async function scanDocument() {
                 await yieldToPage();
         }
         if (root && typeof document.createTreeWalker === "function") {
-            const walker = document.createTreeWalker(root, 4);
-            let textNode = walker.nextNode();
+            const textRoots = [root, ...observedShadowRoots];
             let textCount = 0;
-            while (textNode) {
-                checkDeadline();
-                const parent = textNode.parentElement;
-                const parentTag = parent?.tagName.toLowerCase();
-                // Script and style text is collected with its owning element above.
-                // Associate ordinary page text with its parent too, so removing that
-                // element can remove candidates found only in its text.
-                if (parentTag !== "script" && parentTag !== "style") {
-                    scanText(textNode.textContent, undefined, parent ?? undefined);
+            for (const textRoot of textRoots) {
+                const walker = document.createTreeWalker(textRoot, 4);
+                let textNode = walker.nextNode();
+                while (textNode) {
+                    checkDeadline();
+                    const parentNode = textNode.parentNode;
+                    const parent = textNode.parentElement
+                        ?? (parentNode && "host" in parentNode ? parentNode.host : null);
+                    const parentTag = parent?.tagName.toLowerCase();
+                    // Script and style text is collected with its owning element above.
+                    // Associate ordinary page text with its parent too, so removing that
+                    // element can remove candidates found only in its text.
+                    if (parentTag !== "script" && parentTag !== "style") {
+                        scanText(textNode.textContent, undefined, parent ?? undefined);
+                    }
+                    textCount += 1;
+                    if (textCount % chunkSize === 0)
+                        await yieldToPage();
+                    textNode = walker.nextNode();
                 }
-                textCount += 1;
-                if (textCount % chunkSize === 0)
-                    await yieldToPage();
-                textNode = walker.nextNode();
             }
         }
         await flushPending();

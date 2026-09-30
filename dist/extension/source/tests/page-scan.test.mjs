@@ -10,6 +10,8 @@ class FixtureElement {
     this.attributesMap = new Map(Object.entries(attributes));
     this.children = [];
     this.parentElement = null;
+    this.parentNode = null;
+    this.shadowRoot = properties.shadowRoot ?? null;
     this.textContent = properties.textContent ?? "";
     this.currentSrc = properties.currentSrc;
     this.src = properties.src ?? this.attributesMap.get("src") ?? "";
@@ -23,7 +25,14 @@ class FixtureElement {
 
   appendChild(child) {
     child.parentElement = this;
+    child.parentNode = this;
     this.children.push(child);
+  }
+
+  getRootNode() {
+    let node = this;
+    while (node.parentNode) node = node.parentNode;
+    return node;
   }
 
   contains(element) {
@@ -59,6 +68,22 @@ class FixtureElement {
     };
     visit(this);
     return result;
+  }
+}
+
+class FixtureShadowRoot {
+  constructor(host, children = []) {
+    this.host = host;
+    this.nodeType = 11;
+    this.children = [];
+    this.parentNode = null;
+    for (const child of children) this.appendChild(child);
+  }
+
+  appendChild(child) {
+    child.parentElement = null;
+    child.parentNode = this;
+    this.children.push(child);
   }
 }
 
@@ -359,6 +384,90 @@ test("SVG imageのhrefとxlink:hrefをページ基準で収集し、表示位置
     "https://cdn.example.test/pages/003.png",
   ]);
   assert.equal(result.images.includes("https://example.test/books/chapter/1"), false);
+});
+
+test("open Shadow DOMを再帰走査し、画像・背景・本文URLを表示位置で収集する", async () => {
+  const nestedImage = new FixtureElement("img", {src: "/shadow/nested.jpg"}, [], {
+    rect: {top: 50, left: 0, width: 10, height: 10},
+  });
+  const nestedHost = new FixtureElement("nested-gallery");
+  const nestedRoot = new FixtureShadowRoot(nestedHost, [nestedImage]);
+  nestedHost.shadowRoot = nestedRoot;
+  const image = new FixtureElement("img", {src: "/shadow/001.jpg"}, [], {
+    rect: {top: 10, left: 0, width: 10, height: 10},
+  });
+  const source = new FixtureElement("source", {srcset: "/shadow/002.jpg 1x, /shadow/002-large.jpg 2x"}, [], {
+    rect: {top: 20, left: 0, width: 10, height: 10},
+  });
+  const background = new FixtureElement("div", {}, [], {
+    backgroundImage: 'url("/shadow/003.webp")',
+    rect: {top: 30, left: 0, width: 10, height: 10},
+  });
+  const body = new FixtureElement("p", {}, [], {
+    textContent: "https://cdn.example.test/shadow/body.gif",
+    rect: {top: 40, left: 0, width: 10, height: 10},
+  });
+  const host = new FixtureElement("image-gallery");
+  const shadowRoot = new FixtureShadowRoot(host, [image, source, background, body, nestedHost]);
+  host.shadowRoot = shadowRoot;
+  const closedHost = new FixtureElement("closed-gallery");
+  closedHost.closedRoot = new FixtureShadowRoot(closedHost, [
+    new FixtureElement("img", {src: "https://cdn.example.test/shadow/closed.jpg"}),
+  ]);
+  const root = new FixtureElement("html", {}, [host, closedHost]);
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+
+  assert.deepEqual(result.images, [
+    "https://example.test/shadow/001.jpg",
+    "https://example.test/shadow/002-large.jpg",
+    "https://example.test/shadow/003.webp",
+    "https://example.test/shadow/nested.jpg",
+    "https://cdn.example.test/shadow/body.gif",
+  ]);
+  assert.equal(result.images.some(url => url.includes("closed.jpg")), false);
+});
+
+test("open Shadow DOMの短時間内の追加・変更・削除を監視する", async () => {
+  const base = "https://cdn.example.test/shadow/";
+  const changedImage = new FixtureElement("img", {src: `${base}old.jpg`});
+  const removedImage = new FixtureElement("img", {src: `${base}removed.jpg`});
+  const host = new FixtureElement("image-gallery");
+  const shadowRoot = new FixtureShadowRoot(host, [changedImage, removedImage]);
+  host.shadowRoot = shadowRoot;
+  const root = new FixtureElement("html", {}, [host]);
+  const lateImage = new FixtureElement("img", {src: `${base}late.jpg`});
+  let observerCallback;
+  let observedTargets = [];
+  class ShadowMutationObserver extends EmptyMutationObserver {
+    constructor(callback) { super(); observerCallback = callback; }
+    observe(target) { observedTargets.push(target); }
+  }
+
+  const result = await runWithFixture(new FixtureDocument(root), ShadowMutationObserver, () => {
+    globalThis.setTimeout = (callback, delay) => {
+      if (delay === 800) {
+        changedImage.attributesMap.set("src", `${base}changed.jpg`);
+        changedImage.src = `${base}changed.jpg`;
+        shadowRoot.children = shadowRoot.children.filter(child => child !== removedImage);
+        removedImage.parentElement = null;
+        removedImage.parentNode = null;
+        shadowRoot.appendChild(lateImage);
+        observerCallback([
+          {type: "attributes", target: changedImage},
+          {type: "childList", addedNodes: [lateImage], removedNodes: [removedImage]},
+        ]);
+      }
+      callback();
+      return 0;
+    };
+    return scanDocument();
+  });
+
+  assert.ok(observedTargets.includes(shadowRoot));
+  assert.ok(result.images.includes(`${base}changed.jpg`));
+  assert.ok(result.images.includes(`${base}late.jpg`));
+  assert.equal(result.images.includes(`${base}old.jpg`), false);
+  assert.equal(result.images.includes(`${base}removed.jpg`), false);
 });
 
 test("srcsetの空白なし区切りとURL内のカンマを区別する", async () => {
