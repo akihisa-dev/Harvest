@@ -22,6 +22,11 @@ export function getImageFetchCredentials(imageUrl, sourcePage) {
     const source = webUrl(sourcePage);
     return image && source && image.origin === source.origin ? "include" : "omit";
 }
+/** Require public DNS results for URL hosts that are not already known to be local. */
+export function getImageFetchTargetAddressSpace(imageUrl) {
+    const image = webUrl(imageUrl);
+    return image && !isLocalHost(image) ? "public" : undefined;
+}
 function isPrivateIpv4(host) {
     if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host))
         return false;

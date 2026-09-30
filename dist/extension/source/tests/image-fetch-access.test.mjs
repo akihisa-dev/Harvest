@@ -6,7 +6,12 @@ test("画像取得は出典と同じオリジンだけ認証情報を使い、�
   const previousFetch = globalThis.fetch;
   const requests = [];
   globalThis.fetch = async (url, options) => {
-    requests.push({url, credentials: options.credentials, redirect: options.redirect});
+    requests.push({
+      url,
+      credentials: options.credentials,
+      redirect: options.redirect,
+      ...(options.targetAddressSpace ? {targetAddressSpace: options.targetAddressSpace} : {}),
+    });
     return new Response(new Uint8Array([1]), {headers: {"content-type": "image/png"}});
   };
   try {
@@ -14,11 +19,13 @@ test("画像取得は出典と同じオリジンだけ認証情報を使い、�
     await fetchImage("https://cdn.example.test/a.png", {sourcePage: "https://example.test/gallery"});
     await fetchImage("https://example.test/a.png", {sourcePage: "http://example.test/gallery"});
     await fetchImage("https://example.test/a.png", {});
+    await fetchImage("http://localhost/a.png", {sourcePage: "http://localhost/gallery"});
     assert.deepEqual(requests, [
-      {url: "https://example.test/a.png", credentials: "include", redirect: "error"},
-      {url: "https://cdn.example.test/a.png", credentials: "omit", redirect: "follow"},
-      {url: "https://example.test/a.png", credentials: "omit", redirect: "follow"},
-      {url: "https://example.test/a.png", credentials: "omit", redirect: "follow"},
+      {url: "https://example.test/a.png", credentials: "include", redirect: "error", targetAddressSpace: "public"},
+      {url: "https://cdn.example.test/a.png", credentials: "omit", redirect: "follow", targetAddressSpace: "public"},
+      {url: "https://example.test/a.png", credentials: "omit", redirect: "follow", targetAddressSpace: "public"},
+      {url: "https://example.test/a.png", credentials: "omit", redirect: "follow", targetAddressSpace: "public"},
+      {url: "http://localhost/a.png", credentials: "include", redirect: "error"},
     ]);
   } finally {
     globalThis.fetch = previousFetch;

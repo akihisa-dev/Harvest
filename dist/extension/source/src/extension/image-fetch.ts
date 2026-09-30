@@ -9,9 +9,15 @@ import {
   type FetchedImage,
   type ImageDataOptions,
 } from "./image-data-contract.js";
-import { getImageFetchCredentials, ImageFetchTargetError, validateImageFetchTarget } from "./image-fetch-policy.js";
+import {
+  getImageFetchCredentials,
+  getImageFetchTargetAddressSpace,
+  ImageFetchTargetError,
+  validateImageFetchTarget,
+} from "./image-fetch-policy.js";
 
 const DEFAULT_TIMEOUT_MS = 20_000;
+type ImageFetchRequestInit = RequestInit & {targetAddressSpace?: "public"};
 
 function timeoutValue(options: ImageDataOptions): number {
   const value = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -110,6 +116,7 @@ export async function fetchImage(url: string, options: ImageDataOptions): Promis
     throw error;
   }
   const credentials = getImageFetchCredentials(url, options.sourcePage);
+  const targetAddressSpace = getImageFetchTargetAddressSpace(url);
   const timeoutMs = timeoutValue(options);
   const controller = new AbortController();
   let response: Response | undefined;
@@ -132,13 +139,15 @@ export async function fetchImage(url: string, options: ImageDataOptions): Promis
 
   const operation = (async (): Promise<FetchedImage> => {
     try {
-      response = await fetch(url, {
+      const fetchOptions: ImageFetchRequestInit = {
         credentials,
         // A credentialed request must not follow a page-controlled redirect
         // into an unrelated origin, where another site's cookies could be sent.
         redirect: credentials === "include" ? "error" : "follow",
         signal: controller.signal,
-      });
+        ...(targetAddressSpace ? {targetAddressSpace} : {}),
+      };
+      response = await fetch(url, fetchOptions);
       if (!response.ok) {
         const error = responseError(response.status);
         void cancelResponse(response);
