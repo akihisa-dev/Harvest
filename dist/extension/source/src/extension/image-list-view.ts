@@ -13,6 +13,13 @@ interface ImageRowParts {
   failedMark: HTMLSpanElement;
 }
 
+type RenderedListItem = {readonly kind: "image"; readonly image: ImageItem} |
+  {readonly kind: "source"; readonly image: ImageItem};
+
+function listItemKey(item: RenderedListItem): string {
+  return item.kind === "source" ? "source-preview" : `image:${item.image.url}`;
+}
+
 type FocusTarget =
   | {kind: "group"; key: string}
   | {kind: "pdf-group"; key: string}
@@ -291,7 +298,30 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     const previousUrls = [...previousRows.keys()];
     const layoutChanged = previousUrls.length !== visibleImages.length ||
       visibleImages.some((item, index) => previousUrls[index] !== item.url);
-    const nextRows = reconcileKeyedChildren(imagesElement, visibleImages, item => item.url, createImageRow, (row, item, index) => {
+    const listItems: RenderedListItem[] = visibleImages.map(image => ({kind: "image", image}));
+    if (sourcePreview) listItems.push({kind: "source", image: sourcePreview});
+    const nextListRows = reconcileKeyedChildren(imagesElement, listItems, listItemKey,
+      item => item.kind === "image" ? createImageRow(item.image) : document.createElement("li"),
+      (row, listItem, index) => {
+      if (listItem.kind === "source") {
+        row.className = "source-preview";
+        row.style.order = String(index);
+        const preview = row.children[0] as HTMLImageElement | undefined;
+        if (preview) {
+          if (preview.getAttribute("src") !== listItem.image.url) preview.setAttribute("src", listItem.image.url);
+        } else {
+          const sourcePreviewImage = document.createElement("img");
+          sourcePreviewImage.className = "preview";
+          sourcePreviewImage.setAttribute("src", listItem.image.url);
+          sourcePreviewImage.alt = "Source";
+          const name = document.createElement("div");
+          name.className = "item-body";
+          name.textContent = "Source";
+          row.append(sourcePreviewImage, name);
+        }
+        return;
+      }
+      const item = listItem.image;
       const parts = imageRowParts.get(row);
       if (!parts) return;
       const overallIndex = collection.positionOf(item)!;
@@ -325,26 +355,17 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
       parts.selectedMark.hidden = false;
       parts.failedMark.hidden = !failed;
     }, {animateLayout: layoutChanged});
+    const nextRows = new Map<string, HTMLLIElement>();
+    for (const item of visibleImages) {
+      const row = nextListRows.get(`image:${item.url}`);
+      if (row) nextRows.set(item.url, row);
+    }
     for (const [url, row] of previousRows) {
       if (nextRows.has(url)) continue;
       const parts = imageRowParts.get(row);
       if (parts) options.previewLoader.clearImage(parts.preview);
     }
     rows = nextRows;
-    if (sourcePreview) {
-      const row = document.createElement("li");
-      row.className = "source-preview";
-      row.style.order = String(visibleImages.length);
-      const preview = document.createElement("img");
-      preview.className = "preview";
-      preview.src = sourcePreview.url;
-      preview.alt = "Source";
-      const name = document.createElement("div");
-      name.className = "item-body";
-      name.textContent = "Source";
-      row.append(preview, name);
-      imagesElement.append(row);
-    }
     imagesElement.ondragover = event => {
       if (!draggedImage || options.isBusy()) return;
       event.preventDefault();

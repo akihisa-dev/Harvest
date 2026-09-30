@@ -14,6 +14,7 @@ class StubElement {
     this.dataset = {};
     this.attributes = new Map();
     this.children = [];
+    this.replaceChildrenCalls = 0;
     this.listeners = new Map();
     this.pointerCaptures = new Set();
     this.className = "";
@@ -22,7 +23,7 @@ class StubElement {
   }
   addEventListener(name, callback) { this.listeners.set(name, callback); }
   append(...children) { this.children.push(...children.filter(Boolean)); }
-  replaceChildren(...children) { this.children = children.filter(Boolean); }
+  replaceChildren(...children) { this.replaceChildrenCalls++; this.children = children.filter(Boolean); }
   remove() {}
   click() { if (this.tagName === "a") this.owner.downloads.push(this.download); }
   getContext() { return this.tagName === "canvas" ? {
@@ -174,6 +175,35 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   assert.equal(document.rectMeasurements, measurementsAfterLayoutChange,
     "repeated dragover events across a 500-row list reuse cached rectangles when order is unchanged");
   measuredRows.children[250].dispatch("dragend");
+
+  const sourceCollection = new ImageCollection();
+  const sourceUrls = ["https://example.com/source-test/1.jpg", "https://example.com/source-test/2.jpg"];
+  sourceCollection.replace(sourceUrls, "https://example.com/source-test/");
+  const sourceRows = document.createElement("ol");
+  const sourceList = createImageListView({
+    collection: sourceCollection,
+    allVisibilityButton: document.createElement("button"),
+    groupsElement: document.createElement("div"),
+    imagesElement: sourceRows,
+    isBusy: () => false,
+    getFilename: url => url.split("/").pop(),
+    previewLoader: inertPreviewLoader,
+    onChange() {},
+  });
+  sourceList.showInitialGroup(null);
+  const sourcePreview = url => ({url, selected: false});
+  sourceList.render(new Set(), sourcePreview("data:image/svg+xml,source-one"));
+  const sourceImageRows = [...sourceRows.children];
+  const sourceRow = sourceRows.children[2];
+  const sourceListReplacements = sourceRows.replaceChildrenCalls;
+  sourceCollection.toggleSelected(sourceUrls[0]);
+  sourceList.render(new Set(), sourcePreview("data:image/svg+xml,source-two"));
+  assert.equal(sourceRows.replaceChildrenCalls, sourceListReplacements,
+    "a selection update with Source preview does not replace list children");
+  assert.equal(sourceRows.children[0], sourceImageRows[0], "the first image row remains mounted");
+  assert.equal(sourceRows.children[1], sourceImageRows[1], "the second image row remains mounted");
+  assert.equal(sourceRows.children[2], sourceRow, "the Source row is reused");
+  assert.equal(sourceRow.children[0].getAttribute("src"), "data:image/svg+xml,source-two", "the reused Source preview follows content updates");
 
   document.rectFor = element => {
     const order = Number(element.style.order || 0);

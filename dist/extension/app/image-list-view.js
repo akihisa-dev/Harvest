@@ -1,6 +1,9 @@
 import { animateLayoutChange, reconcileKeyedChildren } from "./motion.js";
 import { formatFailedAria, formatGroupLabel, t } from "./localization.js";
 import { createPreviewOrder, findNearestByRect, isPointerAfter } from "./image-reorder.js";
+function listItemKey(item) {
+    return item.kind === "source" ? "source-preview" : `image:${item.image.url}`;
+}
 /** Owns group visibility and the image-list DOM interactions for one collection. */
 export function createImageListView(options) {
     const { collection, allVisibilityButton, groupsElement, imagesElement } = options;
@@ -268,7 +271,31 @@ export function createImageListView(options) {
         const previousUrls = [...previousRows.keys()];
         const layoutChanged = previousUrls.length !== visibleImages.length ||
             visibleImages.some((item, index) => previousUrls[index] !== item.url);
-        const nextRows = reconcileKeyedChildren(imagesElement, visibleImages, item => item.url, createImageRow, (row, item, index) => {
+        const listItems = visibleImages.map(image => ({ kind: "image", image }));
+        if (sourcePreview)
+            listItems.push({ kind: "source", image: sourcePreview });
+        const nextListRows = reconcileKeyedChildren(imagesElement, listItems, listItemKey, item => item.kind === "image" ? createImageRow(item.image) : document.createElement("li"), (row, listItem, index) => {
+            if (listItem.kind === "source") {
+                row.className = "source-preview";
+                row.style.order = String(index);
+                const preview = row.children[0];
+                if (preview) {
+                    if (preview.getAttribute("src") !== listItem.image.url)
+                        preview.setAttribute("src", listItem.image.url);
+                }
+                else {
+                    const sourcePreviewImage = document.createElement("img");
+                    sourcePreviewImage.className = "preview";
+                    sourcePreviewImage.setAttribute("src", listItem.image.url);
+                    sourcePreviewImage.alt = "Source";
+                    const name = document.createElement("div");
+                    name.className = "item-body";
+                    name.textContent = "Source";
+                    row.append(sourcePreviewImage, name);
+                }
+                return;
+            }
+            const item = listItem.image;
             const parts = imageRowParts.get(row);
             if (!parts)
                 return;
@@ -308,6 +335,12 @@ export function createImageListView(options) {
             parts.selectedMark.hidden = false;
             parts.failedMark.hidden = !failed;
         }, { animateLayout: layoutChanged });
+        const nextRows = new Map();
+        for (const item of visibleImages) {
+            const row = nextListRows.get(`image:${item.url}`);
+            if (row)
+                nextRows.set(item.url, row);
+        }
         for (const [url, row] of previousRows) {
             if (nextRows.has(url))
                 continue;
@@ -316,20 +349,6 @@ export function createImageListView(options) {
                 options.previewLoader.clearImage(parts.preview);
         }
         rows = nextRows;
-        if (sourcePreview) {
-            const row = document.createElement("li");
-            row.className = "source-preview";
-            row.style.order = String(visibleImages.length);
-            const preview = document.createElement("img");
-            preview.className = "preview";
-            preview.src = sourcePreview.url;
-            preview.alt = "Source";
-            const name = document.createElement("div");
-            name.className = "item-body";
-            name.textContent = "Source";
-            row.append(preview, name);
-            imagesElement.append(row);
-        }
         imagesElement.ondragover = event => {
             if (!draggedImage || options.isBusy())
                 return;
