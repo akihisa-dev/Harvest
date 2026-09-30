@@ -30,13 +30,16 @@ function setup() {
   const messages = [];
   let disconnected;
   let mutationObserver;
+  let resizeObserver;
+  let frameSequence = 0;
+  const frames = new Map();
   const port = {
     postMessage(message) { messages.push(message); },
     onMessage: {addListener(listener) { port.messageListener = listener; }},
     onDisconnect: {addListener(listener) { disconnected = listener; }},
     messageListener: undefined,
   };
-  const previous = {chrome: globalThis.chrome, document: globalThis.document, location: globalThis.location, window: globalThis.window, Element: globalThis.Element, MutationObserver: globalThis.MutationObserver};
+  const previous = {chrome: globalThis.chrome, document: globalThis.document, location: globalThis.location, window: globalThis.window, Element: globalThis.Element, MutationObserver: globalThis.MutationObserver, ResizeObserver: globalThis.ResizeObserver};
   globalThis.chrome = {runtime: {connect(options) { assert.deepEqual(options, {name: "test-session"}); return port; }}};
   globalThis.Element = Anchor;
   globalThis.MutationObserver = class {
@@ -44,8 +47,18 @@ function setup() {
     observe(target, options) { this.target = target; this.options = options; }
     disconnect() { this.disconnected = true; }
   };
+  globalThis.ResizeObserver = class {
+    constructor(callback) { this.callback = callback; resizeObserver = this; }
+    observe(target) { this.target = target; }
+    disconnect() { this.disconnected = true; }
+  };
   const windowListeners = new Map();
-  globalThis.window = {addEventListener(type, listener) { windowListeners.set(type, listener); }, removeEventListener() {}};
+  globalThis.window = {
+    addEventListener(type, listener) { windowListeners.set(type, listener); },
+    removeEventListener() {},
+    requestAnimationFrame(callback) { const id = ++frameSequence; frames.set(id, callback); return id; },
+    cancelAnimationFrame(id) { frames.delete(id); },
+  };
   globalThis.location = {href: "https://example.test/current"};
   globalThis.document = {
     createElement() {
@@ -63,13 +76,17 @@ function setup() {
     port, messages, removed, glow, overlays,
     removeFromPage(anchor) {
       anchor.isConnected = false;
-      mutationObserver.callback([{type: "childList", removedNodes: [anchor]}]);
+      mutationObserver.callback([{type: "childList", target: document.documentElement, addedNodes: [], removedNodes: [anchor]}]);
     },
     changeHref(anchor, href) {
       anchor.setAttribute("href", href);
-      mutationObserver.callback([{type: "attributes", target: anchor, attributeName: "href", removedNodes: []}]);
+      mutationObserver.callback([{type: "attributes", target: anchor, attributeName: "href", addedNodes: [], removedNodes: []}]);
+    },
+    layoutChange(target) {
+      mutationObserver.callback([{type: "attributes", target, attributeName: "class", addedNodes: [], removedNodes: []}]);
     },
     get observer() { return mutationObserver; },
+    get resizeObserver() { return resizeObserver; },
     hover(anchor) {
       const event = {path: [anchor], composedPath() { return this.path; }};
       listeners.get("pointermove")?.(event);
@@ -78,6 +95,13 @@ function setup() {
     leave() { listeners.get("pointerout")?.(); },
     scroll() { listeners.get("scroll")?.(); },
     resize() { windowListeners.get("resize")?.(); },
+    resizeObserved() { resizeObserver.callback([], resizeObserver); },
+    flushAnimationFrame() {
+      const callbacks = [...frames.values()];
+      frames.clear();
+      for (const callback of callbacks) callback(0);
+    },
+    get pendingFrames() { return frames.size; },
     click(anchor, options = {}) {
       let prevented = 0;
       let stopped = 0;
@@ -142,7 +166,8 @@ test("切断後はリスナーを除去して遷移を復元する", () => {
   try {
     captureCollectionLinks("test-session");
     fixture.disconnect();
-    assert.equal(fixture.removed.length, 4);
+    assert.deepEqual(fixture.removed.map(listener => listener.type).sort(),
+      ["click", "pointermove", "pointerout", "scroll", "load", "transitionend", "animationend"].sort());
     assert.equal(fixture.glow.removed, true);
     assert.equal(fixture.observer.disconnected, true);
     assert.equal(fixture.removed[0].type, "click");
@@ -240,7 +265,7 @@ test("DOMから消えた対象のマーカーと参照を片付け、残る対�
   const fixture = setup();
   try {
     captureCollectionLinks("test-session");
-    assert.deepEqual(fixture.observer.options, {childList: true, subtree: true, attributes: true, attributeFilter: ["href"]});
+    assert.deepEqual(fixture.observer.options, {childList: true, subtree: true, attributes: true, characterData: true});
     const removed = new Anchor("/removed");
     const kept = new Anchor("/kept");
     fixture.click(removed);
@@ -258,7 +283,9 @@ test("DOMから消えた対象のマーカーと参照を片付け、残る対�
 
     kept.rect = {left: 35, top: 40, width: 90, height: 70};
     fixture.scroll();
+    fixture.flushAnimationFrame();
     fixture.resize();
+    fixture.flushAnimationFrame();
     assert.equal(fixture.overlays[1].style.left, "35px");
     assert.equal(fixture.overlays[1].style.top, "40px");
 
@@ -272,6 +299,40 @@ test("DOMから消えた対象のマーカーと参照を片付け、残る対�
     fixture.click(removed);
     fixture.port.messageListener({pdfUrl: "https://example.test/removed"});
     assert.equal(fixture.overlays.length, 3, "再接続後の新しい操作はマークできる");
+  } finally { fixture.restore(); }
+});
+
+test("ページ内レイアウト変化を1フレームにまとめて保存表示とホバー表示へ反映する", () => {
+  const fixture = setup();
+  try {
+    captureCollectionLinks("test-session");
+    const target = new Anchor("/moving");
+    fixture.click(target);
+    fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/moving", canExport: true});
+    fixture.hover(target);
+    assert.equal(fixture.overlays[0].style.top, "20px");
+    assert.equal(fixture.glow.style.top, "20px");
+
+    target.rect = {left: 45, top: 140, width: 120, height: 40};
+    fixture.layoutChange(target);
+    fixture.layoutChange(target);
+    assert.equal(fixture.pendingFrames, 1, "複数のDOM変更を1フレームにまとめる");
+    assert.equal(fixture.overlays[0].style.top, "20px", "DOM observer内では座標を同期計測しない");
+    fixture.flushAnimationFrame();
+
+    assert.equal(fixture.overlays[0].style.left, "45px");
+    assert.equal(fixture.overlays[0].style.top, "140px");
+    assert.equal(fixture.glow.style.left, "45px");
+    assert.equal(fixture.glow.style.top, "140px");
+
+    target.rect = {left: 60, top: 180, width: 140, height: 50};
+    fixture.resizeObserved();
+    assert.equal(fixture.pendingFrames, 1, "文書サイズ変化も描画待ちへまとめる");
+    fixture.flushAnimationFrame();
+    assert.equal(fixture.overlays[0].style.top, "180px");
+    assert.equal(fixture.glow.style.top, "180px");
+    fixture.disconnect();
+    assert.equal(fixture.resizeObserver.disconnected, true);
   } finally { fixture.restore(); }
 });
 

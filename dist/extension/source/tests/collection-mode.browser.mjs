@@ -8,7 +8,7 @@ test("removed collection links lose their marker in a real DOM", async () => {
   const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();
-    await page.setContent('<a id="target" href="https://example.test/target">Target</a>');
+    await page.setContent('<a id="target" href="https://example.test/target">Target</a><a id="keyboard" href="https://example.test/keyboard">Keyboard</a>');
     await page.evaluate(async source => {
       window.collectionMessages = [];
       window.syntheticClickResults = [];
@@ -41,6 +41,12 @@ test("removed collection links lose their marker in a real DOM", async () => {
 
     await page.locator("#target").click();
     assert.deepEqual(await page.evaluate(() => window.collectionMessages), [{url: "https://example.test/target"}], "trusted input reaches the extension");
+    await page.locator("#keyboard").focus();
+    await page.keyboard.press("Enter");
+    assert.deepEqual(await page.evaluate(() => window.collectionMessages), [
+      {url: "https://example.test/target"},
+      {url: "https://example.test/keyboard"},
+    ], "a keyboard-generated trusted click reaches the extension");
     await page.evaluate(() => window.sendCollectionMessage({busy: false, pdfUrl: "https://example.test/target", canExport: true}));
     assert.equal(await page.locator('div[aria-hidden="true"]').count(), 2);
 
@@ -104,6 +110,57 @@ test("href changes clear old collection markers and reject stale results in a re
     await target.click();
     await page.evaluate(() => window.sendCollectionMessage({pdfUrl: "https://example.test/c"}));
     assert.equal(await page.locator('div[aria-hidden="true"]').count(), 2, "the new URL can be marked after its own click");
+  } finally {
+    await browser.close();
+  }
+});
+
+test("page layout shifts reposition persistent and hovered collection glows", async () => {
+  const moduleSource = await readFile(new URL("../dist/extension/app/collection-mode.js", import.meta.url), "utf8");
+  const browser = await chromium.launch({channel: "chrome", headless: true});
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<a id="target" href="https://example.test/layout">Target</a>');
+    await page.evaluate(async source => {
+      const port = {
+        onMessage: {addListener(listener) { window.sendCollectionMessage = listener; }},
+        onDisconnect: {addListener() {}},
+        postMessage() {},
+      };
+      Object.defineProperty(window, "chrome", {configurable: true, value: {runtime: {connect: () => port}}});
+      const moduleUrl = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));
+      try {
+        const {captureCollectionLinks} = await import(moduleUrl);
+        captureCollectionLinks("test-session");
+      } finally {
+        URL.revokeObjectURL(moduleUrl);
+      }
+    }, moduleSource);
+
+    const target = page.locator("#target");
+    await target.click();
+    await page.evaluate(() => window.sendCollectionMessage({busy: false, pdfUrl: "https://example.test/layout", canExport: true}));
+    await target.hover();
+    assert.equal(await page.locator('div[aria-hidden="true"]').count(), 2);
+
+    await page.evaluate(() => {
+      const targetElement = document.querySelector("#target");
+      const spacer = document.createElement("div");
+      spacer.style.height = "8px";
+      targetElement.parentNode.insertBefore(spacer, targetElement);
+    });
+    await page.waitForFunction(() => {
+      const rect = document.querySelector("#target").getBoundingClientRect();
+      const overlays = [...document.querySelectorAll('div[aria-hidden="true"]')];
+      return overlays.length === 2 && overlays.every(overlay => Math.abs(Number.parseFloat(overlay.style.top) - rect.top) < 1);
+    });
+    const positions = await page.evaluate(() => {
+      const targetTop = document.querySelector("#target").getBoundingClientRect().top;
+      const overlayTops = [...document.querySelectorAll('div[aria-hidden="true"]')].map(overlay => Number.parseFloat(overlay.style.top));
+      return {targetTop, overlayTops};
+    });
+    assert.ok(positions.targetTop > 10, "the DOM change moved the link while the pointer remained over it");
+    assert.ok(positions.overlayTops.every(top => Math.abs(top - positions.targetTop) < 1), "both glows follow the moved link");
   } finally {
     await browser.close();
   }

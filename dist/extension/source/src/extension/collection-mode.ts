@@ -15,6 +15,7 @@ export function captureCollectionLinks(session: string): void {
   const analyzedLinks = new Map<string, Set<Element>>();
   const markedTargets = new Map<Element, PersistentGlow>();
   const targetAnchors = new WeakMap<Element, HTMLAnchorElement>();
+  const overlayElements = new WeakSet<Element>();
 
   const resolveLinkUrl = (anchor: HTMLAnchorElement): URL | null => {
     const href = anchor.getAttribute("href");
@@ -70,6 +71,7 @@ export function captureCollectionLinks(session: string): void {
   };
 
   const glow = document.createElement("div");
+  overlayElements.add(glow);
   glow.setAttribute("aria-hidden", "true");
   glow.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;display:none;border-radius:5px;box-shadow:inset 0 0 0 3px rgba(125,235,255,.95),0 0 0 2px rgba(125,235,255,.9),0 0 12px 5px rgba(70,210,255,.7),0 0 26px 8px rgba(70,210,255,.35);background:transparent;";
   document.documentElement.append(glow);
@@ -112,8 +114,18 @@ export function captureCollectionLinks(session: string): void {
       }
     }
     if (records.some(record => record.removedNodes.length > 0)) pruneDetachedTargets();
+    const isOwnedOverlay = (node: Node): boolean => node instanceof Element && overlayElements.has(node);
+    const pageChanged = records.some(record => {
+      if (record.type === "attributes" && overlayElements.has(record.target as Element)) return false;
+      if (record.type === "childList") {
+        const changedNodes = [...record.addedNodes, ...record.removedNodes];
+        return changedNodes.some(node => !isOwnedOverlay(node));
+      }
+      return !overlayElements.has(record.target as Element);
+    });
+    if (pageChanged) scheduleRedraw();
   });
-  observer.observe(document.documentElement, {childList: true, subtree: true, attributes: true, attributeFilter: ["href"]});
+  observer.observe(document.documentElement, {childList: true, subtree: true, attributes: true, characterData: true});
 
   const cyanGlow = "inset 0 0 0 3px rgba(125,235,255,.95),0 0 0 2px rgba(125,235,255,.9),0 0 12px 5px rgba(70,210,255,.7),0 0 26px 8px rgba(70,210,255,.35)";
   const goldGlow = "inset 0 0 0 4px rgba(255,235,140,1),0 0 0 3px rgba(255,205,65,1),0 0 16px 7px rgba(255,190,40,.9),0 0 34px 12px rgba(255,170,20,.55)";
@@ -132,6 +144,7 @@ export function captureCollectionLinks(session: string): void {
     let state = markedTargets.get(target);
     if (!state) {
       const overlay = document.createElement("div");
+      overlayElements.add(overlay);
       overlay.setAttribute("aria-hidden", "true");
       overlay.style.cssText = "position:fixed;pointer-events:none;z-index:2147483646;display:block;border-radius:5px;background:transparent;";
       document.documentElement.append(overlay);
@@ -183,7 +196,8 @@ export function captureCollectionLinks(session: string): void {
       node instanceof Element && node.tagName.toLowerCase() === "img");
     const target = image ?? link.anchor;
     lastHover = {anchor: link.anchor, url: link.url, target, modifier: false};
-    drawHover(lastHover);
+    if (hovered === target) scheduleRedraw();
+    else drawHover(lastHover);
   };
 
   const drawHover = (state: HoverState): void => {
@@ -206,9 +220,28 @@ export function captureCollectionLinks(session: string): void {
     drawHover(lastHover);
   };
 
+  let redrawFrame: number | null = null;
+  const scheduleRedraw = (): void => {
+    if (redrawFrame !== null) return;
+    redrawFrame = window.requestAnimationFrame(() => {
+      redrawFrame = null;
+      pruneDetachedTargets();
+      redrawMarkedTargets();
+      redrawHover();
+    });
+  };
+
+  const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleRedraw);
+  resizeObserver?.observe(document.documentElement);
+  const onResourceLoad = (): void => scheduleRedraw();
+  document.addEventListener("load", onResourceLoad, true);
+  document.addEventListener("transitionend", scheduleRedraw, true);
+  document.addEventListener("animationend", scheduleRedraw, true);
+  document.fonts?.addEventListener("loadingdone", scheduleRedraw);
+
   const onLeave = (): void => { lastHover = null; hideGlow(); };
-  const onScroll = (): void => { onLeave(); pruneDetachedTargets(); redrawMarkedTargets(); };
-  const onResize = (): void => { onLeave(); pruneDetachedTargets(); redrawMarkedTargets(); };
+  const onScroll = (): void => { onLeave(); pruneDetachedTargets(); scheduleRedraw(); };
+  const onResize = (): void => { onLeave(); pruneDetachedTargets(); scheduleRedraw(); };
 
   const onClick = (event: MouseEvent): void => {
     if (!event.isTrusted) return;
@@ -233,10 +266,16 @@ export function captureCollectionLinks(session: string): void {
   port.onMessage.addListener(onMessage);
   port.onDisconnect.addListener(() => {
     observer.disconnect();
+    resizeObserver?.disconnect();
+    if (redrawFrame !== null) window.cancelAnimationFrame(redrawFrame);
+    document.fonts?.removeEventListener("loadingdone", scheduleRedraw);
     document.removeEventListener("click", onClick, true);
     document.removeEventListener("pointermove", onHover, true);
     document.removeEventListener("pointerout", onLeave, true);
     document.removeEventListener("scroll", onScroll, true);
+    document.removeEventListener("load", onResourceLoad, true);
+    document.removeEventListener("transitionend", scheduleRedraw, true);
+    document.removeEventListener("animationend", scheduleRedraw, true);
     window.removeEventListener("resize", onResize);
     for (const state of markedTargets.values()) state.overlay.remove();
     markedTargets.clear();
