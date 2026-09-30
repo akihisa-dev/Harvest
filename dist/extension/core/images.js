@@ -16,11 +16,12 @@ export function normalizeImageUrls(candidates, pageUrl) {
             if (url.protocol !== "http:" && url.protocol !== "https:")
                 continue;
             url.hash = "";
-            const lower = url.href.toLowerCase();
+            const lower = decodeURIComponentSafe(url.pathname).toLowerCase();
             const contentPath = ["/fanzine/", "/covers/", "/pages/", "/storage/", "/uploads/", "/viewer/"]
                 .some(marker => lower.includes(marker));
-            const excluded = ["avatar", "logo", "icon", "button", "advert", "tracking", "pixel", "analytics", "banner", "/theme", "/plugins/", "/wp-includes/", "loading"]
-                .some(marker => lower.includes(marker)) || /\.(?:svg|ico)$/i.test(url.pathname);
+            const excluded = /(?:^|[\/_.-])(?:avatars?|logos?|icons?|buttons?|adverts?|advertisement|tracking|pixels?|analytics|banners?|loading)(?=$|[\/_.-]|\d)/.test(lower)
+                || /\/(?:themes?|plugins|wp-includes)(?:\/|$)/.test(lower)
+                || /\.(?:svg|ico)$/i.test(url.pathname);
             if (excluded && !contentPath)
                 continue;
             found.add(url.href);
