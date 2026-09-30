@@ -14,6 +14,11 @@ function startMotion(element, frames, options) {
     cancelMotion(element);
     const animation = element.animate(frames, { ...defaultMotion, ...options });
     runningMotion.set(element, animation);
+    const clearFinishedMotion = () => {
+        if (runningMotion.get(element) === animation)
+            runningMotion.delete(element);
+    };
+    void animation.finished.then(clearFinishedMotion, clearFinishedMotion);
 }
 function fadeRemoved(element, rect, options) {
     if (prefersReducedMotion() || typeof element.cloneNode !== "function" || !rect.width || !rect.height)

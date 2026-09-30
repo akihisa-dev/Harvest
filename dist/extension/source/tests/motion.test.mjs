@@ -16,7 +16,7 @@ class MotionElement {
   }
   getAnimations() { return this.animations; }
   animate(keyframes, options) {
-    this.animations.push({keyframes, options, cancel() {}});
+    this.animations.push({keyframes, options, finished: new Promise(() => {}), cancel() {}});
     return this.animations.at(-1);
   }
 }
@@ -94,7 +94,7 @@ test("移動途中の再操作は現在の見た目から開始し、色の切�
     let cancelled = false;
     element.getBoundingClientRect = () => ({left: 0, top: Number(element.style.order) * 10 + visualOffset});
     element.animate = (keyframes, options) => {
-      const animation = {keyframes, options, cancel() { cancelled = true; visualOffset = 0; }};
+      const animation = {keyframes, options, finished: new Promise(() => {}), cancel() { cancelled = true; visualOffset = 0; }};
       element.animations.push(animation);
       return animation;
     };
@@ -110,4 +110,48 @@ test("移動途中の再操作は現在の見た目から開始し、色の切�
     assert.equal(element.animations.length, 2);
     assert.equal(visualOffset, 0);
   } finally { globalThis.window = previousWindow; }
+});
+
+
+test("ステータス文字は完了後もフェードし、古い完了通知は新しい動きを消さない", async () => {
+  const previousWindow = globalThis.window;
+  const previousStyle = globalThis.getComputedStyle;
+  globalThis.window = {matchMedia: () => ({matches: false})};
+  globalThis.getComputedStyle = () => ({opacity: "0.8"});
+  try {
+    const {setMotionText} = await import("../dist/extension/app/motion.js?text=" + Date.now());
+    const element = new MotionElement();
+    element.animate = (keyframes, options) => {
+      let finish, reject;
+      const finished = new Promise((resolve, fail) => { finish = resolve; reject = fail; });
+      const animation = {keyframes, options, finished, finish, reject, cancel() {}};
+      element.animations.push(animation);
+      return animation;
+    };
+    setMotionText(element, "first");
+    assert.equal(element.animations.at(-1).keyframes[0].opacity, .65);
+    element.animations.at(-1).finish();
+    await Promise.resolve();
+    setMotionText(element, "second");
+    assert.equal(element.animations.at(-1).keyframes[0].opacity, .65, "completed fades start a fresh visible fade");
+    const second = element.animations.at(-1);
+    setMotionText(element, "third");
+    assert.equal(element.animations.at(-1).keyframes[0].opacity, .8, "interrupted fades use the current opacity");
+    second.reject(new Error("cancelled"));
+    await Promise.resolve();
+    setMotionText(element, "fourth");
+    assert.equal(element.animations.at(-1).keyframes[0].opacity, .8, "old rejection does not clear the current motion");
+    element.animations.at(-1).reject(new Error("cancelled"));
+    await Promise.resolve();
+    setMotionText(element, "fifth");
+    assert.equal(element.animations.at(-1).keyframes[0].opacity, .65, "rejected current motions are cleaned up too");
+    globalThis.window = {matchMedia: () => ({matches: true})};
+    const count = element.animations.length;
+    setMotionText(element, "reduced");
+    assert.equal(element.textContent, "reduced");
+    assert.equal(element.animations.length, count);
+  } finally {
+    globalThis.window = previousWindow;
+    globalThis.getComputedStyle = previousStyle;
+  }
 });

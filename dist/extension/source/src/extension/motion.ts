@@ -25,6 +25,10 @@ function startMotion(element: HTMLElement, frames: Keyframe[], options: MotionOp
   cancelMotion(element);
   const animation = element.animate(frames, {...defaultMotion, ...options});
   runningMotion.set(element, animation);
+  const clearFinishedMotion = (): void => {
+    if (runningMotion.get(element) === animation) runningMotion.delete(element);
+  };
+  void animation.finished.then(clearFinishedMotion, clearFinishedMotion);
 }
 
 function fadeRemoved(element: HTMLElement, rect: DOMRect, options: MotionOptions): void {
