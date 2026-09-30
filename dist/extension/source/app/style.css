@@ -391,3 +391,41 @@ input[type="checkbox"]:disabled { opacity: .55; }
 #collection-toggle[aria-pressed="true"]:active:not(:disabled) {
   background: var(--pressed-active);
 }
+
+/* Conditional controls retain their render tree through a short exit transition.
+   hidden still changes immediately for focus, input and accessibility. */
+#source-drop, #source-url, .source-page-option, #failures,
+#scan-overlay, #export-overlay, #url-drop-overlay {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: opacity 180ms var(--motion-easing),
+    transform 180ms var(--motion-easing), display 180ms allow-discrete;
+}
+#source-drop[hidden], #source-url[hidden] { opacity: 0; transform: translateY(6px); pointer-events: none; }
+.source-page-option, #failures {
+  interpolate-size: allow-keywords;
+  height: auto;
+  transition: opacity 200ms var(--motion-easing), height 200ms var(--motion-easing),
+    margin 200ms var(--motion-easing), padding 200ms var(--motion-easing),
+    border-width 200ms var(--motion-easing), display 200ms allow-discrete;
+}
+.source-page-option[hidden], #failures[hidden] {
+  height: 0; opacity: 0; margin-block: 0; padding-block: 0;
+  border-block-width: 0; overflow: clip; pointer-events: none;
+}
+#scan-overlay[hidden], #export-overlay[hidden], #url-drop-overlay[hidden] {
+  opacity: 0; transform: scale(.94); pointer-events: none;
+}
+@starting-style {
+  #source-drop:not([hidden]), #source-url:not([hidden]) { opacity: 0; transform: translateY(6px); }
+  .source-page-option:not([hidden]), #failures:not([hidden]) {
+    height: 0; opacity: 0; margin-block: 0; padding-block: 0; border-block-width: 0;
+  }
+  #scan-overlay:not([hidden]), #export-overlay:not([hidden]), #url-drop-overlay:not([hidden]) {
+    opacity: 0; transform: scale(.94);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #source-drop, #source-url, .source-page-option, #failures,
+  #scan-overlay, #export-overlay, #url-drop-overlay { transition: none; }
+}
