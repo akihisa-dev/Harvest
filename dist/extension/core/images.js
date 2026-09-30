@@ -42,8 +42,7 @@ export function groupImages(images) {
         }
         try {
             const url = new URL(image);
-            const parts = url.pathname.split("/").filter(Boolean);
-            const directory = parts.length > 1 ? parts[parts.length - 2] : "root";
+            const parentPath = url.pathname.slice(0, url.pathname.lastIndexOf("/") + 1);
             const { prefix, resolution } = filenamePattern(url.pathname);
             // Numeric query values commonly identify pages. Keep parameter names
             // and fixed values so different image series do not share a group.
@@ -51,7 +50,7 @@ export function groupImages(images) {
                 .map(([name, value]) => [name, /^\d+$/.test(value) ? null : value]);
             queryParts.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
             const querySignature = queryParts.length ? `|${JSON.stringify(queryParts)}` : "";
-            const key = `${url.hostname}/${directory}|${prefix}|${resolution}${querySignature}`;
+            const key = `${url.origin}${parentPath}|${prefix}|${resolution}${querySignature}`;
             const items = raw.get(key) ?? [];
             items.push(image);
             raw.set(key, items);
