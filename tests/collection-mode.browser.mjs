@@ -59,3 +59,52 @@ test("removed collection links lose their marker in a real DOM", async () => {
     await browser.close();
   }
 });
+
+test("href changes clear old collection markers and reject stale results in a real DOM", async () => {
+  const moduleSource = await readFile(new URL("../dist/extension/app/collection-mode.js", import.meta.url), "utf8");
+  const browser = await chromium.launch({channel: "chrome", headless: true});
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<a id="target" href="https://example.test/a">Target</a>');
+    await page.evaluate(async source => {
+      const port = {
+        onMessage: {addListener(listener) { window.sendCollectionMessage = listener; }},
+        onDisconnect: {addListener() {}},
+        postMessage() {},
+      };
+      Object.defineProperty(window, "chrome", {configurable: true, value: {runtime: {connect: () => port}}});
+      const moduleUrl = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));
+      try {
+        const {captureCollectionLinks} = await import(moduleUrl);
+        captureCollectionLinks("test-session");
+      } finally {
+        URL.revokeObjectURL(moduleUrl);
+      }
+    }, moduleSource);
+
+    const target = page.locator("#target");
+    await target.click();
+    await page.evaluate(() => window.sendCollectionMessage({busy: false, pdfUrl: "https://example.test/a", canExport: true}));
+    assert.equal(await page.locator('div[aria-hidden="true"]').count(), 2);
+
+    await target.evaluate(element => element.setAttribute("href", "https://example.test:443/a"));
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+    assert.equal(await page.locator('div[aria-hidden="true"]').count(), 2, "equivalent URLs retain their marker");
+
+    await target.evaluate(element => element.setAttribute("href", "https://example.test/b"));
+    await page.waitForFunction(() => document.querySelectorAll('div[aria-hidden="true"]').length === 1);
+    await page.evaluate(() => window.sendCollectionMessage({pdfUrl: "https://example.test/a"}));
+    assert.equal(await page.locator('div[aria-hidden="true"]').count(), 1, "old analyzed URLs stay cleared");
+
+    await target.click();
+    await target.evaluate(element => element.setAttribute("href", "https://example.test/c"));
+    await page.evaluate(() => window.sendCollectionMessage({pdfUrl: "https://example.test/b"}));
+    assert.equal(await page.locator('div[aria-hidden="true"]').count(), 1, "a pending result cannot mark a changed link");
+
+    await target.click();
+    await page.evaluate(() => window.sendCollectionMessage({pdfUrl: "https://example.test/c"}));
+    assert.equal(await page.locator('div[aria-hidden="true"]').count(), 2, "the new URL can be marked after its own click");
+  } finally {
+    await browser.close();
+  }
+});

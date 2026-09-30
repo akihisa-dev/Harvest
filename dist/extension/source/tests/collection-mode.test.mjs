@@ -7,6 +7,7 @@ class Anchor {
   getBoundingClientRect() { return this.rect ?? {left: 10, top: 20, width: 100, height: 80}; }
   hasAttribute(name) { return name === "href"; }
   getAttribute(name) { return name === "href" ? this.href : null; }
+  setAttribute(name, value) { if (name === "href") this.href = value; }
 }
 
 function makeStyle(initial = "", initialPriority = "") {
@@ -62,7 +63,11 @@ function setup() {
     port, messages, removed, glow, overlays,
     removeFromPage(anchor) {
       anchor.isConnected = false;
-      mutationObserver.callback([{removedNodes: [anchor]}]);
+      mutationObserver.callback([{type: "childList", removedNodes: [anchor]}]);
+    },
+    changeHref(anchor, href) {
+      anchor.setAttribute("href", href);
+      mutationObserver.callback([{type: "attributes", target: anchor, attributeName: "href", removedNodes: []}]);
     },
     get observer() { return mutationObserver; },
     hover(anchor) {
@@ -235,7 +240,7 @@ test("DOMから消えた対象のマーカーと参照を片付け、残る対�
   const fixture = setup();
   try {
     captureCollectionLinks("test-session");
-    assert.deepEqual(fixture.observer.options, {childList: true, subtree: true});
+    assert.deepEqual(fixture.observer.options, {childList: true, subtree: true, attributes: true, attributeFilter: ["href"]});
     const removed = new Anchor("/removed");
     const kept = new Anchor("/kept");
     fixture.click(removed);
@@ -267,6 +272,33 @@ test("DOMから消えた対象のマーカーと参照を片付け、残る対�
     fixture.click(removed);
     fixture.port.messageListener({pdfUrl: "https://example.test/removed"});
     assert.equal(fixture.overlays.length, 3, "再接続後の新しい操作はマークできる");
+  } finally { fixture.restore(); }
+});
+
+test("href変更は古い解析表示と解析待ちを外し、同じURLのままなら表示を保つ", () => {
+  const fixture = setup();
+  try {
+    captureCollectionLinks("test-session");
+    const analyzed = new Anchor("/analyzed");
+    fixture.click(analyzed);
+    fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/analyzed", canExport: true});
+    assert.equal(fixture.overlays.length, 1);
+
+    fixture.changeHref(analyzed, "https://example.test/analyzed");
+    assert.notEqual(fixture.overlays[0].removed, true, "同じ解決URLでは解析表示を保つ");
+    fixture.changeHref(analyzed, "/replacement");
+    assert.equal(fixture.overlays[0].removed, true, "リンク先が変われば古い表示を消す");
+    fixture.port.messageListener({pdfUrl: "https://example.test/analyzed"});
+    assert.equal(fixture.overlays.length, 1, "古い解析結果を新しいリンクへ付けない");
+
+    fixture.click(analyzed);
+    analyzed.setAttribute("href", "/race-replacement");
+    fixture.port.messageListener({pdfUrl: "https://example.test/replacement"});
+    assert.equal(fixture.overlays.length, 1, "監視通知前でも現在のhrefと合わない解析結果を付けない");
+
+    fixture.click(analyzed);
+    fixture.port.messageListener({pdfUrl: "https://example.test/race-replacement"});
+    assert.equal(fixture.overlays.length, 2, "変更後のURLをクリックした結果はマークできる");
   } finally { fixture.restore(); }
 });
 

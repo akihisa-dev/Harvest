@@ -12,6 +12,34 @@ export function captureCollectionLinks(session) {
     const pendingClicks = new Map();
     const analyzedLinks = new Map();
     const markedTargets = new Map();
+    const targetAnchors = new WeakMap();
+    const resolveLinkUrl = (anchor) => {
+        const href = anchor.getAttribute("href");
+        if (!href)
+            return null;
+        try {
+            const url = new URL(href, document.baseURI || location.href);
+            return url.protocol === "http:" || url.protocol === "https:" ? url : null;
+        }
+        catch {
+            return null;
+        }
+    };
+    const unlinkTargetForUrl = (target, url) => {
+        for (const links of [pendingClicks, analyzedLinks]) {
+            const targets = links.get(url);
+            if (!targets)
+                continue;
+            targets.delete(target);
+            if (targets.size === 0)
+                links.delete(url);
+        }
+        const state = markedTargets.get(target);
+        if (state?.url === url) {
+            state.overlay.remove();
+            markedTargets.delete(target);
+        }
+    };
     const onMessage = (message) => {
         if (typeof message !== "object" || message === null)
             return;
@@ -29,10 +57,18 @@ export function captureCollectionLinks(session) {
                 for (const target of targets) {
                     if (!target.isConnected)
                         continue;
+                    const anchor = targetAnchors.get(target);
+                    if (!anchor || resolveLinkUrl(anchor)?.href !== pdfUrl) {
+                        unlinkTargetForUrl(target, pdfUrl);
+                        continue;
+                    }
                     analyzed.add(target);
-                    markTarget(target, pdfUrl);
+                    markTarget(target, pdfUrl, anchor);
                 }
-                analyzedLinks.set(pdfUrl, analyzed);
+                if (analyzed.size > 0)
+                    analyzedLinks.set(pdfUrl, analyzed);
+                else
+                    analyzedLinks.delete(pdfUrl);
             }
         }
         redrawMarkedTargets();
@@ -70,10 +106,30 @@ export function captureCollectionLinks(session) {
         }
     };
     const observer = new MutationObserver(records => {
+        for (const record of records) {
+            if (record.type !== "attributes" || record.attributeName !== "href")
+                continue;
+            const anchor = record.target;
+            const currentUrl = resolveLinkUrl(anchor)?.href ?? null;
+            for (const links of [pendingClicks, analyzedLinks]) {
+                for (const [url, targets] of links) {
+                    if (url === currentUrl)
+                        continue;
+                    for (const target of targets) {
+                        if (target === anchor || targetAnchors.get(target) === anchor)
+                            unlinkTargetForUrl(target, url);
+                    }
+                }
+            }
+            for (const [target, state] of markedTargets) {
+                if (state.anchor === anchor && state.url !== currentUrl)
+                    unlinkTargetForUrl(target, state.url);
+            }
+        }
         if (records.some(record => record.removedNodes.length > 0))
             pruneDetachedTargets();
     });
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["href"] });
     const cyanGlow = "inset 0 0 0 3px rgba(125,235,255,.95),0 0 0 2px rgba(125,235,255,.9),0 0 12px 5px rgba(70,210,255,.7),0 0 26px 8px rgba(70,210,255,.35)";
     const goldGlow = "inset 0 0 0 4px rgba(255,235,140,1),0 0 0 3px rgba(255,205,65,1),0 0 16px 7px rgba(255,190,40,.9),0 0 34px 12px rgba(255,170,20,.55)";
     const desiredGlow = (url) => canExport && url === pdfUrl ? goldGlow : cyanGlow;
@@ -84,7 +140,7 @@ export function captureCollectionLinks(session) {
         overlay.style.width = `${rect.width}px`;
         overlay.style.height = `${rect.height}px`;
     };
-    const markTarget = (target, url) => {
+    const markTarget = (target, url, anchor) => {
         if (!target.isConnected)
             return;
         let state = markedTargets.get(target);
@@ -93,16 +149,22 @@ export function captureCollectionLinks(session) {
             overlay.setAttribute("aria-hidden", "true");
             overlay.style.cssText = "position:fixed;pointer-events:none;z-index:2147483646;display:block;border-radius:5px;background:transparent;";
             document.documentElement.append(overlay);
-            state = { url, overlay };
+            state = { url, anchor, overlay };
             markedTargets.set(target, state);
         }
-        else
+        else {
             state.url = url;
+            state.anchor = anchor;
+        }
         state.overlay.style.boxShadow = desiredGlow(url);
         positionGlow(target, state.overlay);
     };
     const redrawMarkedTargets = () => {
         for (const [target, state] of markedTargets) {
+            if (resolveLinkUrl(state.anchor)?.href !== state.url) {
+                unlinkTargetForUrl(target, state.url);
+                continue;
+            }
             state.overlay.style.boxShadow = desiredGlow(state.url);
             positionGlow(target, state.overlay);
         }
@@ -114,16 +176,10 @@ export function captureCollectionLinks(session) {
             const element = node;
             return element.nodeType === 1 && element.tagName.toLowerCase() === "a" && element.hasAttribute("href");
         });
-        const href = anchor?.getAttribute("href");
-        if (!anchor || !href)
+        if (!anchor)
             return null;
-        try {
-            const url = new URL(href, document.baseURI || location.href);
-            return url.protocol === "http:" || url.protocol === "https:" ? { anchor, url } : null;
-        }
-        catch {
-            return null;
-        }
+        const url = resolveLinkUrl(anchor);
+        return url ? { anchor, url } : null;
     };
     const onHover = (event) => {
         if (busy || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
@@ -181,8 +237,10 @@ export function captureCollectionLinks(session) {
         hideGlow();
         if (!busy) {
             const image = event.composedPath().find((node) => node instanceof Element && node.tagName.toLowerCase() === "img");
+            const target = image ?? link.anchor;
+            targetAnchors.set(target, link.anchor);
             const targets = pendingClicks.get(link.url.href) ?? new Set();
-            targets.add(image ?? link.anchor);
+            targets.add(target);
             pendingClicks.set(link.url.href, targets);
             port.postMessage({ url: link.url.href });
         }

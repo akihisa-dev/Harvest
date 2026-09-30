@@ -9,11 +9,35 @@ export function captureCollectionLinks(session: string): void {
   let pdfUrl: string | null = null;
   let canExport = false;
   type HoverState = {anchor: HTMLAnchorElement; url: URL; target: Element; modifier: boolean};
-  type PersistentGlow = {url: string; overlay: HTMLElement};
+  type PersistentGlow = {url: string; anchor: HTMLAnchorElement; overlay: HTMLElement};
   let lastHover: HoverState | null = null;
   const pendingClicks = new Map<string, Set<Element>>();
   const analyzedLinks = new Map<string, Set<Element>>();
   const markedTargets = new Map<Element, PersistentGlow>();
+  const targetAnchors = new WeakMap<Element, HTMLAnchorElement>();
+
+  const resolveLinkUrl = (anchor: HTMLAnchorElement): URL | null => {
+    const href = anchor.getAttribute("href");
+    if (!href) return null;
+    try {
+      const url = new URL(href, document.baseURI || location.href);
+      return url.protocol === "http:" || url.protocol === "https:" ? url : null;
+    } catch { return null; }
+  };
+
+  const unlinkTargetForUrl = (target: Element, url: string): void => {
+    for (const links of [pendingClicks, analyzedLinks]) {
+      const targets = links.get(url);
+      if (!targets) continue;
+      targets.delete(target);
+      if (targets.size === 0) links.delete(url);
+    }
+    const state = markedTargets.get(target);
+    if (state?.url === url) {
+      state.overlay.remove();
+      markedTargets.delete(target);
+    }
+  };
 
   const onMessage = (message: unknown): void => {
     if (typeof message !== "object" || message === null) return;
@@ -27,10 +51,16 @@ export function captureCollectionLinks(session: string): void {
         const analyzed = analyzedLinks.get(pdfUrl) ?? new Set<Element>();
         for (const target of targets) {
           if (!target.isConnected) continue;
+          const anchor = targetAnchors.get(target);
+          if (!anchor || resolveLinkUrl(anchor)?.href !== pdfUrl) {
+            unlinkTargetForUrl(target, pdfUrl);
+            continue;
+          }
           analyzed.add(target);
-          markTarget(target, pdfUrl);
+          markTarget(target, pdfUrl, anchor);
         }
-        analyzedLinks.set(pdfUrl, analyzed);
+        if (analyzed.size > 0) analyzedLinks.set(pdfUrl, analyzed);
+        else analyzedLinks.delete(pdfUrl);
       }
     }
     redrawMarkedTargets();
@@ -65,9 +95,25 @@ export function captureCollectionLinks(session: string): void {
   };
 
   const observer = new MutationObserver(records => {
+    for (const record of records) {
+      if (record.type !== "attributes" || record.attributeName !== "href") continue;
+      const anchor = record.target as HTMLAnchorElement;
+      const currentUrl = resolveLinkUrl(anchor)?.href ?? null;
+      for (const links of [pendingClicks, analyzedLinks]) {
+        for (const [url, targets] of links) {
+          if (url === currentUrl) continue;
+          for (const target of targets) {
+            if (target === anchor || targetAnchors.get(target) === anchor) unlinkTargetForUrl(target, url);
+          }
+        }
+      }
+      for (const [target, state] of markedTargets) {
+        if (state.anchor === anchor && state.url !== currentUrl) unlinkTargetForUrl(target, state.url);
+      }
+    }
     if (records.some(record => record.removedNodes.length > 0)) pruneDetachedTargets();
   });
-  observer.observe(document.documentElement, {childList: true, subtree: true});
+  observer.observe(document.documentElement, {childList: true, subtree: true, attributes: true, attributeFilter: ["href"]});
 
   const cyanGlow = "inset 0 0 0 3px rgba(125,235,255,.95),0 0 0 2px rgba(125,235,255,.9),0 0 12px 5px rgba(70,210,255,.7),0 0 26px 8px rgba(70,210,255,.35)";
   const goldGlow = "inset 0 0 0 4px rgba(255,235,140,1),0 0 0 3px rgba(255,205,65,1),0 0 16px 7px rgba(255,190,40,.9),0 0 34px 12px rgba(255,170,20,.55)";
@@ -81,7 +127,7 @@ export function captureCollectionLinks(session: string): void {
     overlay.style.height = `${rect.height}px`;
   };
 
-  const markTarget = (target: Element, url: string): void => {
+  const markTarget = (target: Element, url: string, anchor: HTMLAnchorElement): void => {
     if (!target.isConnected) return;
     let state = markedTargets.get(target);
     if (!state) {
@@ -89,15 +135,22 @@ export function captureCollectionLinks(session: string): void {
       overlay.setAttribute("aria-hidden", "true");
       overlay.style.cssText = "position:fixed;pointer-events:none;z-index:2147483646;display:block;border-radius:5px;background:transparent;";
       document.documentElement.append(overlay);
-      state = {url, overlay};
+      state = {url, anchor, overlay};
       markedTargets.set(target, state);
-    } else state.url = url;
+    } else {
+      state.url = url;
+      state.anchor = anchor;
+    }
     state.overlay.style.boxShadow = desiredGlow(url);
     positionGlow(target, state.overlay);
   };
 
   const redrawMarkedTargets = (): void => {
     for (const [target, state] of markedTargets) {
+      if (resolveLinkUrl(state.anchor)?.href !== state.url) {
+        unlinkTargetForUrl(target, state.url);
+        continue;
+      }
       state.overlay.style.boxShadow = desiredGlow(state.url);
       positionGlow(target, state.overlay);
     }
@@ -109,12 +162,9 @@ export function captureCollectionLinks(session: string): void {
       const element = node as Element;
       return element.nodeType === 1 && element.tagName.toLowerCase() === "a" && element.hasAttribute("href");
     });
-    const href = anchor?.getAttribute("href");
-    if (!anchor || !href) return null;
-    try {
-      const url = new URL(href, document.baseURI || location.href);
-      return url.protocol === "http:" || url.protocol === "https:" ? {anchor, url} : null;
-    } catch { return null; }
+    if (!anchor) return null;
+    const url = resolveLinkUrl(anchor);
+    return url ? {anchor, url} : null;
   };
 
   const onHover = (event: MouseEvent): void => {
@@ -171,8 +221,10 @@ export function captureCollectionLinks(session: string): void {
     if (!busy) {
       const image = event.composedPath().find((node): node is Element =>
         node instanceof Element && node.tagName.toLowerCase() === "img");
+      const target = image ?? link.anchor;
+      targetAnchors.set(target, link.anchor);
       const targets = pendingClicks.get(link.url.href) ?? new Set<Element>();
-      targets.add(image ?? link.anchor);
+      targets.add(target);
       pendingClicks.set(link.url.href, targets);
       port.postMessage({url: link.url.href});
     }
