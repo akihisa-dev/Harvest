@@ -2,6 +2,7 @@ export interface PageScan {
   url: string;
   title: string;
   images: string[];
+  media?: Array<{url: string; kind: "image" | "gif" | "video"; previewUrl?: string}>;
 }
 
 /**
@@ -22,9 +23,20 @@ export async function scanDocument(): Promise<PageScan> {
     sources: Map<Element, Element | undefined>;
     foundOutsideElements: boolean;
   };
+  type MediaKind = "image" | "gif" | "video";
+  type MediaCandidateRecord = {
+    url: string;
+    kind: MediaKind;
+    detectionOrder: number;
+    sources: Set<Element>;
+    foundOutsideElements: boolean;
+  };
   const candidates = new Map<string, CandidateRecord>();
+  const mediaCandidates = new Map<string, MediaCandidateRecord>();
   const elementUrls = new Map<Element, Set<string>>();
+    const elementMediaUrls = new Map<Element, Set<string>>();
   let nextDetectionOrder = 0;
+  let nextMediaDetectionOrder = 0;
   const imageAttributes = [
     "data-original",
     "data-full",
@@ -40,7 +52,200 @@ export async function scanDocument(): Promise<PageScan> {
   const relativeImageAttributes = imageAttributes.filter(attribute => attribute !== "data-url" && attribute !== "src");
   const imageSrcsetAttributes = ["data-srcset", "srcset"];
   const imageUrlPattern = /https?:\/\/[^\s"'\\<>]+?\.(?:jpe?g|png|webp|avif|gif)(?:[?#][^\s"'\\<>]*)?/gi;
+  const mediaUrlPattern = /https?:\/\/[^\s"'\\<>]+/gi;
   const relativeImagePathPattern = /\.(?:jpe?g|png|webp|avif|gif)$/i;
+
+  const mediaKindForUrl = (url: string): MediaKind | undefined => {
+    try {
+      const parsed = new URL(url, document.baseURI || location.href);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return undefined;
+      if (/\.gif$/i.test(parsed.pathname) || parsed.searchParams.get("format")?.toLowerCase() === "gif") return "gif";
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  };
+
+  const recordMedia = (
+    value: string | null | undefined,
+    kind: MediaKind,
+    sourceElement?: Element,
+  ): void => {
+    checkDeadline();
+    const candidate = value?.trim();
+    if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:")) return;
+    let url: string;
+    try {
+      const parsed = new URL(candidate, document.baseURI || location.href);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
+      url = parsed.href;
+    } catch {
+      return;
+    }
+    let record = mediaCandidates.get(url);
+    if (!record) {
+      record = {url, kind, detectionOrder: nextMediaDetectionOrder++, sources: new Set(), foundOutsideElements: false};
+      mediaCandidates.set(url, record);
+    } else if (kind === "gif" || (record.kind === "image" && kind === "video")) {
+      // A known GIF remains a GIF even if the same URL also appears in a video element.
+      record.kind = kind;
+    }
+    if (sourceElement) {
+      record.sources.add(sourceElement);
+      let urls = elementMediaUrls.get(sourceElement);
+      if (!urls) {
+        urls = new Set();
+        elementMediaUrls.set(sourceElement, urls);
+      }
+      urls.add(url);
+    } else {
+      record.foundOutsideElements = true;
+    }
+  };
+
+  const recordDirectVideo = (
+    value: string | null | undefined,
+    sourceElement: Element,
+    declaredType?: string | null,
+  ): void => {
+    checkDeadline();
+    const candidate = value?.trim();
+    if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:")) return;
+    try {
+      const parsed = new URL(candidate, document.baseURI || location.href);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
+      const pathIsVideo = /\.(?:mp4|webm)$/i.test(parsed.pathname)
+        || /^(?:mp4|webm)$/i.test(parsed.searchParams.get("format") ?? "");
+      const declaredVideo = /^video\/(?:mp4|webm)(?:\s*;|$)/i.test(declaredType?.trim() ?? "");
+      if (pathIsVideo || declaredVideo) recordMedia(parsed.href, "video", sourceElement);
+    } catch {
+      // Media candidates must be usable HTTP(S) URLs.
+    }
+  };
+
+  const scanMediaText = (value: string | null | undefined, sourceElement?: Element): void => {
+    if (!value) return;
+    for (const match of value.matchAll(mediaUrlPattern)) {
+      checkDeadline();
+      const candidate = (match[0] ?? "").replaceAll("&amp;", "&").replace(/[),.;!?]+$/, "");
+      const kind = mediaKindForUrl(candidate);
+      if (kind === "gif") recordMedia(candidate, kind, sourceElement);
+    }
+    checkDeadline();
+  };
+
+  const scanEmbeddedVideoJson = (script: Element): void => {
+    const text = script.textContent ?? "";
+    if (!text.includes("video_info") || !text.includes("variants")) return;
+    const parseObjectAt = (start: number): {value: unknown; end: number} | undefined => {
+      const opening = text[start];
+      if (opening !== "{" && opening !== "[") return undefined;
+      const expected: string[] = [opening === "{" ? "}" : "]"];
+      let inString = false;
+      let escaped = false;
+      for (let index = start + 1; index < text.length; index += 1) {
+        if (index % 4096 === 0) checkDeadline();
+        const character = text[index];
+        if (inString) {
+          if (escaped) escaped = false;
+          else if (character === "\\") escaped = true;
+          else if (character === '"') inString = false;
+          continue;
+        }
+        if (character === '"') {
+          inString = true;
+        } else if (character === "{" || character === "[") {
+          expected.push(character === "{" ? "}" : "]");
+        } else if (character === "}" || character === "]") {
+          if (expected.pop() !== character) return undefined;
+          if (expected.length === 0) {
+            try {
+              return {value: JSON.parse(text.slice(start, index + 1)) as unknown, end: index + 1};
+            } catch {
+              return undefined;
+            }
+          }
+        }
+      }
+      return undefined;
+    };
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text.trim()) as unknown;
+    } catch {
+      parsed = undefined;
+      // Public page state is sometimes assigned to a JavaScript variable. Parse
+      // the first JSON object or array without evaluating the surrounding code.
+      let start = text.search(/[\[{]/);
+      let attempts = 0;
+      while (start >= 0 && attempts < 16) {
+        checkDeadline();
+        const result = parseObjectAt(start);
+        if (result) {
+          parsed = result.value;
+          break;
+        }
+        attempts += 1;
+        const nextObject = text.indexOf("{", start + 1);
+        const nextArray = text.indexOf("[", start + 1);
+        if (nextObject < 0) start = nextArray;
+        else if (nextArray < 0) start = nextObject;
+        else start = Math.min(nextObject, nextArray);
+      }
+    }
+    if (parsed === undefined) return;
+
+    const pending: unknown[] = [parsed];
+    while (pending.length > 0) {
+      checkDeadline();
+      const value = pending.pop();
+      if (!value || typeof value !== "object") continue;
+      if (Array.isArray(value)) {
+        for (let index = value.length - 1; index >= 0; index -= 1) {
+          checkDeadline();
+          pending.push(value[index]);
+        }
+        continue;
+      }
+      const object = value as Record<string, unknown>;
+      const videoInfo = object["video_info"];
+      if (typeof videoInfo === "object" && videoInfo !== null && !Array.isArray(videoInfo)) {
+        const variants = (videoInfo as Record<string, unknown>)["variants"];
+        if (Array.isArray(variants)) {
+          let best: {url: string; bitrate: number} | undefined;
+          for (const variant of variants) {
+            checkDeadline();
+            if (typeof variant !== "object" || variant === null || Array.isArray(variant)) continue;
+            const candidate = variant as Record<string, unknown>;
+            if (typeof candidate["url"] !== "string") continue;
+            const contentType = typeof candidate["content_type"] === "string"
+              ? candidate["content_type"].toLowerCase()
+              : typeof candidate["mime_type"] === "string" ? candidate["mime_type"].toLowerCase() : "";
+            let isMp4 = /^video\/mp4(?:\s*;|$)/i.test(contentType);
+            try {
+              const variantUrl = new URL(candidate["url"], document.baseURI || location.href);
+              isMp4 ||= /\.mp4$/i.test(variantUrl.pathname);
+              if ((variantUrl.protocol !== "http:" && variantUrl.protocol !== "https:") || !isMp4) continue;
+            } catch {
+              continue;
+            }
+            const bitrate = typeof candidate["bitrate"] === "number" && Number.isFinite(candidate["bitrate"])
+              ? candidate["bitrate"]
+              : 0;
+            if (!best || bitrate > best.bitrate) best = {url: candidate["url"], bitrate};
+          }
+          if (best) recordMedia(best.url, "video", script);
+        }
+      }
+      const values = Object.values(object);
+      for (let index = values.length - 1; index >= 0; index -= 1) {
+        checkDeadline();
+        const value = values[index];
+        if (typeof value === "object" && value !== null) pending.push(value);
+      }
+    }
+  };
 
   const add = (value: string | null | undefined, positionElement?: Element, sourceElement?: Element): void => {
     checkDeadline();
@@ -49,6 +254,8 @@ export async function scanDocument(): Promise<PageScan> {
     try {
       const url = new URL(candidate, document.baseURI || location.href).href;
       recordCandidate(url, positionElement, sourceElement);
+      const mediaKind = mediaKindForUrl(url);
+      if (mediaKind === "gif") recordMedia(url, mediaKind, sourceElement);
     } catch {
       // Keep malformed values for the core normalizer to reject consistently.
       recordCandidate(candidate, positionElement, sourceElement);
@@ -67,6 +274,7 @@ export async function scanDocument(): Promise<PageScan> {
     } else {
       record.foundOutsideElements = true;
     }
+    recordMedia(url, mediaKindForUrl(url) ?? "image", sourceElement);
   };
 
   const scanText = (value: string | null | undefined, positionElement?: Element, sourceElement?: Element): void => {
@@ -76,6 +284,7 @@ export async function scanDocument(): Promise<PageScan> {
       const candidate = match[0];
       if (candidate) add(candidate.replaceAll("&amp;", "&"), positionElement, sourceElement);
     }
+    scanMediaText(value, sourceElement);
     checkDeadline();
   };
 
@@ -272,14 +481,52 @@ export async function scanDocument(): Promise<PageScan> {
   const collectElement = (element: Element): void => {
     checkDeadline();
     const previousUrls = elementUrls.get(element);
+    const previousMediaUrls = elementMediaUrls.get(element);
     elementUrls.set(element, new Set());
+    elementMediaUrls.set(element, new Set());
     const tagName = element.tagName.toLowerCase();
+    const declaredSourceType = tagName === "source" ? element.getAttribute("type") : null;
+    const sourceUrl = tagName === "source"
+      ? element.getAttribute("src") || (element as HTMLSourceElement).src
+      : null;
+    let sourceHasVideoUrl = false;
+    if (sourceUrl) {
+      try {
+        const parsedSourceUrl = new URL(sourceUrl, document.baseURI || location.href);
+        sourceHasVideoUrl = /\.(?:mp4|webm)$/i.test(parsedSourceUrl.pathname)
+          || /^(?:mp4|webm)$/i.test(parsedSourceUrl.searchParams.get("format") ?? "");
+      } catch {
+        sourceHasVideoUrl = false;
+      }
+    }
+    const isVideoSource = tagName === "source"
+      && (element.parentElement?.tagName.toLowerCase() === "video"
+        || /^video\//i.test(declaredSourceType ?? "")
+        || sourceHasVideoUrl);
     const positionElement = imagePositionElement(element);
-    if (tagName === "script" || tagName === "style") scanText(element.textContent, undefined, element);
+    if (tagName === "script" || tagName === "style") {
+      scanText(element.textContent, undefined, element);
+      if (tagName === "script") scanEmbeddedVideoJson(element);
+    }
+    if (tagName === "video") {
+      const video = element as HTMLVideoElement;
+      recordDirectVideo(video.currentSrc, element, element.getAttribute("type"));
+      recordDirectVideo(video.src, element, element.getAttribute("type"));
+      recordDirectVideo(element.getAttribute("src"), element, element.getAttribute("type"));
+    } else if (isVideoSource) {
+      const source = element as HTMLSourceElement;
+      recordDirectVideo(source.src, element, declaredSourceType);
+      recordDirectVideo(element.getAttribute("src"), element, declaredSourceType);
+    }
     if (tagName === "img" || tagName === "source") {
-      for (const attribute of imageAttributes) add(element.getAttribute(attribute), positionElement, element);
-      for (const attribute of imageSrcsetAttributes) {
-        for (const candidate of srcsetImages(element.getAttribute(attribute))) add(candidate, positionElement, element);
+      for (const attribute of imageAttributes) {
+        if (isVideoSource && attribute === "src") continue;
+        add(element.getAttribute(attribute), positionElement, element);
+      }
+      if (!isVideoSource) {
+        for (const attribute of imageSrcsetAttributes) {
+          for (const candidate of srcsetImages(element.getAttribute(attribute))) add(candidate, positionElement, element);
+        }
       }
       if (tagName === "img") {
         const image = element as HTMLImageElement;
@@ -321,6 +568,12 @@ export async function scanDocument(): Promise<PageScan> {
       const record = candidates.get(url);
       record?.sources.delete(element);
       if (record && record.sources.size === 0 && !record.foundOutsideElements) candidates.delete(url);
+    }
+    for (const url of previousMediaUrls ?? []) {
+      if (elementMediaUrls.get(element)?.has(url)) continue;
+      const record = mediaCandidates.get(url);
+      record?.sources.delete(element);
+      if (record && record.sources.size === 0 && !record.foundOutsideElements) mediaCandidates.delete(url);
     }
   };
 
@@ -376,7 +629,13 @@ export async function scanDocument(): Promise<PageScan> {
               record?.sources.delete(node);
               if (record && record.sources.size === 0 && !record.foundOutsideElements) candidates.delete(url);
             }
+            for (const url of elementMediaUrls.get(node) ?? []) {
+              const record = mediaCandidates.get(url);
+              record?.sources.delete(node);
+              if (record && record.sources.size === 0 && !record.foundOutsideElements) mediaCandidates.delete(url);
+            }
             elementUrls.delete(node);
+            elementMediaUrls.delete(node);
           }
         }
         const batch = [...pendingElements];
@@ -533,5 +792,9 @@ export async function scanDocument(): Promise<PageScan> {
   checkDeadline();
   const images = orderedImages();
   checkDeadline();
-  return {url: location.href, title: document.title, images};
+  const media = [...mediaCandidates.values()]
+    .sort((a, b) => a.detectionOrder - b.detectionOrder)
+    .map(({url, kind}) => ({url, kind}));
+  checkDeadline();
+  return {url: location.href, title: document.title, images, ...(media.length > 0 ? {media} : {})};
 }

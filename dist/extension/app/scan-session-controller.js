@@ -47,9 +47,13 @@ export function createScanSessionController(options) {
             }
             if (options.isDisposed() || controller.signal.aborted || activeController !== controller)
                 return;
-            const urls = normalizeImageUrls(result.images, result.url);
+            const urls = normalizeImageUrls([...result.images, ...(result.media ?? []).map(item => item.url)], result.url);
             // Publish only a complete scan. A rejected scan keeps the previous working set.
-            options.collection.replace(urls, result.url);
+            const media = (result.media ?? []).flatMap(item => {
+                const normalized = normalizeImageUrls([item.url], result.url)[0];
+                return normalized ? [{ ...item, url: normalized }] : [];
+            });
+            options.collection.replace(urls, result.url, media);
             if (collectionLink)
                 options.markAnalyzedUrl(collectionLink, session);
             state = options.collection.items.length ? "results" : "empty";

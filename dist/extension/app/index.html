@@ -67,6 +67,7 @@
         <div class="export-control">
           <fieldset class="export-formats" role="group" aria-labelledby="export-format-label">
             <legend id="export-format-label" class="visually-hidden" data-i18n="exportFormat">保存形式</legend>
+            <label><input id="export-format-original" type="radio" name="export-format" value="original"><span data-i18n="originalFormat">元の形式</span></label>
             <label><input id="export-format-pdf" type="radio" name="export-format" value="pdf"><span>PDF</span></label>
             <label><input id="export-format-jpg" type="radio" name="export-format" value="jpg"><span>JPG</span></label>
             <label><input id="export-format-png" type="radio" name="export-format" value="png"><span>PNG</span></label>
@@ -74,6 +75,7 @@
           </fieldset>
           <button id="export" type="button" disabled aria-live="polite" aria-atomic="true" data-i18n="save">保存</button>
         </div>
+        <p id="export-media-hint" class="export-media-hint" aria-live="polite" hidden></p>
         <label class="source-page-option"><input id="include-source-page" type="checkbox"><span data-i18n="includeSourcePage">末尾に出典ページを追加</span></label>
       </aside>
       <aside class="viewer-controls" data-i18n-aria-label="viewerMode" aria-label="ビュアーモード">

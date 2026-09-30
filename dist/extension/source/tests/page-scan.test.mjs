@@ -744,3 +744,80 @@ test("削除された要素と子孫の候補を除き、現存する検出元�
     assert.ok(result.images.includes(`${base}${name}.jpg`), name);
   }
 });
+
+test("mediaは画像・GIF・直接MP4/WebMを形式別に返し、サムネイルやblobを動画にしない", async () => {
+  const gifImage = new FixtureElement("img", {src: "https://cdn.example.test/media/animated?format=gif"});
+  const thumbnail = new FixtureElement("img", {src: "https://cdn.example.test/media/poster.jpg"});
+  const videoSource = new FixtureElement("source", {
+    src: "https://cdn.example.test/media/movie.webm",
+    type: "video/webm",
+  });
+  const video = new FixtureElement("video", {
+    src: "blob:https://example.test/session-only",
+    poster: "https://cdn.example.test/media/poster-only.mp4",
+  }, [videoSource]);
+  const standaloneSource = new FixtureElement("source", {src: "https://cdn.example.test/media/direct.mp4"});
+  const root = new FixtureElement("html", {}, [gifImage, thumbnail, video, standaloneSource]);
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+
+  assert.ok(result.images.includes("https://cdn.example.test/media/animated?format=gif"));
+  assert.ok(result.images.includes("https://cdn.example.test/media/poster.jpg"));
+  assert.equal(result.images.includes("https://cdn.example.test/media/movie.webm"), false);
+  assert.equal(result.images.includes("https://cdn.example.test/media/direct.mp4"), false);
+  assert.deepEqual(result.media, [
+    {url: "https://cdn.example.test/media/animated?format=gif", kind: "gif"},
+    {url: "https://cdn.example.test/media/poster.jpg", kind: "image"},
+    {url: "https://cdn.example.test/media/movie.webm", kind: "video"},
+    {url: "https://cdn.example.test/media/direct.mp4", kind: "video"},
+  ]);
+});
+
+test("公開script JSONのvideo_infoから各動画の最高bitrate MP4だけを収集する", async () => {
+  const json = {
+    data: {
+      media: [
+        {
+          type: "video",
+          video_info: {variants: [
+            {content_type: "application/x-mpegURL", bitrate: 2_000_000, url: "https://video.example.test/playlist.m3u8"},
+            {content_type: "video/mp4", bitrate: 256_000, url: "https://video.example.test/low.mp4"},
+            {content_type: "video/mp4; codecs=avc1", bitrate: 832_000, url: "https://video.example.test/high.mp4"},
+          ]},
+        },
+        {
+          type: "animated_gif",
+          video_info: {variants: [
+            {content_type: "video/mp4", bitrate: 0, url: "https://video.example.test/animated-gif.mp4"},
+          ]},
+        },
+      ],
+    },
+  };
+  const script = new FixtureElement("script", {}, [], {textContent: `window.__INITIAL_STATE__ = ${JSON.stringify(json)};`});
+  const root = new FixtureElement("html", {}, [script]);
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+
+  assert.deepEqual(result.media, [
+    {url: "https://video.example.test/high.mp4", kind: "video"},
+    {url: "https://video.example.test/animated-gif.mp4", kind: "video"},
+  ]);
+  assert.equal(result.media.some(candidate => candidate.url.endsWith("playlist.m3u8")), false);
+  assert.equal(result.media.some(candidate => candidate.url.endsWith("low.mp4")), false);
+});
+
+test("GIF拡張子とformat=gifはscript・本文からもGIF候補として収集する", async () => {
+  const script = new FixtureElement("script", {}, [], {
+    textContent: 'const first = "https://cdn.example.test/media/script.gif?size=large"; const second = "https://cdn.example.test/media/format?format=gif";',
+  });
+  const paragraph = new FixtureElement("p", {}, [], {
+    textContent: "https://cdn.example.test/media/body?format=gif",
+  });
+  const root = new FixtureElement("html", {}, [script, paragraph]);
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+
+  assert.deepEqual(result.media, [
+    {url: "https://cdn.example.test/media/script.gif?size=large", kind: "gif"},
+    {url: "https://cdn.example.test/media/format?format=gif", kind: "gif"},
+    {url: "https://cdn.example.test/media/body?format=gif", kind: "gif"},
+  ]);
+});

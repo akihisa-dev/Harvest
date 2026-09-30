@@ -2,6 +2,8 @@ export interface ImageItem {
   url: string;
   sourcePage: string;
   selected: boolean;
+  kind?: "image" | "gif" | "video";
+  previewUrl?: string;
 }
 
 export interface ImageGroup {

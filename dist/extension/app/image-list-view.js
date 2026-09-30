@@ -110,7 +110,12 @@ export function createImageListView(options) {
             return chip;
         }, (element, key) => {
             const group = groups[key];
-            const groupLabel = formatGroupLabel(group?.label ?? "");
+            let groupLabel = formatGroupLabel(group?.label ?? "");
+            if (group?.items.some(url => {
+                const kind = collection.itemForUrl(url)?.kind;
+                return kind === "gif" || kind === "video";
+            }))
+                groupLabel = groupLabel.replace(/(\d+)枚/, "$1件").replace(/ image(s?)\)/, " file$1)");
             element.children[0].textContent = groupLabel.replace(/ (\([^()]+\))$/, "\n$1");
             const button = element.children[1];
             renderEye(button, visibleGroupKeys.has(key), groupLabel);
@@ -334,7 +339,7 @@ export function createImageListView(options) {
             parts.preview.alt = t("imageAlt", { index: index + 1 });
             parts.order.textContent = `${overallIndex + 1}`;
             parts.order.setAttribute("aria-label", t("imagePosition", { index: overallIndex + 1 }));
-            parts.name.textContent = options.getFilename(item.url);
+            parts.name.textContent = (item.kind === "gif" ? "GIF · " : item.kind === "video" ? t("mediaKindVideo") + " · " : "") + options.getFilename(item.url);
             parts.name.title = item.url;
             parts.selectedMark.hidden = false;
             parts.failedMark.hidden = !failed;

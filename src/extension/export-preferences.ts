@@ -6,7 +6,7 @@ const sourcePagePreferenceKey = "harvest.includeSourcePage";
 const exportFormatPreferenceKey = "harvest.exportFormat";
 
 function isExportFormat(value: string): value is ExportFormat {
-  return value === "pdf" || value === "jpg" || value === "png" || value === "jxl";
+  return value === "original" || value === "pdf" || value === "jpg" || value === "png" || value === "jxl";
 }
 
 export interface ExportPreferences {

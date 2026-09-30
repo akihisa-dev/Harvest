@@ -1,4 +1,5 @@
 import { setButtonLabel } from "./button-state.js";
+import { mediaExportSelection, hasStillImages } from "../core/media-selection.js";
 import { ImageCollection } from "../core/image-collection.js";
 import { createCollectionController } from "./collection-controller.js";
 import { prefersReducedMotion, setMotionText } from "./motion.js";
@@ -13,7 +14,7 @@ import { loadExportPreferences, saveExportFormat, saveSourcePagePreference } fro
 import { createSourcePreview, deriveExportViewState, exportFileBaseName, imageFilename, } from "./export-presentation.js";
 import { createScanSessionController } from "./scan-session-controller.js";
 import { createEmptyStateView } from "./empty-state.js";
-const { sourceUrl, sourceDrop, urlDropOverlay, collectionButton, scanButton, exportButton, exportFormatInputs, sourcePageOption, includeSourcePage, viewerToggleButton, viewerElement, resultsElement, viewerEmptyElement, viewerPageElement, viewerPreviousButton, viewerNextButton, viewerPositionElement, viewerStageElement, exportOverlay, viewerImageElement, viewerFilenameElement, viewerThumbnailsElement, viewerZoomInButton, viewerZoomOutButton, viewerZoomResetButton, allVisibilityButton, allSelectionCheckbox, resetOrderButton, resetButton, failuresElement, failedImagesElement, imagesElement, groupsElement, scanOverlay, emptyElement, emptyLogoElement, emptyMessageElement, statusElement, } = queryAppElements();
+const { sourceUrl, sourceDrop, urlDropOverlay, collectionButton, scanButton, exportButton, exportFormatInputs, exportMediaHint, sourcePageOption, includeSourcePage, viewerToggleButton, viewerElement, resultsElement, viewerEmptyElement, viewerPageElement, viewerPreviousButton, viewerNextButton, viewerPositionElement, viewerStageElement, exportOverlay, viewerImageElement, viewerFilenameElement, viewerThumbnailsElement, viewerZoomInButton, viewerZoomOutButton, viewerZoomResetButton, allVisibilityButton, allSelectionCheckbox, resetOrderButton, resetButton, failuresElement, failedImagesElement, imagesElement, groupsElement, scanOverlay, emptyElement, emptyLogoElement, emptyMessageElement, statusElement, } = queryAppElements();
 const preferences = loadExportPreferences();
 let selectedExportFormat = preferences.format;
 for (const { format, input } of exportFormatInputs)
@@ -92,7 +93,7 @@ function setStatus(message, state = "info", progress = "") {
     if (state === "success") {
         completedExport = {
             format: selectedExportFormat,
-            selected: [...imageCollection.selectedItems],
+            selected: exportSelectedItems(),
             includeSourcePage: includeSourcePage.checked,
         };
         setMotionText(statusElement, "");
@@ -135,10 +136,13 @@ function zipFilename() {
 }
 /** A local preview only; the PDF itself continues to contain selectable text. */
 function sourcePreview() {
-    return createSourcePreview(imageCollection.selectedItems, selectedExportFormat, includeSourcePage.checked, t("sourceHeading"), pdfFilename());
+    return createSourcePreview(exportSelectedItems(), selectedExportFormat, includeSourcePage.checked, t("sourceHeading"), pdfFilename());
+}
+function exportSelectedItems() {
+    return mediaExportSelection(imageCollection.selectedItems, selectedExportFormat);
 }
 function viewerPages() {
-    const selected = imageCollection.selectedItems;
+    const selected = exportSelectedItems();
     const source = sourcePreview();
     return source ? [...selected, source] : selected;
 }
@@ -149,8 +153,25 @@ function render() {
     collectionController.publishState();
     const scanState = scanSessionController?.state ?? "initial";
     const scanRunning = scanSessionController?.isRunning ?? false;
-    const selected = imageCollection.selectedItems;
+    const selected = exportSelectedItems();
     const selectedCount = selected.length;
+    const allSelectedCount = imageCollection.selectedItems.length;
+    const excludedCount = allSelectedCount - selectedCount;
+    const stillAvailable = hasStillImages(imageCollection.items);
+    const hasMedia = imageCollection.items.some(item => item.kind === "gif" || item.kind === "video");
+    exportMediaHint.hidden = !hasMedia;
+    exportMediaHint.textContent = selectedExportFormat === "original"
+        ? t("mediaOriginalHint")
+        : excludedCount ? t("mediaExcludedHint", { count: excludedCount }) : "";
+    if (!exportMediaHint.textContent)
+        exportMediaHint.hidden = true;
+    for (const { format, input } of exportFormatInputs) {
+        const hidden = format !== "original" && imageCollection.items.length > 0 && !stillAvailable;
+        const label = input.closest?.("label");
+        if (label)
+            label.hidden = hidden;
+        input.disabled = busy || hidden;
+    }
     const pdfSelectionChanged = pdfExportController?.discardIfSelectionChanged(selected) ?? false;
     const imageSelectionChanged = imageExportController?.discardIfSelectionChanged(selected) ?? false;
     const selectionChanged = pdfSelectionChanged || imageSelectionChanged;
@@ -186,9 +207,9 @@ function render() {
     else if (exportState.phase === "retry-required")
         setButtonLabel(exportButton, t("exportRetry"));
     else if (exportSaved)
-        setButtonLabel(exportButton, t("exportSaved", { count: selectedCount, plural: formatPlural(selectedCount) }));
+        setButtonLabel(exportButton, t(selectedExportFormat === "original" ? "exportFilesSaved" : "exportSaved", { count: selectedCount, plural: formatPlural(selectedCount) }));
     else if (selected.length)
-        setButtonLabel(exportButton, t("exportAction", { format: selectedExportFormat.toUpperCase() }));
+        setButtonLabel(exportButton, selectedExportFormat === "original" ? t("originalSave") : t("exportAction", { format: selectedExportFormat.toUpperCase() }));
     else
         setButtonLabel(exportButton, t("save"));
     exportButton.title = exportRunning
@@ -214,15 +235,13 @@ function render() {
     const emptyMessage = scanState === "empty" ? t("scanEmpty") : scanState === "error" ? t("scanErrorEmpty") : "";
     const emptyAnnouncement = scanState === "scanning" ? t("scanBusy") : emptyMessage;
     updateEmptyState(scanState, emptyMessage, emptyAnnouncement);
-    allSelectionCheckbox.checked = imageCollection.items.length > 0 && selectedCount === imageCollection.items.length;
-    allSelectionCheckbox.indeterminate = selectedCount > 0 && selectedCount < imageCollection.items.length;
+    allSelectionCheckbox.checked = imageCollection.items.length > 0 && allSelectedCount === imageCollection.items.length;
+    allSelectionCheckbox.indeterminate = allSelectedCount > 0 && allSelectedCount < imageCollection.items.length;
     allSelectionCheckbox.disabled = busy || imageCollection.items.length === 0;
     allSelectionCheckbox.title = t(allSelectionCheckbox.checked ? "clearAllTitle" : "selectAllTitle");
     allSelectionCheckbox.setAttribute("aria-label", t(allSelectionCheckbox.checked ? "clearAll" : "selectAll"));
     resetOrderButton.disabled = busy || imageCollection.matchesInitialOrderAndSelection();
-    exportButton.disabled = (busy && !exportRunning) || !imageCollection.hasSelection;
-    for (const { input } of exportFormatInputs)
-        input.disabled = busy;
+    exportButton.disabled = (busy && !exportRunning) || !selected.length;
     imageListView.render(pendingExport ? new Set(pendingExport.failed.keys()) : undefined, sourcePreview());
     viewerController.render();
 }
@@ -240,7 +259,7 @@ const collectionController = createCollectionController({
     noPageError: t("errorCollectionPage"),
     isBusy: () => busy,
     isDisposed: () => disposed,
-    canExport: () => imageCollection.hasSelection,
+    canExport: () => exportSelectedItems().length > 0,
     onScanUrl(url) {
         sourceUrl.value = url;
         updateSourceDrop();
@@ -277,7 +296,7 @@ const viewerController = createViewerController({
     onChange: render,
 });
 pdfExportController = createPdfExportController({
-    getSelectedItems: () => imageCollection.selectedItems,
+    getSelectedItems: exportSelectedItems,
     getFilename: pdfFilename,
     getSourcePage(firstSelected, filename) {
         return includeSourcePage.checked
@@ -295,7 +314,7 @@ pdfExportController = createPdfExportController({
     },
 });
 imageExportController = createImageExportController({
-    getSelectedItems: () => imageCollection.selectedItems,
+    getSelectedItems: exportSelectedItems,
     getZipFilename: zipFilename,
     isBusy: () => busy,
     isDisposed: () => disposed,
@@ -320,6 +339,12 @@ scanSessionController = createScanSessionController({
     onBusyChange: setBusy,
     onStatus: setStatus,
     onResults(nextPageTitle, initialGroup, sourcePage) {
+        if (imageCollection.items.some(item => item.kind === "gif" || item.kind === "video")) {
+            selectedExportFormat = "original";
+        }
+        else {
+            selectedExportFormat = loadExportPreferences().format;
+        }
         resultSourceUrl = sourcePage;
         sourceDisplayCleared = false;
         updateSourceDrop();

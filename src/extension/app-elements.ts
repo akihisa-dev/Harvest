@@ -13,7 +13,9 @@ export function queryAppElements() {
     collectionButton: required<HTMLButtonElement>("#collection-toggle"),
     scanButton: required<HTMLButtonElement>("#scan"),
     exportButton: required<HTMLButtonElement>("#export"),
+    exportMediaHint: required<HTMLParagraphElement>("#export-media-hint"),
     exportFormatInputs: [
+      {format: "original" as const, input: required<HTMLInputElement>("#export-format-original")},
       {format: "pdf" as const, input: required<HTMLInputElement>("#export-format-pdf")},
       {format: "jpg" as const, input: required<HTMLInputElement>("#export-format-jpg")},
       {format: "png" as const, input: required<HTMLInputElement>("#export-format-png")},

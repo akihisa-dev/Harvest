@@ -1,3 +1,4 @@
+import { scanXMedia } from "./x-media-scan.js";
 import { scanDocument, type PageScan } from "./page-scan.js";
 
 const timeoutMs = 20000;
@@ -42,6 +43,20 @@ export async function scanTab(tabId: number, signal?: AbortSignal): Promise<Page
     }, () => reject(new Error("このページを読み取れませんでした。Chromeで開けるWebページを指定してください。")));
     return () => chrome.tabs.onRemoved.removeListener(onRemoved);
   }, signal);
+  // X keeps media variants in its page runtime. Read only data already attached
+  // to visible post elements, without making requests through private endpoints.
+  if (/^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(result.url)) {
+    try {
+      const extra = await bounded<NonNullable<PageScan["media"]>>((resolve, reject) => {
+        void chrome.scripting.executeScript({target: {tabId}, world: "MAIN", func: scanXMedia})
+          .then(([injection]) => resolve(injection?.result ?? []), () => reject(new Error("動画情報を読み取れませんでした。")));
+      }, signal);
+      result.media = [...(result.media ?? []), ...extra];
+    } catch {
+      // Preserve ordinary page results if the site's runtime is unavailable.
+      if (signal?.aborted) throw new Error("ページの解析を終了しました。");
+    }
+  }
   await bounded<void>((resolve, reject) => {
     void chrome.tabs.get(tabId).then(tab => {
       if (tab.url && tab.url.split("#")[0] !== result.url.split("#")[0]) {

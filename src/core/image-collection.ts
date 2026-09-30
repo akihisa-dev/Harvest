@@ -16,11 +16,21 @@ export class ImageCollection {
   get selectedItems(): ImageItem[] { return this.orderedItems.filter(item => item.selected); }
   get hasSelection(): boolean { return this.orderedItems.some(item => item.selected); }
 
-  replace(urls: readonly string[], sourcePage: string): void {
+  replace(urls: readonly string[], sourcePage: string, media: readonly {url: string; kind: "image" | "gif" | "video"; previewUrl?: string}[] = []): void {
     const groups = groupImages(urls);
     const selectedGroups = defaultSelectedImageGroups(groups);
     const selectedUrls = new Set(Object.entries(groups).flatMap(([key, group]) => selectedGroups[key] ? group.items : []));
-    this.orderedItems = urls.map(url => ({url, sourcePage, selected: selectedUrls.has(url)}));
+    const metadata = new Map(media.map(item => [item.url, item]));
+    this.orderedItems = urls.map(url => {
+      const details = metadata.get(url);
+      return {
+        url,
+        sourcePage,
+        selected: selectedUrls.has(url),
+        ...(details ? {kind: details.kind} : {}),
+        ...(details?.previewUrl ? {previewUrl: details.previewUrl} : {}),
+      };
+    });
     this.initialItems = [...this.orderedItems];
     this.initialSelectedUrls = selectedUrls;
     this.reindex(groups);

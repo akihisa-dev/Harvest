@@ -33,7 +33,7 @@ export interface ImagePreviewLoader {
 }
 
 function entryKey(item: ImageItem): string {
-  return JSON.stringify([item.url, item.sourcePage]);
+  return JSON.stringify([item.previewUrl ?? item.url, item.sourcePage]);
 }
 
 function previewBlob(item: Awaited<ReturnType<typeof fetchImage>>): Blob {
@@ -112,7 +112,7 @@ export function createImagePreviewLoader(): ImagePreviewLoader {
       entry.started = true;
       activeFetches += 1;
       const options = {signal: entry.controller.signal, sourcePage: entry.item.sourcePage} as PreviewFetchOptions;
-      void fetchImage(entry.item.url, options).then(fetched => {
+      void fetchImage(entry.item.previewUrl ?? entry.item.url, options).then(fetched => {
         if (entries.get(entry.key) !== entry || !entry.elements.size) return;
         const objectUrl = URL.createObjectURL(previewBlob(fetched));
         entry.objectUrl = objectUrl;
@@ -180,6 +180,12 @@ export function createImagePreviewLoader(): ImagePreviewLoader {
 
   return {
     set(image, item, eager = false) {
+      if (item.kind === "video" && !item.previewUrl) {
+        clearImage(image);
+        image.src = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#ededed"/><path d="M140 60 L190 90 L140 120 Z" fill="#686868"/></svg>');
+        image.dataset["previewUrl"] = item.url;
+        return;
+      }
       const key = entryKey(item);
       const current = bindings.get(image);
       if (current?.key === key) {
