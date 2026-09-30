@@ -56,7 +56,7 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     scripting: {executeScript: async ({target}) => {
       scannedTabs.push(target.tabId);
       return [{result: {
-        url: "https://example.com/page",
+        url: target.tabId === 7 ? "https://example.com/page" : createdUrls.at(-1),
         title: "ページ",
         images: [],
         links: [{url: "https://example.com/gallery", label: "一覧"}],

@@ -17,7 +17,7 @@ export interface ScanSessionControllerOptions {
   readonly onShowSourceInput: () => void;
   readonly onBusyChange: (busy: boolean) => void;
   readonly onStatus: (message: string, state: "info" | "busy" | "success" | "error") => void;
-  readonly onResults: (pageTitle: string, initialGroup: string | null) => void;
+  readonly onResults: (pageTitle: string, initialGroup: string | null, sourcePage: string) => void;
 }
 
 export interface ScanSessionController {
@@ -75,7 +75,7 @@ export function createScanSessionController(options: ScanSessionControllerOption
       options.collection.replace(urls, result.url);
       if (collectionLink) options.markAnalyzedUrl(collectionLink, session);
       state = options.collection.items.length ? "results" : "empty";
-      options.onResults(result.title || t("imageFallback"), defaultDisplayedImageGroup(options.collection.groups));
+      options.onResults(result.title || t("imageFallback"), defaultDisplayedImageGroup(options.collection.groups), result.url);
       options.onStatus(options.collection.items.length ? "" : t("scanEmpty"), "info");
     } catch (error) {
       if (options.isDisposed() || controller.signal.aborted || activeController !== controller) return;

@@ -53,7 +53,7 @@ export function createScanSessionController(options) {
             if (collectionLink)
                 options.markAnalyzedUrl(collectionLink, session);
             state = options.collection.items.length ? "results" : "empty";
-            options.onResults(result.title || t("imageFallback"), defaultDisplayedImageGroup(options.collection.groups));
+            options.onResults(result.title || t("imageFallback"), defaultDisplayedImageGroup(options.collection.groups), result.url);
             options.onStatus(options.collection.items.length ? "" : t("scanEmpty"), "info");
         }
         catch (error) {

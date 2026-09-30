@@ -137,6 +137,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   ];
   let executionCount = 0;
   let rejectScan = false;
+  let scanResultUrl = "https://example.com/view";
   const createdUrls = [];
   globalThis.document = document;
   const {createImageListView} = await import("../dist/extension/app/image-list-view.js");
@@ -258,7 +259,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
       if (rejectScan) throw new Error("scan failed");
       executionCount += 1;
       return [{result: {
-        url: "https://example.com/view", title: "ページ",
+        url: scanResultUrl, title: "ページ",
         links: [{url: "https://example.com/pages/gallery", label: "一覧"}],
         images: resultImages,
       }}];
@@ -346,6 +347,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     rejectScan = true;
     capturedMessage({url: "https://example.com/failed"});
     await waitUntil(() => !document.querySelector("#scan").disabled);
+    assert.equal(sourceDrop.textContent, "https://example.com/view", "保存後の再解析失敗でも旧結果の出典を表示する");
     const failedScanTabs = createdUrls.length;
     capturedMessage({url: "https://example.com/failed"});
     await waitUntil(() => !document.querySelector("#scan").disabled);
@@ -402,6 +404,26 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#status").textContent, "");
     assert.equal(document.querySelector("#images").children.length, 2);
     assert.equal(document.querySelector("#groups").children[0].children[0].textContent, "シリーズ\n(2枚)");
+    const retainedRows = document.querySelector("#images").children.slice();
+    sourceUrl.value = "https://example.com/new-page";
+    sourceUrl.dispatch("input");
+    sourceUrl.dispatch("blur");
+    assert.equal(sourceDrop.textContent, "https://example.com/view", "入力だけで表示中の結果の出典を変更しない");
+    rejectScan = true;
+    scanButton.dispatch("click");
+    await waitUntil(() => !scanButton.disabled);
+    assert.equal(sourceDrop.textContent, "https://example.com/view", "再解析失敗時も旧結果の出典を表示する");
+    assert.equal(sourceUrl.value, "https://example.com/new-page", "再試行用の入力を保持する");
+    assert.deepEqual(document.querySelector("#images").children, retainedRows, "失敗時は旧結果と順序を保持する");
+    rejectScan = false;
+    scanResultUrl = "https://example.com/new-page";
+    scanButton.dispatch("click");
+    await waitUntil(() => !scanButton.disabled);
+    assert.equal(sourceDrop.textContent, scanResultUrl, "成功時に結果と出典表示を同時に切り替える");
+    scanResultUrl = "https://example.com/view";
+    sourceUrl.value = "";
+    scanButton.dispatch("click");
+    await waitUntil(() => !scanButton.disabled);
     const orderBeforeFormatChange = document.querySelector("#images").children.map(row => previewUrl(row.children[0]));
     const selectionBeforeFormatChange = document.querySelector("#images").children.map(row => row.getAttribute("aria-pressed"));
     exportFormat.value = "png";
@@ -805,7 +827,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(empty.hidden, false);
     assert.equal(emptyLogo.hidden, true);
     assert.equal(emptyMessage.textContent, "画像が見つかりませんでした。");
-    assert.equal(executionCount, 3);
+    assert.equal(executionCount, 5);
     assert.deepEqual(createdUrls, []);
     assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, true, "解析結果が空なら画面全体で受け付ける");
     sourceUrl.value = "https://example.com/entered";

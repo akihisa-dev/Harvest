@@ -36,6 +36,8 @@ for (const { format, input } of exportFormatInputs) {
 const imageCollection = new ImageCollection();
 let completedExport = null;
 let pageTitle = t("imageFallback");
+let resultSourceUrl = null;
+let sourceDisplayCleared = false;
 let busy = false;
 let disposed = false;
 let scanSessionController = null;
@@ -61,7 +63,8 @@ const imageListView = createImageListView({
     onChange: render,
 });
 function updateSourceDrop() {
-    const url = sourceUrl.value.trim();
+    const draft = sourceUrl.value.trim();
+    const url = sourceDisplayCleared && !draft ? "" : resultSourceUrl ?? draft;
     sourceDrop.textContent = url || t("sourceDrop");
     sourceDrop.dataset["hasUrl"] = String(Boolean(url));
 }
@@ -79,6 +82,7 @@ function hideSourceInput() {
     updateSourceDrop();
 }
 function clearSourceUrl() {
+    sourceDisplayCleared = true;
     sourceUrl.value = "";
     hideSourceInput();
 }
@@ -320,7 +324,10 @@ scanSessionController = createScanSessionController({
     onShowSourceInput: showSourceInput,
     onBusyChange: setBusy,
     onStatus: setStatus,
-    onResults(nextPageTitle, initialGroup) {
+    onResults(nextPageTitle, initialGroup, sourcePage) {
+        resultSourceUrl = sourcePage;
+        sourceDisplayCleared = false;
+        updateSourceDrop();
         imagePreviewLoader.clear();
         pageTitle = nextPageTitle;
         pdfExportController?.clear();
@@ -405,6 +412,7 @@ resetOrderButton.addEventListener("click", () => {
 resetButton.addEventListener("click", () => {
     if (busy)
         return;
+    resultSourceUrl = null;
     imagePreviewLoader.clear();
     clearSourceUrl();
     collectionController.clearAnalyzedUrl();
