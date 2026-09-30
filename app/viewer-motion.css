@@ -1,0 +1,35 @@
+/* Keep the viewer in the main area without changing the scrollable result layout. */
+main { position: relative; }
+main > .results { position: relative; z-index: 0; }
+main > #viewer {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  opacity: 1;
+  transform: scale(1);
+  transform-origin: center center;
+  transition: opacity 280ms cubic-bezier(.2, .7, .2, 1), transform 280ms cubic-bezier(.2, .7, .2, 1), display 280ms allow-discrete;
+}
+main > .results {
+  opacity: 1;
+  transform: scale(1);
+  transform-origin: center center;
+  transition: opacity 280ms cubic-bezier(.2, .7, .2, 1), transform 280ms cubic-bezier(.2, .7, .2, 1), display 280ms allow-discrete;
+}
+main > .results[hidden], main > #viewer[hidden] { opacity: 0; transform: scale(.975); pointer-events: none; }
+@starting-style {
+  main > .results:not([hidden]), main > #viewer:not([hidden]) { opacity: 0; transform: scale(1.025); }
+}
+
+.viewer-motion-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; user-select: none; transform-origin: center center; }
+.viewer-motion-image[data-motion="outgoing"] { pointer-events: none; }
+#viewer-image[data-motion], .viewer-motion-image[data-motion] { will-change: opacity, translate; }
+
+@media (prefers-reduced-motion: reduce) {
+  main > .results, main > #viewer { transition: none; }
+  #viewer-image[data-motion], .viewer-motion-image[data-motion] { animation: none; transition: none; }
+}
+
+#viewer-page { transition: display 280ms allow-discrete; }
+@media (prefers-reduced-motion: reduce) { #viewer-page { transition: none; } }

@@ -4,12 +4,16 @@ export function createViewerController(options) {
     let open = false;
     let currentUrl = null;
     let renderedUrl = null;
+    let renderedItem = null;
     let zoom = 1;
     let panX = 0;
     let panY = 0;
     let pointer = null;
     let lastThumbnailWheelAt = -Infinity;
+    let imageTransitionId = 0;
+    let imageTransitionCleanup = null;
     const thumbnailRows = new Map();
+    const imageMotionItems = new WeakMap();
     function clearThumbnails() {
         for (const row of thumbnailRows.values()) {
             const image = row.children[0]?.children[0];
@@ -18,6 +22,10 @@ export function createViewerController(options) {
         }
         thumbnailRows.clear();
         elements.thumbnails.replaceChildren();
+    }
+    function motionImages() {
+        const query = elements.stage.querySelectorAll;
+        return typeof query === "function" ? [...query.call(elements.stage, ".viewer-motion-image")] : [];
     }
     function updateTransform() {
         elements.image.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
@@ -99,11 +107,14 @@ export function createViewerController(options) {
         elements.thumbnails.replaceChildren(...rows);
         if (renderedUrl !== activeUrl) {
             const active = thumbnailRows.get(activeUrl)?.children[0];
-            active?.scrollIntoView({ block: "center", inline: "nearest" });
+            active?.scrollIntoView({ block: "center", inline: "nearest",
+                behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+                    || performance.now() - lastThumbnailWheelAt < 200 ? "instant" : "smooth" });
         }
     }
     function render() {
         const pages = options.getPages();
+        const previousUrl = renderedUrl;
         const index = pages.findIndex(item => item.url === currentUrl);
         const currentIndex = index < 0 ? 0 : index;
         const current = pages[currentIndex];
@@ -113,10 +124,28 @@ export function createViewerController(options) {
         elements.toggle.disabled = options.isBusy() || options.getImageCount() === 0;
         elements.toggle.setAttribute("aria-pressed", String(open));
         elements.toggle.textContent = open ? t("backToImages") : t("viewerMode");
-        elements.empty.hidden = !open || Boolean(current);
+        elements.empty.hidden = Boolean(current);
         elements.page.hidden = !open || !current;
-        if (!open || !current) {
+        // Keep the current page visible through the viewer exit without retaining pointer capture.
+        if (!open && current) {
+            if (pointer && elements.stage.hasPointerCapture(pointer.id))
+                elements.stage.releasePointerCapture(pointer.id);
+            pointer = null;
+            delete elements.stage.dataset["panning"];
+            return;
+        }
+        if (!current) {
+            imageTransitionId += 1;
+            imageTransitionCleanup?.();
+            imageTransitionCleanup = null;
+            for (const old of motionImages()) {
+                options.previewLoader.clearImage(old);
+                old.remove();
+            }
+            delete elements.image.dataset["motion"];
+            delete elements.image.dataset["direction"];
             renderedUrl = null;
+            renderedItem = null;
             clearThumbnails();
             resetTransform();
             options.previewLoader.clearImage(elements.image);
@@ -126,11 +155,134 @@ export function createViewerController(options) {
             elements.filename.textContent = "";
             return;
         }
-        if (renderedUrl !== current.url)
+        const priorImageTransform = elements.image.style.transform;
+        const pageChanged = renderedUrl !== current.url;
+        if (pageChanged)
             resetTransform();
         renderThumbnails(pages, current.url);
-        options.previewLoader.set(elements.image, current, true);
-        renderedUrl = current.url;
+        if (pageChanged) {
+            imageTransitionCleanup?.();
+            imageTransitionCleanup = null;
+            const existingOutgoing = motionImages();
+            const hasActiveImage = elements.image.complete && elements.image.naturalWidth > 0 && Boolean(elements.image.currentSrc);
+            const canAnimateImage = Boolean(previousUrl && previousUrl !== current.url
+                && (existingOutgoing.length > 0 || hasActiveImage)
+                && !current.url.startsWith("data:") && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+            const transitionId = ++imageTransitionId;
+            if (canAnimateImage) {
+                const previousIndex = pages.findIndex(item => item.url === previousUrl);
+                const direction = currentIndex < previousIndex ? "previous" : "next";
+                const ghosts = [];
+                const snapshot = (source, sourceUrl) => {
+                    const item = source === elements.image
+                        ? renderedItem
+                        : imageMotionItems.get(source) ?? pages.find(candidate => candidate.url === sourceUrl);
+                    if (!item)
+                        return;
+                    const computed = getComputedStyle(source);
+                    const ghost = document.createElement("img");
+                    ghost.className = "viewer-motion-image";
+                    ghost.alt = "";
+                    ghost.draggable = false;
+                    ghost.dataset["motion"] = "holding";
+                    ghost.dataset["direction"] = direction;
+                    ghost.dataset["motionUrl"] = item.url;
+                    imageMotionItems.set(ghost, item);
+                    ghost.style.transform = source === elements.image ? priorImageTransform : computed.transform;
+                    ghost.style.opacity = computed.opacity;
+                    ghost.style.translate = computed.translate;
+                    elements.stage.append(ghost);
+                    options.previewLoader.set(ghost, item, true);
+                    ghosts.push(ghost);
+                };
+                const retained = new Set(existingOutgoing
+                    .filter(old => Number(getComputedStyle(old).opacity) > .05)
+                    .sort((a, b) => Number(getComputedStyle(b).opacity) - Number(getComputedStyle(a).opacity))
+                    .slice(0, 3));
+                for (const old of existingOutgoing) {
+                    if (retained.has(old))
+                        snapshot(old, old.dataset["motionUrl"] ?? "");
+                    old.getAnimations().forEach(animation => animation.cancel());
+                    options.previewLoader.clearImage(old);
+                    old.remove();
+                }
+                if (hasActiveImage && previousUrl) {
+                    snapshot(elements.image, previousUrl);
+                    elements.image.getAnimations().forEach(animation => animation.cancel());
+                }
+                let failureObserver = null;
+                const cleanupListeners = () => {
+                    elements.image.removeEventListener("load", onLoaded);
+                    elements.image.removeEventListener("error", onFailed);
+                    failureObserver?.disconnect();
+                    failureObserver = null;
+                };
+                const onLoaded = () => {
+                    cleanupListeners();
+                    if (imageTransitionCleanup === cleanupListeners)
+                        imageTransitionCleanup = null;
+                    if (transitionId !== imageTransitionId || currentUrl !== current.url)
+                        return;
+                    elements.image.dataset["motion"] = "incoming";
+                    elements.image.dataset["direction"] = direction;
+                    const enterX = direction === "next" ? "20px" : "-20px";
+                    const leaveX = direction === "next" ? "-20px" : "20px";
+                    const animations = [elements.image.animate([
+                            { opacity: 0, translate: `${enterX} 0` },
+                            { opacity: 1, translate: "0 0" },
+                        ], { duration: 210, easing: "cubic-bezier(.2, .7, .2, 1)" })];
+                    for (const ghost of ghosts) {
+                        ghost.dataset["motion"] = "outgoing";
+                        animations.push(ghost.animate([
+                            { opacity: getComputedStyle(ghost).opacity, translate: getComputedStyle(ghost).translate },
+                            { opacity: 0, translate: leaveX + " 0" },
+                        ], { duration: 210, easing: "cubic-bezier(.2, .7, .2, 1)" }));
+                    }
+                    void Promise.all(animations.map(animation => animation.finished.catch(() => undefined))).then(() => {
+                        if (transitionId !== imageTransitionId)
+                            return;
+                        for (const ghost of ghosts) {
+                            options.previewLoader.clearImage(ghost);
+                            ghost.remove();
+                        }
+                        delete elements.image.dataset["motion"];
+                        delete elements.image.dataset["direction"];
+                    });
+                };
+                const onFailed = () => {
+                    cleanupListeners();
+                    if (imageTransitionCleanup === cleanupListeners)
+                        imageTransitionCleanup = null;
+                    if (transitionId !== imageTransitionId)
+                        return;
+                    for (const ghost of ghosts) {
+                        options.previewLoader.clearImage(ghost);
+                        ghost.remove();
+                    }
+                };
+                elements.image.addEventListener("load", onLoaded);
+                elements.image.addEventListener("error", onFailed);
+                failureObserver = new MutationObserver(() => {
+                    if (elements.image.dataset["previewFailed"] === "true")
+                        onFailed();
+                });
+                failureObserver.observe(elements.image, { attributes: true, attributeFilter: ["data-preview-failed"] });
+                imageTransitionCleanup = cleanupListeners;
+            }
+            else {
+                imageTransitionCleanup?.();
+                imageTransitionCleanup = null;
+                for (const old of motionImages()) {
+                    options.previewLoader.clearImage(old);
+                    old.remove();
+                }
+                delete elements.image.dataset["motion"];
+                delete elements.image.dataset["direction"];
+            }
+            options.previewLoader.set(elements.image, current, true);
+            renderedUrl = current.url;
+            renderedItem = current;
+        }
         elements.image.alt = t("selectedImageAlt", { index: currentIndex + 1 });
         elements.position.textContent = `${currentIndex + 1} / ${pages.length}`;
         elements.filename.textContent = options.getPageLabel(current);

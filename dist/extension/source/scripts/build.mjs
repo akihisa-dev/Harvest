@@ -82,6 +82,7 @@ try {
   await cp(join(stage, ".compiled", "core"), join(stage, "core"), { recursive: true });
   await copyFile(join(root, "app", "index.html"), join(stage, "app", "index.html"));
   await copyFile(join(root, "app", "style.css"), join(stage, "app", "style.css"));
+  await copyFile(join(root, "app", "viewer-motion.css"), join(stage, "app", "viewer-motion.css"));
   await copyFile(join(root, "app", "legal.html"), join(stage, "app", "legal.html"));
   await copyFile(join(root, "assets", "brand", "harvest-geometric-logo.svg"), join(stage, "brand", "harvest-geometric-logo.svg"));
   for (const size of [16, 32, 48, 128]) {
@@ -97,7 +98,7 @@ try {
   for (const file of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.json", "manifest.template.json"]) {
     await copyFile(join(root, file), join(stage, "source", file));
   }
-  for (const file of ["index.html", "style.css", "legal.html"]) {
+  for (const file of ["index.html", "style.css", "viewer-motion.css", "legal.html"]) {
     await copyFile(join(root, "app", file), join(stage, "source", "app", file));
   }
   await cp(join(root, "src", "core"), join(stage, "source", "src", "core"), { recursive: true });
