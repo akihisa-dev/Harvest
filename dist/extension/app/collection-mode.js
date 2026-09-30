@@ -169,6 +169,8 @@ export function captureCollectionLinks(session) {
     const onScroll = () => { onLeave(); pruneDetachedTargets(); redrawMarkedTargets(); };
     const onResize = () => { onLeave(); pruneDetachedTargets(); redrawMarkedTargets(); };
     const onClick = (event) => {
+        if (!event.isTrusted)
+            return;
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
             return;
         const link = findLink(event);

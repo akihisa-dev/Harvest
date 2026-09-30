@@ -77,7 +77,7 @@ function setup() {
       let prevented = 0;
       let stopped = 0;
       const event = {
-        button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...options,
+        button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, isTrusted: true, ...options,
         composedPath: () => [options.child ?? anchor, anchor],
         preventDefault() { prevented += 1; },
         stopImmediatePropagation() { stopped += 1; },
@@ -96,6 +96,15 @@ test("通常の左クリックは遷移を止めて絶対URLを送る", async ()
     captureCollectionLinks("test-session");
     assert.deepEqual(fixture.click(new Anchor("/picked")), {prevented: 1, stopped: 1});
     assert.deepEqual(fixture.messages, [{url: "https://example.test/picked"}]);
+  } finally { fixture.restore(); }
+});
+
+test("ページスクリプトが作った疑似クリックは止めずHarvestへ送らない", () => {
+  const fixture = setup();
+  try {
+    captureCollectionLinks("test-session");
+    assert.deepEqual(fixture.click(new Anchor("/script"), {isTrusted: false}), {prevented: 0, stopped: 0});
+    assert.deepEqual(fixture.messages, []);
   } finally { fixture.restore(); }
 });
 

@@ -161,6 +161,7 @@ export function captureCollectionLinks(session: string): void {
   const onResize = (): void => { onLeave(); pruneDetachedTargets(); redrawMarkedTargets(); };
 
   const onClick = (event: MouseEvent): void => {
+    if (!event.isTrusted) return;
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const link = findLink(event);
     if (!link) return;
