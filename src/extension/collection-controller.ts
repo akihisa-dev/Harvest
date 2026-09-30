@@ -41,7 +41,14 @@ export function createCollectionController(options: CollectionControllerOptions)
   let lastAnalyzedUrl: string | null = null;
 
   function publishState(): void {
-    activePort?.postMessage({busy: options.isBusy(), pdfUrl: lastAnalyzedUrl, canExport: options.canExport()});
+    const port = activePort;
+    if (!port) return;
+    const message = {busy: options.isBusy(), pdfUrl: lastAnalyzedUrl, canExport: options.canExport()};
+    try {
+      port.postMessage(message);
+    } catch {
+      if (activePort === port) stop();
+    }
   }
 
   function stop(): void {

@@ -15,6 +15,7 @@ function setup() {
   let busy = false;
   let disposed = false;
   let canExport = true;
+  let throwOnPublish = false;
   const errors = [];
   const button = {
     textContent: "",
@@ -33,7 +34,10 @@ function setup() {
       disconnectCount: 0,
       onMessageListener: undefined,
       onDisconnectListener: undefined,
-      postMessage(message) { this.messages.push(message); },
+      postMessage(message) {
+        if (throwOnPublish) throw new Error("Port is disconnected");
+        this.messages.push(message);
+      },
       disconnect() { this.disconnectCount += 1; },
       onMessage: {addListener(listener) { port.onMessageListener = listener; }},
       onDisconnect: {addListener(listener) { port.onDisconnectListener = listener; }},
@@ -75,6 +79,7 @@ function setup() {
     set busy(value) { busy = value; },
     set disposed(value) { disposed = value; },
     set canExport(value) { canExport = value; },
+    set throwOnPublish(value) { throwOnPublish = value; },
     set connectionTabId(value) { connectionTabId = value; },
     set query(value) { query = value; },
     set executeScript(value) { executeScript = value; },
@@ -146,6 +151,30 @@ test("busy・中断・古い接続は無視し、成功した同じURLは保存�
     assert.equal(fixture.controller.session, secondSession, "古い切断通知は新しい収集を止めない");
     newPort.send({url: "https://example.test/current"});
     assert.deepEqual(fixture.scans, [url, "https://example.test/current"]);
+  } finally { fixture.restore(); }
+});
+
+test("状態通知に失敗した現在のPortだけを終了し、切断通知との二重終了を許容する", async () => {
+  const fixture = setup();
+  try {
+    await fixture.controller.toggle();
+    const failedPort = fixture.ports.at(-1);
+
+    fixture.throwOnPublish = true;
+    assert.doesNotThrow(() => fixture.controller.publishState());
+    assert.equal(fixture.controller.session, null);
+    assert.equal(fixture.button.textContent, "start");
+    assert.equal(fixture.button.attributes.get("aria-pressed"), "false");
+
+    fixture.controller.stop();
+    failedPort.disconnectFromPage();
+    fixture.throwOnPublish = false;
+    await fixture.controller.toggle();
+    const currentSession = fixture.controller.session;
+    failedPort.disconnectFromPage();
+    assert.equal(fixture.controller.session, currentSession, "古いPortの切断通知は新しい収集を止めない");
+    fixture.ports.at(-1).send({url: "https://example.test/current"});
+    assert.deepEqual(fixture.scans, ["https://example.test/current"]);
   } finally { fixture.restore(); }
 });
 

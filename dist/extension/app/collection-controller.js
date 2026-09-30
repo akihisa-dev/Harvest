@@ -7,7 +7,17 @@ export function createCollectionController(options) {
     let activePort = null;
     let lastAnalyzedUrl = null;
     function publishState() {
-        activePort?.postMessage({ busy: options.isBusy(), pdfUrl: lastAnalyzedUrl, canExport: options.canExport() });
+        const port = activePort;
+        if (!port)
+            return;
+        const message = { busy: options.isBusy(), pdfUrl: lastAnalyzedUrl, canExport: options.canExport() };
+        try {
+            port.postMessage(message);
+        }
+        catch {
+            if (activePort === port)
+                stop();
+        }
     }
     function stop() {
         lastAnalyzedUrl = null;
