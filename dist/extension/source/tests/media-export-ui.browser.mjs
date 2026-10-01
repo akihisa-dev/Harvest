@@ -71,6 +71,13 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     assert.equal(await page.locator('#export-format-original').count(),0);
     await scan([photo,animation],[{url:animation,kind:'gif'},{url:movie,kind:'video'}]);
     assert.equal(await page.locator('#export-format-mp4').isChecked(),true);
+    const groups=page.locator('#groups .group-label');
+    assert.deepEqual(await groups.allTextContents(),['MP4\n(1件)','GIF\n(1件)','PNG · その他\n(1枚)']);
+    const gifGroup=page.locator('#groups .group-chip').filter({hasText:'GIF'});
+    await gifGroup.locator('input').check();
+    assert.equal(await gifGroup.locator('input').isChecked(),true);
+    await gifGroup.locator('button').click();
+    assert.equal(await page.locator('#images > li').count(),2,'GIFだけの表示切替を動画とは独立に行う');
     await page.locator('#all-selection').check();
     await page.locator('#export-format-pdf').check();
     assert.match(await page.locator('#export-media-hint').textContent(),/選択中の2件は対象外/);
@@ -114,6 +121,7 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     assert.match(await page.locator('#export').textContent(),/GIF/);
     await scan([photo,animation],[{url:animation,kind:'gif'},{url:movie,kind:'video'}]);
     await page.locator('#all-selection').check();
+    await page.locator('#all-visibility').click();
     await page.waitForFunction(()=>[...document.querySelectorAll('#images > li img')].slice(0,2).every(image=>image.complete && image.naturalWidth>0));
     assert.deepEqual(await page.locator('#images .item-resolution').allTextContents(),['640 × 960','1 × 1','']);
     await page.screenshot({path:'/private/tmp/harvest-media-ui.png'});

@@ -1,4 +1,4 @@
-import { defaultSelectedImageGroups, filterImagesByGroup, groupImages } from "./images.js";
+import { defaultSelectedImageGroups, filterImagesByGroup, groupMediaImages } from "./images.js";
 /** Owns one scan's image identities, selection, grouping, and user-defined order. */
 export class ImageCollection {
     orderedItems = [];
@@ -14,7 +14,7 @@ export class ImageCollection {
     get selectedItems() { return this.orderedItems.filter(item => item.selected); }
     get hasSelection() { return this.orderedItems.some(item => item.selected); }
     replace(urls, sourcePage, media = []) {
-        const groups = groupImages(urls);
+        const groups = groupMediaImages(urls, media);
         const selectedGroups = defaultSelectedImageGroups(groups);
         const selectedUrls = new Set(Object.entries(groups).flatMap(([key, group]) => selectedGroups[key] ? group.items : []));
         const metadata = new Map(media.map(item => [item.url, item]));
@@ -116,7 +116,7 @@ export class ImageCollection {
         return this.orderedItems.length === this.initialItems.length &&
             this.orderedItems.every((item, index) => item === this.initialItems[index]);
     }
-    reindex(groups = groupImages(this.orderedItems.map(item => item.url))) {
+    reindex(groups = groupMediaImages(this.orderedItems.map(item => item.url), this.orderedItems.flatMap(item => item.kind ? [{ url: item.url, kind: item.kind }] : []))) {
         this.groupedItems = groups;
         this.itemByUrl = new Map(this.orderedItems.map(item => [item.url, item]));
         this.positionByItem = new Map(this.orderedItems.map((item, index) => [item, index]));

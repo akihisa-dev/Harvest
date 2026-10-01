@@ -83,3 +83,55 @@ test("不正な表示順の適用を拒否して現在の順序を保つ", () =>
   assert.equal(collection.applyVisibleOrder(visible, [visible[0], visible[0], ...visible.slice(2)]), false);
   assert.deepEqual(collection.items.map(item => item.url), before);
 });
+
+test("画像・動画・GIFを形式別に分け、並べ替えと復元後も所属と選択を保つ", () => {
+  const mediaUrls = [
+    "https://example.test/pages/001.png",
+    "https://example.test/pages/002.png",
+    "https://example.test/pages/003.webp",
+    "https://example.test/media/clip.mp4",
+    "https://example.test/media/clip.webm",
+    "https://example.test/media/animation.gif",
+  ];
+  const collection = new ImageCollection();
+  collection.replace(mediaUrls, "https://example.test/view", [
+    {url: mediaUrls[3], kind: "video"},
+    {url: mediaUrls[4], kind: "video"},
+    {url: mediaUrls[5], kind: "gif"},
+  ]);
+
+  const groups = Object.entries(collection.groups);
+  const groupContaining = url => groups.find(([, group]) => group.items.includes(url));
+  const png = groupContaining(mediaUrls[0]);
+  const webp = groupContaining(mediaUrls[2]);
+  const mp4 = groupContaining(mediaUrls[3]);
+  const webm = groupContaining(mediaUrls[4]);
+  const gif = groupContaining(mediaUrls[5]);
+  assert.match(png[1].label, /^PNG · /);
+  assert.match(webp[1].label, /^WEBP · /);
+  assert.equal(mp4[1].label, "MP4 (1件)");
+  assert.equal(webm[1].label, "WEBM (1件)");
+  assert.equal(gif[1].label, "GIF (1件)");
+  assert.notEqual(png[0], webp[0]);
+  assert.notEqual(mp4[0], webm[0]);
+  assert.deepEqual(collection.items.map(item => item.selected), [false, false, false, true, false, false]);
+
+  collection.setSelected(mediaUrls[0], true);
+  const pngItems = collection.visibleItems(png[0]);
+  collection.moveVisible(pngItems, pngItems[0], pngItems[1]);
+  assert.deepEqual(collection.itemsInGroup(png[0]).map(item => item.url), [mediaUrls[1], mediaUrls[0]]);
+  collection.resetOrder();
+  assert.deepEqual(collection.itemsInGroup(png[0]).map(item => item.url), [mediaUrls[0], mediaUrls[1]]);
+  assert.equal(collection.itemForUrl(mediaUrls[0]).selected, true);
+  assert.equal(collection.itemForUrl(mediaUrls[3]).selected, true);
+});
+
+test("形式がクエリやdata URL MIMEにある画像も形式別にまとめる", () => {
+  const queryPng = "https://example.test/image?id=1&format=png";
+  const dataWebp = "data:image/webp;base64,AA==";
+  const collection = new ImageCollection();
+  collection.replace([queryPng, dataWebp], "https://example.test/view");
+  const labels = Object.values(collection.groups).map(group => group.label);
+  assert.ok(labels.some(label => label.startsWith("PNG · ")));
+  assert.ok(labels.some(label => label.startsWith("WEBP · ")));
+});

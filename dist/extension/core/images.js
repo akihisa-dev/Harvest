@@ -1,3 +1,65 @@
+/** Groups collected media by type and file format while retaining image-series grouping. */
+export function groupMediaImages(urls, metadata = []) {
+    const metadataByUrl = new Map(metadata.map(item => [item.url, item]));
+    const buckets = new Map();
+    for (const url of urls) {
+        const details = metadataByUrl.get(url);
+        const detected = mediaFormat(url);
+        const kind = details?.kind ?? "image";
+        // GIF and video identities take precedence over a file's incidental suffix.
+        const extension = kind === "gif" ? "GIF" : kind === "video" ? (detected.extension || "不明") : detected.extension;
+        const bucketKey = `${kind}:${extension || "不明"}`;
+        const bucket = buckets.get(bucketKey) ?? { kind, extension: extension || "不明", urls: [] };
+        bucket.urls.push(url);
+        buckets.set(bucketKey, bucket);
+    }
+    const groups = {};
+    // Insert video groups first so the default priority-zero choice is stable.
+    for (const kind of ["video", "gif", "image"]) {
+        const entries = [...buckets.entries()].filter(([, bucket]) => bucket.kind === kind);
+        for (const [bucketKey, bucket] of entries) {
+            if (kind === "video" || kind === "gif") {
+                const key = `0_${bucketKey}`;
+                const label = kind === "gif" ? "GIF" : bucket.extension === "不明" ? "動画" : bucket.extension;
+                groups[key] = { label: `${label} (${bucket.urls.length}件)`, priority: 0, items: bucket.urls, isMangaBody: false };
+                continue;
+            }
+            const legacy = groupImages(bucket.urls);
+            for (const [legacyKey, group] of Object.entries(legacy)) {
+                const extensionLabel = bucket.extension === "不明" ? "画像" : bucket.extension;
+                const label = group.label.replace(/ \(\d+枚\)$/, "");
+                const key = `image_${bucketKey}_${legacyKey}`;
+                groups[key] = {
+                    ...group,
+                    label: `${extensionLabel} · ${label} (${group.items.length}枚)`,
+                    priority: group.priority,
+                };
+            }
+        }
+    }
+    return groups;
+}
+function mediaFormat(value) {
+    try {
+        if (value.startsWith("data:")) {
+            const mime = value.slice(5, value.indexOf(",")).split(";")[0]?.toLowerCase() ?? "";
+            const subtype = mime.split("/")[1] ?? "";
+            return { extension: normalizeFormat(subtype) };
+        }
+        const url = new URL(value);
+        const pathExtension = url.pathname.match(/\.([a-z0-9]{2,8})$/i)?.[1];
+        const queryFormat = [...url.searchParams.entries()].find(([name]) => /^(?:format|fmt|fm)$/i.test(name))?.[1];
+        return { extension: queryFormat ? normalizeFormat(queryFormat) : pathExtension ? normalizeFormat(pathExtension) : "不明" };
+    }
+    catch {
+        return { extension: "不明" };
+    }
+}
+function normalizeFormat(value) {
+    const format = value.toLowerCase().replace(/^x-/, "").replace(/\+xml$/, "");
+    const aliases = { jpeg: "JPG", jpg: "JPG", png: "PNG", webp: "WEBP", avif: "AVIF", gif: "GIF", mp4: "MP4", webm: "WEBM", mov: "MOV", m4v: "M4V", bmp: "BMP", tif: "TIFF", tiff: "TIFF", jxl: "JXL", svg: "SVG" };
+    return aliases[format] ?? "不明";
+}
 export function filterImagesByGroup(images, group) {
     if (!group)
         return [...images];

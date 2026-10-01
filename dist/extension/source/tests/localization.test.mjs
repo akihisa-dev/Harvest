@@ -36,6 +36,9 @@ test("英語ではグループ名・既知エラーが英語になり、サイ�
     const localization = await import(`../dist/extension/app/localization.js?values=${Date.now()}`);
     assert.equal(localization.formatGroupLabel("シリーズ (2枚)"), "Series (2 images)");
     assert.equal(localization.formatGroupLabel("表紙・サムネイル (1枚)"), "Cover / thumbnail (1 image)");
+    assert.equal(localization.formatGroupLabel("PNG · その他 (2枚)"), "PNG · Other (2 images)");
+    assert.equal(localization.formatGroupLabel("MP4 (2件)"), "MP4 (2 files)");
+    assert.equal(localization.formatGroupLabel("GIF (1件)"), "GIF (1 file)");
     assert.equal(localization.formatFailedAria(false), " ");
     assert.equal(localization.formatFailedAria(true), " Retrieval failed. ");
     assert.equal(localization.localizeErrorMessage("画像が見つかりませんでした。"), "The image was not found.");
@@ -164,7 +167,7 @@ test("英語画面で解析・分類・選択・エラー表示が翻訳され�
     assert.equal(root.querySelector("#reset").getAttribute("aria-label"), "Clear the collected results and selection");
     root.querySelector("#scan").dispatch("click");
     await waitForScan();
-    assert.ok(descendants(root.querySelector("#groups")).some(button => button.textContent === "Series\n(2 images)"));
+    assert.ok(descendants(root.querySelector("#groups")).some(button => button.textContent === "JPG · Series\n(2 images)"));
     assert.equal(root.querySelector("#export").textContent, "Save PDF");
     assert.equal((await import(`../dist/extension/app/localization.js?source=${Date.now()}`)).t("includeSourcePage"), "Add a source page at the end");
     const row = root.querySelector("#images").children[0];

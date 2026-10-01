@@ -40,6 +40,7 @@ const english = {
   mediaExcludedHint: "Only files for {format} are saved. {count} selected files are excluded.",
   mediaKindGif: "GIF",
   mediaKindVideo: "Video",
+  mediaKindImage: "Image",
   includeSourcePage: "Add a source page at the end",
   sourceHeading: "Source",
   imagesHeading: "Image groups",
@@ -181,6 +182,7 @@ const japanese: {[K in keyof typeof english]: string} = {
   mediaExcludedHint: "{format}の対象だけを保存します。選択中の{count}件は対象外です。",
   mediaKindGif: "GIF",
   mediaKindVideo: "動画",
+  mediaKindImage: "画像",
   includeSourcePage: "末尾に出典ページを追加",
   sourceHeading: "Source",
   imagesHeading: "画像グループ",
@@ -370,6 +372,17 @@ export function localizeErrorMessage(message: string, fallback: TranslationKey =
 }
 
 export function formatGroupLabel(label: string): string {
+  const typed = /^(.+) · (.+)$/.exec(label);
+  if (typed) {
+    const type = typed[1] === "画像" ? t("mediaKindImage") : typed[1]!;
+    return `${type} · ${formatGroupLabel(typed[2]!)}`;
+  }
+  const media = /^([A-Z0-9]+|動画) \((\d+)件\)$/.exec(label);
+  if (media) {
+    const type = media[1] === "動画" ? t("mediaKindVideo") : media[1]!;
+    const count = Number(media[2]);
+    return uiLanguage === "ja" ? label : `${type} (${count} file${count === 1 ? "" : "s"})`;
+  }
   const match = /^(アップロード済み|シリーズ|セット|表紙・サムネイル|その他) \((\d+)枚\)$/.exec(label);
   const genericMatch = /^.+ \((\d+)枚\)$/.exec(label);
   if (!match) {
