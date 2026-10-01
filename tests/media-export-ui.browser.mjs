@@ -5,11 +5,11 @@ import {readFile} from 'node:fs/promises';
 import {resolve, sep, extname} from 'node:path';
 import {chromium} from 'playwright';
 
-const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j+ioAAAAASUVORK5CYII=', 'base64');
+let png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j+ioAAAAASUVORK5CYII=', 'base64');
 const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
 const mp4 = Buffer.from([0,0,0,24,102,116,121,112,105,115,111,109,0,0,0,0,105,115,111,109,109,112,52,49]);
 
-test('解析内容で保存形式が切り替わり、元形式ZIPはGIFとMP4のバイト列を保つ', async () => {
+test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存する', async () => {
   const root = resolve('dist/extension');
   const server = createServer(async (req,res) => {
     try {
@@ -42,6 +42,11 @@ test('解析内容で保存形式が切り替わり、元形式ZIPはGIFとMP4�
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
     await page.setViewportSize({width:768,height:600});
     await page.goto(`http://127.0.0.1:${server.address().port}/app/index.html`);
+    png = Buffer.from(await page.evaluate(() => {
+      const canvas=document.createElement('canvas');canvas.width=1;canvas.height=1;
+      canvas.getContext('2d').fillRect(0,0,1,1);
+      return canvas.toDataURL('image/png').split(',')[1];
+    }), 'base64');
     const scan = async (images, media=[]) => {
       await page.evaluate(({images,media})=> {window.fixture={url:'https://source.example.test/gallery',title:'media',images,media};}, {images,media});
       await page.locator('#scan').click();
@@ -53,31 +58,51 @@ test('解析内容で保存形式が切り替わり、元形式ZIPはGIFとMP4�
     await scan([photo]);
     assert.equal(await page.locator('#export-format-pdf').isChecked(),true);
     assert.equal(await page.locator('#export-format-jxl').isVisible(),true);
+    assert.equal(await page.locator('#export-format-mp4').isVisible(),false);
+    assert.equal(await page.locator('#export-format-gif').isVisible(),false);
+    assert.equal(await page.locator('#export-format-original').count(),0);
     await scan([photo,animation],[{url:animation,kind:'gif'},{url:movie,kind:'video'}]);
-    assert.equal(await page.locator('#export-format-original').isChecked(),true);
+    assert.equal(await page.locator('#export-format-mp4').isChecked(),true);
     await page.locator('#all-selection').check();
     await page.locator('#export-format-pdf').check();
-    assert.match(await page.locator('#export-media-hint').textContent(),/GIF・動画2件は対象外/);
+    assert.match(await page.locator('#export-media-hint').textContent(),/選択中の2件は対象外/);
     assert.equal(await page.locator('#export').isDisabled(),false);
-    await page.locator('#export-format-original').check();
-    const downloadPromise=page.waitForEvent('download');
-    await page.locator('#export').click();
-    const download=await downloadPromise;
-    assert.equal(download.suggestedFilename(),'media.zip');
-    const bytes=await readFile(await download.path());
-    const entries=[];let offset=0;
-    while(bytes.readUInt32LE(offset)===0x04034b50){
-      const size=bytes.readUInt32LE(offset+22),nameLength=bytes.readUInt16LE(offset+26);
-      const start=offset+30+nameLength;
-      entries.push({name:bytes.subarray(offset+30,start).toString(),data:bytes.subarray(start,start+size)});
-      offset=start+size;
-    }
-    assert.deepEqual(entries.map(e=>e.name),['001.png','002.gif','003.mp4']);
-    assert.deepEqual(entries[1].data,gif);assert.deepEqual(entries[2].data,mp4);
+    await page.locator('#export-format-mp4').check();
+    const save = async format => {
+      await page.locator(`#export-format-${format}`).check();
+      const downloadPromise=page.waitForEvent('download');
+      await page.locator('#export').click();
+      const download=await downloadPromise;
+      assert.equal(download.suggestedFilename(),'media.zip');
+      const bytes=await readFile(await download.path());
+      const entries=[];let offset=0;
+      while(bytes.readUInt32LE(offset)===0x04034b50){
+        const size=bytes.readUInt32LE(offset+22),nameLength=bytes.readUInt16LE(offset+26);
+        const start=offset+30+nameLength;
+        entries.push({name:bytes.subarray(offset+30,start).toString(),data:bytes.subarray(start,start+size)});
+        offset=start+size;
+      }
+      return entries;
+    };
+    const videos=await save('mp4');
+    assert.deepEqual(videos.map(e=>e.name),['001.mp4']);
+    assert.deepEqual(videos[0].data,mp4);
+    const gifs=await save('gif');
+    assert.deepEqual(gifs.map(e=>e.name),['001.gif']);
+    assert.deepEqual(gifs[0].data,gif);
+    const images=await save('png');
+    assert.deepEqual(images.map(e=>e.name),['001.png']);
+    assert.deepEqual(images[0].data,png);
     await scan([],[{url:movie,kind:'video'}]);
-    assert.equal(await page.locator('#export-format-original').isChecked(),true);
+    assert.equal(await page.locator('#export-format-mp4').isChecked(),true);
     for(const format of ['pdf','jpg','png','jxl']) assert.equal(await page.locator(`#export-format-${format}`).isVisible(),false);
     assert.equal(await page.locator('#export').isDisabled(),false);
+    assert.equal(await page.locator('#export-format-gif').isVisible(),false);
+    assert.match(await page.locator('#export').textContent(),/MP4/);
+    await scan([animation],[{url:animation,kind:'gif'}]);
+    assert.equal(await page.locator('#export-format-gif').isChecked(),true);
+    assert.equal(await page.locator('#export-format-mp4').isVisible(),false);
+    assert.match(await page.locator('#export').textContent(),/GIF/);
     await scan([photo,animation],[{url:animation,kind:'gif'},{url:movie,kind:'video'}]);
     await page.locator('#all-selection').check();
     await page.waitForFunction(()=>[...document.querySelectorAll('#images > li img')].slice(0,2).every(image=>image.complete && image.naturalWidth>0));

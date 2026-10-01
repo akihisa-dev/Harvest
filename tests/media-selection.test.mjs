@@ -8,9 +8,11 @@ const items = [
   {url: "https://example.test/animation.gif", kind: "gif", selected: true, sourcePage: "https://example.test/"},
   {url: "https://example.test/movie.mp4", kind: "video", selected: true, sourcePage: "https://example.test/"},
 ];
-test("original preserves the selection and ordering while conversions exclude GIFs and videos", () => {
+test("format selection keeps only compatible media and original preserves all items", () => {
   assert.deepEqual(mediaExportSelection(items, "original"), items);
   for (const format of ["pdf", "jpg", "png", "jxl"]) assert.deepEqual(mediaExportSelection(items, format), [items[0]]);
+  assert.deepEqual(mediaExportSelection(items, "gif"), [items[1]]);
+  assert.deepEqual(mediaExportSelection(items, "mp4"), [items[2]]);
   assert.equal(hasStillImages(items), true);
   assert.equal(hasStillImages(items.slice(1)), false);
   assert.equal(hasStillImages([]), false);
@@ -27,6 +29,8 @@ test("collection retains media identity and preview metadata across ordering and
   collection.setAllSelected(true);
   assert.equal(mediaExportSelection(collection.selectedItems, "original").length, 3);
   assert.equal(mediaExportSelection(collection.selectedItems, "pdf").length, 1);
+  assert.deepEqual(mediaExportSelection(collection.selectedItems, "gif"), [collection.items.find(item => item.kind === "gif")]);
+  assert.deepEqual(mediaExportSelection(collection.selectedItems, "mp4"), [movie]);
   collection.moveVisible(collection.items, movie, collection.items[0]);
   assert.equal(collection.items[0], movie);
   collection.restoreInitialOrderAndSelection();

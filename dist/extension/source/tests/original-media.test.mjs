@@ -52,7 +52,7 @@ test("original media preserves GIF and MP4 bytes with MIME-based ZIP extensions"
   const items = [
     {url: "https://media.test/photo.jpg", sourcePage: "https://media.test/page", selected: true, kind: "image"},
     {url: "https://media.test/animation.gif", sourcePage: "https://media.test/page", selected: true, kind: "gif"},
-    {url: "https://media.test/animation.mp4", sourcePage: "https://media.test/page", selected: true, kind: "gif"},
+    {url: "https://media.test/animation.mp4", sourcePage: "https://media.test/page", selected: true, kind: "video"},
     {url: "https://media.test/clip.mp4", sourcePage: "https://media.test/page", selected: true, kind: "video"},
     {url: "https://media.test/clip.webm", sourcePage: "https://media.test/page", selected: true, kind: "video"},
   ];
@@ -142,6 +142,7 @@ test("original media rejects HTML, mismatched signatures, and payloads above 64 
     if (url.endsWith("/svg")) return fakeResponse("<svg/>", "image/svg+xml");
     if (url.endsWith("/avif-as-mp4")) return fakeResponse(avifFtyp, "video/mp4");
     if (url.endsWith("/late-mp4-brand")) return fakeResponse(largeFtyp, "video/mp4");
+    if (url.endsWith("/mp4-as-gif")) return fakeResponse(new Uint8Array([0, 0, 0, 16, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0, 0, 0, 0]), "video/mp4");
     return fakeResponse(new Uint8Array([0xff, 0xd8, 0xff]), "image/jpeg", {"content-length": String(64 * 1024 * 1024 + 1)});
   };
   try {
@@ -150,6 +151,7 @@ test("original media rejects HTML, mismatched signatures, and payloads above 64 
     await assert.rejects(fetchOriginalMedia("https://example.test/svg"), error => error.kind === "invalid-image");
     await assert.rejects(fetchOriginalMedia("https://example.test/avif-as-mp4", "video"), error => error.kind === "invalid-image");
     await assert.rejects(fetchOriginalMedia("https://example.test/late-mp4-brand", "video"), error => error.kind === "invalid-image");
+    await assert.rejects(fetchOriginalMedia("https://example.test/mp4-as-gif", "gif"), error => error.kind === "invalid-image");
     await assert.rejects(fetchOriginalMedia("https://example.test/too-large"), error => error.kind === "invalid-image");
   } finally {
     globalThis.fetch = previous.fetch;
@@ -179,10 +181,40 @@ test("original media honors timeout and caller cancellation", async () => {
   }
 });
 
-test("ZIP original extensions come from recognized MIME types and reject unknown types", () => {
+test("ZIP extensions follow recognized MIME types and reject unknown or mismatched types", () => {
   const image = {url: "https://example.test/unknown", sourcePage: "https://example.test", selected: true};
   assert.equal(createImageZipEntries([image], new Map([[image, new Blob(["x"], {type: "image/avif"})]]), "original")[0].filename, "001.avif");
   assert.throws(() => createImageZipEntries([image], new Map([[image, new Blob(["x"], {type: "text/html"})]]), "original"), /形式を確認できません/);
+  const gif = {...image, kind: "gif"};
+  const video = {...image, kind: "video"};
+  assert.equal(createImageZipEntries([gif], new Map([[gif, new Blob(["gif"], {type: "image/gif"})]]), "gif")[0].filename, "001.gif");
+  assert.equal(createImageZipEntries([video], new Map([[video, new Blob(["mp4"], {type: "video/mp4"})]]), "mp4")[0].filename, "001.mp4");
+  assert.throws(() => createImageZipEntries([gif], new Map([[gif, new Blob(["mp4"], {type: "video/mp4"})]]), "gif"), /形式が一致しません/);
+  assert.throws(() => createImageZipEntries([video], new Map([[video, new Blob(["gif"], {type: "image/gif"})]]), "mp4"), /形式が一致しません/);
+  assert.throws(() => createImageZipEntries([gif], new Map([[gif, new Blob(["mp4"], {type: "video/mp4"})]]), "original"), /形式が一致しません/);
+});
+
+test("MP4 export records a WebM response as a retryable preparation failure", async () => {
+  const item = {url: "https://example.test/wrong.mp4", sourcePage: "https://example.test", selected: true, kind: "video"};
+  const webm = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 1, 2, 3, 4]);
+  const archives = [];
+  globalThis.fetch = async () => fakeResponse(webm, "video/webm");
+  URL.createObjectURL = blob => { archives.push(blob); return "blob:archive"; };
+  const controller = createImageExportController({
+    getSelectedItems: () => [item],
+    getZipFilename: () => "Video.zip",
+    isBusy: () => false,
+    isDisposed: () => false,
+    onBusyChange() {},
+    onStatus() {},
+    onCloseViewer() {},
+    onClearSourceUrl() {},
+    onScrollToFailures() {},
+  });
+  await controller.export("mp4");
+  assert.equal(archives.length, 0);
+  assert.equal(controller.pending?.failed.has(item), true);
+  assert.match(controller.pending?.failed.get(item) ?? "", /形式が一致しません/);
 });
 
 test.after(() => {

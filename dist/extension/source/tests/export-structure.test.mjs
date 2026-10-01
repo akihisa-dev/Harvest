@@ -33,6 +33,17 @@ test("export preferences use safe defaults and persist only supported choices", 
   assert.equal(loadExportPreferences(storage).includeSourcePage, false);
 });
 
+test("MP4・GIFの保存設定を読み取り、旧設定の内容は書き換えない", () => {
+  for (const format of ["mp4", "gif"]) {
+    const storage = memoryStorage();
+    assert.equal(saveExportFormat(format, storage), true);
+    assert.equal(loadExportPreferences(storage).format, format);
+  }
+  const legacy = memoryStorage([["harvest.exportFormat", "original"]]);
+  assert.equal(loadExportPreferences(legacy).format, "pdf");
+  assert.equal(legacy.values.get("harvest.exportFormat"), "original");
+});
+
 test("unavailable preference storage falls back cleanly and reports writes that fail", () => {
   const unreadable = {getItem() { throw new Error("storage unavailable"); }, setItem() { throw new Error("storage unavailable"); }};
   assert.deepEqual(loadExportPreferences(unreadable), {format: "pdf", includeSourcePage: false});

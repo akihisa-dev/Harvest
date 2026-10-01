@@ -67,7 +67,10 @@
         <div class="export-control">
           <fieldset class="export-formats" role="group" aria-labelledby="export-format-label">
             <legend id="export-format-label" class="visually-hidden" data-i18n="exportFormat">保存形式</legend>
-            <label><input id="export-format-original" type="radio" name="export-format" value="original"><span data-i18n="originalFormat">元の形式</span></label>
+            <div class="export-media-formats">
+              <label hidden><input id="export-format-mp4" type="radio" name="export-format" value="mp4"><span>MP4</span></label>
+              <label hidden><input id="export-format-gif" type="radio" name="export-format" value="gif"><span>GIF</span></label>
+            </div>
             <label><input id="export-format-pdf" type="radio" name="export-format" value="pdf"><span>PDF</span></label>
             <label><input id="export-format-jpg" type="radio" name="export-format" value="jpg"><span>JPG</span></label>
             <label><input id="export-format-png" type="radio" name="export-format" value="png"><span>PNG</span></label>

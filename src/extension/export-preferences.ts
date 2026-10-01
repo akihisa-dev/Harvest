@@ -1,12 +1,12 @@
 import type { ImageArchiveFormat } from "./image-format.js";
 
-export type ExportFormat = "pdf" | ImageArchiveFormat;
+export type ExportFormat = "pdf" | Exclude<ImageArchiveFormat, "original">;
 
 const sourcePagePreferenceKey = "harvest.includeSourcePage";
 const exportFormatPreferenceKey = "harvest.exportFormat";
 
 function isExportFormat(value: string): value is ExportFormat {
-  return value === "original" || value === "pdf" || value === "jpg" || value === "png" || value === "jxl";
+  return value === "mp4" || value === "gif" || value === "pdf" || value === "jpg" || value === "png" || value === "jxl";
 }
 
 export interface ExportPreferences {

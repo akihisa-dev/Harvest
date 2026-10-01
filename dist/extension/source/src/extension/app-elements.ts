@@ -15,7 +15,8 @@ export function queryAppElements() {
     exportButton: required<HTMLButtonElement>("#export"),
     exportMediaHint: required<HTMLParagraphElement>("#export-media-hint"),
     exportFormatInputs: [
-      {format: "original" as const, input: required<HTMLInputElement>("#export-format-original")},
+      {format: "mp4" as const, input: required<HTMLInputElement>("#export-format-mp4")},
+      {format: "gif" as const, input: required<HTMLInputElement>("#export-format-gif")},
       {format: "pdf" as const, input: required<HTMLInputElement>("#export-format-pdf")},
       {format: "jpg" as const, input: required<HTMLInputElement>("#export-format-jpg")},
       {format: "png" as const, input: required<HTMLInputElement>("#export-format-png")},

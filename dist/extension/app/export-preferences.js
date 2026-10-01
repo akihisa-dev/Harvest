@@ -1,7 +1,7 @@
 const sourcePagePreferenceKey = "harvest.includeSourcePage";
 const exportFormatPreferenceKey = "harvest.exportFormat";
 function isExportFormat(value) {
-    return value === "original" || value === "pdf" || value === "jpg" || value === "png" || value === "jxl";
+    return value === "mp4" || value === "gif" || value === "pdf" || value === "jpg" || value === "png" || value === "jxl";
 }
 export function loadExportPreferences(storage = localStorage) {
     try {

@@ -65,7 +65,7 @@ function allowedForKind(kind, mediaKind) {
     if (kind === "video")
         return mediaKind === "video";
     if (kind === "gif")
-        return mediaKind === "gif" || mediaKind === "video";
+        return mediaKind === "gif";
     return mediaKind === "image" || mediaKind === "gif";
 }
 function responseError(status) {

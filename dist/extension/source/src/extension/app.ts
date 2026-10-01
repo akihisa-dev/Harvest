@@ -11,7 +11,7 @@ import { createImagePreviewLoader } from "./image-preview.js";
 import { createPdfExportController, type PdfExportController } from "./pdf-export-controller.js";
 import { createImageExportController, type ImageExportController } from "./image-export-controller.js";
 import { queryAppElements } from "./app-elements.js";
-import { loadExportPreferences, saveExportFormat, saveSourcePagePreference } from "./export-preferences.js";
+import { loadExportPreferences, saveExportFormat, saveSourcePagePreference, type ExportFormat } from "./export-preferences.js";
 import {
   createSourcePreview,
   deriveExportViewState,
@@ -34,7 +34,7 @@ const {
 } = queryAppElements();
 
 const preferences = loadExportPreferences();
-let selectedExportFormat = preferences.format;
+let selectedExportFormat: ExportFormat = preferences.format === "mp4" || preferences.format === "gif" ? "pdf" : preferences.format;
 for (const {format, input} of exportFormatInputs) input.checked = format === selectedExportFormat;
 includeSourcePage.checked = preferences.includeSourcePage;
 includeSourcePage.addEventListener("change", () => {
@@ -193,14 +193,15 @@ function render(): void {
   const allSelectedCount = imageCollection.selectedItems.length;
   const excludedCount = allSelectedCount - selectedCount;
   const stillAvailable = hasStillImages(imageCollection.items);
-  const hasMedia = imageCollection.items.some(item => item.kind === "gif" || item.kind === "video");
+  const hasVideo = imageCollection.items.some(item => item.kind === "video");
+  const hasGif = imageCollection.items.some(item => item.kind === "gif");
+  const hasMedia = hasVideo || hasGif;
   exportMediaHint.hidden = !hasMedia;
-  exportMediaHint.textContent = selectedExportFormat === "original"
-    ? t("mediaOriginalHint")
-    : excludedCount ? t("mediaExcludedHint", {count: excludedCount}) : "";
+  exportMediaHint.textContent = excludedCount ? t("mediaExcludedHint", {count: excludedCount, format: selectedExportFormat.toUpperCase()}) : "";
   if (!exportMediaHint.textContent) exportMediaHint.hidden = true;
   for (const {format, input} of exportFormatInputs) {
-    const hidden = format !== "original" && imageCollection.items.length > 0 && !stillAvailable;
+    const hidden = format === "mp4" ? !hasVideo : format === "gif" ? !hasGif
+      : imageCollection.items.length > 0 && !stillAvailable;
     const label = input.closest?.("label");
     if (label) (label as HTMLElement).hidden = hidden;
     input.disabled = busy || hidden;
@@ -233,8 +234,8 @@ function render(): void {
   if (!exportRunning) exportButton.removeAttribute("aria-label");
   if (exportRunning) setButtonLabel(exportButton, exportState.progress);
   else if (exportState.phase === "retry-required") setButtonLabel(exportButton, t("exportRetry"));
-  else if (exportSaved) setButtonLabel(exportButton, t(selectedExportFormat === "original" ? "exportFilesSaved" : "exportSaved", {count: selectedCount, plural: formatPlural(selectedCount)}));
-  else if (selected.length) setButtonLabel(exportButton, selectedExportFormat === "original" ? t("originalSave") : t("exportAction", {format: selectedExportFormat.toUpperCase()}));
+  else if (exportSaved) setButtonLabel(exportButton, t(selectedExportFormat === "mp4" || selectedExportFormat === "gif" ? "exportFilesSaved" : "exportSaved", {count: selectedCount, plural: formatPlural(selectedCount)}));
+  else if (selected.length) setButtonLabel(exportButton, t("exportAction", {format: selectedExportFormat.toUpperCase()}));
   else setButtonLabel(exportButton, t("save"));
   exportButton.title = exportRunning
     ? `${exportState.progress} — ${t("exportCancelHint")}`
@@ -365,10 +366,13 @@ scanSessionController = createScanSessionController({
   onBusyChange: setBusy,
   onStatus: setStatus,
   onResults(nextPageTitle, initialGroup, sourcePage) {
-    if (imageCollection.items.some(item => item.kind === "gif" || item.kind === "video")) {
-      selectedExportFormat = "original";
+    if (imageCollection.items.some(item => item.kind === "video")) {
+      selectedExportFormat = "mp4";
+    } else if (imageCollection.items.some(item => item.kind === "gif")) {
+      selectedExportFormat = "gif";
     } else {
-      selectedExportFormat = loadExportPreferences().format;
+      const saved = loadExportPreferences().format;
+      selectedExportFormat = saved === "mp4" || saved === "gif" ? "pdf" : saved;
     }
     resultSourceUrl = sourcePage;
     sourceDisplayCleared = false;

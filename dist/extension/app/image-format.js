@@ -69,7 +69,7 @@ function toBlob(canvas, type, quality) {
 /** Convert one fetched image, releasing its decoded pixels before returning. */
 export async function convertImage(fetched, format, signal) {
     checkCancelled(signal);
-    if (format === "original")
+    if (format === "original" || format === "mp4" || format === "gif")
         return fetchedBlob(fetched);
     const headerDimensions = await fetchedImageDimensions(fetched);
     checkCancelled(signal);

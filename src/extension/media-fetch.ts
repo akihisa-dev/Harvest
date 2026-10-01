@@ -88,7 +88,7 @@ export function originalMediaExtension(mimeType: string): string {
 
 function allowedForKind(kind: ImageItemMediaKind, mediaKind: MediaType["kind"]): boolean {
   if (kind === "video") return mediaKind === "video";
-  if (kind === "gif") return mediaKind === "gif" || mediaKind === "video";
+  if (kind === "gif") return mediaKind === "gif";
   return mediaKind === "image" || mediaKind === "gif";
 }
 

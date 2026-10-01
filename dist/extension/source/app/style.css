@@ -89,8 +89,9 @@ section, aside { min-width: 0; }
 .save-area { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 0 0 8px; border-bottom: 1px solid var(--line); }
 .export-control { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .export-formats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; min-width: 0; margin: 0; padding: 0; border: 0; }
-.export-formats label:has(#export-format-original) { grid-column: 1 / -1; justify-content: flex-start; }
 .export-formats label { display: flex; align-items: center; justify-content: center; gap: 2px; min-width: 0; font-size: 11px; cursor: pointer; }
+.export-media-formats { grid-column: 1 / -1; display: flex; gap: 12px; }
+.export-media-formats:not(:has(label:not([hidden]))) { display: none; }
 .export-formats input { width: 12px; height: 12px; flex: none; margin: 0; accent-color: var(--ink); cursor: pointer; }
 .export-formats input:disabled, .export-formats input:disabled + span { cursor: default; }
 .export-control #export { width: 100%; min-width: 0; overflow: hidden; padding-inline: 6px; text-overflow: ellipsis; white-space: nowrap; }

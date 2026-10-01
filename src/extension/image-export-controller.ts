@@ -22,6 +22,28 @@ function imageArchiveFilenames(count: number, format: ImageArchiveFormat): strin
   return Array.from({length: count}, (_, index) => `${String(index + 1).padStart(width, "0")}.${extension}`);
 }
 
+function isOriginalMediaFormat(format: ImageArchiveFormat): boolean {
+  return format === "original" || format === "mp4" || format === "gif";
+}
+
+function mediaProgressKind(format: ImageArchiveFormat): "files" | "images" {
+  return isOriginalMediaFormat(format) ? "files" : "images";
+}
+
+function validatePreparedMedia(item: ImageItem, blob: Blob, format: ImageArchiveFormat): void {
+  if (format !== "mp4" && format !== "gif") return;
+  const expectedKind = format === "gif" ? "gif" : "video";
+  let actualExtension: string;
+  try {
+    actualExtension = originalMediaExtension(blob.type);
+  } catch {
+    throw new RangeError("保存するデータの形式を確認できません。");
+  }
+  if ((item.kind ?? "image") !== expectedKind || actualExtension !== format) {
+    throw new RangeError("選択項目と保存データの形式が一致しません。");
+  }
+}
+
 type ImageFetchOutcome =
   | { readonly ok: true; readonly fetched: FetchedImage | Blob }
   | { readonly ok: false; readonly error: unknown };
@@ -120,11 +142,16 @@ export function createImageZipEntries(
       }
       const kind = item.kind ?? "image";
       if ((kind === "video" && extension !== "mp4" && extension !== "webm") ||
-          (kind === "gif" && extension !== "gif" && extension !== "mp4") ||
+          (kind === "gif" && extension !== "gif") ||
           (kind === "image" && (extension === "mp4" || extension === "webm"))) {
         throw new RangeError("選択項目と保存データの形式が一致しません。");
       }
-    } else extension = format;
+    } else {
+      extension = format;
+      if (format === "gif" || format === "mp4") {
+        validatePreparedMedia(item, blob, format);
+      }
+    }
     const width = Math.max(3, String(selected.length).length);
     const filename = `${String(index + 1).padStart(width, "0")}.${extension}`;
     return {filename, blob};
@@ -149,7 +176,7 @@ export function createImageExportController(options: ImageExportControllerOption
     const remaining = work.selected.filter(item => !work.prepared.has(item));
     await lifecycle.run(
       work,
-      t(format === "original" ? (retry ? "retryFiles" : "prepareFiles") : (retry ? "retryImages" : "prepareImages"), {completed: 0, total: remaining.length}),
+      t(mediaProgressKind(format) === "files" ? (retry ? "retryFiles" : "prepareFiles") : (retry ? "retryImages" : "prepareImages"), {completed: 0, total: remaining.length}),
       `0 / ${remaining.length}`,
       async run => {
         try {
@@ -157,7 +184,8 @@ export function createImageExportController(options: ImageExportControllerOption
           let preparedSize = [...work.prepared.values()].reduce((size, blob) => size + blob.size, 0);
           if (preparedSize > dataLimit) throw new ImageArchiveLimitError();
           work.failed.clear();
-          const workerCount = Math.min(format === "original" ? 1 : IMAGE_FETCH_CONCURRENCY, remaining.length);
+          const isOriginalMedia = isOriginalMediaFormat(format);
+          const workerCount = Math.min(isOriginalMedia ? 1 : IMAGE_FETCH_CONCURRENCY, remaining.length);
           const resultWindow = new ImageFetchWindow(workerCount);
           const fetchedResults: Array<Deferred<ImageFetchOutcome> | undefined> = remaining.map(() => createDeferred<ImageFetchOutcome>());
           const fetchController = new AbortController();
@@ -193,7 +221,7 @@ export function createImageExportController(options: ImageExportControllerOption
               try {
                 outcome = {
                   ok: true,
-                  fetched: format === "original"
+                  fetched: isOriginalMedia
                     ? await fetchOriginalMedia(item.url, item.kind ?? "image", {
                       signal: fetchController.signal,
                       sourcePage: item.sourcePage,
@@ -218,10 +246,11 @@ export function createImageExportController(options: ImageExportControllerOption
               const item = remaining[index]!;
               try {
                 if (!outcome.ok) throw outcome.error;
-                const blob = format === "original"
+                const blob = isOriginalMedia
                   ? outcome.fetched as Blob
                   : await convertImage(outcome.fetched as FetchedImage, format, run.signal);
                 if (run.stopped) return;
+                validatePreparedMedia(item, blob, format);
                 if (blob.size > dataLimit - preparedSize) throw new ImageArchiveLimitError();
                 work.prepared.set(item, blob);
                 preparedSize += blob.size;
@@ -235,7 +264,7 @@ export function createImageExportController(options: ImageExportControllerOption
                 resultWindow.release();
               }
               if (!options.isDisposed()) {
-                run.reportStatus(t(format === "original" ? (retry ? "retryFiles" : "prepareFiles") : (retry ? "retryImages" : "prepareImages"), {
+                run.reportStatus(t(mediaProgressKind(format) === "files" ? (retry ? "retryFiles" : "prepareFiles") : (retry ? "retryImages" : "prepareImages"), {
                   completed: index + 1,
                   total: remaining.length,
                 }), "busy", `${index + 1} / ${remaining.length}`);
@@ -249,7 +278,7 @@ export function createImageExportController(options: ImageExportControllerOption
           if (run.stopped) return;
           if (work.failed.size) {
             options.onCloseViewer();
-            run.reportStatus(t(format === "original" ? "fileFailedSummary" : "imageFailedSummary", {count: work.failed.size, plural: formatPlural(work.failed.size)}), "error");
+            run.reportStatus(t(mediaProgressKind(format) === "files" ? "fileFailedSummary" : "imageFailedSummary", {count: work.failed.size, plural: formatPlural(work.failed.size)}), "error");
             return;
           }
 
