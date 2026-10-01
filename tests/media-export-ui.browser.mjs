@@ -43,8 +43,8 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     await page.setViewportSize({width:768,height:600});
     await page.goto(`http://127.0.0.1:${server.address().port}/app/index.html`);
     png = Buffer.from(await page.evaluate(() => {
-      const canvas=document.createElement('canvas');canvas.width=1;canvas.height=1;
-      canvas.getContext('2d').fillRect(0,0,1,1);
+      const canvas=document.createElement('canvas');canvas.width=640;canvas.height=960;
+      canvas.getContext('2d').fillRect(0,0,640,960);
       return canvas.toDataURL('image/png').split(',')[1];
     }), 'base64');
     const scan = async (images, media=[]) => {
@@ -56,6 +56,14 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     const animation='https://files.example.test/animation.gif';
     const movie='https://files.example.test/movie.mp4';
     await scan([photo]);
+    await page.waitForFunction(() => document.querySelector('#images .item-resolution')?.textContent === '640 × 960');
+    assert.equal(await page.locator('#images .item-resolution').isVisible(),true);
+    const captionPosition=await page.locator('#images > li').first().evaluate(row => {
+      const resolution=row.querySelector('.item-resolution').getBoundingClientRect();
+      const name=document.createRange();name.selectNodeContents(row.querySelector('.item-title'));
+      return resolution.bottom < name.getBoundingClientRect().top;
+    });
+    assert.equal(captionPosition,true,'解像度はファイル名の文字の上へ重ねる');
     assert.equal(await page.locator('#export-format-pdf').isChecked(),true);
     assert.equal(await page.locator('#export-format-jxl').isVisible(),true);
     assert.equal(await page.locator('#export-format-mp4').isVisible(),false);
@@ -98,6 +106,7 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     for(const format of ['pdf','jpg','png','jxl']) assert.equal(await page.locator(`#export-format-${format}`).isVisible(),false);
     assert.equal(await page.locator('#export').isDisabled(),false);
     assert.equal(await page.locator('#export-format-gif').isVisible(),false);
+    assert.equal(await page.locator('#images .item-resolution').isVisible(),false,'動画の代替画像を動画の解像度として表示しない');
     assert.match(await page.locator('#export').textContent(),/MP4/);
     await scan([animation],[{url:animation,kind:'gif'}]);
     assert.equal(await page.locator('#export-format-gif').isChecked(),true);
@@ -106,6 +115,7 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     await scan([photo,animation],[{url:animation,kind:'gif'},{url:movie,kind:'video'}]);
     await page.locator('#all-selection').check();
     await page.waitForFunction(()=>[...document.querySelectorAll('#images > li img')].slice(0,2).every(image=>image.complete && image.naturalWidth>0));
+    assert.deepEqual(await page.locator('#images .item-resolution').allTextContents(),['640 × 960','1 × 1','']);
     await page.screenshot({path:'/private/tmp/harvest-media-ui.png'});
     assert.deepEqual(errors,[]);
   } finally {await browser?.close();await new Promise(resolve=>server.close(resolve));}

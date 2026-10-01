@@ -220,6 +220,7 @@ main:has(#viewer:not([hidden])) { overflow: hidden; scrollbar-gutter: auto; }
 .item-order { position: absolute; top: 7px; left: 7px; min-width: 24px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--badge); color: var(--ink); text-align: center; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .item-body { position: absolute; inset: 0; min-width: 0; padding: 9px; display: flex; flex-direction: column; justify-content: flex-end; pointer-events: none; }
 .item-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #fff; text-shadow: 0 1px 3px rgb(0 0 0 / 85%); margin: 0 -9px -9px; border-radius: 0 0 5px 5px; padding: 18px 9px 9px; background: linear-gradient(transparent, rgb(0 0 0 / 28%)); }
+.item-resolution { position: absolute; left: 9px; bottom: 28px; max-width: calc(100% - 18px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 4px; border-radius: 3px; background: rgb(0 0 0 / 55%); color: #fff; font-size: 10px; font-variant-numeric: tabular-nums; }
 .item-selected { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 4px; background: rgb(32 32 32 / 65%); color: #fff; font-size: 16px; font-weight: 700; }
 .image-list li.failed { border-width: 2px; }
 .item-failed { position: absolute; top: 7px; right: 7px; padding: 3px 6px; border-radius: 4px; background: var(--ink); color: var(--pressed-ink); font-size: 11px; font-weight: 700; }

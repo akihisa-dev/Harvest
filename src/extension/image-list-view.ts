@@ -9,6 +9,7 @@ interface ImageRowParts {
   preview: HTMLImageElement;
   order: HTMLSpanElement;
   name: HTMLSpanElement;
+  updateResolution: () => void;
   selectedMark: HTMLSpanElement;
   failedMark: HTMLSpanElement;
 }
@@ -239,6 +240,19 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     order.className = "item-order";
     const name = document.createElement("span");
     name.className = "item-title";
+    const resolution = document.createElement("span");
+    resolution.className = "item-resolution";
+    resolution.hidden = true;
+    const updateResolution = (): void => {
+      const item = currentItem();
+      // A video's poster or placeholder is not the video's resolution.
+      const ready = item && item.kind !== "video" && preview.dataset["previewUrl"] === item.url
+        && preview.complete && preview.naturalWidth > 0 && preview.naturalHeight > 0;
+      resolution.hidden = !ready;
+      resolution.textContent = ready ? `${preview.naturalWidth} × ${preview.naturalHeight}` : "";
+    };
+    preview.addEventListener("load", updateResolution);
+    preview.addEventListener("error", () => { resolution.hidden = true; resolution.textContent = ""; });
     const selectedMark = document.createElement("span");
     selectedMark.className = "item-selected";
     selectedMark.textContent = "✓";
@@ -246,9 +260,9 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     const failedMark = document.createElement("span");
     failedMark.className = "item-failed";
     failedMark.textContent = t("imageFailed");
-    body.append(order, name, selectedMark, failedMark);
+    body.append(order, resolution, name, selectedMark, failedMark);
     row.append(preview, body);
-    imageRowParts.set(row, {preview, order, name, selectedMark, failedMark});
+    imageRowParts.set(row, {preview, order, name, updateResolution, selectedMark, failedMark});
     row.addEventListener("pointerdown", () => { suppressThumbnailClick = false; });
     row.addEventListener("click", () => {
       if (suppressThumbnailClick || draggedImage || options.isBusy()) return;
@@ -355,6 +369,7 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
         failed: formatFailedAria(failed),
       }));
       options.previewLoader.set(parts.preview, item);
+      parts.updateResolution();
       parts.preview.alt = t("imageAlt", {index: index + 1});
       parts.order.textContent = `${overallIndex + 1}`;
       parts.order.setAttribute("aria-label", t("imagePosition", {index: overallIndex + 1}));
