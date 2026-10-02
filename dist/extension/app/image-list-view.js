@@ -18,10 +18,90 @@ export function createImageListView(options) {
     let renderedListKeys = [];
     let dragRects = new Map();
     let dragIsSingleColumn = true;
-    function refreshDragGeometry() {
-        dragRects = new Map([...rows].map(([url, row]) => [url, row.getBoundingClientRect()]));
+    const dragScrollOffsets = new Map();
+    let dragLayoutChanged = false;
+    let dragLayoutSize = { width: 0, height: 0 };
+    let dragResizeObserver = null;
+    let dragGeometryFrame = null;
+    let dragPointer = null;
+    let dragOverflowAnchor = "";
+    function refreshDragGeometry(layoutChanged = false) {
+        // A resize must measure the final slots, without retaining an in-flight motion offset.
+        const settled = layoutChanged ? animateLayoutChange([...rows.values()], () => { }, draggedImage ? rows.get(draggedImage.url) : undefined) : null;
+        dragRects = new Map([...rows].map(([url, row]) => [url, settled?.get(row) ?? row.getBoundingClientRect()]));
         const first = dragRects.values().next().value;
         dragIsSingleColumn = !first || [...dragRects.values()].every(rect => Math.abs(rect.left - first.left) < 1);
+        for (const [element, offset] of dragScrollOffsets) {
+            offset.left = element.scrollLeft;
+            offset.top = element.scrollTop;
+        }
+        dragLayoutSize = { width: imagesElement.clientWidth, height: imagesElement.clientHeight };
+        dragLayoutChanged = false;
+    }
+    function updateDragGeometry() {
+        if (dragLayoutChanged || imagesElement.clientWidth !== dragLayoutSize.width || imagesElement.clientHeight !== dragLayoutSize.height) {
+            refreshDragGeometry(true);
+            return;
+        }
+        let x = 0;
+        let y = 0;
+        for (const [element, offset] of dragScrollOffsets) {
+            x += offset.left - element.scrollLeft;
+            y += offset.top - element.scrollTop;
+            offset.left = element.scrollLeft;
+            offset.top = element.scrollTop;
+        }
+        if (!x && !y)
+            return;
+        for (const [url, rect] of dragRects)
+            dragRects.set(url, {
+                left: rect.left + x, right: rect.right + x, top: rect.top + y, bottom: rect.bottom + y,
+                width: rect.width, height: rect.height,
+            });
+    }
+    function scheduleDragPreview() {
+        if (!draggedImage || !dragPointer || dragGeometryFrame !== null)
+            return;
+        dragGeometryFrame = window.requestAnimationFrame(() => {
+            dragGeometryFrame = null;
+            if (dragPointer)
+                updateDragPreview(dragPointer);
+        });
+    }
+    function resizeDragLayout() {
+        dragLayoutChanged = true;
+        scheduleDragPreview();
+    }
+    function startDragGeometry() {
+        // Browser scroll anchoring must not undo an intentional preview reorder.
+        dragOverflowAnchor = imagesElement.style.overflowAnchor ?? "";
+        imagesElement.style.overflowAnchor = "none";
+        for (let element = imagesElement; element; element = element.parentElement) {
+            dragScrollOffsets.set(element, { left: element.scrollLeft, top: element.scrollTop });
+        }
+        refreshDragGeometry();
+        document.addEventListener("scroll", scheduleDragPreview, true);
+        window.addEventListener?.("resize", resizeDragLayout);
+        if (typeof ResizeObserver !== "undefined") {
+            dragResizeObserver = new ResizeObserver(() => {
+                if (imagesElement.clientWidth !== dragLayoutSize.width || imagesElement.clientHeight !== dragLayoutSize.height)
+                    resizeDragLayout();
+            });
+            dragResizeObserver.observe(imagesElement);
+        }
+    }
+    function stopDragGeometry() {
+        document.removeEventListener?.("scroll", scheduleDragPreview, true);
+        window.removeEventListener?.("resize", resizeDragLayout);
+        dragResizeObserver?.disconnect();
+        dragResizeObserver = null;
+        if (dragGeometryFrame !== null)
+            window.cancelAnimationFrame(dragGeometryFrame);
+        dragGeometryFrame = null;
+        dragPointer = null;
+        dragScrollOffsets.clear();
+        dragRects.clear();
+        imagesElement.style.overflowAnchor = dragOverflowAnchor;
     }
     function requestFocus(target) {
         focusTarget = target;
@@ -163,23 +243,32 @@ export function createImageListView(options) {
         requestFocus({ kind: "image", url: source.url, action: "drag" });
         options.onChange();
     }
-    function previewInsertion(target, event) {
-        if (options.isBusy() || !draggedImage || draggedImage === target)
+    function updateDragPreview(pointer) {
+        if (options.isBusy() || !draggedImage)
             return;
-        event.preventDefault();
-        if (event.dataTransfer)
-            event.dataTransfer.dropEffect = "move";
-        const row = rows.get(target.url);
-        if (!row)
+        updateDragGeometry();
+        const nearestUrl = findNearestByRect(dragRects, pointer);
+        const target = nearestUrl ? collection.itemForUrl(nearestUrl) : null;
+        if (!target || draggedImage === target)
             return;
         const rect = dragRects.get(target.url);
         if (!rect)
             return;
-        const order = createPreviewOrder(previewOrder, draggedImage, target, isPointerAfter(rect, event, dragIsSingleColumn));
+        const order = createPreviewOrder(previewOrder, draggedImage, target, isPointerAfter(rect, pointer, dragIsSingleColumn));
         if (!order)
             return;
         if (order.some((item, index) => item !== previewOrder[index]))
             showInsertion(order);
+    }
+    function previewInsertion(event) {
+        if (options.isBusy() || !draggedImage)
+            return;
+        event.preventDefault();
+        event.stopPropagation?.();
+        if (event.dataTransfer)
+            event.dataTransfer.dropEffect = "move";
+        dragPointer = { clientX: event.clientX, clientY: event.clientY };
+        updateDragPreview(dragPointer);
     }
     function finishDrop(event) {
         if (!draggedImage || options.isBusy())
@@ -188,7 +277,7 @@ export function createImageListView(options) {
         const source = draggedImage;
         collection.applyVisibleOrder(visibleImages, previewOrder);
         draggedImage = null;
-        dragRects.clear();
+        stopDragGeometry();
         requestFocus({ kind: "image", url: source.url, action: "drag" });
         options.onChange();
     }
@@ -246,7 +335,7 @@ export function createImageListView(options) {
             const item = currentItem();
             suppressThumbnailClick = true;
             draggedImage = item;
-            refreshDragGeometry();
+            startDragGeometry();
             if (event.dataTransfer) {
                 event.dataTransfer.setDragImage(preview, preview.width / 2, preview.height / 2);
                 event.dataTransfer.effectAllowed = "move";
@@ -254,15 +343,15 @@ export function createImageListView(options) {
             }
             row.classList.add("dragging");
         });
-        row.addEventListener("dragover", event => previewInsertion(currentItem(), event));
+        row.addEventListener("dragover", previewInsertion);
         row.addEventListener("drop", finishDrop);
         row.addEventListener("dragend", () => {
             if (!draggedImage)
                 return;
             draggedImage = null;
-            dragRects.clear();
             row.classList.remove("dragging");
             showInsertion([...visibleImages]);
+            stopDragGeometry();
         });
         row.addEventListener("keydown", event => {
             if (event.target !== row || options.isBusy())
@@ -373,15 +462,7 @@ export function createImageListView(options) {
                 options.previewLoader.clearImage(parts.preview);
         }
         rows = nextRows;
-        imagesElement.ondragover = event => {
-            if (!draggedImage || options.isBusy())
-                return;
-            event.preventDefault();
-            const nearestUrl = findNearestByRect(dragRects, event);
-            const nearest = nearestUrl ? collection.itemForUrl(nearestUrl) ?? null : null;
-            if (nearest)
-                previewInsertion(nearest, event);
-        };
+        imagesElement.ondragover = previewInsertion;
         imagesElement.ondrop = finishDrop;
     }
     function render(failedItems = new Set(), sourcePreview = null) {
