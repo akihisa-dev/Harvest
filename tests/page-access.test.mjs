@@ -2,6 +2,28 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { scanTab, scanUrl } from "../dist/extension/app/page-access.js";
 
+for (const change of ["url", "document"]) {
+  test(`Xの追加解析中に${change}が変わった場合は結果を結合しない`, async t => {
+    const url = "https://x.com/example/status/123";
+    fixture(t, {get:async () => ({url})});
+    let scans = 0;
+    chrome.scripting.executeScript = async ({func}) => {
+      if (func.name === "waitForXPage") return [{result:{status:"ready"}, documentId:"first"}];
+      if (func.name === "scanXMedia") throw new Error("changed page must not be read");
+      scans++;
+      return [{result:{url:scans > 1 && change === "url" ? `${url}?page=2` : url, title:"post",images:[]},
+        documentId:scans > 1 && change === "document" ? "second" : "first"}];
+    };
+    await assert.rejects(scanTab(8, undefined, url), /ページが移動/);
+  });
+}
+
+test("解析開始前に完了したリダイレクトは移動先を出典にする", async t => {
+  fixture(t);
+  const result = await scanUrl("https://example.com/redirect");
+  assert.equal(result.url, "https://example.com/page");
+});
+
 function fixture(t, overrides = {}) {
   const updated = new Set();
   const removed = new Set();

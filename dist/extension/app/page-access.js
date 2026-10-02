@@ -3,6 +3,8 @@ import { mergeMediaCandidates } from "../core/media-selection.js";
 import { scanXMedia } from "./x-media-scan.js";
 import { scanDocument } from "./page-scan.js";
 const timeoutMs = 20000;
+const pageMovedMessage = "解析中にページが移動しました。もう一度解析してください。";
+const scanError = (error, fallback) => new Error(error instanceof Error && error.message.includes("解析中にページが移動しました") ? pageMovedMessage : fallback);
 /** Ends the caller's wait and always releases listeners, even when Chrome rejects. */
 function bounded(start, signal) {
     return new Promise((resolve, reject) => {
@@ -38,6 +40,7 @@ function bounded(start, signal) {
     });
 }
 export async function scanTab(tabId, signal, requestedUrl) {
+    let documentId;
     let result = await bounded((resolve, reject) => {
         const onRemoved = (id) => {
             if (id === tabId)
@@ -45,13 +48,16 @@ export async function scanTab(tabId, signal, requestedUrl) {
         };
         chrome.tabs.onRemoved.addListener(onRemoved);
         void chrome.scripting.executeScript({ target: { tabId }, func: scanDocument }).then(([injection]) => {
-            if (injection?.result)
+            if (injection?.result) {
+                documentId = injection.documentId;
                 resolve(injection.result);
+            }
             else
                 reject(new Error("ページを読み取れませんでした。"));
-        }, () => reject(new Error("このページを読み取れませんでした。Chromeで開けるWebページを指定してください。")));
+        }, error => reject(scanError(error, "このページを読み取れませんでした。Chromeで開けるWebページを指定してください。")));
         return () => chrome.tabs.onRemoved.removeListener(onRemoved);
     }, signal);
+    const sourceUrl = result.url;
     if (/^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(result.url)) {
         const targetUrl = requestedUrl && /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(requestedUrl)
             ? requestedUrl : result.url;
@@ -61,7 +67,14 @@ export async function scanTab(tabId, signal, requestedUrl) {
         if (isPost) {
             const state = await bounded((resolve, reject) => {
                 void chrome.scripting.executeScript({ target: { tabId }, func: waitForXPage, args: [expectVideo, 10_000, targetPostId] })
-                    .then(([injection]) => injection?.result ? resolve(injection.result) : reject(new Error("Xの投稿を読み取れませんでした。")), () => reject(new Error("Xの投稿を読み取れませんでした。")));
+                    .then(([injection]) => {
+                    if (documentId && injection?.documentId !== documentId)
+                        reject(new Error(pageMovedMessage));
+                    else if (injection?.result)
+                        resolve(injection.result);
+                    else
+                        reject(new Error("Xの投稿を読み取れませんでした。"));
+                }, error => reject(scanError(error, "Xの投稿を読み取れませんでした。")));
             }, signal);
             if (state.status === "restricted")
                 throw new Error("Xがこの投稿の表示を制限しています。Chromeで投稿を表示できる状態にしてから解析してください。");
@@ -71,12 +84,26 @@ export async function scanTab(tabId, signal, requestedUrl) {
                 throw new Error("Xの投稿の読み込みが完了しませんでした。Chromeで投稿を開いてから解析し直してください。");
             result = await bounded((resolve, reject) => {
                 void chrome.scripting.executeScript({ target: { tabId }, func: scanDocument, args: [targetPostId] })
-                    .then(([injection]) => injection?.result ? resolve(injection.result) : reject(new Error("Xの投稿を読み取れませんでした。")), () => reject(new Error("Xの投稿を読み取れませんでした。")));
+                    .then(([injection]) => {
+                    if (documentId && injection?.documentId !== documentId)
+                        reject(new Error(pageMovedMessage));
+                    else if (injection?.result)
+                        resolve(injection.result);
+                    else
+                        reject(new Error("Xの投稿を読み取れませんでした。"));
+                }, error => reject(scanError(error, "Xの投稿を読み取れませんでした。")));
             }, signal);
         }
+        if (result.url.split("#")[0] !== sourceUrl.split("#")[0])
+            throw new Error(pageMovedMessage);
         const extra = await bounded((resolve, reject) => {
             void chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: scanXMedia, args: targetPostId ? [targetPostId] : [] })
-                .then(([injection]) => resolve(injection?.result ?? []), () => reject(new Error("Xの動画情報を読み取れませんでした。")));
+                .then(([injection]) => {
+                if (documentId && injection?.documentId !== documentId)
+                    reject(new Error(pageMovedMessage));
+                else
+                    resolve(injection?.result ?? []);
+            }, () => reject(new Error("Xの動画情報を読み取れませんでした。")));
         }, signal);
         result.media = mergeMediaCandidates(result.media ?? [], extra);
         const isProfileImage = (url) => {
@@ -97,8 +124,8 @@ export async function scanTab(tabId, signal, requestedUrl) {
     }
     await bounded((resolve, reject) => {
         void chrome.tabs.get(tabId).then(tab => {
-            if (tab.url && tab.url.split("#")[0] !== result.url.split("#")[0]) {
-                reject(new Error("解析中にページが移動しました。もう一度解析してください。"));
+            if (tab.status === "loading" || (tab.url && tab.url.split("#")[0] !== sourceUrl.split("#")[0])) {
+                reject(new Error(pageMovedMessage));
             }
             else
                 resolve();

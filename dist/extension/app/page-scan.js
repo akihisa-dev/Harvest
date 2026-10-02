@@ -6,10 +6,17 @@
  * resolving an import or a module-level variable in the extension context.
  */
 export async function scanDocument(targetPostId) {
+    const sourceUrl = location.href;
+    const sourceDocument = document;
+    const sourceRoot = document.documentElement;
     const deadline = performance.now() + 20_000;
     const checkDeadline = () => {
         if (performance.now() >= deadline)
             throw new Error("Page scan exceeded its 20 second deadline");
+        if (document !== sourceDocument || document.documentElement !== sourceRoot
+            || location.href.split("#")[0] !== sourceUrl.split("#")[0]) {
+            throw new Error("解析中にページが移動しました。もう一度解析してください。");
+        }
     };
     // These DOM helpers stay inside the injected function: Chrome copies only its body.
     const quoteSelector = '[data-testid="quoteTweet"], [data-testid="quotedTweet"], [role="link"]:not(a):has(a[href*="/status/"])';
@@ -983,5 +990,5 @@ export async function scanDocument(targetPostId) {
     checkDeadline();
     const media = registry.media();
     checkDeadline();
-    return { url: location.href, title: document.title, images, ...(media.length > 0 ? { media } : {}) };
+    return { url: sourceUrl, title: document.title, images, ...(media.length > 0 ? { media } : {}) };
 }

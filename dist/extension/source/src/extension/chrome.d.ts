@@ -51,7 +51,7 @@ declare const chrome: {
     };
   };
   scripting: {
-    executeScript<T, A extends unknown[]>(injection: {target: {tabId: number}; world?: "ISOLATED" | "MAIN"; func: (...args: A) => T; args?: A}): Promise<Array<{result: Awaited<T>}>>;
+    executeScript<T, A extends unknown[]>(injection: {target: {tabId: number}; world?: "ISOLATED" | "MAIN"; func: (...args: A) => T; args?: A}): Promise<Array<{result: Awaited<T>; documentId?: string}>>;
   };
   permissions: {
     request(permissions: {origins: string[]}): Promise<boolean>;
