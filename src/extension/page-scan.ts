@@ -499,6 +499,31 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     return [best.url];
   };
 
+  // Consume comments and non-URL strings as whole tokens. URL contents have
+  // CSS escape rules, and their delimiters must never become query bytes.
+  const cssEscape = String.raw`\\(?:[0-9a-f]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])`;
+  const cssDoubleQuoted = String.raw`(?:${cssEscape}|[^"\\\r\n\f])*`;
+  const cssSingleQuoted = String.raw`(?:${cssEscape}|[^'\\\r\n\f])*`;
+  const cssUnquoted = String.raw`(?:${cssEscape}|[^()\s"'\\])*`;
+  const cssTokens = new RegExp(
+    String.raw`\/\*[\s\S]*?(?:\*\/|$)|"${cssDoubleQuoted}"|'${cssSingleQuoted}'|(?<![-\w])url\([ \t\r\n\f]*(?:"(${cssDoubleQuoted})"|'(${cssSingleQuoted})'|(${cssUnquoted}))[ \t\r\n\f]*\)`, "gi",
+  );
+  const scanCss = (value: string | null | undefined, position: Element | undefined, source: Element, imageValue = false): void => {
+    if (!value) return;
+    for (const match of value.matchAll(cssTokens)) {
+      checkDeadline();
+      const raw = match[1] ?? match[2] ?? match[3];
+      if (raw === undefined) continue;
+      const url = raw.replace(/\\([0-9a-f]{1,6})(?:\r\n|[ \t\r\n\f])?|\\(\r\n|[\s\S])/gi, (_match, hex: string | undefined, character: string | undefined) => {
+        if (!hex) return character && !/[\r\n\f]/.test(character) ? character : "";
+        const point = Number.parseInt(hex, 16);
+        return point === 0 || point > 0x10ffff || (point >= 0xd800 && point <= 0xdfff) ? "\ufffd" : String.fromCodePoint(point);
+      });
+      if (imageValue || /\.(?:jpe?g|png|webp|avif|gif)(?:[?#]|$)/i.test(url)) add(url, position, source);
+      else if (mediaKindForUrl(url) === "gif") recordMedia(url, "gif", source);
+    }
+  };
+
   const scanBackground = (element: Element): void => {
     checkDeadline();
     let background = "";
@@ -507,11 +532,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     } catch {
       // A detached or browser-owned element may not have computed styles.
     }
-    const urlPattern = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/gi;
-    for (const match of background.matchAll(urlPattern)) {
-      checkDeadline();
-      add(match[1] ?? match[2] ?? match[3], element, element);
-    }
+    scanCss(background, element, element, true);
   };
 
   const orderedImages = (): string[] => {
@@ -622,7 +643,9 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
         || /^video\//i.test(declaredSourceType ?? "")
         || sourceHasVideoUrl);
     const positionElement = imagePositionElement(element);
-    if (tagName === "script" || tagName === "style") {
+    if (tagName === "style") {
+      scanCss(element.textContent, undefined, element);
+    } else if (tagName === "script") {
       scanText(element.textContent, undefined, element);
       if (tagName === "script") scanEmbeddedVideoJson(element);
     } else {
@@ -677,6 +700,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     }
     for (const attribute of Array.from(element.attributes)) {
       const name = attribute.name.toLowerCase();
+      if (name === "style") { scanCss(attribute.value, positionElement, element); continue; }
       if (imageSrcsetAttributes.includes(name)) continue;
       if ((tagName === "img" || tagName === "source") && imageAttributes.includes(name)) continue;
       if (tagName === "a" && name === "href" && /\.(?:jpe?g|png|webp|avif|gif)(?:[?#]|$)/i.test(attribute.value)) continue;

@@ -2,6 +2,53 @@ import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import test from "node:test";
 import {chromium} from "playwright";
+import {normalizeImageUrls} from "../dist/extension/core/images.js";
+
+test("CSSのurl境界を読み、クエリ・括弧・エスケープを保って保存候補を重複させない", async () => {
+  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const browser = await chromium.launch({channel:"chrome", headless:true});
+  try {
+    const page = await browser.newPage();
+    await page.route("**/*", route => route.abort());
+    for (const single of [true, false]) {
+      await page.setContent('<base href="https://example.test/"><div class="page"></div>');
+      const result = await page.evaluate(async ({source, single}) => {
+        const moduleUrl = URL.createObjectURL(new Blob([source], {type:"text/javascript"}));
+        const {scanDocument} = await import(moduleUrl);
+        URL.revokeObjectURL(moduleUrl);
+        const style = document.createElement("style");
+        style.textContent = single ? '.page{width:100px;height:100px;background-image:url(https://cdn.example.test/single.jpg?v=1)}' : String.raw`
+          .page {background-image:url(https://cdn.example.test/brace.jpg?v=1)}
+          .absent {background:url(https://cdn.example.test/semicolon.jpg?v=1);}
+          .multiple {background:url(https://cdn.example.test/first.jpg?v=1),url(https://cdn.example.test/second.jpg?v=2)}
+          .quoted {background:url("https://cdn.example.test/quoted(1).jpg?q=(keep)")}
+          .escaped {background:url(https://cdn.example.test/escaped\(1\).jpg?v=1)}
+          .hex {background:url(https://cdn.example.test/hex\28 1\29 .jpg?v=1)}
+          .plain {background:url('https://cdn.example.test/plain.jpg')}
+          .encoded {background:url(https://cdn.example.test/encoded.jpg?q=%29%7D)}
+          /* url(https://cdn.example.test/comment.jpg?v=1) */
+          .text {content:"url(https://cdn.example.test/string.jpg?v=1)"}
+          @font-face {font-family:test;src:url(https://cdn.example.test/font.woff2?v=1)}
+        `;
+        document.head.append(style);
+        if (!single) {
+          for (const name of ["multiple", "quoted", "escaped", "hex", "plain", "encoded"]) {
+            const element = document.createElement("div"); element.className = name; document.body.append(element);
+          }
+          const inline = document.createElement("div");
+          inline.setAttribute("style", "background:url(https://cdn.example.test/inline.jpg?v=1);width:10px;height:10px");
+          document.body.append(inline);
+        }
+        return scanDocument();
+      }, {source, single});
+      const names = single ? ["single.jpg?v=1"] : ["brace.jpg?v=1", "semicolon.jpg?v=1", "first.jpg?v=1", "second.jpg?v=2", "quoted(1).jpg?q=(keep)", "escaped(1).jpg?v=1", "hex(1).jpg?v=1", "plain.jpg", "encoded.jpg?q=%29%7D", "inline.jpg?v=1"];
+      const expected = names.map(name => `https://cdn.example.test/${name}`).sort();
+      assert.deepEqual([...result.images].sort(), expected);
+      assert.deepEqual(result.media.map(item => item.url).sort(), expected);
+      assert.deepEqual(normalizeImageUrls([...result.images, ...result.media.map(item => item.url)], "https://example.test/").sort(), expected);
+    }
+  } finally { await browser.close(); }
+});
 
 test("初回走査中・待機中に既存ホストへ追加されたRootを発見し、削除・closedを除く", async () => {
   const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
