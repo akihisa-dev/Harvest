@@ -268,6 +268,75 @@ class EmptyMutationObserver {
   disconnect() {}
 }
 
+for (const scenario of ["slow", "small", "continuous"]) {
+  test(`走査と待機の時計を制御して監視寿命を確認する: ${scenario}`, async () => {
+    const before = new FixtureElement("img", {src:"https://cdn.example.test/before.jpg"});
+    const removed = new FixtureElement("img", {src:"https://cdn.example.test/removed.jpg"});
+    const root = new FixtureElement("html", {}, [before, removed,
+      ...Array.from({length:scenario === "slow" ? 1000 : 0}, () => new FixtureElement("div"))]);
+    let callback, connected = false, now = 0, nextId = 0;
+    const timers = new Map();
+    class Observer {
+      constructor(fn) { callback = fn; }
+      observe() { connected = true; }
+      disconnect() { connected = false; }
+    }
+    const previousPerformance = globalThis.performance;
+    try {
+      await runWithFixture(new FixtureDocument(root), Observer, async () => {
+        Object.defineProperty(globalThis, "performance", {configurable:true, value:{now:() => now}});
+        globalThis.setTimeout = (fn, delay = 0) => { const id = ++nextId; timers.set(id, {fn, at:now + delay}); return id; };
+        globalThis.clearTimeout = id => timers.delete(id);
+        const advance = async target => {
+          now = target;
+          for (const [id, timer] of [...timers].sort((a,b) => a[1].at - b[1].at)) {
+            if (timer.at <= now && timers.delete(id)) timer.fn();
+          }
+          for (let i = 0; i < 12; i++) await Promise.resolve();
+        };
+        let done = false;
+        const scan = scanDocument().finally(() => { done = true; });
+        if (scenario === "slow") {
+          await advance(900);
+          assert.equal(connected, true, "800msを過ぎても初回走査中は監視を切らない");
+          before.src = "https://cdn.example.test/after.jpg";
+          before.attributesMap.set("src", before.src);
+          root.children = root.children.filter(node => node !== removed);
+          removed.parentElement = removed.parentNode = null;
+          const added = new FixtureElement("img", {src:"https://cdn.example.test/added.jpg"});
+          root.appendChild(added);
+          callback([{type:"attributes",target:before}, {type:"childList",addedNodes:[added],removedNodes:[removed]}]);
+        } else {
+          await advance(0);
+        }
+        if (scenario === "continuous") {
+          for (let time = 100; time < 800; time += 100) {
+            await advance(time);
+            assert.equal(connected, true);
+            before.src = `https://cdn.example.test/change-${time}.jpg`;
+            before.attributesMap.set("src", before.src);
+            callback([{type:"attributes", target:before}]);
+          }
+        }
+        for (let i = 0; i < 100 && !done; i++) {
+          const next = Math.min(...[...timers.values()].map(timer => timer.at));
+          await advance(Number.isFinite(next) ? Math.max(now, next) : now);
+        }
+        assert.equal(done, true);
+        const result = await scan;
+        if (scenario === "slow") assert.deepEqual(result.images.sort(), ["https://cdn.example.test/after.jpg", "https://cdn.example.test/added.jpg"].sort());
+        if (scenario === "small") assert.equal(now, 250, "小さいページは静穏250msで終わる");
+        if (scenario === "continuous") {
+          assert.equal(now, 800, "更新が続いても待機を800msで終える");
+          assert.ok(result.images.includes("https://cdn.example.test/change-700.jpg"));
+        }
+        assert.equal(connected, false);
+        assert.equal(timers.size, 0, "Observerと待機タイマーを解放する");
+      });
+    } finally { Object.defineProperty(globalThis, "performance", {configurable:true, value:previousPerformance}); }
+  });
+}
+
 test("srcsetの最大指定、属性内URL、背景、meta、リンクを収集する", async () => {
   const image = new FixtureElement("img", {
     src: "https://cdn.example.test/pages/current.jpg",

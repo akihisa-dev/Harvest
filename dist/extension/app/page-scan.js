@@ -765,7 +765,7 @@ export async function scanDocument(targetPostId) {
         resolveWait?.();
     };
     const waitForQuiet = () => {
-        if (!quietStarted)
+        if (!quietStarted || settled)
             return;
         if (quietTimer !== undefined)
             clearTimeout(quietTimer);
@@ -879,7 +879,6 @@ export async function scanDocument(targetPostId) {
             attributes: true,
             characterData: true,
         });
-        maxTimer = setTimeout(finish, maxWaitMs);
     }
     const composedParent = (element) => {
         if (element.parentElement)
@@ -959,6 +958,7 @@ export async function scanDocument(targetPostId) {
         checkDeadline();
         if (waitPromise && !settled) {
             quietStarted = true;
+            maxTimer = setTimeout(finish, maxWaitMs);
             waitForQuiet();
         }
         await waitPromise;

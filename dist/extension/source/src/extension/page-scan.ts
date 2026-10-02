@@ -719,7 +719,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   };
 
   const waitForQuiet = (): void => {
-    if (!quietStarted) return;
+    if (!quietStarted || settled) return;
     if (quietTimer !== undefined) clearTimeout(quietTimer);
     quietTimer = setTimeout(finish, quietWaitMs);
   };
@@ -818,7 +818,6 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
       attributes: true,
       characterData: true,
     });
-    maxTimer = setTimeout(finish, maxWaitMs);
   }
 
   const composedParent = (element: Element): Element | null => {
@@ -895,6 +894,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   checkDeadline();
   if (waitPromise && !settled) {
     quietStarted = true;
+    maxTimer = setTimeout(finish, maxWaitMs);
     waitForQuiet();
   }
   await waitPromise;
