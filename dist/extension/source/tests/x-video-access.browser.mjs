@@ -18,11 +18,13 @@ test('実Chromeの拡張機能から遅れて表示されるX動画プレイヤ�
       args:['--enable-unsafe-extension-debugging','--disable-background-networking','--no-first-run','--no-default-browser-check'],
     });
     cdp=await context.browser().newBrowserCDPSession();
-    const {id}=await cdp.send('Extensions.loadUnpacked',{path:resolve('dist/extension')});
+    const {id}=await cdp.send('Extensions.loadUnpacked',{path:resolve(process.env.HARVEST_TEST_EXTENSION_DIR ?? 'dist/extension')});
     await context.route('https://x.com/**',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><title>post</title><main><img src="${profileUrl}"><div role="progressbar">Loading</div></main><script>
       setTimeout(()=>{
         document.querySelector('[role=progressbar]').remove();
         const dialog=document.createElement('div');dialog.setAttribute('role','dialog');
+        const permalink=document.createElement('a');permalink.href='/example/status/123';permalink.textContent='View post';
+        dialog.append(permalink);
         const player=document.createElement('div');player.setAttribute('data-testid','videoPlayer');
         Object.defineProperty(player,'__reactProps$fixture',{value:{media:{variants:[{url:'${mp4Url}',content_type:'video/mp4',bitrate:2000000}]}}});
         dialog.append(player);document.body.append(dialog);

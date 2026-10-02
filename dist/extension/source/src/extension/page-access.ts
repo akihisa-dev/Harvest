@@ -45,11 +45,14 @@ export async function scanTab(tabId: number, signal?: AbortSignal, requestedUrl?
     return () => chrome.tabs.onRemoved.removeListener(onRemoved);
   }, signal);
   if (/^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(result.url)) {
-    const expectVideo = /\/status\/\d+\/video\/\d+(?:[?#]|$)/i.test(requestedUrl ?? result.url);
-    const isPost = /\/status\/\d+(?:[/?#]|$)/i.test(requestedUrl ?? result.url);
+    const targetUrl = requestedUrl && /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(requestedUrl)
+      ? requestedUrl : result.url;
+    const expectVideo = /\/status\/\d+\/video\/\d+(?:[?#]|$)/i.test(targetUrl);
+    const targetPostId = /\/status\/(\d+)(?:[/?#]|$)/i.exec(targetUrl)?.[1];
+    const isPost = Boolean(targetPostId);
     if (isPost) {
       const state = await bounded<XPageState>((resolve, reject) => {
-        void chrome.scripting.executeScript({target: {tabId}, func: waitForXPage, args: [expectVideo]})
+        void chrome.scripting.executeScript({target: {tabId}, func: waitForXPage, args: [expectVideo, 10_000, targetPostId]})
           .then(([injection]) => injection?.result ? resolve(injection.result) : reject(new Error("Xの投稿を読み取れませんでした。")),
             () => reject(new Error("Xの投稿を読み取れませんでした。")));
       }, signal);
@@ -57,13 +60,13 @@ export async function scanTab(tabId: number, signal?: AbortSignal, requestedUrl?
       if (state.status === "unavailable") throw new Error("Xの投稿が削除されているか、表示できません。");
       if (state.status !== "ready") throw new Error("Xの投稿の読み込みが完了しませんでした。Chromeで投稿を開いてから解析し直してください。");
       result = await bounded<PageScan>((resolve, reject) => {
-        void chrome.scripting.executeScript({target: {tabId}, func: scanDocument})
+        void chrome.scripting.executeScript({target: {tabId}, func: scanDocument, args: [targetPostId]})
           .then(([injection]) => injection?.result ? resolve(injection.result) : reject(new Error("Xの投稿を読み取れませんでした。")),
             () => reject(new Error("Xの投稿を読み取れませんでした。")));
       }, signal);
     }
     const extra = await bounded<NonNullable<PageScan["media"]>>((resolve, reject) => {
-      void chrome.scripting.executeScript({target: {tabId}, world: "MAIN", func: scanXMedia})
+      void chrome.scripting.executeScript({target: {tabId}, world: "MAIN", func: scanXMedia, args: targetPostId ? [targetPostId] : []})
         .then(([injection]) => resolve(injection?.result ?? []), () => reject(new Error("Xの動画情報を読み取れませんでした。")));
     }, signal);
     result.media = [...(result.media ?? []), ...extra];

@@ -145,7 +145,9 @@ test("X動画ページは投稿の読み込みを待って再解析し、MAINで
   assert.deepEqual(result.images, ["https://pbs.twimg.com/media/photo.jpg"]);
   assert.deepEqual(result.media, [{url: "https://video.twimg.com/example.mp4", kind: "video"}]);
   assert.deepEqual(calls.map(call => call.name), ["scanDocument", "waitForXPage", "scanDocument", "scanXMedia"]);
-  assert.deepEqual(calls[1].args, [true]);
+  assert.deepEqual(calls[1].args, [true, 10_000, "123"]);
+  assert.deepEqual(calls[2].args, ["123"]);
+  assert.deepEqual(calls[3].args, ["123"]);
   assert.equal(calls[3].world, "MAIN");
 });
 
@@ -183,4 +185,33 @@ test("Xの読み込み待機中の中止で遅い結果を採用しない", asyn
   controller.abort();
   await rejected;
   finish([{result: {status: "ready"}}]);
+});
+
+test("Xの対象投稿の解析失敗では確定済みの画像集合を置き換えない", async t => {
+  const url = "https://x.com/example/status/123";
+  fixture(t, {query: async () => [{id: 8, url}], get: async () => ({url})});
+  chrome.i18n = {getUILanguage: () => "ja"};
+  const previousDocument = globalThis.document;
+  globalThis.document = {documentElement: {setAttribute() {}}, querySelectorAll: () => []};
+  t.after(() => { globalThis.document = previousDocument; });
+  chrome.scripting.executeScript = async ({func}) => [{result: func.name === "waitForXPage"
+    ? {status: "unavailable"} : {url, title: "post", images: ["https://pbs.twimg.com/media/other.jpg"]}}];
+  const {ImageCollection} = await import("../dist/extension/core/image-collection.js");
+  const {createScanSessionController} = await import("../dist/extension/app/scan-session-controller.js");
+  const collection = new ImageCollection();
+  collection.replace(["https://previous.test/retained.jpg"], "https://previous.test/page");
+  const previousItems = collection.items;
+  const messages = [];
+  let published = false;
+  const controller = createScanSessionController({
+    collection, getEnteredUrl: () => "", getCollectionSession: () => null,
+    clearAnalyzedUrl() {}, markAnalyzedUrl() {}, isBusy: () => false, isDisposed: () => false,
+    onHideSourceInput() {}, onShowSourceInput() {}, onBusyChange() {},
+    onStatus: message => messages.push(message), onResults: () => { published = true; },
+  });
+  await controller.start();
+  assert.equal(collection.items, previousItems);
+  assert.equal(published, false);
+  assert.equal(controller.state, "results");
+  assert.match(messages.at(-1), /削除|表示できません/);
 });

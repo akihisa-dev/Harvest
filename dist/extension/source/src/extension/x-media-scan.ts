@@ -10,7 +10,33 @@ export interface XMediaCandidate {
  * This function is passed directly to chrome.scripting.executeScript in the
  * page's MAIN world. Keep every helper inside it so it remains serializable.
  */
-export function scanXMedia(): XMediaCandidate[] {
+export function scanXMedia(targetPostId?: string): XMediaCandidate[] {
+  // These DOM helpers stay inside the injected function: Chrome copies only its body.
+  const quoteSelector = '[data-testid="quoteTweet"], [data-testid="quotedTweet"], [role="link"]:not(a):has(a[href*="/status/"])';
+  const ownPostId = (root: Element): string | undefined => {
+    const links = [...root.querySelectorAll<HTMLAnchorElement>('a[href*="/status/"]')].filter(link => {
+      if (link.parentElement?.closest(quoteSelector)) return false;
+      const article = link.closest("article");
+      return root.tagName.toLowerCase() === "article" ? article === root
+        : !article && link.closest('dialog, [role="dialog"]') === root;
+    });
+    const permalink = links.find(link => link.querySelector("time"))
+      ?? (root.tagName.toLowerCase() === "article" ? undefined : links[0]);
+    if (!permalink) return undefined;
+    try {
+      const url = new URL(permalink.href, location.href);
+      return /^(?:www\.)?(?:x\.com|twitter\.com)$/i.test(url.hostname)
+        ? /\/status\/(\d+)(?:\/|$)/i.exec(url.pathname)?.[1] : undefined;
+    } catch { return undefined; }
+  };
+  const inTargetPost = (element: Element): boolean => {
+    if (!targetPostId) return true;
+    if (element.closest(quoteSelector)) return false;
+    const article = element.closest("article");
+    if (article) return ownPostId(article) === targetPostId;
+    const dialog = element.closest('dialog, [role="dialog"]');
+    return Boolean(dialog && ownPostId(dialog) === targetPostId);
+  };
   const hostname = location.hostname.toLowerCase();
   if (!(hostname === "x.com" || hostname.endsWith(".x.com")
     || hostname === "twitter.com" || hostname.endsWith(".twitter.com"))) return [];
@@ -173,9 +199,11 @@ export function scanXMedia(): XMediaCandidate[] {
     "entities", "media", "video_info", "videoInfo",
   ];
 
-  const inspectPostTree = (roots: Array<{value: unknown; mediaObject: boolean}>): boolean => {
-    const pending: Array<{value: unknown; depth: number; mediaObject: boolean}> = [];
-    for (let index = roots.length - 1; index >= 0; index -= 1) pending.push({ ...roots[index]!, depth: 0 });
+  const inspectPostTree = (roots: Array<{value: unknown; mediaObject: boolean}>, requireIdentity = false): boolean => {
+    const pending: Array<{value: unknown; depth: number; mediaObject: boolean; targetMatched: boolean}> = [];
+    for (let index = roots.length - 1; index >= 0; index -= 1) {
+      pending.push({...roots[index]!, depth: 0, targetMatched: !targetPostId || !requireIdentity});
+    }
     const seenInTree = new WeakSet<object>();
     let foundVideo = false;
     while (pending.length > 0 && !timedOut()) {
@@ -194,33 +222,39 @@ export function scanXMedia(): XMediaCandidate[] {
             if (timedOut()) break;
             const child = dataValue(value, String(index));
             if (typeof child === "object" && child !== null) {
-              pending.push({value: child, depth: entry.depth + 1, mediaObject: entry.mediaObject});
+              pending.push({...entry, value: child, depth: entry.depth + 1});
             }
           }
         }
         continue;
       }
 
-      if (addAttachedMedia(value, entry.mediaObject)) foundVideo = true;
+      const postId = dataValue(value, "rest_id") ?? dataValue(value, "id_str");
+      if (targetPostId && typeof postId === "string" && /^\d+$/.test(postId)
+        && postId !== targetPostId && (dataValue(value, "rest_id") || dataValue(value, "legacy") || dataValue(value, "extended_entities") || dataValue(value, "full_text"))) continue;
+      const targetMatched = entry.targetMatched || postId === targetPostId;
+
+      if (targetMatched && addAttachedMedia(value, entry.mediaObject)) foundVideo = true;
       if (entry.depth >= maxDepth) continue;
 
       for (const key of tweetDataKeys) {
         if (timedOut()) break;
+        if (targetPostId && ["quoted_status", "quotedStatus", "retweeted_status", "retweetedStatus"].includes(key)) continue;
         const child = dataValue(value, key);
         if (typeof child === "object" && child !== null) {
           const mediaObject = entry.mediaObject
             || key === "media"
             || key === "mediaDetails"
             || key === "media_details";
-          pending.push({value: child, depth: entry.depth + 1, mediaObject});
+          pending.push({value: child, depth: entry.depth + 1, mediaObject, targetMatched});
         }
       }
     }
     return foundVideo;
   };
 
-  const inspectTweetProps = (props: object): boolean => {
-    if (addAttachedMedia(props, false)) return true;
+  const inspectTweetProps = (props: object, requireIdentity = false): boolean => {
+    if (!requireIdentity && addAttachedMedia(props, false)) return true;
     const roots: Array<{value: unknown; mediaObject: boolean}> = [];
     for (const key of tweetPropKeys) {
       if (timedOut()) break;
@@ -232,10 +266,11 @@ export function scanXMedia(): XMediaCandidate[] {
         });
       }
     }
-    return inspectPostTree(roots);
+    return inspectPostTree(roots, requireIdentity);
   };
 
-  const inspectPlayerProps = (props: object): boolean => {
+  const inspectPlayerProps = (props: object, requireIdentity = false): boolean => {
+    if (requireIdentity) return inspectTweetProps(props, true);
     let foundVideo = addAttachedMedia(props, true);
     if (addDirectVideoSource(dataValue(props, "src"), props)) foundVideo = true;
     if (!foundVideo && inspectTweetProps(props)) foundVideo = true;
@@ -259,7 +294,7 @@ export function scanXMedia(): XMediaCandidate[] {
     const mediaElements = document.querySelectorAll(selector);
     for (let mediaIndex = 0; mediaIndex < mediaElements.length && inspectedMediaElements < maxMediaElements && !timedOut(); mediaIndex += 1) {
       const mediaElement = mediaElements[mediaIndex];
-      if (!mediaElement || seenMediaElements.has(mediaElement)) continue;
+      if (!mediaElement || seenMediaElements.has(mediaElement) || !inTargetPost(mediaElement)) continue;
       seenMediaElements.add(mediaElement);
       inspectedMediaElements += 1;
       let ownKeys: string[];
@@ -280,11 +315,11 @@ export function scanXMedia(): XMediaCandidate[] {
         for (let ancestor = 0; typeof fiber === "object" && fiber !== null && ancestor < 40 && !timedOut(); ancestor += 1) {
           const memoizedProps = dataValue(fiber, "memoizedProps");
           let foundInProps = typeof memoizedProps === "object" && memoizedProps !== null
-            ? inspectPlayerProps(memoizedProps)
+            ? inspectPlayerProps(memoizedProps, Boolean(targetPostId && ancestor > 0))
             : false;
           const pendingProps = dataValue(fiber, "pendingProps");
           if (!foundInProps && typeof pendingProps === "object" && pendingProps !== null && pendingProps !== memoizedProps) {
-            foundInProps = inspectPlayerProps(pendingProps);
+            foundInProps = inspectPlayerProps(pendingProps, Boolean(targetPostId && ancestor > 0));
           }
           if (foundInProps) break;
           fiber = dataValue(fiber, "return");
@@ -297,7 +332,7 @@ export function scanXMedia(): XMediaCandidate[] {
   const articleCount = Math.min(articles.length, maxArticles);
   for (let articleIndex = 0; articleIndex < articleCount && !timedOut(); articleIndex += 1) {
     const article = articles[articleIndex];
-    if (!article) continue;
+    if (!article || !inTargetPost(article)) continue;
 
     let ownKeys: string[];
     try {
@@ -322,11 +357,11 @@ export function scanXMedia(): XMediaCandidate[] {
       for (let ancestor = 0; typeof fiber === "object" && fiber !== null && ancestor < 40 && !timedOut(); ancestor += 1) {
         const memoizedProps = dataValue(fiber, "memoizedProps");
         let foundInProps = typeof memoizedProps === "object" && memoizedProps !== null
-          ? inspectTweetProps(memoizedProps)
+          ? inspectTweetProps(memoizedProps, Boolean(targetPostId && ancestor > 0))
           : false;
         const pendingProps = dataValue(fiber, "pendingProps");
         if (!foundInProps && typeof pendingProps === "object" && pendingProps !== null && pendingProps !== memoizedProps) {
-          foundInProps = inspectTweetProps(pendingProps);
+          foundInProps = inspectTweetProps(pendingProps, Boolean(targetPostId && ancestor > 0));
         }
         if (foundInProps) break;
         fiber = dataValue(fiber, "return");

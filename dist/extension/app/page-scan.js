@@ -5,12 +5,52 @@
  * every helper inside the function so Chrome can serialize and run it without
  * resolving an import or a module-level variable in the extension context.
  */
-export async function scanDocument() {
+export async function scanDocument(targetPostId) {
     const deadline = performance.now() + 20_000;
     const checkDeadline = () => {
         if (performance.now() >= deadline)
             throw new Error("Page scan exceeded its 20 second deadline");
     };
+    // These DOM helpers stay inside the injected function: Chrome copies only its body.
+    const quoteSelector = '[data-testid="quoteTweet"], [data-testid="quotedTweet"], [role="link"]:not(a):has(a[href*="/status/"])';
+    const ownPostId = (root) => {
+        const links = [...root.querySelectorAll('a[href*="/status/"]')].filter(link => {
+            checkDeadline();
+            if (link.parentElement?.closest(quoteSelector))
+                return false;
+            const article = link.closest("article");
+            return root.tagName.toLowerCase() === "article" ? article === root
+                : !article && link.closest('dialog, [role="dialog"]') === root;
+        });
+        const permalink = links.find(link => link.querySelector("time"))
+            ?? (root.tagName.toLowerCase() === "article" ? undefined : links[0]);
+        if (!permalink)
+            return undefined;
+        try {
+            const url = new URL(permalink.href, location.href);
+            return /^(?:www\.)?(?:x\.com|twitter\.com)$/i.test(url.hostname)
+                ? /\/status\/(\d+)(?:\/|$)/i.exec(url.pathname)?.[1] : undefined;
+        }
+        catch {
+            return undefined;
+        }
+    };
+    const inTargetPost = (element) => {
+        if (!targetPostId)
+            return true;
+        if (!document.documentElement.contains(element))
+            return false;
+        if (element.closest(quoteSelector))
+            return false;
+        const article = element.closest("article");
+        if (article)
+            return ownPostId(article) === targetPostId;
+        const dialog = element.closest('dialog, [role="dialog"]');
+        return Boolean(dialog && ownPostId(dialog) === targetPostId);
+    };
+    if (targetPostId && ![...document.querySelectorAll('article[data-testid="tweet"], dialog, [role="dialog"]')].some(inTargetPost)) {
+        throw new Error("Xの投稿を読み取れませんでした。");
+    }
     const candidates = new Map();
     const mediaCandidates = new Map();
     const elementUrls = new Map();
@@ -493,11 +533,15 @@ export async function scanDocument() {
     };
     const collectElement = (element) => {
         checkDeadline();
+        if (!inTargetPost(element))
+            return;
         const previousUrls = elementUrls.get(element);
         const previousMediaUrls = elementMediaUrls.get(element);
         elementUrls.set(element, new Set());
         elementMediaUrls.set(element, new Set());
         const tagName = element.tagName.toLowerCase();
+        if (targetPostId && (tagName === "script" || tagName === "style"))
+            return;
         const declaredSourceType = tagName === "source" ? element.getAttribute("type") : null;
         const sourceUrl = tagName === "source"
             ? element.getAttribute("src") || element.src
@@ -811,7 +855,7 @@ export async function scanDocument() {
                     // Script and style text is collected with its owning element above.
                     // Associate ordinary page text with its parent too, so removing that
                     // element can remove candidates found only in its text.
-                    if (parentTag !== "script" && parentTag !== "style") {
+                    if (parentTag !== "script" && parentTag !== "style" && (!targetPostId || Boolean(parent && inTargetPost(parent)))) {
                         scanText(textNode.textContent, undefined, parent ?? undefined);
                     }
                     textCount += 1;
@@ -836,6 +880,28 @@ export async function scanDocument() {
         finish();
     }
     checkDeadline();
+    if (targetPostId && ![...document.querySelectorAll('article[data-testid="tweet"], dialog, [role="dialog"]')].some(inTargetPost)) {
+        throw new Error("Xの投稿を読み取れませんでした。");
+    }
+    if (targetPostId) {
+        // A node can be moved into another post during the short observation window.
+        for (const [url, record] of candidates) {
+            checkDeadline();
+            for (const source of record.sources.keys())
+                if (!inTargetPost(source))
+                    record.sources.delete(source);
+            if (record.sources.size === 0 && !record.foundOutsideElements)
+                candidates.delete(url);
+        }
+        for (const [url, record] of mediaCandidates) {
+            checkDeadline();
+            for (const source of record.sources)
+                if (!inTargetPost(source))
+                    record.sources.delete(source);
+            if (record.sources.size === 0 && !record.foundOutsideElements)
+                mediaCandidates.delete(url);
+        }
+    }
     const images = orderedImages();
     checkDeadline();
     const media = [...mediaCandidates.values()]
