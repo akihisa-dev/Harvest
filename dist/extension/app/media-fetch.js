@@ -1,6 +1,6 @@
 import { checkCancelled, ImageDataError, invalidImage, MAX_IMAGE_BYTES } from "./image-data-contract.js";
-import { readImageBytes } from "./image-fetch.js";
-import { getImageFetchCredentials, getImageFetchTargetAddressSpace, ImageFetchTargetError, validateImageFetchTarget, } from "./image-fetch-policy.js";
+import { readImageBytes } from "./image-response-bytes.js";
+import { fetchResponse } from "./response-fetch.js";
 const DEFAULT_MEDIA_TIMEOUT_MS = 120_000;
 function ascii(bytes, start, end) {
     return String.fromCharCode(...bytes.subarray(start, end));
@@ -80,97 +80,35 @@ function responseError(status) {
     }
     return new ImageDataError("http", "メディアを取得できませんでした。", status);
 }
-function validateTimeout(timeoutMs) {
-    const timeout = timeoutMs ?? DEFAULT_MEDIA_TIMEOUT_MS;
-    if (!Number.isFinite(timeout) || timeout <= 0)
-        throw new RangeError("timeoutMs must be a positive finite number.");
-    return timeout;
-}
+const mediaFetchErrors = {
+    http: responseError,
+    cancelled: () => new ImageDataError("cancelled", "メディアの取得を中止しました。"),
+    timeout: () => new ImageDataError("timeout", "メディアの取得がタイムアウトしました。"),
+    failure(error, { signal, sourceSignal }) {
+        if (sourceSignal?.aborted)
+            return this.cancelled();
+        if (signal.aborted)
+            return this.timeout();
+        if (error instanceof ImageDataError)
+            return error;
+        if (error instanceof DOMException && error.name === "AbortError")
+            return this.timeout();
+        return new ImageDataError("network", "メディアを取得できませんでした。");
+    },
+};
 /** Fetch original image/video bytes with the existing credential, target, and byte-limit policies. */
 export async function fetchOriginalMedia(url, kind = "image", options = {}) {
-    checkCancelled(options.signal);
-    try {
-        validateImageFetchTarget(url, options.sourcePage);
-    }
-    catch (error) {
-        if (error instanceof ImageFetchTargetError)
-            throw invalidImage(error.message);
-        throw error;
-    }
-    const credentials = getImageFetchCredentials(url, options.sourcePage);
-    const targetAddressSpace = getImageFetchTargetAddressSpace(url);
-    const timeoutMs = validateTimeout(options.timeoutMs);
-    const controller = new AbortController();
-    const sourceSignal = options.signal;
-    let removeAbortListener;
-    let timeoutHandle;
-    let response;
-    let rejectCancellation;
-    const cancelled = new Promise((_, reject) => { rejectCancellation = reject; });
-    if (sourceSignal) {
-        const abort = () => {
-            controller.abort();
-            rejectCancellation?.(new ImageDataError("cancelled", "メディアの取得を中止しました。"));
-        };
-        sourceSignal.addEventListener("abort", abort, { once: true });
-        removeAbortListener = () => sourceSignal.removeEventListener("abort", abort);
-        if (sourceSignal.aborted)
-            abort();
-    }
-    const operation = (async () => {
-        try {
-            const fetchOptions = {
-                credentials,
-                // Never send a page's cookies to a different origin after a redirect.
-                redirect: credentials === "include" ? "error" : "follow",
-                signal: controller.signal,
-                ...(targetAddressSpace ? { targetAddressSpace } : {}),
-            };
-            response = await fetch(url, fetchOptions);
-            if (!response.ok) {
-                void response.body?.cancel().catch(() => { });
-                throw responseError(response.status);
-            }
-            const contentType = response.headers.get("content-type") ?? "";
-            const normalizedType = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
-            const mediaType = mediaTypes[normalizedType];
-            if (!mediaType || !allowedForKind(kind, mediaType.kind)) {
-                void response.body?.cancel().catch(() => { });
-                throw invalidImage("メディアの形式を確認できませんでした。");
-            }
-            const bytes = await readImageBytes(response, MAX_IMAGE_BYTES);
-            checkCancelled(sourceSignal);
-            if (!mediaType.matches(bytes))
-                throw invalidImage("メディアの種類とデータが一致しません。");
-            return new Blob([bytes.buffer], { type: normalizedType });
+    return fetchResponse(url, { ...options, timeoutMs: options.timeoutMs ?? DEFAULT_MEDIA_TIMEOUT_MS }, mediaFetchErrors, async (response, { sourceSignal }) => {
+        const contentType = response.headers.get("content-type") ?? "";
+        const normalizedType = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+        const mediaType = mediaTypes[normalizedType];
+        if (!mediaType || !allowedForKind(kind, mediaType.kind)) {
+            throw invalidImage("メディアの形式を確認できませんでした。");
         }
-        catch (error) {
-            if (sourceSignal?.aborted)
-                throw new ImageDataError("cancelled", "メディアの取得を中止しました。");
-            if (controller.signal.aborted)
-                throw new ImageDataError("timeout", "メディアの取得がタイムアウトしました。");
-            if (error instanceof ImageDataError)
-                throw error;
-            if (error instanceof DOMException && error.name === "AbortError") {
-                throw new ImageDataError("timeout", "メディアの取得がタイムアウトしました。");
-            }
-            throw new ImageDataError("network", "メディアを取得できませんでした。");
-        }
-    })();
-    const timedOut = new Promise((_, reject) => {
-        timeoutHandle = setTimeout(() => {
-            controller.abort();
-            reject(new ImageDataError("timeout", "メディアの取得がタイムアウトしました。"));
-        }, timeoutMs);
+        const bytes = await readImageBytes(response, MAX_IMAGE_BYTES);
+        checkCancelled(sourceSignal);
+        if (!mediaType.matches(bytes))
+            throw invalidImage("メディアの種類とデータが一致しません。");
+        return new Blob([bytes.buffer], { type: normalizedType });
     });
-    try {
-        return await Promise.race([operation, cancelled, timedOut]);
-    }
-    finally {
-        if (timeoutHandle !== undefined)
-            clearTimeout(timeoutHandle);
-        removeAbortListener?.();
-        if (response?.body && !response.bodyUsed)
-            void response.body.cancel().catch(() => { });
-    }
 }

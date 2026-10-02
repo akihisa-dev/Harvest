@@ -1,7 +1,8 @@
 import { checkCancelled, fetchedImageDimensions, imageDimensionsError, type FetchedImage } from "./image-data-contract.js";
 import { encodeJxl } from "./jxl-encoder.js";
+import { isMediaArchiveFormat, type ImageArchiveFormat } from "../core/export-formats.js";
 
-export type ImageArchiveFormat = "jpg" | "png" | "jxl" | "mp4" | "gif" | "original";
+export type { ImageArchiveFormat } from "../core/export-formats.js";
 
 export class ImageFormatError extends Error {
   constructor(message: string) {
@@ -75,7 +76,7 @@ export async function convertImage(
   signal?: AbortSignal,
 ): Promise<Blob> {
   checkCancelled(signal);
-  if (format === "original" || format === "mp4" || format === "gif") return fetchedBlob(fetched);
+  if (isMediaArchiveFormat(format)) return fetchedBlob(fetched);
   const headerDimensions = await fetchedImageDimensions(fetched);
   checkCancelled(signal);
   if (headerDimensions) {

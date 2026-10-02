@@ -1,10 +1,12 @@
+import {createPreparationWorkers, waitForPreparation} from "../core/preparation-workers.js";
+import {isMediaArchiveFormat, exportFormatMediaKind, type ImageArchiveFormat} from "../core/export-formats.js";
 import type { ImageItem } from "../core/images.js";
 import { storedZipDataLimit } from "../core/stored-zip.js";
 import { createStoredZipInWorker } from "./stored-zip-worker.js";
 import { fetchImage } from "./image-fetch.js";
 import { fetchOriginalMedia, originalMediaExtension } from "./media-fetch.js";
 import { prepareMp4 } from "./mp4-conversion.js";
-import { convertImage, type ImageArchiveFormat } from "./image-format.js";
+import { convertImage } from "./image-format.js";
 import type { FetchedImage } from "./image-data-contract.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { createExportLifecycle, downloadBlob, type MutablePendingExport } from "./export-lifecycle.js";
@@ -23,17 +25,13 @@ function imageArchiveFilenames(count: number, format: ImageArchiveFormat): strin
   return Array.from({length: count}, (_, index) => `${String(index + 1).padStart(width, "0")}.${extension}`);
 }
 
-function isOriginalMediaFormat(format: ImageArchiveFormat): boolean {
-  return format === "original" || format === "mp4" || format === "gif";
-}
-
 function mediaProgressKind(format: ImageArchiveFormat): "files" | "images" {
-  return isOriginalMediaFormat(format) ? "files" : "images";
+  return isMediaArchiveFormat(format) ? "files" : "images";
 }
 
 function validatePreparedMedia(item: ImageItem, blob: Blob, format: ImageArchiveFormat): void {
   if (format !== "mp4" && format !== "gif") return;
-  const expectedKind = format === "gif" ? "gif" : "video";
+  const expectedKind = exportFormatMediaKind(format);
   let actualExtension: string;
   try {
     actualExtension = originalMediaExtension(blob.type);
@@ -60,39 +58,6 @@ function createDeferred<T>(): Deferred<T> {
   return {promise, resolve};
 }
 
-/** Limits fetched and in-flight results together until ordered conversion consumes them. */
-class ImageFetchWindow {
-  private available: number;
-  private readonly waiters: Array<{resolve: () => void; reject: (error: unknown) => void}> = [];
-  private closed = false;
-
-  constructor(capacity: number) {
-    this.available = capacity;
-  }
-
-  acquire(): Promise<void> {
-    if (this.closed) return Promise.reject(new Error("image fetch window closed"));
-    if (this.available > 0) {
-      this.available -= 1;
-      return Promise.resolve();
-    }
-    return new Promise<void>((resolve, reject) => this.waiters.push({resolve, reject}));
-  }
-
-  release(): void {
-    if (this.closed) return;
-    const waiter = this.waiters.shift();
-    if (waiter) waiter.resolve();
-    else this.available += 1;
-  }
-
-  close(): void {
-    if (this.closed) return;
-    this.closed = true;
-    while (this.waiters.length) this.waiters.shift()!.reject(new Error("image fetch window closed"));
-  }
-}
-
 export interface PendingImageExport {
   readonly format: ImageArchiveFormat;
   readonly selected: readonly ImageItem[];
@@ -113,6 +78,7 @@ export interface ImageExportControllerOptions {
   readonly onStatus: (message: string, state: "info" | "busy" | "success" | "error", progress?: string) => void;
   readonly onCloseViewer: () => void;
   readonly onClearSourceUrl: () => void;
+  readonly onCompleted?: () => void;
   readonly onScrollToFailures: () => void;
 }
 
@@ -185,65 +151,33 @@ export function createImageExportController(options: ImageExportControllerOption
           let preparedSize = [...work.prepared.values()].reduce((size, blob) => size + blob.size, 0);
           if (preparedSize > dataLimit) throw new ImageArchiveLimitError();
           work.failed.clear();
-          const isOriginalMedia = isOriginalMediaFormat(format);
-          const workerCount = Math.min(isOriginalMedia ? 1 : IMAGE_FETCH_CONCURRENCY, remaining.length);
-          const resultWindow = new ImageFetchWindow(workerCount);
-          const fetchedResults: Array<Deferred<ImageFetchOutcome> | undefined> = remaining.map(() => createDeferred<ImageFetchOutcome>());
-          const fetchController = new AbortController();
-          let nextFetchIndex = 0;
-          const cancelledFetchResults = Symbol("cancelled fetch results");
-          let resolveCancellation!: () => void;
-          const cancellationPromise = new Promise<typeof cancelledFetchResults>(resolve => {
-            resolveCancellation = () => resolve(cancelledFetchResults);
-          });
-          const closeWindow = (): void => {
-            fetchController.abort();
-            resultWindow.close();
-            resolveCancellation();
-          };
-          const fetchWorker = async (): Promise<void> => {
-            while (true) {
-              try {
-                await resultWindow.acquire();
-              } catch {
-                return;
-              }
-              if (run.stopped) {
-                resultWindow.release();
-                return;
-              }
-              const index = nextFetchIndex++;
-              if (index >= remaining.length) {
-                resultWindow.release();
-                return;
-              }
-              const item = remaining[index]!;
-              let outcome: ImageFetchOutcome;
-              try {
-                outcome = {
-                  ok: true,
-                  fetched: isOriginalMedia
-                    ? await fetchOriginalMedia(item.url, item.kind ?? "image", {
-                      signal: fetchController.signal,
-                      sourcePage: item.sourcePage,
-                    })
-                    : await fetchImage(item.url, {signal: fetchController.signal, sourcePage: item.sourcePage}),
-                };
-              } catch (error) {
-                outcome = {ok: false, error};
-              }
-              fetchedResults[index]!.resolve(outcome);
-              // The permit stays occupied until this result has been converted or rejected.
+          const isOriginalMedia = isMediaArchiveFormat(format);
+          // Preserve the existing opportunity to cancel before ZIP prefetch starts.
+          await Promise.resolve();
+          if (run.stopped) return;
+          const fetchedResults: Array<Deferred<ImageFetchOutcome & {release: () => void}> | undefined> = remaining.map(() => createDeferred());
+          const workers = createPreparationWorkers(remaining.length, isOriginalMedia ? 1 : IMAGE_FETCH_CONCURRENCY, run.signal, async (index, signal, release) => {
+            const item = remaining[index]!;
+            let outcome: ImageFetchOutcome;
+            try {
+              outcome = {
+                ok: true,
+                fetched: isOriginalMedia
+                  ? await fetchOriginalMedia(item.url, item.kind ?? "image", {signal, sourcePage: item.sourcePage})
+                  : await fetchImage(item.url, {signal, sourcePage: item.sourcePage}),
+              };
+            } catch (error) {
+              outcome = {ok: false, error};
             }
-          };
-          const workers = Array.from({length: workerCount}, () => fetchWorker());
-          if (run.signal.aborted) closeWindow();
-          else run.signal.addEventListener("abort", closeWindow, {once: true});
+            fetchedResults[index]!.resolve({...outcome, release});
+          });
+          // Observe failure immediately while conversion consumes the ordered results.
+          const fetchCompletion = Promise.allSettled([workers.finished]);
           try {
             for (let index = 0; index < remaining.length; index += 1) {
               if (run.stopped) return;
-              const outcome = await Promise.race([fetchedResults[index]!.promise, cancellationPromise]);
-              if (outcome === cancelledFetchResults || run.stopped) return;
+              const outcome = await waitForPreparation(fetchedResults[index]!.promise, workers.signal);
+              if (run.stopped) return;
               const item = remaining[index]!;
               try {
                 if (!outcome.ok) throw outcome.error;
@@ -263,7 +197,7 @@ export function createImageExportController(options: ImageExportControllerOption
                 work.failed.set(item, reason);
               } finally {
                 fetchedResults[index] = undefined;
-                resultWindow.release();
+                outcome.release();
               }
               if (!options.isDisposed()) {
                 run.reportStatus(t(mediaProgressKind(format) === "files" ? (retry ? "retryFiles" : "prepareFiles") : (retry ? "retryImages" : "prepareImages"), {
@@ -273,9 +207,8 @@ export function createImageExportController(options: ImageExportControllerOption
               }
             }
           } finally {
-            run.signal.removeEventListener("abort", closeWindow);
-            closeWindow();
-            await Promise.all(workers);
+            workers.abort();
+            await fetchCompletion;
           }
           if (run.stopped) return;
           if (work.failed.size) {
@@ -299,6 +232,7 @@ export function createImageExportController(options: ImageExportControllerOption
           downloadBlob(archive, options.getZipFilename());
           options.onClearSourceUrl();
           lifecycle.clear();
+          options.onCompleted?.();
           run.reportStatus(t("exportSaved"), "success");
         } catch (error) {
           if (run.stopped) return;

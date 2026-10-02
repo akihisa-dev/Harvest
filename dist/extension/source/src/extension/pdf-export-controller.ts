@@ -26,6 +26,7 @@ export interface PdfExportControllerOptions {
   readonly onCloseViewer: () => void;
   readonly onClearSourceUrl: () => void;
   readonly onScrollToFailures: () => void;
+  readonly onCompleted?: () => void;
 }
 
 export interface PdfExportController {
@@ -91,6 +92,7 @@ export function createPdfExportController(options: PdfExportControllerOptions): 
           downloadBlob(blob, filename);
           options.onClearSourceUrl();
           lifecycle.clear();
+          options.onCompleted?.();
           run.reportStatus(t("exportSaved"), "success");
         } catch (error) {
           if (run.stopped) return;

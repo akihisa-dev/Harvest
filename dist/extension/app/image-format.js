@@ -1,5 +1,6 @@
 import { checkCancelled, fetchedImageDimensions, imageDimensionsError } from "./image-data-contract.js";
 import { encodeJxl } from "./jxl-encoder.js";
+import { isMediaArchiveFormat } from "../core/export-formats.js";
 export class ImageFormatError extends Error {
     constructor(message) {
         super(message);
@@ -69,7 +70,7 @@ function toBlob(canvas, type, quality) {
 /** Convert one fetched image, releasing its decoded pixels before returning. */
 export async function convertImage(fetched, format, signal) {
     checkCancelled(signal);
-    if (format === "original" || format === "mp4" || format === "gif")
+    if (isMediaArchiveFormat(format))
         return fetchedBlob(fetched);
     const headerDimensions = await fetchedImageDimensions(fetched);
     checkCancelled(signal);

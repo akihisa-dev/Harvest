@@ -1,57 +1,58 @@
-import { setButtonLabel } from "./button-state.js";
-import { mediaExportSelection, hasStillImages } from "../core/media-selection.js";
+import { initialExportFormat, restoredExportFormat } from "../core/export-formats.js";
 import type { ImageItem } from "../core/images.js";
 import { ImageCollection } from "../core/image-collection.js";
 import { createCollectionController } from "./collection-controller.js";
-import { prefersReducedMotion, setMotionText } from "./motion.js";
-import { formatPlural, localizeErrorMessage, t } from "./localization.js";
+import { prefersReducedMotion } from "./motion.js";
+import { localizeErrorMessage, t } from "./localization.js";
 import { createViewerController } from "./viewer-controller.js";
 import { createImageListView } from "./image-list-view.js";
 import { createImagePreviewLoader } from "./image-preview.js";
 import { createPdfExportController, type PdfExportController } from "./pdf-export-controller.js";
 import { createImageExportController, type ImageExportController } from "./image-export-controller.js";
 import { queryAppElements } from "./app-elements.js";
-import { loadExportPreferences, saveExportFormat, saveSourcePagePreference, type ExportFormat } from "./export-preferences.js";
+import { createAppView, type AppStatus } from "./app-view.js";
+import { createExportSession } from "./export-session.js";
+import { loadExportPreferences, saveExportFormat, saveSourcePagePreference } from "./export-preferences.js";
 import {
   createSourcePreview,
-  deriveExportViewState,
   exportFileBaseName,
   imageFilename,
-  type CompletedExport,
 } from "./export-presentation.js";
 import { createScanSessionController, type ScanSessionController } from "./scan-session-controller.js";
-import { createEmptyStateView } from "./empty-state.js";
 
+const elements = queryAppElements();
 const {
   sourceUrl, sourceDrop, urlDropOverlay, collectionButton, scanButton, exportButton,
-  exportFormatInputs, exportMediaHint, sourcePageOption, includeSourcePage,
+  exportFormatInputs, includeSourcePage,
   viewerToggleButton, viewerElement, resultsElement, viewerEmptyElement, viewerPageElement,
-  viewerPreviousButton, viewerNextButton, viewerPositionElement, viewerStageElement, exportOverlay,
+  viewerPreviousButton, viewerNextButton, viewerPositionElement, viewerStageElement,
   viewerImageElement, viewerFilenameElement, viewerThumbnailsElement, viewerZoomInButton,
   viewerZoomOutButton, viewerZoomResetButton, allVisibilityButton, allSelectionCheckbox,
-  resetOrderButton, resetButton, failuresElement, failedImagesElement, imagesElement, groupsElement,
-  scanOverlay, emptyElement, emptyLogoElement, emptyMessageElement, statusElement,
-} = queryAppElements();
+  resetOrderButton, resetButton, failuresElement, imagesElement, groupsElement,
+} = elements;
 
 const preferences = loadExportPreferences();
-let selectedExportFormat: ExportFormat = preferences.format === "mp4" || preferences.format === "gif" ? "pdf" : preferences.format;
-for (const {format, input} of exportFormatInputs) input.checked = format === selectedExportFormat;
-includeSourcePage.checked = preferences.includeSourcePage;
 includeSourcePage.addEventListener("change", () => {
-  if (!saveSourcePagePreference(includeSourcePage.checked)) setStatus(t("errorSavePreference"), "error");
+  exportSession.setIncludeSourcePage(includeSourcePage.checked);
+  if (!saveSourcePagePreference(exportSession.includeSourcePage)) {
+    exportSession.invalidateCompletion();
+    setStatus(t("errorSavePreference"), "error");
+  }
   render();
 });
 for (const {format, input} of exportFormatInputs) {
   input.addEventListener("change", () => {
     if (!input.checked) return;
-    selectedExportFormat = format;
-    if (!saveExportFormat(selectedExportFormat)) setStatus(t("errorSaveFormatPreference"), "error");
-    render();
+    exportSession.setFormat(format);
+    if (!saveExportFormat(format)) {
+      exportSession.invalidateCompletion();
+      setStatus(t("errorSaveFormatPreference"), "error");
+    }
+    selectionChanged();
   });
 }
 
 const imageCollection = new ImageCollection();
-let completedExport: CompletedExport | null = null;
 let pageTitle = t("imageFallback");
 let resultSourceUrl: string | null = null;
 let sourceDisplayCleared = false;
@@ -60,7 +61,16 @@ let disposed = false;
 let scanSessionController: ScanSessionController | null = null;
 let pdfExportController: PdfExportController | null = null;
 let imageExportController: ImageExportController | null = null;
-const updateEmptyState = createEmptyStateView({container: emptyElement, logo: emptyLogoElement, message: emptyMessageElement});
+const exportSession = createExportSession({
+  format: restoredExportFormat(preferences.format),
+  includeSourcePage: preferences.includeSourcePage,
+  getSelectedItems: () => imageCollection.selectedItems,
+  getPdfController: () => pdfExportController,
+  getImageController: () => imageExportController,
+  isBusy: () => busy,
+});
+const appView = createAppView(elements, item => imageCollection.positionOf(item));
+let status: AppStatus = {message: "", state: "info", progress: ""};
 const imagePreviewLoader = createImagePreviewLoader();
 window.addEventListener?.("pagehide", () => {
   disposed = true;
@@ -71,7 +81,6 @@ window.addEventListener?.("pagehide", () => {
   imageExportController?.abort();
 });
 
-type StatusState = "info" | "busy" | "success" | "error";
 const imageListView = createImageListView({
   collection: imageCollection,
   allVisibilityButton,
@@ -80,7 +89,7 @@ const imageListView = createImageListView({
   isBusy: () => busy,
   getFilename: imageFilename,
   previewLoader: imagePreviewLoader,
-  onChange: render,
+  onChange: selectionChanged,
 });
 
 function updateSourceDrop(): void {
@@ -110,40 +119,14 @@ function clearSourceUrl(): void {
   hideSourceInput();
 }
 
-function setStatus(message: string, state: StatusState = "info", progress = ""): void {
-  if (state === "success") {
-    completedExport = {
-      format: selectedExportFormat,
-      selected: exportSelectedItems(),
-      includeSourcePage: includeSourcePage.checked,
-    };
-    setMotionText(statusElement, "");
-    statusElement.setAttribute("aria-label", "");
-    statusElement.dataset["state"] = state;
-    statusElement.title = "";
-    return;
-  }
-  completedExport = null;
-  setMotionText(statusElement, state === "busy" ? progress : message);
-  statusElement.setAttribute("aria-label", state === "busy" ? message : "");
-  statusElement.dataset["state"] = state;
-  statusElement.title = message;
-  const activeExport = selectedExportFormat === "pdf" ? pdfExportController : imageExportController;
-  if (activeExport?.isRunning && state === "busy") {
-    setButtonLabel(exportButton, progress);
-    exportButton.title = `${progress} — ${t("exportCancelHint")}`;
-    exportButton.setAttribute("aria-label", `${message} ${t("exportCancelHint")}`);
-  }
+function setStatus(message: string, state: AppStatus["state"] = "info", progress = ""): void {
+  status = {message, state, progress};
+  appView.renderProgress({export: exportSession.state, busy, status});
 }
 
 function setBusy(value: boolean): void {
   busy = value;
-  scanButton.disabled = value;
-  sourceDrop.disabled = value;
-  sourceUrl.disabled = value;
-  for (const {input} of exportFormatInputs) input.disabled = value;
-  includeSourcePage.disabled = value;
-  resetButton.disabled = value;
+  collectionController.publishState();
   render();
 }
 
@@ -163,18 +146,18 @@ function zipFilename(): string {
 function sourcePreview(): ImageItem | null {
   return createSourcePreview(
     exportSelectedItems(),
-    selectedExportFormat,
-    includeSourcePage.checked,
+    exportSession.format,
+    exportSession.includeSourcePage,
     t("sourceHeading"),
     pdfFilename(),
   );
 }
 
-function exportSelectedItems(): ImageItem[] {
-  return mediaExportSelection(imageCollection.selectedItems, selectedExportFormat);
+function exportSelectedItems(): readonly ImageItem[] {
+  return exportSession.selectedItems;
 }
 
-function viewerPages(): ImageItem[] {
+function viewerPages(): readonly ImageItem[] {
   const selected = exportSelectedItems();
   const source = sourcePreview();
   return source ? [...selected, source] : selected;
@@ -185,101 +168,36 @@ function previewName(item: ImageItem): string {
 }
 
 function render(): void {
-  collectionController.publishState();
-  const scanState = scanSessionController?.state ?? "initial";
-  const scanRunning = scanSessionController?.isRunning ?? false;
-  const selected = exportSelectedItems();
-  const selectedCount = selected.length;
-  const allSelectedCount = imageCollection.selectedItems.length;
-  const excludedCount = allSelectedCount - selectedCount;
-  const stillAvailable = hasStillImages(imageCollection.items);
-  const hasVideo = imageCollection.items.some(item => item.kind === "video");
-  const hasGif = imageCollection.items.some(item => item.kind === "gif");
-  const hasMedia = hasVideo || hasGif;
-  exportMediaHint.hidden = !hasMedia;
-  exportMediaHint.textContent = [
-    selectedExportFormat === "mp4" && hasVideo ? t("videoConversionHint") : "",
-    excludedCount ? t("mediaExcludedHint", {count: excludedCount, format: selectedExportFormat.toUpperCase()}) : "",
-  ].filter(Boolean).join(" ");
-  if (!exportMediaHint.textContent) exportMediaHint.hidden = true;
-  for (const {format, input} of exportFormatInputs) {
-    const hidden = format === "mp4" ? !hasVideo : format === "gif" ? !hasGif
-      : imageCollection.items.length > 0 && !stillAvailable;
-    const label = input.closest?.("label");
-    if (label) (label as HTMLElement).hidden = hidden;
-    input.disabled = busy || hidden;
-  }
-  const pdfSelectionChanged = pdfExportController?.discardIfSelectionChanged(selected) ?? false;
-  const imageSelectionChanged = imageExportController?.discardIfSelectionChanged(selected) ?? false;
-  const selectionChanged = pdfSelectionChanged || imageSelectionChanged;
-  if (selectionChanged && !busy) setStatus(t("selectionChanged"), "info");
-  const exportState = deriveExportViewState({
-    format: selectedExportFormat,
-    includeSourcePage: includeSourcePage.checked,
-    selected,
-    completed: completedExport,
-    pdfPending: pdfExportController?.pending ?? null,
-    imagePending: imageExportController?.pending ?? null,
-    pdfRunning: pdfExportController?.isRunning ?? false,
-    imageRunning: imageExportController?.isRunning ?? false,
-    pdfProgress: pdfExportController?.progress ?? "",
-    imageProgress: imageExportController?.progress ?? "",
+  const exportState = exportSession.state;
+  appView.render({
+    export: exportState,
+    busy,
+    status,
+    items: imageCollection.items,
+    selectedCount: imageCollection.selectedItems.length,
+    initialOrderAndSelection: imageCollection.matchesInitialOrderAndSelection(),
+    scanState: scanSessionController?.state ?? "initial",
+    scanRunning: scanSessionController?.isRunning ?? false,
   });
-  const pendingExport = exportState.pending;
-  const exportRunning = exportState.phase === "running";
-  const exportSaved = exportState.phase === "saved";
-  scanButton.dataset["scanning"] = String(scanRunning);
-  setButtonLabel(scanButton, t("scan"));
-  if (scanRunning) scanButton.setAttribute("aria-label", t("scanBusy"));
-  else scanButton.removeAttribute("aria-label");
-  exportButton.dataset["saving"] = String(exportRunning);
-  exportButton.dataset["saved"] = String(exportSaved && !exportRunning);
-  if (!exportRunning) exportButton.removeAttribute("aria-label");
-  if (exportRunning) setButtonLabel(exportButton, exportState.progress);
-  else if (exportState.phase === "retry-required") setButtonLabel(exportButton, t("exportRetry"));
-  else if (exportSaved) setButtonLabel(exportButton, t(selectedExportFormat === "mp4" || selectedExportFormat === "gif" ? "exportFilesSaved" : "exportSaved", {count: selectedCount, plural: formatPlural(selectedCount)}));
-  else if (selected.length) setButtonLabel(exportButton, t("exportAction", {format: selectedExportFormat.toUpperCase()}));
-  else setButtonLabel(exportButton, t("save"));
-  exportButton.title = exportRunning
-    ? `${exportState.progress} — ${t("exportCancelHint")}`
-    : exportButton.textContent;
-  sourcePageOption.hidden = selectedExportFormat !== "pdf";
-  for (const {format, input} of exportFormatInputs) input.checked = format === selectedExportFormat;
-  failuresElement.hidden = !pendingExport?.failed.size;
-  failedImagesElement.replaceChildren(...(pendingExport?.selected.filter(item => pendingExport!.failed.has(item)) ?? []).map(item => {
-    const row = document.createElement("li");
-    row.textContent = t("failedRow", {
-      index: imageCollection.positionOf(item)! + 1,
-      filename: imageFilename(item.url),
-      reason: localizeErrorMessage(
-        pendingExport!.failed.get(item) ?? t(selectedExportFormat === "pdf" ? "errorPdfFetch" : "errorImageConvert"),
-        selectedExportFormat === "pdf" ? "errorPdfFetch" : "errorImageConvert",
-      ),
-    });
-    row.title = item.url;
-    return row;
-  }));
-  scanOverlay.hidden = scanState !== "scanning";
-  exportOverlay.hidden = !exportRunning;
-  emptyElement.hidden = imageCollection.items.length > 0;
-  const emptyMessage = scanState === "empty" ? t("scanEmpty") : scanState === "error" ? t("scanErrorEmpty") : "";
-  const emptyAnnouncement = scanState === "scanning" ? t("scanBusy") : emptyMessage;
-  updateEmptyState(scanState, emptyMessage, emptyAnnouncement);
-  allSelectionCheckbox.checked = imageCollection.items.length > 0 && allSelectedCount === imageCollection.items.length;
-  allSelectionCheckbox.indeterminate = allSelectedCount > 0 && allSelectedCount < imageCollection.items.length;
-  allSelectionCheckbox.disabled = busy || imageCollection.items.length === 0;
-  allSelectionCheckbox.title = t(allSelectionCheckbox.checked ? "clearAllTitle" : "selectAllTitle");
-  allSelectionCheckbox.setAttribute("aria-label", t(allSelectionCheckbox.checked ? "clearAll" : "selectAll"));
-  resetOrderButton.disabled = busy || imageCollection.matchesInitialOrderAndSelection();
-  exportButton.disabled = (busy && !exportRunning) || !selected.length;
-  imageListView.render(pendingExport ? new Set(pendingExport.failed.keys()) : undefined, sourcePreview());
+  const pending = exportState.view.pending;
+  imageListView.render(pending ? new Set(pending.failed.keys()) : undefined, sourcePreview());
   viewerController.render();
 }
 
+function selectionChanged(): void {
+  if (exportSession.selectionChanged() && !busy) setStatus(t("selectionChanged"), "info");
+  collectionController.publishState();
+  render();
+}
+
 function startExport(): void {
-  completedExport = null;
-  if (selectedExportFormat === "pdf") void pdfExportController?.export();
-  else void imageExportController?.export(selectedExportFormat);
+  void exportSession.start();
+}
+
+function startScan(collectionLink?: string): void {
+  if (busy) return;
+  exportSession.invalidateCompletion();
+  void scanSessionController?.start(collectionLink);
 }
 
 const collectionController = createCollectionController({
@@ -293,10 +211,11 @@ const collectionController = createCollectionController({
   onScanUrl(url) {
     sourceUrl.value = url;
     updateSourceDrop();
-    void scanSessionController?.start(url);
+    startScan(url);
   },
   onExport: startExport,
   onError(error) {
+    exportSession.invalidateCompletion();
     setStatus(error instanceof Error ? localizeErrorMessage(error.message, "errorCollectionStart", true) : t("errorCollectionStart"), "error");
   },
 });
@@ -329,7 +248,7 @@ pdfExportController = createPdfExportController({
   getSelectedItems: exportSelectedItems,
   getFilename: pdfFilename,
   getSourcePage(firstSelected, filename) {
-    return includeSourcePage.checked
+    return exportSession.includeSourcePage
       ? {heading: t("sourceHeading"), filename, url: firstSelected.sourcePage}
       : undefined;
   },
@@ -337,6 +256,7 @@ pdfExportController = createPdfExportController({
   isDisposed: () => disposed,
   onBusyChange: setBusy,
   onStatus: setStatus,
+  onCompleted: exportSession.complete,
   onCloseViewer: () => viewerController.setOpen(false),
   onClearSourceUrl: clearSourceUrl,
   onScrollToFailures() {
@@ -350,6 +270,7 @@ imageExportController = createImageExportController({
   isDisposed: () => disposed,
   onBusyChange: setBusy,
   onStatus: setStatus,
+  onCompleted: exportSession.complete,
   onCloseViewer: () => viewerController.setOpen(false),
   onClearSourceUrl: clearSourceUrl,
   onScrollToFailures() {
@@ -369,32 +290,24 @@ scanSessionController = createScanSessionController({
   onBusyChange: setBusy,
   onStatus: setStatus,
   onResults(nextPageTitle, initialGroup, sourcePage) {
-    if (imageCollection.items.some(item => item.kind === "video")) {
-      selectedExportFormat = "mp4";
-    } else if (imageCollection.items.some(item => item.kind === "gif")) {
-      selectedExportFormat = "gif";
-    } else {
-      const saved = loadExportPreferences().format;
-      selectedExportFormat = saved === "mp4" || saved === "gif" ? "pdf" : saved;
-    }
+    exportSession.setFormat(initialExportFormat(imageCollection.items, loadExportPreferences().format));
     resultSourceUrl = sourcePage;
     sourceDisplayCleared = false;
     updateSourceDrop();
     imagePreviewLoader.clear();
     pageTitle = nextPageTitle;
-    pdfExportController?.clear();
-    imageExportController?.clear();
+    exportSession.clear();
     imageListView.showInitialGroup(initialGroup);
     viewerController.setOpen(false);
     viewerController.clearCurrentPage();
   },
 });
 
-scanButton.addEventListener("click", () => { void scanSessionController?.start(); });
+scanButton.addEventListener("click", () => startScan());
 sourceDrop.addEventListener("click", showSourceInput);
 sourceUrl.addEventListener("input", updateSourceDrop);
 sourceUrl.addEventListener("blur", hideSourceInput);
-sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter") void scanSessionController?.start(); });
+sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter") startScan(); });
 function isWebUrl(url: string | undefined): url is string {
   return url !== undefined && /^https?:\/\//i.test(url);
 }
@@ -432,12 +345,11 @@ document.addEventListener("drop", event => {
   if (busy || imageListView.isDragging) return;
   sourceUrl.value = url;
   hideSourceInput();
-  void scanSessionController?.start();
+  startScan();
 });
 exportButton.addEventListener("click", () => {
-  const activeExport = selectedExportFormat === "pdf" ? pdfExportController : imageExportController;
-  if (activeExport?.isRunning) {
-    activeExport.abort();
+  if (exportSession.state.view.phase === "running") {
+    exportSession.abort();
     return;
   }
   if (!busy) startExport();
@@ -445,12 +357,12 @@ exportButton.addEventListener("click", () => {
 allSelectionCheckbox.addEventListener("change", () => {
   if (busy) return;
   imageCollection.setAllSelected(allSelectionCheckbox.checked);
-  render();
+  selectionChanged();
 });
 resetOrderButton.addEventListener("click", () => {
   if (busy || resetOrderButton.disabled) return;
   imageCollection.restoreInitialOrderAndSelection();
-  render();
+  selectionChanged();
 });
 resetButton.addEventListener("click", () => {
   if (busy) return;
@@ -459,14 +371,14 @@ resetButton.addEventListener("click", () => {
   clearSourceUrl();
   collectionController.clearAnalyzedUrl();
   imageCollection.clear();
-  pdfExportController?.clear();
-  imageExportController?.clear();
+  exportSession.clear();
   imageListView.clearVisibleGroups();
   viewerController.setOpen(false);
   viewerController.clearCurrentPage();
   scanSessionController?.reset();
   pageTitle = t("imageFallback");
   setStatus("", "info");
+  collectionController.publishState();
   render();
 });
 

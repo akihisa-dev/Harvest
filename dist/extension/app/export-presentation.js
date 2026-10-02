@@ -1,4 +1,5 @@
 import { createSourcePageLayout } from "../core/pdf.js";
+import { selectionsMatch } from "./export-lifecycle.js";
 export function imageFilename(url) {
     try {
         return decodeURIComponent(new URL(url).pathname.split("/").pop() || url);
@@ -35,8 +36,7 @@ export function deriveExportViewState(options) {
         return { phase: "retry-required", pending, progress: "" };
     const saved = options.completed?.format === options.format
         && (options.format !== "pdf" || options.completed.includeSourcePage === options.includeSourcePage)
-        && options.completed.selected.length === options.selected.length
-        && options.completed.selected.every((item, index) => item === options.selected[index]);
+        && selectionsMatch(options.completed.selected, options.selected);
     if (saved)
         return { phase: "saved", pending: null, progress: "" };
     return options.selected.length

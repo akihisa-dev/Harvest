@@ -52,6 +52,7 @@ export function createPdfExportController(options) {
                 downloadBlob(blob, filename);
                 options.onClearSourceUrl();
                 lifecycle.clear();
+                options.onCompleted?.();
                 run.reportStatus(t("exportSaved"), "success");
             }
             catch (error) {

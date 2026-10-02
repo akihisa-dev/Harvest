@@ -1,3 +1,4 @@
+import { createPreparationWorkers } from "../core/preparation-workers.js";
 import { fetchImage } from "./image-fetch.js";
 import { decodeImage } from "./image-decode.js";
 import { checkCancelled, invalidImage, validatePositiveInteger } from "./image-data-contract.js";
@@ -80,65 +81,6 @@ class BoundedQueue {
         writer.resolve();
     }
 }
-class ResultWindow {
-    available;
-    waiters = [];
-    closed = false;
-    closeError;
-    constructor(capacity) {
-        this.available = capacity;
-    }
-    acquire(signal) {
-        checkCancelled(signal);
-        if (this.closed)
-            throw this.closeError ?? new Error("result window closed");
-        if (this.available > 0) {
-            this.available -= 1;
-            return undefined;
-        }
-        return new Promise((resolve, reject) => {
-            const waiter = {
-                resolve: () => {
-                    signal.removeEventListener("abort", abort);
-                    resolve();
-                },
-                reject: (error) => {
-                    signal.removeEventListener("abort", abort);
-                    reject(error);
-                },
-                signal,
-            };
-            const abort = () => {
-                const index = this.waiters.indexOf(waiter);
-                if (index >= 0)
-                    this.waiters.splice(index, 1);
-                waiter.reject(new PdfImageError("cancelled", "画像の取得を中止しました。"));
-            };
-            waiter.abort = abort;
-            this.waiters.push(waiter);
-            signal.addEventListener("abort", abort, { once: true });
-            if (signal.aborted)
-                abort();
-        });
-    }
-    release() {
-        if (this.closed)
-            return;
-        const waiter = this.waiters.shift();
-        if (waiter)
-            waiter.resolve();
-        else
-            this.available += 1;
-    }
-    close(error) {
-        if (this.closed)
-            return;
-        this.closed = true;
-        this.closeError = error;
-        while (this.waiters.length)
-            this.waiters.shift().reject(error ?? new Error("result window closed"));
-    }
-}
 /**
  * Prepares images with a small network concurrency limit and one pixel
  * conversion at a time. Results are delivered in input order, so callers can
@@ -149,89 +91,57 @@ export async function preparePdfImages(items, onResult, options = {}) {
     validatePositiveInteger(requestedConcurrency, "fetchConcurrency");
     if (items.length === 0)
         return;
-    const controller = new AbortController();
-    const abort = () => controller.abort();
-    if (options.signal?.aborted)
-        controller.abort();
-    options.signal?.addEventListener("abort", abort, { once: true });
-    const operationOptions = { ...options, signal: controller.signal };
     const queue = new BoundedQueue(1);
-    const resultWindow = new ResultWindow(Math.min(requestedConcurrency, items.length));
     const results = new Array(items.length);
-    let nextIndex = 0;
     let nextResult = 0;
-    let workersFinished = 0;
-    const workerCount = Math.min(requestedConcurrency, items.length);
+    let callbackFailed = false;
     let callbackError;
-    const setResult = (index, result) => {
-        if (callbackError !== undefined)
+    const setResult = (index, result, release) => {
+        if (callbackFailed)
             throw callbackError;
-        results[index] = result;
+        results[index] = { result, release };
         while (nextResult < items.length) {
             const current = results[nextResult];
             if (current === undefined)
                 break;
             results[nextResult] = undefined;
             try {
-                onResult(items[nextResult], current);
+                onResult(items[nextResult], current.result);
             }
             catch (error) {
+                callbackFailed = true;
                 callbackError = error;
-                controller.abort();
-                queue.close(error);
-                resultWindow.close(error);
+                workers.fail(error);
                 throw error;
             }
             nextResult += 1;
-            resultWindow.release();
+            current.release();
         }
     };
-    const worker = async () => {
+    const workers = createPreparationWorkers(items.length, requestedConcurrency, options.signal, async (index, signal, release) => {
+        const item = items[index];
+        let fetched;
         try {
-            while (true) {
-                const waiting = resultWindow.acquire(controller.signal);
-                if (waiting)
-                    await waiting;
-                let transferred = false;
-                try {
-                    checkCancelled(controller.signal);
-                    const index = nextIndex++;
-                    if (index >= items.length)
-                        return;
-                    const item = items[index];
-                    let fetched;
-                    try {
-                        fetched = await fetchImage(item.url, {
-                            ...operationOptions,
-                            ...(item.sourcePage === undefined ? {} : { sourcePage: item.sourcePage }),
-                        });
-                    }
-                    catch (error) {
-                        setResult(index, error instanceof PdfImageError ? error : new PdfImageError("network", "画像を取得できませんでした。通信状態と画像URLを確認してください。"));
-                        transferred = true;
-                        continue;
-                    }
-                    if (fetched.kind === "original") {
-                        setResult(index, fetched.page);
-                        transferred = true;
-                        continue;
-                    }
-                    await queue.push({ ...fetched, index });
-                    transferred = true;
-                }
-                finally {
-                    if (!transferred)
-                        resultWindow.release();
-                }
-            }
+            fetched = await fetchImage(item.url, {
+                ...options, signal,
+                ...(item.sourcePage === undefined ? {} : { sourcePage: item.sourcePage }),
+            });
         }
-        finally {
-            workersFinished += 1;
-            if (workersFinished === workerCount)
-                queue.close();
+        catch (error) {
+            setResult(index, error instanceof PdfImageError ? error : new PdfImageError("network", "画像を取得できませんでした。通信状態と画像URLを確認してください。"), release);
+            return;
         }
-    };
-    const workers = Array.from({ length: workerCount }, () => worker());
+        if (fetched.kind === "original") {
+            setResult(index, fetched.page, release);
+            return;
+        }
+        await queue.push({ ...fetched, index, release });
+    });
+    const closeQueue = () => queue.close(workers.signal.reason);
+    workers.signal.addEventListener("abort", closeQueue, { once: true });
+    if (workers.signal.aborted)
+        closeQueue();
+    const fetchCompletion = workers.finished.then(() => queue.close(), error => { queue.close(error); throw error; });
     const converter = (async () => {
         while (true) {
             const queued = await queue.pop();
@@ -239,19 +149,20 @@ export async function preparePdfImages(items, onResult, options = {}) {
                 return;
             let result;
             try {
-                result = await decodeImage(queued, operationOptions);
+                result = await decodeImage(queued, { ...options, signal: workers.signal });
             }
             catch (error) {
                 result = error instanceof PdfImageError ? error : invalidImage("画像をPDF用に変換できませんでした。");
             }
-            setResult(queued.index, result);
+            setResult(queued.index, result, queued.release);
         }
     })();
-    const outcomes = await Promise.allSettled([...workers, converter]);
-    options.signal?.removeEventListener("abort", abort);
-    if (callbackError !== undefined)
+    const outcomes = await Promise.allSettled([fetchCompletion, converter]);
+    workers.signal.removeEventListener("abort", closeQueue);
+    workers.dispose();
+    if (callbackFailed)
         throw callbackError;
-    checkCancelled(controller.signal);
+    checkCancelled(workers.signal);
     const rejected = outcomes.find((outcome) => outcome.status === "rejected");
     if (rejected)
         throw rejected.reason;

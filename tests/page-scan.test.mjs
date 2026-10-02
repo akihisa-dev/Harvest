@@ -855,3 +855,92 @@ test("fmt・fmのGIF指定はscript・本文・属性からも収集する", asy
   assert.deepEqual(new Set(result.media.map(item => item.url)), new Set(urls));
   assert.ok(result.media.every(item => item.kind === "gif"));
 });
+
+async function scanWithMutation(root, mutate) {
+  let observerCallback;
+  let mutated = false;
+  class ChangingObserver extends EmptyMutationObserver {
+    constructor(callback) { super(); observerCallback = callback; }
+  }
+  return runWithFixture(new FixtureDocument(root), ChangingObserver, () => {
+    globalThis.setTimeout = (callback, delay) => {
+      if (delay === 800) return 1;
+      if (delay === 250 && !mutated) {
+        mutated = true;
+        observerCallback(mutate());
+        return 2;
+      }
+      callback();
+      return 3;
+    };
+    return scanDocument();
+  });
+}
+
+test("同じ候補から画像は表示位置順、メディアは検出順で返し、GIFの種類を優先する", async () => {
+  const base = "https://cdn.example.test/media/";
+  const bottom = new FixtureElement("img", {src: `${base}bottom.jpg`}, [], {rect: {top: 100, left: 0, width: 10, height: 10}});
+  const video = new FixtureElement("video", {src: `${base}movie.mp4`});
+  const top = new FixtureElement("img", {src: `${base}top.jpg`}, [], {rect: {top: 0, left: 0, width: 10, height: 10}});
+  const gifVideo = new FixtureElement("video", {src: `${base}animation.gif`, type: "video/mp4"});
+  const gifImage = new FixtureElement("img", {src: `${base}animation.gif`});
+  const unusable = new FixtureElement("img", {src: "mailto:unfetchable"});
+  const root = new FixtureElement("html", {}, [bottom, video, top, gifVideo, gifImage, unusable]);
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+  assert.deepEqual(result.images, [`${base}top.jpg`, `${base}bottom.jpg`, `${base}animation.gif`, "mailto:unfetchable"]);
+  assert.deepEqual(result.media, [
+    {url: `${base}bottom.jpg`, kind: "image"}, {url: `${base}movie.mp4`, kind: "video"},
+    {url: `${base}top.jpg`, kind: "image"}, {url: `${base}animation.gif`, kind: "gif"},
+  ]);
+});
+
+test("画像の根拠を差し替えても同じURLの動画を残し、最後のGIF根拠の削除を両方に反映する", async () => {
+  const base = "https://cdn.example.test/media/";
+  const image = new FixtureElement("img", {src: `${base}shared.mp4`});
+  const video = new FixtureElement("video", {src: `${base}shared.mp4`});
+  const keepGif = new FixtureElement("img", {src: `${base}keep.gif`});
+  const removeGif = new FixtureElement("img", {src: `${base}removed.gif`});
+  const root = new FixtureElement("html", {}, [image, video, keepGif, removeGif]);
+  const result = await scanWithMutation(root, () => {
+    image.attributesMap.set("src", `${base}replacement.jpg`);
+    image.src = `${base}replacement.jpg`;
+    root.children = root.children.filter(child => child !== removeGif);
+    removeGif.parentElement = null;
+    return [{type: "attributes", target: image}, {type: "childList", addedNodes: [], removedNodes: [removeGif]}];
+  });
+  assert.deepEqual(result.images, [`${base}keep.gif`, `${base}replacement.jpg`]);
+  assert.deepEqual(result.media, [
+    {url: `${base}shared.mp4`, kind: "video"}, {url: `${base}keep.gif`, kind: "gif"},
+    {url: `${base}replacement.jpg`, kind: "image"},
+  ]);
+});
+
+test("共有URLの一つの根拠を削除しても画像と確定済みのメディア種類・検出順を維持する", async () => {
+  const base = "https://cdn.example.test/media/";
+  const video = new FixtureElement("video", {src: `${base}shared`, type: "video/mp4"});
+  const image = new FixtureElement("img", {src: `${base}shared`});
+  const later = new FixtureElement("img", {src: `${base}later.jpg`});
+  const root = new FixtureElement("html", {}, [video, image, later]);
+  const result = await scanWithMutation(root, () => {
+    root.children = root.children.filter(child => child !== video);
+    video.parentElement = null;
+    return [{type: "childList", addedNodes: [], removedNodes: [video]}];
+  });
+  assert.deepEqual(result.images, [`${base}shared`, `${base}later.jpg`]);
+  assert.deepEqual(result.media, [{url: `${base}shared`, kind: "video"}, {url: `${base}later.jpg`, kind: "image"}]);
+});
+
+test("同じ要素とURLの画像根拠が動画へ変わると、後から再発見した画像だけ検出順を更新する", async () => {
+  const base = "https://cdn.example.test/media/";
+  const source = new FixtureElement("source", {src: `${base}shared`, type: "image/png"});
+  const later = new FixtureElement("img", {src: `${base}later.jpg`});
+  const rediscovered = new FixtureElement("img", {src: `${base}shared`});
+  const root = new FixtureElement("html", {}, [source, later]);
+  const result = await scanWithMutation(root, () => {
+    source.attributesMap.set("type", "video/mp4");
+    root.appendChild(rediscovered);
+    return [{type: "attributes", target: source}, {type: "childList", addedNodes: [rediscovered], removedNodes: []}];
+  });
+  assert.deepEqual(result.images, [`${base}later.jpg`, `${base}shared`]);
+  assert.deepEqual(result.media, [{url: `${base}shared`, kind: "video"}, {url: `${base}later.jpg`, kind: "image"}]);
+});

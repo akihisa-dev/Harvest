@@ -1,14 +1,10 @@
 import type { ImageItem } from "./images.js";
+import { exportFormatMediaKind } from "./export-formats.js";
 
 /** Selects media compatible with the requested archive format. */
 export function mediaExportSelection(items: readonly ImageItem[], format: string): ImageItem[] {
-  return items.filter(item => {
-    const kind = item.kind ?? "image";
-    if (format === "original") return true;
-    if (format === "gif") return kind === "gif";
-    if (format === "mp4") return kind === "video";
-    return kind === "image";
-  });
+  const kind = exportFormatMediaKind(format);
+  return items.filter(item => kind === "all" || (item.kind ?? "image") === kind);
 }
 
 export function hasStillImages(items: readonly ImageItem[]): boolean {

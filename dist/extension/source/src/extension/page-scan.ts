@@ -48,26 +48,133 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   if (targetPostId && ![...document.querySelectorAll('article[data-testid="tweet"], dialog, [role="dialog"]')].some(inTargetPost)) {
     throw new Error("Xの投稿を読み取れませんでした。");
   }
+  type MediaKind = "image" | "gif" | "video";
+  type CandidateEvidence = {
+    image?: {position: Element | undefined};
+    media: boolean;
+  };
   type CandidateRecord = {
     url: string;
-    detectionOrder: number;
-    sources: Map<Element, Element | undefined>;
-    foundOutsideElements: boolean;
+    sources: Map<Element | undefined, CandidateEvidence>;
+    imageOrder?: number;
+    media?: {kind: MediaKind; order: number};
   };
-  type MediaKind = "image" | "gif" | "video";
-  type MediaCandidateRecord = {
-    url: string;
-    kind: MediaKind;
-    detectionOrder: number;
-    sources: Set<Element>;
-    foundOutsideElements: boolean;
-  };
-  const candidates = new Map<string, CandidateRecord>();
-  const mediaCandidates = new Map<string, MediaCandidateRecord>();
-  const elementUrls = new Map<Element, Set<string>>();
-    const elementMediaUrls = new Map<Element, Set<string>>();
-  let nextDetectionOrder = 0;
-  let nextMediaDetectionOrder = 0;
+  // One record owns a URL's evidence. The element index points to those same
+  // evidence objects so replacement and removal update both output views together.
+  const registry = (() => {
+    const records = new Map<string, CandidateRecord>();
+    const elements = new Map<Element, Map<string, CandidateEvidence>>();
+    let nextImageOrder = 0;
+    let nextMediaOrder = 0;
+
+    const evidenceFor = (url: string, source: Element | undefined): {record: CandidateRecord; evidence: CandidateEvidence} => {
+      let record = records.get(url);
+      if (!record) {
+        record = {url, sources: new Map()};
+        records.set(url, record);
+      }
+      let sourceEvidence = source ? elements.get(source) : undefined;
+      if (source && !sourceEvidence) {
+        sourceEvidence = new Map();
+        elements.set(source, sourceEvidence);
+      }
+      let evidence = source ? sourceEvidence!.get(url) : record.sources.get(undefined);
+      if (!evidence) {
+        evidence = {media: false};
+        sourceEvidence?.set(url, evidence);
+        record.sources.set(source, evidence);
+      }
+      return {record, evidence};
+    };
+
+    const prune = (record: CandidateRecord, previous: CandidateEvidence, current?: CandidateEvidence): void => {
+      // Search only for evidence this source lost. Re-reading a shared URL
+      // without changing its roles must not scan all its other sources again.
+      let hasImage = !previous.image || Boolean(current?.image) || record.imageOrder === undefined;
+      let hasMedia = !previous.media || Boolean(current?.media) || record.media === undefined;
+      if (hasImage && hasMedia) return;
+      for (const evidence of record.sources.values()) {
+        checkDeadline();
+        hasImage ||= Boolean(evidence.image);
+        hasMedia ||= evidence.media;
+        if (hasImage && hasMedia) return;
+      }
+      if (!hasImage) delete record.imageOrder;
+      if (!hasMedia) delete record.media;
+      if (record.imageOrder === undefined && !record.media) records.delete(record.url);
+    };
+
+    const removeElement = (element: Element): void => {
+      for (const [url, evidence] of elements.get(element) ?? []) {
+        checkDeadline();
+        const record = records.get(url);
+        if (!record) continue;
+        record.sources.delete(element);
+        prune(record, evidence);
+      }
+      elements.delete(element);
+    };
+
+    return {
+      recordImage(url: string, position: Element | undefined, source: Element | undefined): void {
+        const {record, evidence} = evidenceFor(url, source);
+        record.imageOrder ??= nextImageOrder++;
+        evidence.image = {position};
+      },
+      recordMedia(url: string, kind: MediaKind, source: Element | undefined): void {
+        const {record, evidence} = evidenceFor(url, source);
+        if (!record.media) record.media = {kind, order: nextMediaOrder++};
+        // Preserve the strongest observed kind until the last media source goes away.
+        else if (kind === "gif" || (record.media.kind === "image" && kind === "video")) record.media.kind = kind;
+        evidence.media = true;
+      },
+      beginElement(element: Element): () => void {
+        const previous = elements.get(element);
+        const current = new Map<string, CandidateEvidence>();
+        elements.set(element, current);
+        return () => {
+          for (const [url, evidence] of previous ?? []) {
+            checkDeadline();
+            const record = records.get(url);
+            if (!record) continue;
+            if (!current.has(url)) record.sources.delete(element);
+            prune(record, evidence, current.get(url));
+          }
+          if (current.size === 0) elements.delete(element);
+        };
+      },
+      removeElement,
+      retainElements(keep: (element: Element) => boolean): void {
+        for (const element of elements.keys()) {
+          checkDeadline();
+          if (!keep(element)) removeElement(element);
+        }
+      },
+      images(): Array<{url: string; detectionOrder: number; positions: Element[]}> {
+        const images: Array<{url: string; detectionOrder: number; positions: Element[]}> = [];
+        for (const record of records.values()) {
+          checkDeadline();
+          if (record.imageOrder === undefined) continue;
+          const positions: Element[] = [];
+          for (const evidence of record.sources.values()) {
+            checkDeadline();
+            if (evidence.image?.position) positions.push(evidence.image.position);
+          }
+          images.push({url: record.url, detectionOrder: record.imageOrder, positions});
+        }
+        return images;
+      },
+      media(): Array<{url: string; kind: MediaKind}> {
+        const media: Array<{url: string; kind: MediaKind; order: number}> = [];
+        for (const record of records.values()) {
+          checkDeadline();
+          if (record.media) media.push({url: record.url, ...record.media});
+        }
+        return media.sort((a, b) => { checkDeadline(); return a.order - b.order; })
+          .map(({url, kind}) => ({url, kind}));
+      },
+    };
+  })();
   const imageAttributes = [
     "data-original",
     "data-full",
@@ -117,25 +224,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     } catch {
       return;
     }
-    let record = mediaCandidates.get(url);
-    if (!record) {
-      record = {url, kind, detectionOrder: nextMediaDetectionOrder++, sources: new Set(), foundOutsideElements: false};
-      mediaCandidates.set(url, record);
-    } else if (kind === "gif" || (record.kind === "image" && kind === "video")) {
-      // A known GIF remains a GIF even if the same URL also appears in a video element.
-      record.kind = kind;
-    }
-    if (sourceElement) {
-      record.sources.add(sourceElement);
-      let urls = elementMediaUrls.get(sourceElement);
-      if (!urls) {
-        urls = new Set();
-        elementMediaUrls.set(sourceElement, urls);
-      }
-      urls.add(url);
-    } else {
-      record.foundOutsideElements = true;
-    }
+    registry.recordMedia(url, kind, sourceElement);
   };
 
   const recordDirectVideo = (
@@ -289,8 +378,6 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     try {
       const url = new URL(candidate, document.baseURI || location.href).href;
       recordCandidate(url, positionElement, sourceElement);
-      const mediaKind = mediaKindForUrl(url);
-      if (mediaKind === "gif") recordMedia(url, mediaKind, sourceElement);
     } catch {
       // Keep malformed values for the core normalizer to reject consistently.
       recordCandidate(candidate, positionElement, sourceElement);
@@ -298,17 +385,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   };
 
   const recordCandidate = (url: string, positionElement?: Element, sourceElement?: Element): void => {
-    let record = candidates.get(url);
-    if (!record) {
-      record = {url, detectionOrder: nextDetectionOrder++, sources: new Map(), foundOutsideElements: false};
-      candidates.set(url, record);
-    }
-    if (sourceElement) {
-      record.sources.set(sourceElement, positionElement);
-      elementUrls.get(sourceElement)?.add(url);
-    } else {
-      record.foundOutsideElements = true;
-    }
+    registry.recordImage(url, positionElement, sourceElement);
     recordMedia(url, mediaKindForUrl(url) ?? "image", sourceElement);
   };
 
@@ -480,10 +557,10 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
       return result;
     };
 
-    const ordered = [...candidates.values()]
+    const ordered = registry.images()
       .map(record => ({
         record,
-        position: [...record.sources.values()].filter((element): element is Element => Boolean(element))
+        position: record.positions
           .map(positioned).filter((value): value is {top: number; left: number; order: number} => Boolean(value))
           .sort((a, b) => { checkDeadline(); return a.top - b.top || a.left - b.left || a.order - b.order; })[0],
       }))
@@ -516,12 +593,9 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   const collectElement = (element: Element): void => {
     checkDeadline();
     if (!inTargetPost(element)) return;
-    const previousUrls = elementUrls.get(element);
-    const previousMediaUrls = elementMediaUrls.get(element);
-    elementUrls.set(element, new Set());
-    elementMediaUrls.set(element, new Set());
     const tagName = element.tagName.toLowerCase();
     if (targetPostId && (tagName === "script" || tagName === "style")) return;
+    const finishElement = registry.beginElement(element);
     const declaredSourceType = tagName === "source" ? element.getAttribute("type") : null;
     const sourceUrl = tagName === "source"
       ? element.getAttribute("src") || (element as HTMLSourceElement).src
@@ -600,18 +674,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
       scanText(attribute.value, textPositionElement, element);
     }
     scanBackground(element);
-    for (const url of previousUrls ?? []) {
-      if (elementUrls.get(element)?.has(url)) continue;
-      const record = candidates.get(url);
-      record?.sources.delete(element);
-      if (record && record.sources.size === 0 && !record.foundOutsideElements) candidates.delete(url);
-    }
-    for (const url of previousMediaUrls ?? []) {
-      if (elementMediaUrls.get(element)?.has(url)) continue;
-      const record = mediaCandidates.get(url);
-      record?.sources.delete(element);
-      if (record && record.sources.size === 0 && !record.foundOutsideElements) mediaCandidates.delete(url);
-    }
+    finishElement();
   };
 
   const yieldToPage = async (): Promise<void> => {
@@ -661,18 +724,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
           for (const node of tree) {
             checkDeadline();
             if (isInPageTree(node)) continue;
-            for (const url of elementUrls.get(node) ?? []) {
-              const record = candidates.get(url);
-              record?.sources.delete(node);
-              if (record && record.sources.size === 0 && !record.foundOutsideElements) candidates.delete(url);
-            }
-            for (const url of elementMediaUrls.get(node) ?? []) {
-              const record = mediaCandidates.get(url);
-              record?.sources.delete(node);
-              if (record && record.sources.size === 0 && !record.foundOutsideElements) mediaCandidates.delete(url);
-            }
-            elementUrls.delete(node);
-            elementMediaUrls.delete(node);
+            registry.removeElement(node);
           }
         }
         const batch = [...pendingElements];
@@ -832,22 +884,11 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   }
   if (targetPostId) {
     // A node can be moved into another post during the short observation window.
-    for (const [url, record] of candidates) {
-      checkDeadline();
-      for (const source of record.sources.keys()) if (!inTargetPost(source)) record.sources.delete(source);
-      if (record.sources.size === 0 && !record.foundOutsideElements) candidates.delete(url);
-    }
-    for (const [url, record] of mediaCandidates) {
-      checkDeadline();
-      for (const source of record.sources) if (!inTargetPost(source)) record.sources.delete(source);
-      if (record.sources.size === 0 && !record.foundOutsideElements) mediaCandidates.delete(url);
-    }
+    registry.retainElements(inTargetPost);
   }
   const images = orderedImages();
   checkDeadline();
-  const media = [...mediaCandidates.values()]
-    .sort((a, b) => a.detectionOrder - b.detectionOrder)
-    .map(({url, kind}) => ({url, kind}));
+  const media = registry.media();
   checkDeadline();
   return {url: location.href, title: document.title, images, ...(media.length > 0 ? {media} : {})};
 }

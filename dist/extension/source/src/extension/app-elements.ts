@@ -1,3 +1,5 @@
+import { exportFormats } from "../core/export-formats.js";
+
 function required<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
   if (!element) throw new Error(`Missing element: ${selector}`);
@@ -14,14 +16,7 @@ export function queryAppElements() {
     scanButton: required<HTMLButtonElement>("#scan"),
     exportButton: required<HTMLButtonElement>("#export"),
     exportMediaHint: required<HTMLParagraphElement>("#export-media-hint"),
-    exportFormatInputs: [
-      {format: "mp4" as const, input: required<HTMLInputElement>("#export-format-mp4")},
-      {format: "gif" as const, input: required<HTMLInputElement>("#export-format-gif")},
-      {format: "pdf" as const, input: required<HTMLInputElement>("#export-format-pdf")},
-      {format: "jpg" as const, input: required<HTMLInputElement>("#export-format-jpg")},
-      {format: "png" as const, input: required<HTMLInputElement>("#export-format-png")},
-      {format: "jxl" as const, input: required<HTMLInputElement>("#export-format-jxl")},
-    ],
+    exportFormatInputs: exportFormats.map(format => ({format, input: required<HTMLInputElement>(`#export-format-${format}`)})),
     sourcePageOption: required<HTMLLabelElement>(".source-page-option"),
     includeSourcePage: required<HTMLInputElement>("#include-source-page"),
     viewerToggleButton: required<HTMLButtonElement>("#viewer-toggle"),
@@ -55,3 +50,5 @@ export function queryAppElements() {
     statusElement: required<HTMLParagraphElement>("#status"),
   };
 }
+
+export type AppElements = ReturnType<typeof queryAppElements>;

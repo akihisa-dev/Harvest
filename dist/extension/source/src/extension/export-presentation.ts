@@ -1,9 +1,17 @@
 import type { ImageItem } from "../core/images.js";
 import { createSourcePageLayout } from "../core/pdf.js";
-import type { PendingImageExport } from "./image-export-controller.js";
-import type { ImageArchiveFormat } from "./image-format.js";
-import type { PendingPdfExport } from "./pdf-export-controller.js";
-import type { ExportFormat } from "./export-preferences.js";
+import type { ExportFormat, ImageArchiveFormat } from "../core/export-formats.js";
+import { selectionsMatch } from "./export-lifecycle.js";
+
+/** The display only needs failures and selection, never prepared image data. */
+export interface PendingExportView {
+  readonly selected: readonly ImageItem[];
+  readonly failed: ReadonlyMap<ImageItem, string>;
+}
+
+export interface PendingImageExportView extends PendingExportView {
+  readonly format: ImageArchiveFormat;
+}
 
 export interface CompletedExport {
   readonly format: ExportFormat;
@@ -14,8 +22,8 @@ export interface CompletedExport {
 export type ExportViewState =
   | {readonly phase: "empty"; readonly pending: null; readonly progress: ""}
   | {readonly phase: "ready"; readonly pending: null; readonly progress: ""}
-  | {readonly phase: "running"; readonly pending: PendingPdfExport | PendingImageExport | null; readonly progress: string}
-  | {readonly phase: "retry-required"; readonly pending: PendingPdfExport | PendingImageExport; readonly progress: ""}
+  | {readonly phase: "running"; readonly pending: PendingExportView | null; readonly progress: string}
+  | {readonly phase: "retry-required"; readonly pending: PendingExportView; readonly progress: ""}
   | {readonly phase: "saved"; readonly pending: null; readonly progress: ""};
 
 export function imageFilename(url: string): string {
@@ -52,8 +60,8 @@ export function deriveExportViewState(options: {
   readonly includeSourcePage: boolean;
   readonly selected: readonly ImageItem[];
   readonly completed: CompletedExport | null;
-  readonly pdfPending: PendingPdfExport | null;
-  readonly imagePending: PendingImageExport | null;
+  readonly pdfPending: PendingExportView | null;
+  readonly imagePending: PendingImageExportView | null;
   readonly pdfRunning: boolean;
   readonly imageRunning: boolean;
   readonly pdfProgress: string;
@@ -68,8 +76,7 @@ export function deriveExportViewState(options: {
   if (pending?.failed.size) return {phase: "retry-required", pending, progress: ""};
   const saved = options.completed?.format === options.format
     && (options.format !== "pdf" || options.completed.includeSourcePage === options.includeSourcePage)
-    && options.completed.selected.length === options.selected.length
-    && options.completed.selected.every((item, index) => item === options.selected[index]);
+    && selectionsMatch(options.completed.selected, options.selected);
   if (saved) return {phase: "saved", pending: null, progress: ""};
   return options.selected.length
     ? {phase: "ready", pending: null, progress: ""}

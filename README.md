@@ -60,7 +60,7 @@ pnpm verify:full
 
 Chrome APIに依存しない画像の選択・順序、ZIPの組み立てとPDFの組み立ては `src/core/`、画面操作とブラウザーへの接続・画像形式の変換は `src/extension/` に置きます。
 
-画像の通信と時間制限は `image-fetch.ts`、PDF向けの画素処理は `image-decode.ts` と `pdf-image.ts`、画像形式への変換と再試行は `image-format.ts` と `image-export-controller.ts` が担当します。JXLエンコーダーとApache-2.0のライセンスを配布物に同梱します。既存のPDF作成関数と画像準備関数の呼び出し方は維持します。担当の境界は [共通処理](src/core/README.md) と [画面・ブラウザー接続](src/extension/README.md) を参照してください。
+画像・動画の通信と時間制限は `response-fetch.ts`、取得内容の検査は `image-fetch.ts` と `media-fetch.ts`、PDF向けの画素処理は `image-decode.ts` と `pdf-image.ts`、画像形式への変換と再試行は `image-format.ts` と `image-export-controller.ts` が担当します。JXLエンコーダーとApache-2.0のライセンスを配布物に同梱します。既存のPDF作成関数と画像準備関数の呼び出し方は維持します。担当の境界は [共通処理](src/core/README.md) と [画面・ブラウザー接続](src/extension/README.md) を参照してください。
 
 ビルドはコンパイル済みモジュールをまとめて配置し、`check:build` で各モジュールの参照先が配布物内に存在することを確認します。
 

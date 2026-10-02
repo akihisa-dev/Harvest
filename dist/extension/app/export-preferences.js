@@ -1,8 +1,6 @@
+import { isExportFormat } from "../core/export-formats.js";
 const sourcePagePreferenceKey = "harvest.includeSourcePage";
 const exportFormatPreferenceKey = "harvest.exportFormat";
-function isExportFormat(value) {
-    return value === "mp4" || value === "gif" || value === "pdf" || value === "jpg" || value === "png" || value === "jxl";
-}
 export function loadExportPreferences(storage = localStorage) {
     try {
         const storedFormat = storage.getItem(exportFormatPreferenceKey);
