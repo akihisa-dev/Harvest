@@ -15,6 +15,60 @@ class PreviewImage {
   removeAttribute(name) { this.attributes.delete(name); }
 }
 
+for (const reuseQueued of [false, true]) {
+  test(`画面外の待機を飛ばして${reuseQueued ? "既存" : "新規"}のビューアー対象を優先し、再表示で再開する`, async t => {
+    let observer;
+    t.mock.method(globalThis, "fetch", (url, options) => new Promise((resolve, reject) => {
+      requests.push({url, resolve: () => resolve(new Response(new Uint8Array([1]), {headers:{"content-type":"image/png"}}))});
+      options.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), {once:true});
+    }));
+    const previous = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver = class {
+      constructor(callback) { observer = this; this.callback = callback; }
+      observe() {} unobserve() {}
+      show(image, visible) { this.callback([{target:image, isIntersecting:visible}]); }
+    };
+    t.after(() => { if (previous === undefined) delete globalThis.IntersectionObserver; else globalThis.IntersectionObserver = previous; });
+    const requests = [];
+    const loader = createImagePreviewLoader();
+    t.after(() => loader.clear());
+    const images = Array.from({length:8}, () => new PreviewImage());
+    const items = images.map((_, i) => ({url:`https://cdn.example/queued-${i}.png`, sourcePage:"https://reader.example/book", selected:true}));
+    images.forEach((image, i) => { loader.set(image, items[i]); observer.show(image, true); });
+    assert.equal(requests.length, 3);
+    images.forEach(image => observer.show(image, false));
+    // One ordinary visible preview is still needed, but the viewer comes first.
+    observer.show(images[3], true);
+    const viewer = new PreviewImage();
+    const viewerItem = reuseQueued ? items[7] : {...items[7], url:"https://cdn.example/new-viewer.png"};
+    loader.set(viewer, viewerItem, true);
+    requests[0].resolve();
+    await waitFor(() => requests.length === 4);
+    assert.equal(requests[3].url, viewerItem.url);
+    assert.equal(requests.length, 4, "空いた1枠だけを使う");
+    requests[3].resolve();
+    await waitFor(() => requests.length === 5);
+    assert.equal(requests[4].url, items[3].url);
+    requests.slice(1, 3).forEach(request => request.resolve());
+    requests[4].resolve();
+    await waitFor(() => images[3].src.startsWith("blob:"));
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(requests.length, 5, "画面外の待機項目を取得しない");
+    observer.show(images[4], true);
+    await waitFor(() => requests.length === 6);
+    assert.equal(requests[5].url, items[4].url);
+    requests[5].resolve();
+    await waitFor(() => images[4].src.startsWith("blob:"));
+    if (reuseQueued) {
+      observer.show(images[7], true);
+      assert.equal(images[7].src, viewer.src);
+      loader.clearImage(viewer);
+      assert.ok(images[7].src.startsWith("blob:"));
+    }
+    assert.equal(requests.filter(({url}) => url === viewerItem.url).length, 1);
+  });
+}
+
 test("一覧とビュアーは共有した認証方針でプレビューを取得し、使い終わったURLを解放する", async t => {
   const previousFetch = globalThis.fetch;
   const previousObserver = globalThis.IntersectionObserver;

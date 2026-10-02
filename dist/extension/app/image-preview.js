@@ -75,9 +75,11 @@ export function createImagePreviewLoader() {
     }
     function pumpQueue() {
         while (activeFetches < maximumConcurrentFetches && queue.length) {
-            const entry = queue.shift();
+            // Read live bindings so an already queued viewer image is promoted too.
+            const eagerIndex = queue.findIndex(candidate => [...candidate.elements].some(image => bindings.get(image)?.eager));
+            const entry = queue.splice(eagerIndex < 0 ? 0 : eagerIndex, 1)[0];
             entry.queued = false;
-            if (entries.get(entry.key) !== entry || !entry.elements.size)
+            if (entries.get(entry.key) !== entry || !entry.elements.size || (observer && !isPinned(entry)))
                 continue;
             entry.started = true;
             activeFetches += 1;
