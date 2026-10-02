@@ -68,6 +68,9 @@ try {
     if (file === "jxl-codec.js") {
       await copyFile(source, destination);
       await rewriteJxlAdapter(destination);
+    } else if (file === "mp4-codec.js") {
+      const code = await readFile(source, "utf8");
+      await writeFile(destination, code.replace('from "harvest-vendor-mediabunny"', 'from "./vendor/mediabunny/index.js"'));
     } else {
       await copyFile(source, destination);
     }
@@ -78,6 +81,10 @@ try {
   const wasmDetectPackage = join(dirname(dirname(jxlRealPath)), "wasm-feature-detect");
   const wasmDetectVendor = join(stage, "app", "vendor", "wasm-feature-detect");
   await copyJxlVendor({jxlPackage, jxlVendor, wasmDetectPackage, wasmDetectVendor});
+  const mediaVendor = join(stage, "app", "vendor", "mediabunny");
+  await mkdir(mediaVendor, {recursive: true});
+  await copyFile(join(root, "node_modules", "mediabunny", "dist", "bundles", "mediabunny.min.mjs"), join(mediaVendor, "index.js"));
+  await copyFile(join(root, "node_modules", "mediabunny", "LICENSE"), join(mediaVendor, "LICENSE"));
   await trimVendorJavaScript(join(stage, "app", "vendor"));
   await cp(join(stage, ".compiled", "core"), join(stage, "core"), { recursive: true });
   await copyFile(join(root, "app", "index.html"), join(stage, "app", "index.html"));

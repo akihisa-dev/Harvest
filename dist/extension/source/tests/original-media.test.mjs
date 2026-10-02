@@ -194,7 +194,7 @@ test("ZIP extensions follow recognized MIME types and reject unknown or mismatch
   assert.throws(() => createImageZipEntries([gif], new Map([[gif, new Blob(["mp4"], {type: "video/mp4"})]]), "original"), /形式が一致しません/);
 });
 
-test("MP4 export records a WebM response as a retryable preparation failure", async () => {
+test("MP4 export retains an unconvertible WebM as a retryable failure without creating an archive", async () => {
   const item = {url: "https://example.test/wrong.mp4", sourcePage: "https://example.test", selected: true, kind: "video"};
   const webm = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 1, 2, 3, 4]);
   const archives = [];
@@ -214,7 +214,7 @@ test("MP4 export records a WebM response as a retryable preparation failure", as
   await controller.export("mp4");
   assert.equal(archives.length, 0);
   assert.equal(controller.pending?.failed.has(item), true);
-  assert.match(controller.pending?.failed.get(item) ?? "", /形式が一致しません/);
+  assert.match(controller.pending?.failed.get(item) ?? "", /MP4へ変換できません/);
 });
 
 test.after(() => {

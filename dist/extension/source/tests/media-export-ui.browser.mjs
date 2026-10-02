@@ -8,6 +8,7 @@ import {chromium} from 'playwright';
 let png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j+ioAAAAASUVORK5CYII=', 'base64');
 const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
 const mp4 = Buffer.from([0,0,0,24,102,116,121,112,105,115,111,109,0,0,0,0,105,115,111,109,109,112,52,49]);
+let webm;
 
 test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存する', async () => {
   const root = resolve('dist/extension');
@@ -17,6 +18,7 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
       if (!path.startsWith(root + sep)) throw new Error();
       const mime = {'.html':'text/html','.css':'text/css','.js':'text/javascript','.svg':'image/svg+xml','.json':'application/json'};
       res.setHeader('content-type', mime[extname(path)] ?? 'application/octet-stream');
+      if (extname(path) === '.html') res.setHeader('content-security-policy', "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'");
       res.end(await readFile(path));
     } catch {res.writeHead(404).end();}
   });
@@ -35,14 +37,34 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     await context.route('https://files.example.test/**', route => {
       const url = route.request().url();
       const isGif = url.endsWith('.gif') || url.includes('/gif-query?');
-      const body = isGif ? gif : url.endsWith('.mp4') ? mp4 : png;
-      const contentType = isGif ? 'image/gif' : url.endsWith('.mp4') ? 'video/mp4' : 'image/png';
+      const body = isGif ? gif : url.endsWith('.mp4') ? mp4 : url.endsWith('.webm') ? webm : png;
+      const contentType = isGif ? 'image/gif' : url.endsWith('.mp4') ? 'video/mp4' : url.endsWith('.webm') ? 'video/webm' : 'image/png';
       return route.fulfill({status:200,contentType,body,headers:{'access-control-allow-origin':'*'}});
     });
     const page = await context.newPage();
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
     await page.setViewportSize({width:768,height:600});
     await page.goto(`http://127.0.0.1:${server.address().port}/app/index.html`);
+    webm = Buffer.from(await page.evaluate(async () => {
+      const {Output,WebMOutputFormat,BufferTarget,CanvasSource,AudioBufferSource} = await import('./vendor/mediabunny/index.js');
+      const target = new BufferTarget();
+      const output = new Output({format:new WebMOutputFormat(),target});
+      const canvas = new OffscreenCanvas(320,240);
+      canvas.getContext('2d').fillStyle = 'red';canvas.getContext('2d').fillRect(0,0,320,240);
+      const video = new CanvasSource(canvas,{codec:'vp8',bitrate:1_000_000});
+      const audio = new AudioBufferSource({codec:'opus',bitrate:128_000});
+      output.addVideoTrack(video);output.addAudioTrack(audio);
+      await output.start();
+      const buffer = new AudioBuffer({length:48000,numberOfChannels:1,sampleRate:48000});
+      const samples = buffer.getChannelData(0);
+      for (let i=0;i<samples.length;i++) samples[i]=0.2*Math.sin(i*2*Math.PI*440/48000);
+      await Promise.all([
+        (async()=>{for(let i=0;i<10;i++) await video.add(i/10,0.1);video.close();})(),
+        audio.add(buffer).then(()=>audio.close()),
+      ]);
+      await output.finalize();
+      return Array.from(new Uint8Array(target.buffer));
+    }));
     png = Buffer.from(await page.evaluate(() => {
       const canvas=document.createElement('canvas');canvas.width=640;canvas.height=960;
       canvas.getContext('2d').fillRect(0,0,640,960);
@@ -116,6 +138,56 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     assert.equal(await page.locator('#export-format-gif').isVisible(),false);
     assert.equal(await page.locator('#images .item-resolution').isVisible(),false,'動画の代替画像を動画の解像度として表示しない');
     assert.match(await page.locator('#export').textContent(),/MP4/);
+    const webmUrl='https://files.example.test/movie.webm';
+    const failures=await page.evaluate(async bytes=>{
+      const {prepareMp4}=await import('./mp4-conversion.js');
+      const attempt=async(blob,limit)=>{
+        try {await prepareMp4(blob,undefined,limit);return 'unexpected success';}
+        catch(error){return error.message;}
+      };
+      const original=new Uint8Array(bytes);
+      const unsupported=original.slice();
+      const marker=new TextEncoder().encode('A_OPUS');
+      const offset=unsupported.findIndex((_,i)=>marker.every((v,j)=>unsupported[i+j]===v));
+      if(offset<0) throw new Error('audio codec marker missing');
+      unsupported.set(new TextEncoder().encode('A_NOPE'),offset);
+      return {
+        limit:await attempt(new Blob([original],{type:'video/webm'}),1),
+        corrupt:await attempt(new Blob([original.slice(0,8)],{type:'video/webm'})),
+        audio:await attempt(new Blob([unsupported],{type:'video/webm'})),
+      };
+    },Array.from(webm));
+    assert.match(failures.limit,/上限/);
+    assert.match(failures.corrupt,/MP4へ変換できません/);
+    assert.match(failures.audio,/映像または音声をMP4へ変換できません/);
+    const inspectMp4 = bytes => page.evaluate(async values => {
+      const {Input,BlobSource,MP4,VideoSampleSink,AudioSampleSink} = await import('./vendor/mediabunny/index.js');
+      const input = new Input({formats:[MP4],source:new BlobSource(new Blob([new Uint8Array(values)]))});
+      try {
+        const video=await input.getPrimaryVideoTrack(),audio=await input.getPrimaryAudioTrack();
+        const frame=await new VideoSampleSink(video).getSample(0);
+        const sound=await new AudioSampleSink(audio).getSample(0);
+        try {
+          const canvas=new OffscreenCanvas(320,240),ctx=canvas.getContext('2d');
+          frame.draw(ctx,0,0);
+          return {video:await video.getCodec(),audio:await audio.getCodec(),width:await video.getDisplayWidth(),height:await video.getDisplayHeight(),duration:await input.computeDuration(),red:ctx.getImageData(0,0,1,1).data[0],audioFrames:sound.numberOfFrames};
+        } finally {frame?.close();sound?.close();}
+      } finally {input.dispose();}
+    },Array.from(bytes));
+    for (const urls of [[webmUrl],[movie,webmUrl]]) {
+      await scan([],urls.map(url=>({url,kind:'video'})));
+      await page.locator('#all-selection').check();
+      assert.equal(await page.locator('#export-format-mp4').isChecked(),true);
+      assert.match(await page.locator('#export-media-hint').textContent(),/WebMは変換/);
+      const entries=await save('mp4');
+      assert.deepEqual(entries.map(entry=>entry.name),urls.map((_,i)=>`${String(i+1).padStart(3,'0')}.mp4`));
+      if(urls.includes(movie)) assert.deepEqual(entries[0].data,mp4);
+      const info=await inspectMp4(entries.at(-1).data);
+      assert.equal(info.video,'avc');assert.equal(info.audio,'aac');
+      assert.equal(info.width,320);assert.equal(info.height,240);
+      assert.ok(info.duration>=0.95 && info.duration<1.1,JSON.stringify(info));
+      assert.ok(info.red>200);assert.ok(info.audioFrames>0);
+    }
     await scan([animation],[{url:animation,kind:'gif'}]);
     assert.equal(await page.locator('#export-format-gif').isChecked(),true);
     assert.equal(await page.locator('#export-format-mp4').isVisible(),false);

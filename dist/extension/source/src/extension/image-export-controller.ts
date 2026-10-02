@@ -3,6 +3,7 @@ import { storedZipDataLimit } from "../core/stored-zip.js";
 import { createStoredZipInWorker } from "./stored-zip-worker.js";
 import { fetchImage } from "./image-fetch.js";
 import { fetchOriginalMedia, originalMediaExtension } from "./media-fetch.js";
+import { prepareMp4 } from "./mp4-conversion.js";
 import { convertImage, type ImageArchiveFormat } from "./image-format.js";
 import type { FetchedImage } from "./image-data-contract.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
@@ -246,9 +247,10 @@ export function createImageExportController(options: ImageExportControllerOption
               const item = remaining[index]!;
               try {
                 if (!outcome.ok) throw outcome.error;
-                const blob = isOriginalMedia
+                let blob = isOriginalMedia
                   ? outcome.fetched as Blob
                   : await convertImage(outcome.fetched as FetchedImage, format, run.signal);
+                if (format === "mp4") blob = await prepareMp4(blob, run.signal, dataLimit - preparedSize);
                 if (run.stopped) return;
                 validatePreparedMedia(item, blob, format);
                 if (blob.size > dataLimit - preparedSize) throw new ImageArchiveLimitError();

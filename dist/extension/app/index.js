@@ -162,7 +162,10 @@ function render() {
     const hasGif = imageCollection.items.some(item => item.kind === "gif");
     const hasMedia = hasVideo || hasGif;
     exportMediaHint.hidden = !hasMedia;
-    exportMediaHint.textContent = excludedCount ? t("mediaExcludedHint", { count: excludedCount, format: selectedExportFormat.toUpperCase() }) : "";
+    exportMediaHint.textContent = [
+        selectedExportFormat === "mp4" && hasVideo ? t("videoConversionHint") : "",
+        excludedCount ? t("mediaExcludedHint", { count: excludedCount, format: selectedExportFormat.toUpperCase() }) : "",
+    ].filter(Boolean).join(" ");
     if (!exportMediaHint.textContent)
         exportMediaHint.hidden = true;
     for (const { format, input } of exportFormatInputs) {
