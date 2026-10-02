@@ -3,6 +3,50 @@ import {readFile} from "node:fs/promises";
 import test from "node:test";
 import {chromium} from "playwright";
 
+test("初回走査中・待機中に既存ホストへ追加されたRootを発見し、削除・closedを除く", async () => {
+  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const browser = await chromium.launch({channel:"chrome", headless:true});
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<div id="before"></div><div id="during"></div><div id="waiting"></div><div id="removed"></div><div id="closed"></div>');
+    const result = await page.evaluate(async source => {
+      const moduleUrl = URL.createObjectURL(new Blob([source], {type:"text/javascript"}));
+      const {scanDocument} = await import(moduleUrl);
+      URL.revokeObjectURL(moduleUrl);
+      document.body.append(...Array.from({length:300}, () => document.createElement("div")));
+      const observations = new Map();
+      const OriginalObserver = window.MutationObserver;
+      window.MutationObserver = class extends OriginalObserver {
+        observe(target, options) {
+          observations.set(target, (observations.get(target) ?? 0) + 1);
+          super.observe(target, options);
+        }
+      };
+      const attach = (id, mode = "open") => {
+        const shadow = document.getElementById(id).attachShadow({mode});
+        const image = document.createElement("img");
+        image.dataset.src = `https://cdn.example.test/${id}.jpg`;
+        shadow.append(image);
+        return shadow;
+      };
+      attach("before"); attach("removed"); attach("closed", "closed");
+      setTimeout(() => attach("during"), 0);
+      const scan = scanDocument();
+      setTimeout(() => {
+        const shadow = attach("waiting");
+        const nestedHost = document.createElement("div");
+        shadow.append(nestedHost);
+        nestedHost.attachShadow({mode:"open"}).append(document.createTextNode("https://cdn.example.test/nested.gif"));
+        document.getElementById("removed").remove();
+      }, 20);
+      const result = await scan;
+      return {result, counts:[...observations.values()]};
+    }, source);
+    assert.deepEqual([...result.result.images].sort(), ["before.jpg", "during.jpg", "waiting.jpg", "nested.gif"].map(name => `https://cdn.example.test/${name}`).sort());
+    assert.ok(result.counts.every(count => count === 1), "同じRootの監視登録を重ねない");
+  } finally { await browser.close(); }
+});
+
 test("本文・script・styleとShadow DOMのText更新を所有要素へ反映する", async () => {
   const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});

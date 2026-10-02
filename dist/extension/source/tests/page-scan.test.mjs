@@ -447,6 +447,7 @@ test("open Shadow DOMの短時間内の追加・変更・削除を監視する",
   const lateImage = new FixtureElement("img", {src: `${base}late.jpg`});
   let observerCallback;
   let observedTargets = [];
+  let changed = false;
   class ShadowMutationObserver extends EmptyMutationObserver {
     constructor(callback) { super(); observerCallback = callback; }
     observe(target) { observedTargets.push(target); }
@@ -454,7 +455,9 @@ test("open Shadow DOMの短時間内の追加・変更・削除を監視する",
 
   const result = await runWithFixture(new FixtureDocument(root), ShadowMutationObserver, () => {
     globalThis.setTimeout = (callback, delay) => {
-      if (delay === 800) {
+      if (delay === 800) return 0;
+      if (delay === 250 && !changed) {
+        changed = true;
         changedImage.attributesMap.set("src", `${base}changed.jpg`);
         changedImage.src = `${base}changed.jpg`;
         shadowRoot.children = shadowRoot.children.filter(child => child !== removedImage);

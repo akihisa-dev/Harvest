@@ -916,7 +916,8 @@ export async function scanDocument(targetPostId) {
             if (shadowRoot) {
                 if (observeRoots && !observedShadowRoots.has(shadowRoot)) {
                     observedShadowRoots.add(shadowRoot);
-                    observer?.observe(shadowRoot, { childList: true, subtree: true, attributes: true, characterData: true });
+                    if (!settled)
+                        observer?.observe(shadowRoot, { childList: true, subtree: true, attributes: true, characterData: true });
                 }
                 // Visit ordinary children first to preserve their existing document
                 // order, then include the host's open shadow tree.
@@ -925,6 +926,24 @@ export async function scanDocument(targetPostId) {
             pushChildren(element);
         }
         return elements;
+    };
+    const discoverShadowRoots = async () => {
+        let discovered;
+        do {
+            discovered = false;
+            for (const element of pageElements(root, false)) {
+                const shadow = element.shadowRoot;
+                if (!shadow || observedShadowRoots.has(shadow))
+                    continue;
+                // Register the whole new subtree once, including nested roots. A root
+                // attached to an existing host does not emit a light-DOM mutation.
+                pageElements(element, true);
+                pendingElements.add(element);
+                discovered = true;
+            }
+            if (discovered)
+                await flushPending();
+        } while (discovered);
     };
     try {
         checkDeadline();
@@ -936,6 +955,7 @@ export async function scanDocument(targetPostId) {
                 await yieldToPage();
         }
         await flushPending();
+        await discoverShadowRoots();
         checkDeadline();
         if (waitPromise && !settled) {
             quietStarted = true;
@@ -944,6 +964,8 @@ export async function scanDocument(targetPostId) {
         await waitPromise;
         checkDeadline();
         await flushPending();
+        await discoverShadowRoots();
+        registry.retainElements(isInPageTree);
         checkDeadline();
     }
     finally {
