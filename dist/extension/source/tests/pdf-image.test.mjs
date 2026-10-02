@@ -1,3 +1,4 @@
+import {baselineJpeg, exifJpeg} from "./jpeg-fixtures.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {deflateSync} from "node:zlib";
@@ -260,12 +261,7 @@ test("画素変換後の圧縮中に中止すると、完了を待たずに画�
 
 test("対応するJFIF JPEGは取得したバイト列と寸法をそのまま使う", async () => {
   const previous = { fetch: globalThis.fetch, createImageBitmap: globalThis.createImageBitmap };
-  const jpeg = new Uint8Array([
-    0xff, 0xd8,
-    0xff, 0xe0, 0x00, 0x0e, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x02, 0x00, 0x00, 0x01, 0x00, 0x01,
-    0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x02, 0x00, 0x03, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
-    0xff, 0xda, 0x00, 0x08, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x00, 0xff, 0xd9,
-  ]);
+  const jpeg = baselineJpeg;
   let decoded = 0;
   const responseBuffer = jpeg.buffer;
   globalThis.fetch = async () => ({
@@ -283,7 +279,7 @@ test("対応するJFIF JPEGは取得したバイト列と寸法をそのまま�
     assert.strictEqual(page.jpeg.buffer, responseBuffer, "JPEG reuses the response buffer");
     assert.equal(page.width, 3);
     assert.equal(page.height, 2);
-    assert.equal(decoded, 0);
+    assert.equal(decoded, 1, "JPEG is decoded once to validate it without re-encoding");
   } finally {
     Object.assign(globalThis, previous);
   }
@@ -291,13 +287,7 @@ test("対応するJFIF JPEGは取得したバイト列と寸法をそのまま�
 
 test("EXIF付きJPEGはPDF用には画素へ変換し、JPG保存用の元データは保持する", async () => {
   const previous = {fetch: globalThis.fetch, document: globalThis.document, createImageBitmap: globalThis.createImageBitmap};
-  const jpeg = new Uint8Array([
-    0xff, 0xd8,
-    0xff, 0xe0, 0x00, 0x07, 0x4a, 0x46, 0x49, 0x46, 0x00,
-    0xff, 0xe1, 0x00, 0x08, 0x45, 0x78, 0x69, 0x66, 0x00, 0x00,
-    0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x01, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
-    0xff, 0xda, 0x00, 0x08, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x00, 0xff, 0xd9,
-  ]);
+  const jpeg = exifJpeg;
   let closed = 0;
   globalThis.fetch = async () => new Response(jpeg, {headers: {"content-type": "image/jpeg"}});
   globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() { closed += 1; }});
@@ -554,12 +544,7 @@ test("取得は少数並列、画素変換は逐次、結果は入力順で通�
 
 test("先頭画像が遅れても後続JPEGを並列数以上に蓄積せず、順序と無変換を保つ", async () => {
   const previous = {fetch: globalThis.fetch, createImageBitmap: globalThis.createImageBitmap};
-  const jpeg = new Uint8Array([
-    0xff, 0xd8,
-    0xff, 0xe0, 0x00, 0x0e, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x02, 0x00, 0x00, 0x01, 0x00, 0x01,
-    0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x02, 0x00, 0x03, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
-    0xff, 0xda, 0x00, 0x08, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x00, 0xff, 0xd9,
-  ]);
+  const jpeg = baselineJpeg;
   let releaseHead;
   const headResponse = new Promise(resolve => { releaseHead = resolve; });
   let releaseLaterRequests;
@@ -596,7 +581,7 @@ test("先頭画像が遅れても後続JPEGを並列数以上に蓄積せず、�
   };
   globalThis.createImageBitmap = async () => {
     decodes += 1;
-    throw new Error("JPEG must not be decoded");
+    return {width: 3, height: 2, close() {}};
   };
 
   let work;
@@ -620,7 +605,7 @@ test("先頭画像が遅れても後続JPEGを並列数以上に蓄積せず、�
     assert.deepEqual(results.map(([url]) => url), items.map(({url}) => url));
     assert.equal(results.every(([, result]) => !(result instanceof PdfImageError)), true);
     assert.equal(results.every(([, result]) => result.jpeg && Buffer.from(result.jpeg).equals(Buffer.from(jpeg))), true);
-    assert.equal(decodes, 0);
+    assert.equal(decodes, items.length, "each JPEG is checked once and its original bytes are retained");
   } finally {
     releaseHead();
     await work?.catch(() => {});

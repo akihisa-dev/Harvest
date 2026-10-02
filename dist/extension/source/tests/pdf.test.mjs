@@ -1,3 +1,4 @@
+import {baselineJpeg, exifJpeg} from "./jpeg-fixtures.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {deflateSync} from "node:zlib";
@@ -352,20 +353,12 @@ test("embeds mixed JPEG and Flate RGB streams without changing payload bytes", (
 });
 
 test("extracts intrinsic dimensions only for supported JFIF RGB JPEGs", () => {
-  const jpeg = new Uint8Array([
-    0xff, 0xd8,
-    0xff, 0xe0, 0x00, 0x0e, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x02, 0x00, 0x00, 0x01, 0x00, 0x01,
-    0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x02, 0x00, 0x03, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
-    0xff, 0xda, 0x00, 0x08, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x00, 0xff, 0xd9,
-  ]);
+  const jpeg = baselineJpeg;
   assert.deepEqual(getOriginalJpegPage(jpeg), { jpeg, width: 3, height: 2 });
   assert.equal(getOriginalJpegPage(new Uint8Array([0xff, 0xd8, 0xff, 0xd9])), null);
-  assert.equal(getOriginalJpegPage(new Uint8Array([...jpeg.slice(0, 18), 0xff, 0xee, 0x00, 0x02])), null);
-  assert.equal(getOriginalJpegPage(new Uint8Array([...jpeg.slice(0, 18), 0xff, 0xe1, 0x00, 0x02, ...jpeg.slice(18)])), null);
-  assert.deepEqual(
-    getOriginalJpegPage(new Uint8Array([...jpeg.slice(0, 18), 0xff, 0xc4, 0x00, 0x02, ...jpeg.slice(18)])),
-    { jpeg: new Uint8Array([...jpeg.slice(0, 18), 0xff, 0xc4, 0x00, 0x02, ...jpeg.slice(18)]), width: 3, height: 2 },
-  );
+  assert.equal(getOriginalJpegPage(exifJpeg), null);
+  assert.equal(getOriginalJpegPage(new Uint8Array([...jpeg.slice(0, 20), 0xff, 0xee, 0, 2, ...jpeg.slice(20)])), null);
+  assert.equal(getOriginalJpegPage(new Uint8Array([...jpeg.slice(0, 20), 0xff, 0xc4, 0, 2, ...jpeg.slice(20)])), null);
 });
 
 test("rejects missing, empty, or ambiguous image payloads", () => {

@@ -1,4 +1,4 @@
-import { getOriginalJpegPage } from "../core/jpeg.js";
+import { inspectJpegStructure } from "../core/jpeg.js";
 import { getImageDimensions } from "../core/image-dimensions.js";
 import {
   checkCancelled,
@@ -160,18 +160,33 @@ export async function fetchImage(url: string, options: ImageDataOptions): Promis
         throw invalidImage("画像データではありません。");
       }
 
-      // Keep one response buffer for JPEG detection and direct PDF embedding.
-      // Only formats requiring pixel decoding need a Blob afterward.
+      // Keep the response bytes for direct embedding after structural and decoder validation.
       const bytes = await readImageBytes(response);
-      const headerDimensions = getImageDimensions(bytes);
-      const original = getOriginalJpegPage(bytes);
-      const dimensions = headerDimensions ?? (original ? {width: original.width, height: original.height} : null);
+      const dimensions = getImageDimensions(bytes);
       if (dimensions) {
         const dimensionsError = imageDimensionsError(dimensions.width, dimensions.height);
         if (dimensionsError) throw invalidImage(dimensionsError);
       }
-      if (original) {
-        return { kind: "original", page: original };
+      const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8;
+      const jpeg = isJpeg ? inspectJpegStructure(bytes) : null;
+      if (isJpeg && !jpeg) throw invalidImage("画像を読み込めませんでした。形式が対応していないか、データが壊れています。");
+      if (jpeg?.canEmbed) {
+        let bitmap: ImageBitmap;
+        try {
+          bitmap = await createImageBitmap(new Blob([bytes.buffer as ArrayBuffer], {type: "image/jpeg"}));
+        } catch {
+          checkCancelled(sourceSignal);
+          throw invalidImage("画像を読み込めませんでした。形式が対応していないか、データが壊れています。");
+        }
+        try {
+          checkCancelled(controller.signal);
+          const dimensionsError = imageDimensionsError(bitmap.width, bitmap.height);
+          if (dimensionsError) throw invalidImage(dimensionsError);
+          if (bitmap.width !== jpeg.width || bitmap.height !== jpeg.height) throw invalidImage("画像の大きさが不正です。");
+        } finally {
+          bitmap.close();
+        }
+        return {kind: "original", page: {jpeg: bytes, width: jpeg.width, height: jpeg.height}};
       }
       // PDF embedding has stricter JPEG requirements than saving a JPEG file.
       // Preserve other JPEGs so JPG export can validate and reuse their bytes.
