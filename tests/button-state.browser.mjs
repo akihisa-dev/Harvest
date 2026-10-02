@@ -33,6 +33,30 @@ test('ボタンのラベルと処理中表示、チェックと中間状態は�
     const mid=await page.locator('#export .button-label').evaluate(e=>Number(getComputedStyle(e).opacity));
     assert.ok(mid>0 && mid<1);
     const connected=await page.locator('#export').evaluate(e=>{window.setButtonLabel(e,'保存完了');return e.textContent;});assert.equal(connected,'保存完了');
+    for(const time of [0,5,20,50]) {
+      const interrupted=await page.evaluate(time=>{
+        const button=document.createElement('button');document.body.append(button);
+        window.setButtonLabel(button,'A');window.setButtonLabel(button,'B');
+        const animations=button.getAnimations({subtree:true});
+        animations.forEach(animation=>{animation.pause();animation.currentTime=time;});
+        const previous=button.querySelector('.button-label-previous'),current=button.querySelector('.button-label');
+        const before=[Number(getComputedStyle(previous).opacity),Number(getComputedStyle(current).opacity)];
+        for(const text of ['C','D','E']) window.setButtonLabel(button,text);
+        const after=[Number(getComputedStyle(previous).opacity),Number(getComputedStyle(current).opacity)];
+        const result={before,after,outgoing:previous.dataset.label,current:button.textContent,layers:button.children.length,animations:button.getAnimations({subtree:true}).length};
+        animations.forEach(animation=>animation.finish());window.lastInterrupted=button;
+        return result;
+      },time);
+      assert.deepEqual(interrupted.before,interrupted.after);
+      assert.equal(interrupted.outgoing,'A');assert.equal(interrupted.current,'E');
+      assert.equal(interrupted.layers,2);assert.equal(interrupted.animations,2);
+      const completed=await page.evaluate(()=>{
+        const button=window.lastInterrupted,current=button.querySelector('.button-label');
+        const result={text:button.textContent,opacity:getComputedStyle(current).opacity,old:button.querySelector('.button-label-previous').dataset.label};
+        button.remove();return result;
+      });
+      assert.deepEqual(completed,{text:'E',opacity:'1',old:undefined});
+    }
     await page.locator('#check').evaluate(e=>{e.checked=true;});await page.waitForTimeout(260);
     await page.locator('#check').evaluate(e=>{e.indeterminate=true;getComputedStyle(e,'::before').opacity;getComputedStyle(e,'::after').opacity;e.getAnimations({subtree:true}).forEach(a=>{a.pause();a.currentTime=50;});});
     const marks=await page.locator('#check').evaluate(e=>[Number(getComputedStyle(e,'::before').opacity),Number(getComputedStyle(e,'::after').opacity)]);

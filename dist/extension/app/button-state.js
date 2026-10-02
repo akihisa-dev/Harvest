@@ -20,22 +20,34 @@ export function setButtonLabel(button, text) {
         labels.set(button, label);
         return;
     }
-    if (label.text === text)
+    const reduced = prefersReducedMotion();
+    if (label.text === text && !reduced)
         return;
-    const style = getComputedStyle(label.current);
-    const interrupted = label.animations.some(animation => animation.playState === "running");
-    const opacity = Number(style.opacity);
-    const transform = style.transform;
-    label.animations.forEach(animation => animation.cancel());
-    label.previous.dataset["label"] = label.text;
+    const previousText = label.text;
     label.current.textContent = text;
     label.text = text;
-    label.animations = [];
-    if (prefersReducedMotion())
+    if (reduced) {
+        label.animations.forEach(animation => animation.cancel());
+        label.animations = [];
+        delete label.previous.dataset["label"];
         return;
+    }
+    // An incoming label can change immediately without restarting its fade.
+    // Keep the visible outgoing layer until the existing transition completes.
+    if (label.animations.some(animation => animation.playState === "running" || animation.playState === "paused"))
+        return;
+    label.previous.dataset["label"] = previousText;
     const options = { duration: 180, easing: "cubic-bezier(.22,1,.36,1)" };
-    label.animations = [
-        label.previous.animate([{ opacity, transform }, { opacity: 0, transform: "translateY(-5px) scale(.94)" }], options),
-        label.current.animate([{ opacity: interrupted ? opacity : 0, transform: interrupted ? transform : "translateY(5px) scale(1.04)" }, { opacity: 1, transform: "none" }], options),
+    const animations = [
+        label.previous.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(-5px) scale(.94)" }], options),
+        label.current.animate([{ opacity: 0, transform: "translateY(5px) scale(1.04)" }, { opacity: 1, transform: "none" }], options),
     ];
+    label.animations = animations;
+    const activeLabel = label;
+    void Promise.all(animations.map(animation => animation.finished)).then(() => {
+        if (activeLabel.animations !== animations)
+            return;
+        activeLabel.animations = [];
+        delete activeLabel.previous.dataset["label"];
+    }).catch(() => { });
 }
