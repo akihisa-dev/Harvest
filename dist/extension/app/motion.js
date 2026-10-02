@@ -20,7 +20,7 @@ function startMotion(element, frames, options) {
     };
     void animation.finished.then(clearFinishedMotion, clearFinishedMotion);
 }
-function fadeRemoved(element, rect, options) {
+function fadeRemoved(element, rect, opacity, options) {
     if (prefersReducedMotion() || typeof element.cloneNode !== "function" || !rect.width || !rect.height)
         return;
     const ghost = element.cloneNode(true);
@@ -38,7 +38,7 @@ function fadeRemoved(element, rect, options) {
     shell.inert = true;
     shell.append(ghost);
     document.body.append(shell);
-    const animation = ghost.animate([{ opacity: 1 }, { opacity: 0 }], { ...defaultMotion, ...options });
+    const animation = ghost.animate([{ opacity }, { opacity: 0 }], { ...defaultMotion, ...options });
     void animation.finished.then(() => shell.remove(), () => shell.remove());
 }
 /** Reuses keyed children and animates their layout movement without replaying entry motion. */
@@ -75,7 +75,7 @@ export function reconcileKeyedChildren(parent, items, keyOf, create, update, opt
     });
     for (const [key, element] of existing) {
         if (!next.has(key) && animateLayout)
-            fadeRemoved(element, before.get(key), motion);
+            fadeRemoved(element, before.get(key), opacity.get(key) ?? 1, motion);
     }
     const nextChildren = [...next.values()];
     const currentChildren = Array.from(parent.children);
