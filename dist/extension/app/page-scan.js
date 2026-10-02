@@ -742,6 +742,7 @@ export async function scanDocument(targetPostId) {
     const chunkSize = 250;
     const observedShadowRoots = new Set();
     const pendingElements = new Set();
+    const pendingTextElements = new Set();
     const pendingRemovedElements = new Set();
     let pendingFlushPromise;
     let observer;
@@ -774,7 +775,7 @@ export async function scanDocument(targetPostId) {
         if (pendingFlushPromise)
             return pendingFlushPromise;
         const run = async () => {
-            while (pendingElements.size > 0 || pendingRemovedElements.size > 0) {
+            while (pendingElements.size > 0 || pendingTextElements.size > 0 || pendingRemovedElements.size > 0) {
                 const removed = [...pendingRemovedElements];
                 pendingRemovedElements.clear();
                 for (const element of removed) {
@@ -785,6 +786,15 @@ export async function scanDocument(targetPostId) {
                             continue;
                         registry.removeElement(node);
                     }
+                }
+                const textBatch = [...pendingTextElements];
+                pendingTextElements.clear();
+                for (let index = 0; index < textBatch.length; index += 1) {
+                    const element = textBatch[index];
+                    if (isInPageTree(element))
+                        collectElement(element);
+                    if ((index + 1) % chunkSize === 0)
+                        await yieldToPage();
                 }
                 const batch = [...pendingElements];
                 pendingElements.clear();
@@ -809,6 +819,17 @@ export async function scanDocument(targetPostId) {
         for (const mutation of mutations) {
             if (performance.now() >= deadline)
                 return false;
+            const queueTextOwner = (node) => {
+                const owner = node.nodeType === 1 ? node
+                    : node.nodeType === 11 && "host" in node ? node.host
+                        : node.parentElement ?? (node.parentNode && "host" in node.parentNode ? node.parentNode.host : null);
+                if (owner)
+                    pendingTextElements.add(owner);
+            };
+            if (mutation.type === "characterData") {
+                queueTextOwner(mutation.target);
+                continue;
+            }
             if (mutation.type === "attributes") {
                 if (mutation.target.nodeType === 1)
                     pendingElements.add(mutation.target);
@@ -819,12 +840,16 @@ export async function scanDocument(targetPostId) {
                     return false;
                 if (node.nodeType === 1)
                     pendingElements.add(node);
+                else if (node.nodeType === 3)
+                    queueTextOwner(mutation.target);
             }
             for (const node of Array.from(mutation.removedNodes ?? [])) {
                 if (performance.now() >= deadline)
                     return false;
                 if (node.nodeType === 1)
                     pendingRemovedElements.add(node);
+                else if (node.nodeType === 3)
+                    queueTextOwner(mutation.target);
             }
         }
         return true;
@@ -852,6 +877,7 @@ export async function scanDocument(targetPostId) {
             childList: true,
             subtree: true,
             attributes: true,
+            characterData: true,
         });
         maxTimer = setTimeout(finish, maxWaitMs);
     }
@@ -890,7 +916,7 @@ export async function scanDocument(targetPostId) {
             if (shadowRoot) {
                 if (observeRoots && !observedShadowRoots.has(shadowRoot)) {
                     observedShadowRoots.add(shadowRoot);
-                    observer?.observe(shadowRoot, { childList: true, subtree: true, attributes: true });
+                    observer?.observe(shadowRoot, { childList: true, subtree: true, attributes: true, characterData: true });
                 }
                 // Visit ordinary children first to preserve their existing document
                 // order, then include the host's open shadow tree.

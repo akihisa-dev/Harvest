@@ -3,6 +3,51 @@ import {readFile} from "node:fs/promises";
 import test from "node:test";
 import {chromium} from "playwright";
 
+test("本文・script・styleとShadow DOMのText更新を所有要素へ反映する", async () => {
+  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const browser = await chromium.launch({channel: "chrome", headless: true});
+  try {
+    const page = await browser.newPage();
+    await page.route("**/*", route => route.abort());
+    await page.setContent('<main></main><div id="host"></div>');
+    const result = await page.evaluate(async source => {
+      const moduleUrl = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));
+      const {scanDocument} = await import(moduleUrl);
+      URL.revokeObjectURL(moduleUrl);
+      const roots = [document.querySelector("main"), document.querySelector("#host").attachShadow({mode: "open"})];
+      const changes = [];
+      roots.forEach((root, index) => {
+        for (const [tag, method] of [["p", "data"], ["p", "nodeValue"], ["script", "textContent"], ["style", "data"], ["p", "remove"], ["p", "append"]]) {
+          const element = document.createElement(tag);
+          if (tag === "script") element.type = "application/json";
+          const url = name => `https://cdn.example.test/${index}/${tag}-${method}-${name}.gif`;
+          const content = name => tag === "style" ? `.absent {background: url("${url(name)}")}` : url(name);
+          element.textContent = method === "append" ? "" : content("old");
+          root.append(element);
+          changes.push(() => {
+            if (method === "textContent") element.textContent = content("new");
+            else if (method === "append") element.append(document.createTextNode(content("new")));
+            else if (method === "remove") element.firstChild.remove();
+            else element.firstChild[method] = content("new");
+          });
+        }
+        const shared = document.createElement("p");
+        shared.textContent = `https://cdn.example.test/${index}/p-data-old.gif`;
+        root.append(shared);
+        const direct = document.createTextNode(`https://cdn.example.test/${index}/root-old.jpg`);
+        root.append(direct);
+        changes.push(() => { direct.data = `https://cdn.example.test/${index}/root-new.jpg`; });
+      });
+      const scan = scanDocument();
+      setTimeout(() => changes.forEach(change => change()), 20);
+      return scan;
+    }, source);
+    const expected = [0, 1].flatMap(index => ["p-data-new.gif", "p-data-old.gif", "p-nodeValue-new.gif", "script-textContent-new.gif", "style-data-new.gif", "p-append-new.gif", "root-new.jpg"].map(name => `https://cdn.example.test/${index}/${name}`));
+    assert.deepEqual([...result.images].sort(), [...expected].sort());
+    assert.deepEqual(result.media.map(({url}) => url).sort(), [...expected].sort());
+  } finally { await browser.close(); }
+});
+
 test("本文候補は属性更新で失われず、追加・削除と共有する根拠を反映する", async () => {
   const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});

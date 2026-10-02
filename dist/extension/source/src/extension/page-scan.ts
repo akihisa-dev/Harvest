@@ -697,6 +697,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   const chunkSize = 250;
   const observedShadowRoots = new Set<ShadowRoot>();
   const pendingElements = new Set<Element>();
+  const pendingTextElements = new Set<Element>();
   const pendingRemovedElements = new Set<Element>();
   let pendingFlushPromise: Promise<void> | undefined;
   let observer: MutationObserver | undefined;
@@ -726,7 +727,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   const flushPending = (): Promise<void> => {
     if (pendingFlushPromise) return pendingFlushPromise;
     const run = async (): Promise<void> => {
-      while (pendingElements.size > 0 || pendingRemovedElements.size > 0) {
+      while (pendingElements.size > 0 || pendingTextElements.size > 0 || pendingRemovedElements.size > 0) {
         const removed = [...pendingRemovedElements];
         pendingRemovedElements.clear();
         for (const element of removed) {
@@ -736,6 +737,13 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
             if (isInPageTree(node)) continue;
             registry.removeElement(node);
           }
+        }
+        const textBatch = [...pendingTextElements];
+        pendingTextElements.clear();
+        for (let index = 0; index < textBatch.length; index += 1) {
+          const element = textBatch[index]!;
+          if (isInPageTree(element)) collectElement(element);
+          if ((index + 1) % chunkSize === 0) await yieldToPage();
         }
         const batch = [...pendingElements];
         pendingElements.clear();
@@ -757,6 +765,16 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   const queueMutationElements = (mutations: readonly MutationRecord[]): boolean => {
     for (const mutation of mutations) {
       if (performance.now() >= deadline) return false;
+      const queueTextOwner = (node: Node): void => {
+        const owner = node.nodeType === 1 ? node as Element
+          : node.nodeType === 11 && "host" in node ? (node as ShadowRoot).host
+          : node.parentElement ?? (node.parentNode && "host" in node.parentNode ? (node.parentNode as ShadowRoot).host : null);
+        if (owner) pendingTextElements.add(owner);
+      };
+      if (mutation.type === "characterData") {
+        queueTextOwner(mutation.target);
+        continue;
+      }
       if (mutation.type === "attributes") {
         if (mutation.target.nodeType === 1) pendingElements.add(mutation.target as Element);
         continue;
@@ -764,10 +782,12 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
       for (const node of Array.from(mutation.addedNodes)) {
         if (performance.now() >= deadline) return false;
         if (node.nodeType === 1) pendingElements.add(node as Element);
+        else if (node.nodeType === 3) queueTextOwner(mutation.target);
       }
       for (const node of Array.from(mutation.removedNodes ?? [])) {
         if (performance.now() >= deadline) return false;
         if (node.nodeType === 1) pendingRemovedElements.add(node as Element);
+        else if (node.nodeType === 3) queueTextOwner(mutation.target);
       }
     }
     return true;
@@ -796,6 +816,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
       childList: true,
       subtree: true,
       attributes: true,
+      characterData: true,
     });
     maxTimer = setTimeout(finish, maxWaitMs);
   }
@@ -834,7 +855,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
       if (shadowRoot) {
         if (observeRoots && !observedShadowRoots.has(shadowRoot)) {
           observedShadowRoots.add(shadowRoot);
-          observer?.observe(shadowRoot, {childList: true, subtree: true, attributes: true});
+          observer?.observe(shadowRoot, {childList: true, subtree: true, attributes: true, characterData: true});
         }
         // Visit ordinary children first to preserve their existing document
         // order, then include the host's open shadow tree.
