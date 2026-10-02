@@ -50,6 +50,7 @@ export function scanXMedia(targetPostId) {
     const maxDepth = 36;
     let visitedNodes = 0;
     const resultByUrl = new Map();
+    const bitrateByUrl = new Map();
     const timedOut = () => performance.now() >= deadline || visitedNodes >= maxNodes;
     const dataValue = (value, key) => {
         try {
@@ -95,6 +96,7 @@ export function scanXMedia(targetPostId) {
         if (!Array.isArray(variants))
             return false;
         let best;
+        const variantUrls = new Set();
         const variantCount = dataValue(variants, "length");
         if (typeof variantCount !== "number")
             return false;
@@ -119,14 +121,25 @@ export function scanXMedia(targetPostId) {
             }
             if (!isMp4)
                 continue;
+            variantUrls.add(url);
             const rawBitrate = dataValue(variant, "bitrate");
             const bitrate = typeof rawBitrate === "number" && Number.isFinite(rawBitrate) ? rawBitrate : 0;
+            bitrateByUrl.set(url, Math.max(bitrate, bitrateByUrl.get(url) ?? 0));
             if (!best || bitrate > best.bitrate)
                 best = { url, bitrate };
         }
         if (!best)
             return false;
+        const source = dataValue(mediaObject, "source");
+        for (const raw of [dataValue(mediaObject, "src"), typeof source === "object" && source !== null ? dataValue(source, "src") : undefined]) {
+            const url = httpUrl(raw);
+            if (url && isMp4Url(url, undefined))
+                variantUrls.add(url);
+        }
+        variantUrls.delete(best.url);
         const candidate = { url: best.url, kind: "video" };
+        if (variantUrls.size)
+            candidate.variantUrls = [...variantUrls];
         for (const key of ["media_url_https", "media_url", "thumbnail_url", "preview_image_url", "poster"]) {
             const preview = previewUrl(dataValue(mediaObject, key));
             if (preview) {
@@ -135,8 +148,11 @@ export function scanXMedia(targetPostId) {
             }
         }
         const existing = resultByUrl.get(candidate.url);
-        if (!existing || (!existing.previewUrl && candidate.previewUrl))
-            resultByUrl.set(candidate.url, candidate);
+        if (existing?.variantUrls)
+            candidate.variantUrls = [...new Set([...existing.variantUrls, ...variantUrls])];
+        if (!candidate.previewUrl && existing?.previewUrl)
+            candidate.previewUrl = existing.previewUrl;
+        resultByUrl.set(candidate.url, candidate);
         return true;
     };
     const isMp4Url = (url, rawContentType) => {
@@ -163,8 +179,9 @@ export function scanXMedia(targetPostId) {
             }
         }
         const existing = resultByUrl.get(candidate.url);
-        if (!existing || (!existing.previewUrl && candidate.previewUrl))
-            resultByUrl.set(candidate.url, candidate);
+        if (!existing || (!existing.previewUrl && candidate.previewUrl)) {
+            resultByUrl.set(candidate.url, { ...existing, ...candidate });
+        }
         return true;
     };
     const addDirectVideoSource = (rawUrl, owner) => {
@@ -289,9 +306,9 @@ export function scanXMedia(targetPostId) {
         if (requireIdentity)
             return inspectTweetProps(props, true);
         let foundVideo = addAttachedMedia(props, true);
-        if (addDirectVideoSource(dataValue(props, "src"), props))
-            foundVideo = true;
         if (!foundVideo && inspectTweetProps(props))
+            foundVideo = true;
+        if (!foundVideo && addDirectVideoSource(dataValue(props, "src"), props))
             foundVideo = true;
         return foundVideo;
     };
@@ -401,5 +418,42 @@ export function scanXMedia(targetPostId) {
             }
         }
     }
-    return [...resultByUrl.values()];
+    // Reconcile overlapping variant sets seen on different DOM/React owners.
+    // Only explicit playback relationships join groups, never URL filenames.
+    const parents = new Map();
+    const representative = (url) => {
+        const path = [];
+        while (parents.has(url)) {
+            path.push(url);
+            url = parents.get(url);
+        }
+        for (const child of path)
+            parents.set(child, url);
+        return url;
+    };
+    for (const candidate of resultByUrl.values()) {
+        for (const alternative of candidate.variantUrls ?? []) {
+            const from = representative(alternative), to = representative(candidate.url);
+            if (from !== to)
+                parents.set(from, to);
+        }
+    }
+    const groups = new Map();
+    for (const candidate of resultByUrl.values()) {
+        const key = representative(candidate.url);
+        let group = groups.get(key);
+        if (!group) {
+            group = { best: candidate, urls: new Set() };
+            groups.set(key, group);
+        }
+        group.urls.add(candidate.url);
+        for (const alternative of candidate.variantUrls ?? [])
+            group.urls.add(alternative);
+        if ((bitrateByUrl.get(candidate.url) ?? -1) > (bitrateByUrl.get(group.best.url) ?? -1))
+            group.best = candidate;
+    }
+    return [...groups.values()].map(({ best, urls }) => {
+        urls.delete(best.url);
+        return { ...best, ...(urls.size ? { variantUrls: [...urls] } : {}) };
+    });
 }

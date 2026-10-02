@@ -125,6 +125,20 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     const videos=await save('mp4');
     assert.deepEqual(videos.map(e=>e.name),['001.mp4']);
     assert.deepEqual(videos[0].data,mp4);
+    // The same merge used by scanTab must produce one archive entry per video.
+    const preferredMovie='https://files.example.test/high/movie.mp4';
+    const separateMovie='https://files.example.test/other/movie.mp4';
+    const merged=await page.evaluate(async ({movie,preferredMovie,separateMovie}) => {
+      const {mergeMediaCandidates}=await import('../core/media-selection.js');
+      return mergeMediaCandidates([{url:movie,kind:'video'},{url:separateMovie,kind:'video'}],
+        [{url:preferredMovie,kind:'video',variantUrls:[movie]}]);
+    }, {movie,preferredMovie,separateMovie});
+    await scan([],merged);
+    assert.deepEqual(await groups.allTextContents(),['MP4\n(2件)']);
+    const uniqueVideos=await save('mp4');
+    assert.deepEqual(uniqueVideos.map(entry=>entry.name),['001.mp4','002.mp4']);
+    await scan([photo,animation],[{url:animation,kind:'gif'},{url:movie,kind:'video'}]);
+    await page.locator('#all-selection').check();
     const gifs=await save('gif');
     assert.deepEqual(gifs.map(e=>e.name),['001.gif']);
     assert.deepEqual(gifs[0].data,gif);

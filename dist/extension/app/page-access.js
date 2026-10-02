@@ -1,4 +1,5 @@
 import { waitForXPage } from "./x-page-state.js";
+import { mergeMediaCandidates } from "../core/media-selection.js";
 import { scanXMedia } from "./x-media-scan.js";
 import { scanDocument } from "./page-scan.js";
 const timeoutMs = 20000;
@@ -77,7 +78,7 @@ export async function scanTab(tabId, signal, requestedUrl) {
             void chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: scanXMedia, args: targetPostId ? [targetPostId] : [] })
                 .then(([injection]) => resolve(injection?.result ?? []), () => reject(new Error("Xの動画情報を読み取れませんでした。")));
         }, signal);
-        result.media = [...(result.media ?? []), ...extra];
+        result.media = mergeMediaCandidates(result.media ?? [], extra);
         const isProfileImage = (url) => {
             try {
                 return /\/profile_(?:images|banners)\//i.test(new URL(url).pathname);

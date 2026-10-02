@@ -1,5 +1,6 @@
 import { waitForXPage, type XPageState } from "./x-page-state.js";
-import { scanXMedia } from "./x-media-scan.js";
+import { mergeMediaCandidates } from "../core/media-selection.js";
+import { scanXMedia, type XMediaCandidate } from "./x-media-scan.js";
 import { scanDocument, type PageScan } from "./page-scan.js";
 
 const timeoutMs = 20000;
@@ -65,11 +66,11 @@ export async function scanTab(tabId: number, signal?: AbortSignal, requestedUrl?
             () => reject(new Error("Xの投稿を読み取れませんでした。")));
       }, signal);
     }
-    const extra = await bounded<NonNullable<PageScan["media"]>>((resolve, reject) => {
+    const extra = await bounded<XMediaCandidate[]>((resolve, reject) => {
       void chrome.scripting.executeScript({target: {tabId}, world: "MAIN", func: scanXMedia, args: targetPostId ? [targetPostId] : []})
         .then(([injection]) => resolve(injection?.result ?? []), () => reject(new Error("Xの動画情報を読み取れませんでした。")));
     }, signal);
-    result.media = [...(result.media ?? []), ...extra];
+    result.media = mergeMediaCandidates(result.media ?? [], extra);
     const isProfileImage = (url: string): boolean => {
       try { return /\/profile_(?:images|banners)\//i.test(new URL(url).pathname); }
       catch { return false; }

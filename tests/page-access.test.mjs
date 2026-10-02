@@ -215,3 +215,19 @@ test("Xの対象投稿の解析失敗では確定済みの画像集合を置き�
   assert.equal(controller.state, "results");
   assert.match(messages.at(-1), /削除|表示できません/);
 });
+
+
+test("DOMの低画質URLを既知のvariantだけで置き換え、別動画と画像は残す", async t => {
+  const url = "https://x.com/example/status/123/video/1";
+  fixture(t, {get:async () => ({url})});
+  const low = "https://video.twimg.com/one/low/clip.mp4", high = "https://video.twimg.com/one/high/clip.mp4";
+  const other = "https://video.twimg.com/two/high/clip.mp4", photo = "https://images.test/photo.jpg";
+  chrome.scripting.executeScript = async ({func}) => {
+    if (func.name === "waitForXPage") return [{result:{status:"ready"}}];
+    if (func.name === "scanXMedia") return [{result:[{url:high, kind:"video", variantUrls:[low], previewUrl:photo}]}];
+    return [{result:{url, title:"post", images:[photo], media:[{url:low,kind:"video"},{url:other,kind:"video"},{url:photo,kind:"image"}]}}];
+  };
+  const result = await scanTab(8, undefined, url);
+  assert.deepEqual(result.media, [{url:other,kind:"video"},{url:photo,kind:"image"},{url:high,kind:"video",previewUrl:photo}]);
+  assert.deepEqual(result.images, [photo]);
+});

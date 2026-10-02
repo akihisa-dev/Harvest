@@ -50,6 +50,7 @@ test("X記事のページ内Reactデータから各video_infoの最高bitrate MP
   assert.deepEqual(await runOnPage("x.com", [article]), [
     {
       url: "https://video.twimg.com/high.mp4",
+      variantUrls: ["https://video.twimg.com/low.mp4"],
       kind: "video",
       previewUrl: "https://pbs.twimg.com/media/preview.jpg?format=jpg&name=small",
     },
@@ -102,6 +103,7 @@ test("articleがない動画プレイヤーのprops.media.variantsから最高bi
   assert.deepEqual(await runOnPage("x.com", [], scanXMedia, [{element: player, selectors: ['[data-testid="videoPlayer"]']}], "/status/person/123/video/1"), [
     {
       url: "https://video.twimg.com/player-high.mp4",
+      variantUrls: ["https://video.twimg.com/player-low.mp4"],
       kind: "video",
       previewUrl: "https://pbs.twimg.com/media/player-preview.jpg?format=jpg",
     },
@@ -179,4 +181,31 @@ test("深く入れ子になった配列は深さ上限で打ち切る", async ()
   const article = {};
   Object.defineProperty(article, "__reactProps$test", {value: {mediaDetails: media}});
   assert.deepEqual(await runOnPage("x.com", [article]), []);
+});
+
+
+test("同じプレイヤーのsrcとvariantは最高画質へ統合し、別動画と直接srcの代用を保つ", async () => {
+  const low = "https://video.twimg.com/one/low/clip.mp4", high = "https://video.twimg.com/one/high/clip.mp4";
+  const other = "https://video.twimg.com/two/high/clip.mp4";
+  const player = {__reactProps$player: {src:low, video_info:{variants:[
+    {url:low, content_type:"video/mp4", bitrate:1}, {url:high, content_type:"video/mp4", bitrate:10},
+  ]}}};
+  const direct = {__reactProps$direct:{src:low}};
+  const second = {__reactProps$second:{src:other}};
+  const candidates = await runOnPage("x.com", [], scanXMedia, [direct, player, second].map(element => ({element, selectors:['[data-testid="videoPlayer"]']})));
+  assert.deepEqual(candidates, [{url:high, kind:"video", variantUrls:[low]}, {url:other, kind:"video"}]);
+  assert.deepEqual(await runOnPage("x.com", [], scanXMedia, [{element:direct, selectors:['[data-testid="videoPlayer"]']}]), [{url:low, kind:"video"}]);
+});
+
+
+test("複数の再生情報にまたがる同一動画の画質関係を保持し、サムネイル追加で失わない", async () => {
+  const low = "https://video.twimg.com/low.mp4", medium = "https://video.twimg.com/medium.mp4", high = "https://video.twimg.com/high.mp4";
+  const player = variants => ({__reactProps$player:{video_info:{variants:variants.map(([url,bitrate]) => ({url,bitrate,content_type:"video/mp4"}))}}});
+  const elements = [player([[low,1],[medium,2]]), player([[medium,2],[high,3]]),
+    {__reactProps$source:{source:{src:high},poster:"https://pbs.twimg.com/preview.jpg"}}];
+  const candidates = await runOnPage("x.com", [], scanXMedia, elements.map(element => ({element,selectors:['[data-testid="videoPlayer"]']})));
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].url, high);
+  assert.deepEqual(candidates[0].variantUrls.sort(), [low, medium].sort());
+  assert.equal(candidates[0].previewUrl, "https://pbs.twimg.com/preview.jpg");
 });

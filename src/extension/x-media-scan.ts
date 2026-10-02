@@ -2,6 +2,7 @@ export interface XMediaCandidate {
   url: string;
   kind: "video";
   previewUrl?: string;
+  variantUrls?: string[];
 }
 
 /**
@@ -48,6 +49,7 @@ export function scanXMedia(targetPostId?: string): XMediaCandidate[] {
   const maxDepth = 36;
   let visitedNodes = 0;
   const resultByUrl = new Map<string, XMediaCandidate>();
+  const bitrateByUrl = new Map<string, number>();
 
   const timedOut = (): boolean => performance.now() >= deadline || visitedNodes >= maxNodes;
 
@@ -90,6 +92,7 @@ export function scanXMedia(targetPostId?: string): XMediaCandidate[] {
   const addVideoVariants = (variants: unknown, mediaObject: object): boolean => {
     if (!Array.isArray(variants)) return false;
     let best: {url: string; bitrate: number} | undefined;
+    const variantUrls = new Set<string>();
     const variantCount = dataValue(variants, "length");
     if (typeof variantCount !== "number") return false;
     for (let index = 0; index < variantCount; index += 1) {
@@ -108,13 +111,22 @@ export function scanXMedia(targetPostId?: string): XMediaCandidate[] {
         continue;
       }
       if (!isMp4) continue;
+      variantUrls.add(url);
       const rawBitrate = dataValue(variant, "bitrate");
       const bitrate = typeof rawBitrate === "number" && Number.isFinite(rawBitrate) ? rawBitrate : 0;
+      bitrateByUrl.set(url, Math.max(bitrate, bitrateByUrl.get(url) ?? 0));
       if (!best || bitrate > best.bitrate) best = {url, bitrate};
     }
     if (!best) return false;
 
+    const source = dataValue(mediaObject, "source");
+    for (const raw of [dataValue(mediaObject, "src"), typeof source === "object" && source !== null ? dataValue(source, "src") : undefined]) {
+      const url = httpUrl(raw);
+      if (url && isMp4Url(url, undefined)) variantUrls.add(url);
+    }
+    variantUrls.delete(best.url);
     const candidate: XMediaCandidate = {url: best.url, kind: "video"};
+    if (variantUrls.size) candidate.variantUrls = [...variantUrls];
     for (const key of ["media_url_https", "media_url", "thumbnail_url", "preview_image_url", "poster"]) {
       const preview = previewUrl(dataValue(mediaObject, key));
       if (preview) {
@@ -123,7 +135,9 @@ export function scanXMedia(targetPostId?: string): XMediaCandidate[] {
       }
     }
     const existing = resultByUrl.get(candidate.url);
-    if (!existing || (!existing.previewUrl && candidate.previewUrl)) resultByUrl.set(candidate.url, candidate);
+    if (existing?.variantUrls) candidate.variantUrls = [...new Set([...existing.variantUrls, ...variantUrls])];
+    if (!candidate.previewUrl && existing?.previewUrl) candidate.previewUrl = existing.previewUrl;
+    resultByUrl.set(candidate.url, candidate);
     return true;
   };
 
@@ -150,7 +164,9 @@ export function scanXMedia(targetPostId?: string): XMediaCandidate[] {
       }
     }
     const existing = resultByUrl.get(candidate.url);
-    if (!existing || (!existing.previewUrl && candidate.previewUrl)) resultByUrl.set(candidate.url, candidate);
+    if (!existing || (!existing.previewUrl && candidate.previewUrl)) {
+      resultByUrl.set(candidate.url, {...existing, ...candidate});
+    }
     return true;
   };
 
@@ -272,8 +288,8 @@ export function scanXMedia(targetPostId?: string): XMediaCandidate[] {
   const inspectPlayerProps = (props: object, requireIdentity = false): boolean => {
     if (requireIdentity) return inspectTweetProps(props, true);
     let foundVideo = addAttachedMedia(props, true);
-    if (addDirectVideoSource(dataValue(props, "src"), props)) foundVideo = true;
     if (!foundVideo && inspectTweetProps(props)) foundVideo = true;
+    if (!foundVideo && addDirectVideoSource(dataValue(props, "src"), props)) foundVideo = true;
     return foundVideo;
   };
 
@@ -369,5 +385,32 @@ export function scanXMedia(targetPostId?: string): XMediaCandidate[] {
     }
   }
 
-  return [...resultByUrl.values()];
+  // Reconcile overlapping variant sets seen on different DOM/React owners.
+  // Only explicit playback relationships join groups, never URL filenames.
+  const parents = new Map<string, string>();
+  const representative = (url: string): string => {
+    const path: string[] = [];
+    while (parents.has(url)) { path.push(url); url = parents.get(url)!; }
+    for (const child of path) parents.set(child, url);
+    return url;
+  };
+  for (const candidate of resultByUrl.values()) {
+    for (const alternative of candidate.variantUrls ?? []) {
+      const from = representative(alternative), to = representative(candidate.url);
+      if (from !== to) parents.set(from, to);
+    }
+  }
+  const groups = new Map<string, {best: XMediaCandidate; urls: Set<string>}>();
+  for (const candidate of resultByUrl.values()) {
+    const key = representative(candidate.url);
+    let group = groups.get(key);
+    if (!group) { group = {best: candidate, urls: new Set()}; groups.set(key, group); }
+    group.urls.add(candidate.url);
+    for (const alternative of candidate.variantUrls ?? []) group.urls.add(alternative);
+    if ((bitrateByUrl.get(candidate.url) ?? -1) > (bitrateByUrl.get(group.best.url) ?? -1)) group.best = candidate;
+  }
+  return [...groups.values()].map(({best, urls}) => {
+    urls.delete(best.url);
+    return {...best, ...(urls.size ? {variantUrls: [...urls]} : {})};
+  });
 }
