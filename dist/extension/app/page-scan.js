@@ -553,7 +553,8 @@ export async function scanDocument(targetPostId) {
                 recordMedia(url, "gif", source);
         }
     };
-    const scanBackground = (element) => {
+    const backgroundSnapshots = new Map();
+    const backgroundFor = (element) => {
         checkDeadline();
         let background = "";
         try {
@@ -562,6 +563,15 @@ export async function scanDocument(targetPostId) {
         catch {
             // A detached or browser-owned element may not have computed styles.
         }
+        checkDeadline();
+        return background;
+    };
+    const scanBackground = (element) => {
+        const background = backgroundFor(element);
+        if (background && background !== "none")
+            backgroundSnapshots.set(element, background);
+        else
+            backgroundSnapshots.delete(element);
         scanCss(background, element, element, true);
     };
     const orderedImages = () => {
@@ -1004,6 +1014,21 @@ export async function scanDocument(targetPostId) {
                 await flushPending();
         } while (discovered);
     };
+    const refreshBackgrounds = async () => {
+        // Stylesheet edits can change another element without mutating that element.
+        // Reconcile only previously present backgrounds once, including CSSOM edits
+        // that never emit a MutationRecord. Rebuild changed owners through the same
+        // evidence lifecycle so shared URLs and their order remain intact.
+        const snapshots = [...backgroundSnapshots];
+        for (let index = 0; index < snapshots.length; index += 1) {
+            const [element, previous] = snapshots[index];
+            checkDeadline();
+            if (isInPageTree(element) && backgroundFor(element) !== previous)
+                collectElement(element);
+            if ((index + 1) % chunkSize === 0 && index + 1 < snapshots.length)
+                await yieldToPage();
+        }
+    };
     try {
         checkDeadline();
         const elements = pageElements(root, true);
@@ -1025,6 +1050,7 @@ export async function scanDocument(targetPostId) {
         checkDeadline();
         await flushPending();
         await discoverShadowRoots();
+        await refreshBackgrounds();
         registry.retainElements(isInPageTree);
         checkDeadline();
     }

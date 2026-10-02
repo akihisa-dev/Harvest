@@ -1050,3 +1050,43 @@ test("同じ要素とURLの画像根拠が動画へ変わると、後から再�
   assert.deepEqual(result.images, [`${base}later.jpg`, `${base}shared`]);
   assert.deepEqual(result.media, [{url: `${base}shared`, kind: "video"}, {url: `${base}later.jpg`, kind: "image"}]);
 });
+
+test("背景の最終照合は未変更要素の本文・属性を再収集しない", async () => {
+  const image = new FixtureElement("div", {"data-src": "https://cdn.example.test/attribute.jpg"}, [], {
+    backgroundImage: 'url("https://cdn.example.test/stable.gif")',
+    textContent: "https://cdn.example.test/text.jpg",
+  });
+  const root = new FixtureElement("html", {}, [image]);
+  let attributeReads = 0;
+  const getAttributes = Object.getOwnPropertyDescriptor(FixtureElement.prototype, "attributes").get;
+  Object.defineProperty(image, "attributes", {get() { attributeReads += 1; return getAttributes.call(this); }});
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+  assert.equal(attributeReads, 1);
+  assert.deepEqual(new Set(result.images), new Set([
+    "https://cdn.example.test/stable.gif", "https://cdn.example.test/text.jpg", "https://cdn.example.test/attribute.jpg",
+  ]));
+});
+
+test("背景の最終照合中も20秒期限を確認し、部分結果を返さず監視を解放する", async () => {
+  const image = new FixtureElement("div", {}, [], {backgroundImage: 'url("https://cdn.example.test/background.jpg")'});
+  const root = new FixtureElement("html", {}, [image]);
+  let now = 0;
+  let backgroundReads = 0;
+  let disconnected = false;
+  class TrackingObserver extends EmptyMutationObserver { disconnect() { disconnected = true; } }
+  const previousPerformance = globalThis.performance;
+  try {
+    await runWithFixture(new FixtureDocument(root), TrackingObserver, async () => {
+      Object.defineProperty(globalThis, "performance", {configurable: true, value: {now: () => now}});
+      globalThis.getComputedStyle = element => {
+        if (element === image && ++backgroundReads === 2) now = 20_001;
+        return {backgroundImage: element.backgroundImage};
+      };
+      await assert.rejects(scanDocument(), /20 second deadline/);
+    });
+  } finally {
+    Object.defineProperty(globalThis, "performance", {configurable: true, value: previousPerformance});
+  }
+  assert.equal(backgroundReads, 2);
+  assert.equal(disconnected, true);
+});

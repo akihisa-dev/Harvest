@@ -294,3 +294,62 @@ test("実ブラウザーでopen Shadow DOMを再帰走査し、短時間の変�
     await browser.close();
   }
 });
+
+
+test("結果確定前にCSS変更で消えた背景の根拠を更新し、共有URLと未適用CSSを保つ", async () => {
+  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const browser = await chromium.launch({channel: "chrome", headless: true});
+  try {
+    const page = await browser.newPage();
+    await page.route("**/*", route => route.abort());
+    for (const mode of ["remove", "text", "cssom-change", "cssom-none", "shared"]) {
+      await page.setContent('<main></main><div id="host"></div>');
+      const result = await page.evaluate(async ({source, mode}) => {
+        const moduleUrl = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));
+        const {scanDocument} = await import(moduleUrl);
+        URL.revokeObjectURL(moduleUrl);
+        const roots = [document.querySelector("main"), document.querySelector("#host").attachShadow({mode: "open"})];
+        const changes = [];
+        roots.forEach((root, index) => {
+          const oldUrl = `https://cdn.example.test/${index}/old.gif`;
+          const newUrl = `https://cdn.example.test/${index}/new?format=gif`;
+          const rule = url => `.page {background-image:url("${url}");width:10px;height:10px}`;
+          const style = document.createElement("style");
+          const background = document.createElement("div"); background.className = "page";
+          root.append(style, background);
+          if (mode.startsWith("cssom")) {
+            const sheet = new CSSStyleSheet();
+            sheet.replaceSync(rule(oldUrl));
+            const scope = index === 0 ? document : root;
+            scope.adoptedStyleSheets = [sheet];
+            changes.push(() => {sheet.cssRules[0].style.backgroundImage = mode === "cssom-none" ? "none" : `url("${newUrl}")`;});
+          } else {
+            style.textContent = rule(oldUrl);
+            changes.push(() => {
+              if (mode === "text") style.textContent = rule(newUrl);
+              else style.remove();
+            });
+          }
+          const unused = document.createElement("style");
+          unused.textContent = `.absent {background:url("https://cdn.example.test/${index}/unused.jpg")}`;
+          root.append(unused);
+          if (mode === "shared") {
+            const image = document.createElement("img"); image.dataset.src = oldUrl;
+            root.append(image, document.createTextNode(oldUrl));
+          }
+        });
+        const scan = scanDocument();
+        setTimeout(() => changes.forEach(change => change()), 20);
+        return scan;
+      }, {source, mode});
+      const expected = [0, 1].flatMap(index => [
+        `https://cdn.example.test/${index}/unused.jpg`,
+        ...(["text", "cssom-change"].includes(mode) ? [`https://cdn.example.test/${index}/new?format=gif`] : []),
+        ...(mode === "shared" ? [`https://cdn.example.test/${index}/old.gif`] : []),
+      ]).sort();
+      assert.deepEqual([...result.images].sort(), expected, mode);
+      assert.deepEqual(result.media.map(({url}) => url).sort(), expected, mode);
+      assert.ok(result.media.filter(({url}) => /old.gif|format=gif/.test(url)).every(({kind}) => kind === "gif"));
+    }
+  } finally { await browser.close(); }
+});
