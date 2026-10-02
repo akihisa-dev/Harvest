@@ -34,8 +34,9 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     });
     await context.route('https://files.example.test/**', route => {
       const url = route.request().url();
-      const body = url.endsWith('.gif') ? gif : url.endsWith('.mp4') ? mp4 : png;
-      const contentType = url.endsWith('.gif') ? 'image/gif' : url.endsWith('.mp4') ? 'video/mp4' : 'image/png';
+      const isGif = url.endsWith('.gif') || url.includes('/gif-query?');
+      const body = isGif ? gif : url.endsWith('.mp4') ? mp4 : png;
+      const contentType = isGif ? 'image/gif' : url.endsWith('.mp4') ? 'video/mp4' : 'image/png';
       return route.fulfill({status:200,contentType,body,headers:{'access-control-allow-origin':'*'}});
     });
     const page = await context.newPage();
@@ -119,6 +120,32 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     assert.equal(await page.locator('#export-format-gif').isChecked(),true);
     assert.equal(await page.locator('#export-format-mp4').isVisible(),false);
     assert.match(await page.locator('#export').textContent(),/GIF/);
+    const gifUrls = [animation, ...['format=gif','fmt=gif','fm=gif','FORMAT=GIF','Fmt=GiF','FM=GIF']
+      .map(query => `https://files.example.test/gif-query?${query}`)];
+    const sourcePage = await context.newPage();
+    const scanSource = await readFile(resolve(root,'app/page-scan.js'),'utf8');
+    const gifScan = await sourcePage.evaluate(async ({urls,source}) => {
+      for (const url of urls) {
+        const image = document.createElement('img');image.src = url;document.body.append(image);
+      }
+      const moduleUrl = URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
+      try {
+        const {scanDocument} = await import(moduleUrl);
+        return await scanDocument();
+      } finally {URL.revokeObjectURL(moduleUrl);}
+    }, {urls:gifUrls,source:scanSource});
+    await sourcePage.close();
+    for (const url of gifUrls) {
+      assert.ok(gifScan.images.includes(url),url);
+      const media = gifScan.media.filter(item => item.url === url);
+      assert.deepEqual(media,[{url,kind:'gif'}]);
+      await scan([url],media);
+      assert.equal(await page.locator('#export-format-gif').isChecked(),true,url);
+      assert.equal(await page.locator('#export').isDisabled(),false,url);
+      const entries = await save('gif');
+      assert.deepEqual(entries.map(entry => entry.name),['001.gif']);
+      assert.deepEqual(entries[0].data,gif);
+    }
     await scan([photo,animation],[{url:animation,kind:'gif'},{url:movie,kind:'video'}]);
     await page.locator('#all-selection').check();
     await page.locator('#all-visibility').click();

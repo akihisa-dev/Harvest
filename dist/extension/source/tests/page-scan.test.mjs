@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { scanDocument } from "../dist/extension/app/page-scan.js";
+import { groupMediaImages } from "../dist/extension/core/images.js";
 
 class FixtureElement {
   constructor(tagName, attributes = {}, children = [], properties = {}) {
@@ -820,4 +821,37 @@ test("GIF拡張子とformat=gifはscript・本文からもGIF候補として収�
     {url: "https://cdn.example.test/media/format?format=gif", kind: "gif"},
     {url: "https://cdn.example.test/media/body?format=gif", kind: "gif"},
   ]);
+});
+
+test("GIFの種類判定はグループ表示と同じ形式指定・大文字小文字・優先順位を使う", async () => {
+  const cases = [
+    ["animation.gif", "gif"], ["animation.GIF", "gif"],
+    ["image?format=gif", "gif"], ["image?fmt=gif", "gif"], ["image?fm=gif", "gif"],
+    ["image?FORMAT=GIF", "gif"], ["image?Fmt=GiF", "gif"], ["image?FM=GIF", "gif"],
+    ["animation.jpg?fm=gif", "gif"], ["image?fm=x-gif", "gif"],
+    ["animation.gif?fmt=png", "image"], ["image?fm=png&format=gif", "image"],
+    ["image?format=&fmt=gif", "image"], ["image?format=gif&fm=png", "gif"],
+    ["image?filename=gif", "image"], ["image?formatHint=gif", "image"],
+    ["image?fmt=gif-preview", "image"], ["image?fm=image/gif", "image"],
+  ].map(([path, kind]) => [`https://cdn.example.test/media/${path}`, kind]);
+  const root = new FixtureElement("html", {}, cases.map(([src]) => new FixtureElement("img", {src})));
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+  for (const [url, kind] of cases) {
+    assert.equal(result.media.find(item => item.url === url)?.kind, kind, url);
+    const [group] = Object.values(groupMediaImages([url]));
+    assert.equal(group.label.startsWith("GIF ·"), kind === "gif", url);
+  }
+});
+
+test("fmt・fmのGIF指定はscript・本文・属性からも収集する", async () => {
+  const urls = ["script?fmt=gif", "body?FM=GIF", "attribute?Fmt=GiF"]
+    .map(path => `https://cdn.example.test/media/${path}`);
+  const root = new FixtureElement("html", {}, [
+    new FixtureElement("script", {}, [], {textContent: `const animation = "${urls[0]}";`}),
+    new FixtureElement("p", {}, [], {textContent: urls[1]}),
+    new FixtureElement("div", {"data-media": urls[2]}),
+  ]);
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+  assert.deepEqual(new Set(result.media.map(item => item.url)), new Set(urls));
+  assert.ok(result.media.every(item => item.kind === "gif"));
 });

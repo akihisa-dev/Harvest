@@ -39,7 +39,11 @@ export async function scanDocument() {
             const parsed = new URL(url, document.baseURI || location.href);
             if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
                 return undefined;
-            if (/\.gif$/i.test(parsed.pathname) || parsed.searchParams.get("format")?.toLowerCase() === "gif")
+            // Match the format precedence and aliases used by core/images.ts.
+            // This helper must stay local because Chrome serializes scanDocument.
+            const queryFormat = [...parsed.searchParams.entries()].find(([name]) => /^(?:format|fmt|fm)$/i.test(name))?.[1];
+            const format = queryFormat || parsed.pathname.match(/\.([a-z0-9]{2,8})$/i)?.[1] || "";
+            if (format.toLowerCase().replace(/^x-/, "").replace(/\+xml$/, "") === "gif")
                 return "gif";
         }
         catch {
