@@ -253,3 +253,66 @@ test("DOMの低画質URLを既知のvariantだけで置き換え、別動画と�
   assert.deepEqual(result.media, [{url:other,kind:"video"},{url:photo,kind:"image"},{url:high,kind:"video",previewUrl:photo}]);
   assert.deepEqual(result.images, [photo]);
 });
+
+for (const stage of ["waitForXPage", "scanPost", "scanXMedia"]) {
+  test(`Xの${stage}が別documentへ到達した場合は後続処理と結果公開を止める`, async t => {
+    const url = "https://x.com/example/status/123";
+    const state = fixture(t, {get: async () => ({url})});
+    const calls = [];
+    chrome.scripting.executeScript = async ({func, args}) => {
+      const name = func.name === "scanDocument" && args?.length ? "scanPost" : func.name;
+      calls.push(name);
+      const result = name === "waitForXPage" ? {status: "ready"}
+        : name === "scanXMedia" ? [] : {url, title: "post", images: []};
+      return [{result, documentId: name === stage ? "replacement" : "original"}];
+    };
+    await assert.rejects(scanTab(8), /ページが移動/);
+    assert.equal(calls.at(-1), stage);
+    assert.equal(state.removed.size, 0);
+  });
+}
+
+test("初回にdocument IDがない環境では後続のIDを採用せず、hashだけの移動を許容する", async t => {
+  const url = "https://x.com/example/status/123";
+  fixture(t, {get: async () => ({url: `${url}#details`})});
+  let scans = 0;
+  chrome.scripting.executeScript = async ({func}) => {
+    if (func.name === "waitForXPage") return [{result: {status: "ready"}, documentId: "wait"}];
+    if (func.name === "scanXMedia") return [];
+    scans += 1;
+    return [{result: {url, title: "post", images: []}, ...(scans > 1 ? {documentId: "post"} : {})}];
+  };
+  assert.deepEqual(await scanTab(8), {url, title: "post", images: [], media: []});
+});
+
+test("中止済みの解析はタブへ注入せず、一時ウィンドウも作らない", async t => {
+  const state = fixture(t);
+  let injections = 0;
+  chrome.scripting.executeScript = async () => { injections += 1; return []; };
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(scanTab(8, controller.signal), /終了しました/);
+  await assert.rejects(scanUrl("https://example.com/page", controller.signal), /終了しました/);
+  assert.equal(injections, 0);
+  assert.deepEqual(state.createdWindows, []);
+  assert.equal(state.removed.size + state.updated.size, 0);
+});
+
+test("各注入段階の失敗理由を保ち、初回の読み取り失敗でも監視を解放する", async t => {
+  const url = "https://x.com/example/status/123";
+  const state = fixture(t, {get: async () => ({url})});
+  for (const [stage, expected] of [
+    ["scanDocument", "このページを読み取れませんでした。Chromeで開けるWebページを指定してください。"],
+    ["waitForXPage", "Xの投稿を読み取れませんでした。"],
+    ["scanPost", "Xの投稿を読み取れませんでした。"],
+    ["scanXMedia", "Xの動画情報を読み取れませんでした。"],
+  ]) {
+    chrome.scripting.executeScript = async ({func, args}) => {
+      const name = func.name === "scanDocument" && args?.length ? "scanPost" : func.name;
+      if (name === stage) throw new Error("Chrome rejected the injection");
+      return [{result: name === "waitForXPage" ? {status: "ready"} : {url, title: "post", images: []}}];
+    };
+    await assert.rejects(scanTab(8), {message: expected});
+    assert.equal(state.removed.size, 0);
+  }
+});

@@ -147,6 +147,15 @@ for (const reducedMotion of ["reduce", "no-preference"]) test(`ドラッグの�
     assert.deepEqual(cancelled.preview, cancelled.actual, "中止で実データと表示を元の順番へ戻す");
     assert.equal(await page.locator('#images').evaluate(element => element.style.overflowAnchor), "",
       "中止後はドラッグ前のスクロール設定へ戻す");
+    await page.evaluate(() => {
+      fixture.resetMeasurements();
+      document.querySelector('#scroll').scrollTop += 100;
+      window.dispatchEvent(new Event('resize'));
+    });
+    await settle();
+    assert.equal(await page.evaluate(() => fixture.measurements), 0,
+      "終了した操作のscroll/resize通知は行の計測を再開しない");
+    assert.deepEqual(await page.evaluate(() => fixture.visual()), cancelled.actual);
 
     await reset();
     await page.evaluate(() => {

@@ -1,22 +1,7 @@
+import type { JxlEncodeRequest, JxlEncodeReply, WorkerMessageScope } from "./worker-contracts.js";
 import { encodeJxlPixels } from "./jxl-codec.js";
 
-interface EncodeRequest {
-  readonly id: number;
-  readonly pixels: ArrayBuffer;
-  readonly width: number;
-  readonly height: number;
-}
-
-interface EncodeReply {
-  readonly id: number;
-  readonly buffer?: ArrayBuffer;
-  readonly error?: string;
-}
-
-const scope = self as unknown as {
-  addEventListener(type: "message", listener: (event: MessageEvent<EncodeRequest>) => void): void;
-  postMessage(message: EncodeReply, transfer?: Transferable[]): void;
-};
+const scope = self as unknown as WorkerMessageScope<JxlEncodeRequest, JxlEncodeReply>;
 
 scope.addEventListener("message", event => {
   const {id, pixels, width, height} = event.data;

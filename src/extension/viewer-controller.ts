@@ -1,6 +1,7 @@
 import type { ImageItem } from "../core/images.js";
 import { t } from "./localization.js";
 import type { ImagePreviewLoader } from "./image-preview.js";
+import { createViewerImageTransition } from "./viewer-image-transition.js";
 
 export interface ViewerElements {
   readonly toggle: HTMLButtonElement;
@@ -41,17 +42,18 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
   const elements = options.elements;
   let open = false;
   let currentUrl: string | null = null;
-  let renderedUrl: string | null = null;
-  let renderedItem: ImageItem | null = null;
   let zoom = 1;
   let panX = 0;
   let panY = 0;
   let pointer: {id: number; x: number; y: number; panX: number; panY: number} | null = null;
   let lastThumbnailWheelAt = -Infinity;
-  let imageTransitionId = 0;
-  let imageTransitionCleanup: (() => void) | null = null;
   const thumbnailRows = new Map<string, HTMLLIElement>();
-  const imageMotionItems = new WeakMap<HTMLImageElement, ImageItem>();
+  const imageTransition = createViewerImageTransition({
+    stage: elements.stage,
+    image: elements.image,
+    previewLoader: options.previewLoader,
+    getCurrentUrl: () => currentUrl,
+  });
 
   function clearThumbnails(): void {
     for (const row of thumbnailRows.values()) {
@@ -60,11 +62,6 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
     }
     thumbnailRows.clear();
     elements.thumbnails.replaceChildren();
-  }
-
-  function motionImages(): HTMLImageElement[] {
-    const query = elements.stage.querySelectorAll;
-    return typeof query === "function" ? [...query.call(elements.stage, ".viewer-motion-image")] as HTMLImageElement[] : [];
   }
 
   function updateTransform(): void {
@@ -149,7 +146,7 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
         (focusRow?.children[0] as HTMLButtonElement | undefined)?.focus({preventScroll: true});
       }
     }
-    if (renderedUrl !== activeUrl) {
+    if (imageTransition.renderedUrl !== activeUrl) {
       const active = thumbnailRows.get(activeUrl)?.children[0] as HTMLButtonElement | undefined;
       active?.scrollIntoView({block: "center", inline: "nearest",
         behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
@@ -159,7 +156,6 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
 
   function render(): void {
     const pages = options.getPages();
-    const previousUrl = renderedUrl;
     const index = pages.findIndex(item => item.url === currentUrl);
     const currentIndex = index < 0 ? 0 : index;
     const current = pages[currentIndex];
@@ -179,17 +175,7 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
       return;
     }
     if (!current) {
-      imageTransitionId += 1;
-      (imageTransitionCleanup as (() => void) | null)?.();
-      imageTransitionCleanup = null;
-      for (const old of motionImages()) {
-        options.previewLoader.clearImage(old);
-        old.remove();
-      }
-      delete elements.image.dataset["motion"];
-      delete elements.image.dataset["direction"];
-      renderedUrl = null;
-      renderedItem = null;
+      imageTransition.clear();
       const hadThumbnailFocus = [...thumbnailRows.values()].some(row => row.children[0] === document.activeElement);
       clearThumbnails();
       if (open && hadThumbnailFocus) {
@@ -197,131 +183,15 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
         elements.empty.focus({preventScroll: true});
       }
       resetTransform();
-      options.previewLoader.clearImage(elements.image);
-      elements.image.removeAttribute("src");
-      elements.image.alt = "";
       elements.position.textContent = "";
       elements.filename.textContent = "";
       return;
     }
     const priorImageTransform = elements.image.style.transform;
-    const pageChanged = renderedUrl !== current.url;
+    const pageChanged = imageTransition.renderedUrl !== current.url;
     if (pageChanged) resetTransform();
     renderThumbnails(pages, current.url);
-    if (pageChanged) {
-      (imageTransitionCleanup as (() => void) | null)?.();
-      imageTransitionCleanup = null;
-      const existingOutgoing = motionImages();
-      const hasActiveImage = elements.image.complete && elements.image.naturalWidth > 0 && Boolean(elements.image.currentSrc);
-      const canAnimateImage = Boolean(previousUrl && previousUrl !== current.url
-        && (existingOutgoing.length > 0 || hasActiveImage)
-        && !current.url.startsWith("data:") && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
-      const transitionId = ++imageTransitionId;
-      if (canAnimateImage) {
-        const previousIndex = pages.findIndex(item => item.url === previousUrl);
-        const direction = currentIndex < previousIndex ? "previous" : "next";
-        const ghosts: HTMLImageElement[] = [];
-        const snapshot = (source: HTMLImageElement, sourceUrl: string): void => {
-          const item = source === elements.image
-            ? renderedItem
-            : imageMotionItems.get(source) ?? pages.find(candidate => candidate.url === sourceUrl);
-          if (!item) return;
-          const computed = getComputedStyle(source);
-          const ghost = document.createElement("img");
-          ghost.className = "viewer-motion-image";
-          ghost.alt = "";
-          ghost.draggable = false;
-          ghost.dataset["motion"] = "holding";
-          ghost.dataset["direction"] = direction;
-          ghost.dataset["motionUrl"] = item.url;
-          imageMotionItems.set(ghost, item);
-          ghost.style.transform = source === elements.image ? priorImageTransform : computed.transform;
-          ghost.style.opacity = computed.opacity;
-          ghost.style.translate = computed.translate;
-          elements.stage.append(ghost);
-          options.previewLoader.set(ghost, item, true);
-          ghosts.push(ghost);
-        };
-        const retained = new Set(existingOutgoing
-          .filter(old => Number(getComputedStyle(old).opacity) > .05)
-          .sort((a, b) => Number(getComputedStyle(b).opacity) - Number(getComputedStyle(a).opacity))
-          .slice(0, 3));
-        for (const old of existingOutgoing) {
-          if (retained.has(old)) snapshot(old, old.dataset["motionUrl"] ?? "");
-          old.getAnimations().forEach(animation => animation.cancel());
-          options.previewLoader.clearImage(old);
-          old.remove();
-        }
-        if (hasActiveImage && previousUrl) {
-          snapshot(elements.image, previousUrl);
-          elements.image.getAnimations().forEach(animation => animation.cancel());
-        }
-        let failureObserver: MutationObserver | null = null;
-        const cleanupListeners = (): void => {
-          elements.image.removeEventListener("load", onLoaded);
-          elements.image.removeEventListener("error", onFailed);
-          failureObserver?.disconnect();
-          failureObserver = null;
-        };
-        const onLoaded = (): void => {
-          cleanupListeners();
-          if (imageTransitionCleanup === cleanupListeners) imageTransitionCleanup = null;
-          if (transitionId !== imageTransitionId || currentUrl !== current.url) return;
-          elements.image.dataset["motion"] = "incoming";
-          elements.image.dataset["direction"] = direction;
-          const enterX = direction === "next" ? "20px" : "-20px";
-          const leaveX = direction === "next" ? "-20px" : "20px";
-          const animations = [elements.image.animate([
-            {opacity: 0, translate: `${enterX} 0`},
-            {opacity: 1, translate: "0 0"},
-          ], {duration: 210, easing: "cubic-bezier(.2, .7, .2, 1)"})];
-          for (const ghost of ghosts) {
-            ghost.dataset["motion"] = "outgoing";
-            animations.push(ghost.animate([
-              {opacity: getComputedStyle(ghost).opacity, translate: getComputedStyle(ghost).translate},
-              {opacity: 0, translate: leaveX + " 0"},
-            ], {duration: 210, easing: "cubic-bezier(.2, .7, .2, 1)"}));
-          }
-          void Promise.all(animations.map(animation => animation.finished.catch(() => undefined))).then(() => {
-            if (transitionId !== imageTransitionId) return;
-            for (const ghost of ghosts) {
-              options.previewLoader.clearImage(ghost);
-              ghost.remove();
-            }
-            delete elements.image.dataset["motion"];
-            delete elements.image.dataset["direction"];
-          });
-        };
-        const onFailed = (): void => {
-          cleanupListeners();
-          if (imageTransitionCleanup === cleanupListeners) imageTransitionCleanup = null;
-          if (transitionId !== imageTransitionId) return;
-          for (const ghost of ghosts) {
-            options.previewLoader.clearImage(ghost);
-            ghost.remove();
-          }
-        };
-        elements.image.addEventListener("load", onLoaded);
-        elements.image.addEventListener("error", onFailed);
-        failureObserver = new MutationObserver(() => {
-          if (elements.image.dataset["previewFailed"] === "true") onFailed();
-        });
-        failureObserver.observe(elements.image, {attributes: true, attributeFilter: ["data-preview-failed"]});
-        imageTransitionCleanup = cleanupListeners;
-      } else {
-        (imageTransitionCleanup as (() => void) | null)?.();
-        imageTransitionCleanup = null;
-        for (const old of motionImages()) {
-          options.previewLoader.clearImage(old);
-          old.remove();
-        }
-        delete elements.image.dataset["motion"];
-        delete elements.image.dataset["direction"];
-      }
-      options.previewLoader.set(elements.image, current, true);
-      renderedUrl = current.url;
-      renderedItem = current;
-    }
+    if (pageChanged) imageTransition.show(current, pages, priorImageTransform);
     elements.image.alt = t("selectedImageAlt", {index: currentIndex + 1});
     elements.position.textContent = `${currentIndex + 1} / ${pages.length}`;
     elements.filename.textContent = options.getPageLabel(current);

@@ -1,6 +1,6 @@
-import { animateLayoutChange, reconcileKeyedChildren } from "./motion.js";
+import { reconcileKeyedChildren } from "./motion.js";
 import { formatFailedAria, formatGroupLabel, t } from "./localization.js";
-import { createPreviewOrder, findNearestByRect, isPointerAfter } from "./image-reorder.js";
+import { createImageDragController } from "./image-drag-controller.js";
 function listItemKey(item) {
     return item.kind === "source" ? "source-preview" : `image:${item.image.url}`;
 }
@@ -8,101 +8,21 @@ function listItemKey(item) {
 export function createImageListView(options) {
     const { collection, allVisibilityButton, groupsElement, imagesElement } = options;
     let visibleGroupKeys = new Set();
-    let draggedImage = null;
-    let suppressThumbnailClick = false;
     let focusTarget = null;
     const imageRowParts = new WeakMap();
     let visibleImages = [];
-    let previewOrder = [];
     let rows = new Map();
     let renderedListKeys = [];
-    let dragRects = new Map();
-    let dragIsSingleColumn = true;
-    const dragScrollOffsets = new Map();
-    let dragLayoutChanged = false;
-    let dragLayoutSize = { width: 0, height: 0 };
-    let dragResizeObserver = null;
-    let dragGeometryFrame = null;
-    let dragPointer = null;
-    let dragOverflowAnchor = "";
-    function refreshDragGeometry(layoutChanged = false) {
-        // A resize must measure the final slots, without retaining an in-flight motion offset.
-        const settled = layoutChanged ? animateLayoutChange([...rows.values()], () => { }, draggedImage ? rows.get(draggedImage.url) : undefined) : null;
-        dragRects = new Map([...rows].map(([url, row]) => [url, settled?.get(row) ?? row.getBoundingClientRect()]));
-        const first = dragRects.values().next().value;
-        dragIsSingleColumn = !first || [...dragRects.values()].every(rect => Math.abs(rect.left - first.left) < 1);
-        for (const [element, offset] of dragScrollOffsets) {
-            offset.left = element.scrollLeft;
-            offset.top = element.scrollTop;
-        }
-        dragLayoutSize = { width: imagesElement.clientWidth, height: imagesElement.clientHeight };
-        dragLayoutChanged = false;
-    }
-    function updateDragGeometry() {
-        if (dragLayoutChanged || imagesElement.clientWidth !== dragLayoutSize.width || imagesElement.clientHeight !== dragLayoutSize.height) {
-            refreshDragGeometry(true);
-            return;
-        }
-        let x = 0;
-        let y = 0;
-        for (const [element, offset] of dragScrollOffsets) {
-            x += offset.left - element.scrollLeft;
-            y += offset.top - element.scrollTop;
-            offset.left = element.scrollLeft;
-            offset.top = element.scrollTop;
-        }
-        if (!x && !y)
-            return;
-        for (const [url, rect] of dragRects)
-            dragRects.set(url, {
-                left: rect.left + x, right: rect.right + x, top: rect.top + y, bottom: rect.bottom + y,
-                width: rect.width, height: rect.height,
-            });
-    }
-    function scheduleDragPreview() {
-        if (!draggedImage || !dragPointer || dragGeometryFrame !== null)
-            return;
-        dragGeometryFrame = window.requestAnimationFrame(() => {
-            dragGeometryFrame = null;
-            if (dragPointer)
-                updateDragPreview(dragPointer);
-        });
-    }
-    function resizeDragLayout() {
-        dragLayoutChanged = true;
-        scheduleDragPreview();
-    }
-    function startDragGeometry() {
-        // Browser scroll anchoring must not undo an intentional preview reorder.
-        dragOverflowAnchor = imagesElement.style.overflowAnchor ?? "";
-        imagesElement.style.overflowAnchor = "none";
-        for (let element = imagesElement; element; element = element.parentElement) {
-            dragScrollOffsets.set(element, { left: element.scrollLeft, top: element.scrollTop });
-        }
-        refreshDragGeometry();
-        document.addEventListener("scroll", scheduleDragPreview, true);
-        window.addEventListener?.("resize", resizeDragLayout);
-        if (typeof ResizeObserver !== "undefined") {
-            dragResizeObserver = new ResizeObserver(() => {
-                if (imagesElement.clientWidth !== dragLayoutSize.width || imagesElement.clientHeight !== dragLayoutSize.height)
-                    resizeDragLayout();
-            });
-            dragResizeObserver.observe(imagesElement);
-        }
-    }
-    function stopDragGeometry() {
-        document.removeEventListener?.("scroll", scheduleDragPreview, true);
-        window.removeEventListener?.("resize", resizeDragLayout);
-        dragResizeObserver?.disconnect();
-        dragResizeObserver = null;
-        if (dragGeometryFrame !== null)
-            window.cancelAnimationFrame(dragGeometryFrame);
-        dragGeometryFrame = null;
-        dragPointer = null;
-        dragScrollOffsets.clear();
-        dragRects.clear();
-        imagesElement.style.overflowAnchor = dragOverflowAnchor;
-    }
+    const drag = createImageDragController({
+        imagesElement,
+        isBusy: options.isBusy,
+        getItem: url => collection.itemForUrl(url),
+        onDrop(visible, order, source) {
+            collection.applyVisibleOrder(visible, order);
+            requestFocus({ kind: "image", url: source.url, action: "drag" });
+            options.onChange();
+        },
+    });
     function requestFocus(target) {
         focusTarget = target;
     }
@@ -220,64 +140,9 @@ export function createImageListView(options) {
         visibleGroupKeys = allVisible ? new Set() : new Set(groupKeys);
         options.onChange();
     }
-    function showInsertion(order) {
-        const changedItems = order.filter((item, index) => previewOrder[index] !== item);
-        const changedRows = changedItems.flatMap(item => {
-            const row = rows.get(item.url);
-            return row ? [row] : [];
-        });
-        previewOrder = order;
-        const updatedRects = animateLayoutChange(changedRows, () => {
-            order.forEach((item, index) => { rows.get(item.url).style.order = String(index); });
-        }, draggedImage ? rows.get(draggedImage.url) : undefined);
-        for (const item of changedItems) {
-            const row = rows.get(item.url);
-            const rect = row ? updatedRects.get(row) : undefined;
-            if (rect)
-                dragRects.set(item.url, rect);
-        }
-    }
     function moveImage(source, target) {
         if (options.isBusy() || !collection.moveVisible(visibleImages, source, target))
             return;
-        requestFocus({ kind: "image", url: source.url, action: "drag" });
-        options.onChange();
-    }
-    function updateDragPreview(pointer) {
-        if (options.isBusy() || !draggedImage)
-            return;
-        updateDragGeometry();
-        const nearestUrl = findNearestByRect(dragRects, pointer);
-        const target = nearestUrl ? collection.itemForUrl(nearestUrl) : null;
-        if (!target || draggedImage === target)
-            return;
-        const rect = dragRects.get(target.url);
-        if (!rect)
-            return;
-        const order = createPreviewOrder(previewOrder, draggedImage, target, isPointerAfter(rect, pointer, dragIsSingleColumn));
-        if (!order)
-            return;
-        if (order.some((item, index) => item !== previewOrder[index]))
-            showInsertion(order);
-    }
-    function previewInsertion(event) {
-        if (options.isBusy() || !draggedImage)
-            return;
-        event.preventDefault();
-        event.stopPropagation?.();
-        if (event.dataTransfer)
-            event.dataTransfer.dropEffect = "move";
-        dragPointer = { clientX: event.clientX, clientY: event.clientY };
-        updateDragPreview(dragPointer);
-    }
-    function finishDrop(event) {
-        if (!draggedImage || options.isBusy())
-            return;
-        event.preventDefault();
-        const source = draggedImage;
-        collection.applyVisibleOrder(visibleImages, previewOrder);
-        draggedImage = null;
-        stopDragGeometry();
         requestFocus({ kind: "image", url: source.url, action: "drag" });
         options.onChange();
     }
@@ -318,40 +183,14 @@ export function createImageListView(options) {
         body.append(order, resolution, name, selectedMark, failedMark);
         row.append(preview, body);
         imageRowParts.set(row, { preview, order, name, updateResolution, selectedMark, failedMark });
-        row.addEventListener("pointerdown", () => { suppressThumbnailClick = false; });
+        drag.bindRow(row, preview, currentItem);
         row.addEventListener("click", () => {
-            if (suppressThumbnailClick || draggedImage || options.isBusy())
+            if (drag.suppressClick || drag.draggedImage || options.isBusy())
                 return;
             const item = currentItem();
             collection.toggleSelected(item.url);
             requestFocus({ kind: "image", url: item.url, action: "drag" });
             options.onChange();
-        });
-        row.addEventListener("dragstart", event => {
-            if (options.isBusy()) {
-                event.preventDefault();
-                return;
-            }
-            const item = currentItem();
-            suppressThumbnailClick = true;
-            draggedImage = item;
-            startDragGeometry();
-            if (event.dataTransfer) {
-                event.dataTransfer.setDragImage(preview, preview.width / 2, preview.height / 2);
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", "harvest-image");
-            }
-            row.classList.add("dragging");
-        });
-        row.addEventListener("dragover", previewInsertion);
-        row.addEventListener("drop", finishDrop);
-        row.addEventListener("dragend", () => {
-            if (!draggedImage)
-                return;
-            draggedImage = null;
-            row.classList.remove("dragging");
-            showInsertion([...visibleImages]);
-            stopDragGeometry();
         });
         row.addEventListener("keydown", event => {
             if (event.target !== row || options.isBusy())
@@ -359,7 +198,7 @@ export function createImageListView(options) {
             const item = currentItem();
             if (!event.altKey && ["Enter", " "].includes(event.key)) {
                 event.preventDefault();
-                if (!event.repeat && !draggedImage && !options.isBusy()) {
+                if (!event.repeat && !drag.draggedImage && !options.isBusy()) {
                     collection.toggleSelected(item.url);
                     requestFocus({ kind: "image", url: item.url, action: "drag" });
                     options.onChange();
@@ -377,7 +216,6 @@ export function createImageListView(options) {
         return row;
     }
     function renderImages(failedItems, sourcePreview) {
-        previewOrder = [...visibleImages];
         const previousRows = rows;
         const listItems = visibleImages.map(image => ({ kind: "image", image }));
         if (sourcePreview)
@@ -421,7 +259,7 @@ export function createImageListView(options) {
                 row.classList.add("failed");
             else
                 row.classList.remove("failed");
-            if (draggedImage !== item)
+            if (drag.draggedImage !== item)
                 row.classList.remove("dragging");
             row.setAttribute("role", "button");
             row.setAttribute("aria-pressed", String(item.selected));
@@ -462,8 +300,7 @@ export function createImageListView(options) {
                 options.previewLoader.clearImage(parts.preview);
         }
         rows = nextRows;
-        imagesElement.ondragover = previewInsertion;
-        imagesElement.ondrop = finishDrop;
+        drag.setRows(visibleImages, rows);
     }
     function render(failedItems = new Set(), sourcePreview = null) {
         const groups = collection.groups;
@@ -480,7 +317,7 @@ export function createImageListView(options) {
     }
     allVisibilityButton.addEventListener("click", toggleAllGroups);
     return {
-        get isDragging() { return draggedImage !== null; },
+        get isDragging() { return drag.draggedImage !== null; },
         showInitialGroup(key) {
             visibleGroupKeys = new Set(key === null ? Object.keys(collection.groups) : [key]);
         },

@@ -1,15 +1,4 @@
-interface EncodeReply {
-  readonly id: number;
-  readonly buffer?: ArrayBuffer;
-  readonly error?: string;
-}
-
-interface EncodeRequest {
-  readonly id: number;
-  readonly pixels: ArrayBuffer;
-  readonly width: number;
-  readonly height: number;
-}
+import type { JxlEncodeRequest, JxlEncodeReply } from "./worker-contracts.js";
 
 interface PendingEncode {
   readonly resolve: (buffer: ArrayBuffer) => void;
@@ -45,7 +34,7 @@ function getWorker(): Worker {
   if (worker) return worker;
   worker = new Worker(new URL("./jxl-encode-worker.js", import.meta.url), {type: "module"});
   worker.onmessage = event => {
-    const reply = event.data as EncodeReply;
+    const reply = event.data as JxlEncodeReply;
     const request = pending.get(reply.id);
     if (!request) return;
     pending.delete(reply.id);
@@ -77,7 +66,7 @@ export function encodeJxl(image: ImageData, signal?: AbortSignal): Promise<Array
     }
     try {
       const pixels = image.data.buffer as ArrayBuffer;
-      activeWorker.postMessage({id, pixels, width: image.width, height: image.height} satisfies EncodeRequest, [pixels]);
+      activeWorker.postMessage({id, pixels, width: image.width, height: image.height} satisfies JxlEncodeRequest, [pixels]);
     } catch (error) {
       pending.delete(id);
       if (signal) signal.removeEventListener("abort", abort);

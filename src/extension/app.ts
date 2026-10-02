@@ -19,6 +19,7 @@ import {
   imageFilename,
 } from "./export-presentation.js";
 import { createScanSessionController, type ScanSessionController } from "./scan-session-controller.js";
+import { createSourceInputController } from "./source-input-controller.js";
 
 const elements = queryAppElements();
 const {
@@ -54,8 +55,6 @@ for (const {format, input} of exportFormatInputs) {
 
 const imageCollection = new ImageCollection();
 let pageTitle = t("imageFallback");
-let resultSourceUrl: string | null = null;
-let sourceDisplayCleared = false;
 let busy = false;
 let disposed = false;
 let scanSessionController: ScanSessionController | null = null;
@@ -92,32 +91,15 @@ const imageListView = createImageListView({
   onChange: selectionChanged,
 });
 
-function updateSourceDrop(): void {
-  const draft = sourceUrl.value.trim();
-  const url = sourceDisplayCleared && !draft ? "" : resultSourceUrl ?? draft;
-  sourceDrop.textContent = url || t("sourceDrop");
-  sourceDrop.dataset["hasUrl"] = String(Boolean(url));
-}
-
-function showSourceInput(): void {
-  if (busy) return;
-  sourceDrop.hidden = true;
-  sourceUrl.hidden = false;
-  sourceUrl.focus();
-  sourceUrl.select();
-}
-
-function hideSourceInput(): void {
-  sourceUrl.hidden = true;
-  sourceDrop.hidden = false;
-  updateSourceDrop();
-}
-
-function clearSourceUrl(): void {
-  sourceDisplayCleared = true;
-  sourceUrl.value = "";
-  hideSourceInput();
-}
+const sourceInput = createSourceInputController({
+  input: sourceUrl,
+  display: sourceDrop,
+  dropOverlay: urlDropOverlay,
+  placeholder: t("sourceDrop"),
+  isBusy: () => busy,
+  isReordering: () => imageListView.isDragging,
+  onScan: () => startScan(),
+});
 
 function setStatus(message: string, state: AppStatus["state"] = "info", progress = ""): void {
   status = {message, state, progress};
@@ -209,8 +191,7 @@ const collectionController = createCollectionController({
   isDisposed: () => disposed,
   canExport: () => exportSelectedItems().length > 0,
   onScanUrl(url) {
-    sourceUrl.value = url;
-    updateSourceDrop();
+    sourceInput.setDraft(url);
     startScan(url);
   },
   onExport: startExport,
@@ -258,7 +239,7 @@ pdfExportController = createPdfExportController({
   onStatus: setStatus,
   onCompleted: exportSession.complete,
   onCloseViewer: () => viewerController.setOpen(false),
-  onClearSourceUrl: clearSourceUrl,
+  onClearSourceUrl: sourceInput.clearAfterExport,
   onScrollToFailures() {
     failuresElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"});
   },
@@ -272,28 +253,26 @@ imageExportController = createImageExportController({
   onStatus: setStatus,
   onCompleted: exportSession.complete,
   onCloseViewer: () => viewerController.setOpen(false),
-  onClearSourceUrl: clearSourceUrl,
+  onClearSourceUrl: sourceInput.clearAfterExport,
   onScrollToFailures() {
     failuresElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"});
   },
 });
 scanSessionController = createScanSessionController({
   collection: imageCollection,
-  getEnteredUrl: () => sourceUrl.value.trim(),
+  getEnteredUrl: () => sourceInput.enteredUrl,
   getCollectionSession: () => collectionController.session,
   clearAnalyzedUrl: collectionController.clearAnalyzedUrl,
   markAnalyzedUrl: collectionController.markAnalyzedUrl,
   isBusy: () => busy,
   isDisposed: () => disposed,
-  onHideSourceInput: hideSourceInput,
-  onShowSourceInput: showSourceInput,
+  onHideSourceInput: sourceInput.hide,
+  onShowSourceInput: sourceInput.show,
   onBusyChange: setBusy,
   onStatus: setStatus,
   onResults(nextPageTitle, initialGroup, sourcePage) {
     exportSession.setFormat(initialExportFormat(imageCollection.items, loadExportPreferences().format));
-    resultSourceUrl = sourcePage;
-    sourceDisplayCleared = false;
-    updateSourceDrop();
+    sourceInput.commitResult(sourcePage);
     imagePreviewLoader.clear();
     pageTitle = nextPageTitle;
     exportSession.clear();
@@ -304,49 +283,6 @@ scanSessionController = createScanSessionController({
 });
 
 scanButton.addEventListener("click", () => startScan());
-sourceDrop.addEventListener("click", showSourceInput);
-sourceUrl.addEventListener("input", updateSourceDrop);
-sourceUrl.addEventListener("blur", hideSourceInput);
-sourceUrl.addEventListener("keydown", event => { if (event.key === "Enter") startScan(); });
-function isWebUrl(url: string | undefined): url is string {
-  return url !== undefined && /^https?:\/\//i.test(url);
-}
-function isPageUrlDrag(event: DragEvent): boolean {
-  return Boolean(event.dataTransfer?.types.includes("text/uri-list") || event.dataTransfer?.types.includes("text/plain"));
-}
-function clearDropFeedback(): void {
-  urlDropOverlay.hidden = true;
-}
-let urlDragDepth = 0;
-document.addEventListener("dragenter", event => {
-  if (isPageUrlDrag(event) && !imageListView.isDragging) urlDragDepth += 1;
-});
-document.addEventListener("dragleave", event => {
-  if (!isPageUrlDrag(event) && urlDragDepth === 0) return;
-  urlDragDepth = Math.max(0, urlDragDepth - 1);
-  if (urlDragDepth === 0) clearDropFeedback();
-});
-document.addEventListener("dragover", event => {
-  if (busy || imageListView.isDragging || !isPageUrlDrag(event)) {
-    clearDropFeedback();
-    return;
-  }
-  event.preventDefault();
-  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-  urlDropOverlay.hidden = false;
-});
-document.addEventListener("drop", event => {
-  urlDragDepth = 0;
-  clearDropFeedback();
-  const dropped = event.dataTransfer?.getData("text/uri-list") || event.dataTransfer?.getData("text/plain") || "";
-  const url = dropped.split(/\r?\n/).find(line => line && !line.startsWith("#"))?.trim();
-  if (!url || !isWebUrl(url)) return;
-  event.preventDefault();
-  if (busy || imageListView.isDragging) return;
-  sourceUrl.value = url;
-  hideSourceInput();
-  startScan();
-});
 exportButton.addEventListener("click", () => {
   if (exportSession.state.view.phase === "running") {
     exportSession.abort();
@@ -366,9 +302,8 @@ resetOrderButton.addEventListener("click", () => {
 });
 resetButton.addEventListener("click", () => {
   if (busy) return;
-  resultSourceUrl = null;
   imagePreviewLoader.clear();
-  clearSourceUrl();
+  sourceInput.reset();
   collectionController.clearAnalyzedUrl();
   imageCollection.clear();
   exportSession.clear();
@@ -382,5 +317,5 @@ resetButton.addEventListener("click", () => {
   render();
 });
 
-updateSourceDrop();
+sourceInput.render();
 render();

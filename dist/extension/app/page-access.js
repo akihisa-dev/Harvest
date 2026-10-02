@@ -1,120 +1,36 @@
-import { waitForXPage } from "./x-page-state.js";
 import { mergeMediaCandidates } from "../core/media-selection.js";
-import { scanXMedia } from "./x-media-scan.js";
-import { scanDocument } from "./page-scan.js";
-const timeoutMs = 20000;
-const pageMovedMessage = "解析中にページが移動しました。もう一度解析してください。";
-const scanError = (error, fallback) => new Error(error instanceof Error && error.message.includes("解析中にページが移動しました") ? pageMovedMessage : fallback);
-/** Ends the caller's wait and always releases listeners, even when Chrome rejects. */
-function bounded(start, signal) {
-    return new Promise((resolve, reject) => {
-        let settled = false;
-        let cleanup;
-        const finish = (error, value) => {
-            if (settled)
-                return;
-            settled = true;
-            clearTimeout(timer);
-            signal?.removeEventListener("abort", onAbort);
-            cleanup?.();
-            if (error)
-                reject(error);
-            else
-                resolve(value);
-        };
-        const onAbort = () => finish(new Error("ページの解析を終了しました。"));
-        const timer = setTimeout(() => finish(new Error("ページの読み取りが時間切れになりました。もう一度お試しください。")), timeoutMs);
-        if (signal?.aborted) {
-            onAbort();
-            return;
-        }
-        signal?.addEventListener("abort", onAbort, { once: true });
-        try {
-            cleanup = start(value => finish(undefined, value), error => finish(error));
-            if (settled)
-                cleanup?.();
-        }
-        catch {
-            finish(new Error("ページを読み取れませんでした。"));
-        }
-    });
-}
+import { PageReadSession, withTemporaryPage } from "./page-read-session.js";
+const isXUrl = (url) => /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(url);
+const isProfileImage = (url) => {
+    try {
+        return /\/profile_(?:images|banners)\//i.test(new URL(url).pathname);
+    }
+    catch {
+        return false;
+    }
+};
 export async function scanTab(tabId, signal, requestedUrl) {
-    let documentId;
-    let result = await bounded((resolve, reject) => {
-        const onRemoved = (id) => {
-            if (id === tabId)
-                reject(new Error("解析中のタブが閉じられました。"));
-        };
-        chrome.tabs.onRemoved.addListener(onRemoved);
-        void chrome.scripting.executeScript({ target: { tabId }, func: scanDocument }).then(([injection]) => {
-            if (injection?.result) {
-                documentId = injection.documentId;
-                resolve(injection.result);
-            }
-            else
-                reject(new Error("ページを読み取れませんでした。"));
-        }, error => reject(scanError(error, "このページを読み取れませんでした。Chromeで開けるWebページを指定してください。")));
-        return () => chrome.tabs.onRemoved.removeListener(onRemoved);
-    }, signal);
-    const sourceUrl = result.url;
-    if (/^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(result.url)) {
-        const targetUrl = requestedUrl && /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(requestedUrl)
+    const session = new PageReadSession(tabId, signal);
+    let result = await session.scanInitialPage();
+    if (isXUrl(result.url)) {
+        const targetUrl = requestedUrl && isXUrl(requestedUrl)
             ? requestedUrl : result.url;
         const expectVideo = /\/status\/\d+\/video\/\d+(?:[?#]|$)/i.test(targetUrl);
         const targetPostId = /\/status\/(\d+)(?:[/?#]|$)/i.exec(targetUrl)?.[1];
-        const isPost = Boolean(targetPostId);
-        if (isPost) {
-            const state = await bounded((resolve, reject) => {
-                void chrome.scripting.executeScript({ target: { tabId }, func: waitForXPage, args: [expectVideo, 10_000, targetPostId] })
-                    .then(([injection]) => {
-                    if (documentId && injection?.documentId !== documentId)
-                        reject(new Error(pageMovedMessage));
-                    else if (injection?.result)
-                        resolve(injection.result);
-                    else
-                        reject(new Error("Xの投稿を読み取れませんでした。"));
-                }, error => reject(scanError(error, "Xの投稿を読み取れませんでした。")));
-            }, signal);
+        if (targetPostId) {
+            const state = await session.waitForPost(expectVideo, targetPostId);
             if (state.status === "restricted")
                 throw new Error("Xがこの投稿の表示を制限しています。Chromeで投稿を表示できる状態にしてから解析してください。");
             if (state.status === "unavailable")
                 throw new Error("Xの投稿が削除されているか、表示できません。");
             if (state.status !== "ready")
                 throw new Error("Xの投稿の読み込みが完了しませんでした。Chromeで投稿を開いてから解析し直してください。");
-            result = await bounded((resolve, reject) => {
-                void chrome.scripting.executeScript({ target: { tabId }, func: scanDocument, args: [targetPostId] })
-                    .then(([injection]) => {
-                    if (documentId && injection?.documentId !== documentId)
-                        reject(new Error(pageMovedMessage));
-                    else if (injection?.result)
-                        resolve(injection.result);
-                    else
-                        reject(new Error("Xの投稿を読み取れませんでした。"));
-                }, error => reject(scanError(error, "Xの投稿を読み取れませんでした。")));
-            }, signal);
+            result = await session.scanPost(targetPostId);
         }
-        if (result.url.split("#")[0] !== sourceUrl.split("#")[0])
-            throw new Error(pageMovedMessage);
-        const extra = await bounded((resolve, reject) => {
-            void chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: scanXMedia, args: targetPostId ? [targetPostId] : [] })
-                .then(([injection]) => {
-                if (documentId && injection?.documentId !== documentId)
-                    reject(new Error(pageMovedMessage));
-                else
-                    resolve(injection?.result ?? []);
-            }, () => reject(new Error("Xの動画情報を読み取れませんでした。")));
-        }, signal);
+        session.assertSourceUrl(result.url);
+        const extra = await session.scanPostMedia(targetPostId);
         result.media = mergeMediaCandidates(result.media ?? [], extra);
-        const isProfileImage = (url) => {
-            try {
-                return /\/profile_(?:images|banners)\//i.test(new URL(url).pathname);
-            }
-            catch {
-                return false;
-            }
-        };
-        if (isPost) {
+        if (targetPostId) {
             result.images = result.images.filter(url => !isProfileImage(url));
             result.media = result.media.filter(item => !isProfileImage(item.url));
         }
@@ -122,58 +38,9 @@ export async function scanTab(tabId, signal, requestedUrl) {
             throw new Error("動画は表示されていますが、保存できるMP4のURLを取得できませんでした。");
         }
     }
-    await bounded((resolve, reject) => {
-        void chrome.tabs.get(tabId).then(tab => {
-            if (tab.status === "loading" || (tab.url && tab.url.split("#")[0] !== sourceUrl.split("#")[0])) {
-                reject(new Error(pageMovedMessage));
-            }
-            else
-                resolve();
-        }, () => reject(new Error("解析中のタブが閉じられました。")));
-    }, signal);
+    await session.verifyCurrentPage();
     return result;
 }
-export async function scanUrl(url, signal) {
-    if (signal?.aborted)
-        throw new Error("ページの解析を終了しました。");
-    // Wait for create to settle so a window created after cancellation can still be closed.
-    const window = await chrome.windows.create({
-        url,
-        focused: false,
-        state: "minimized",
-        type: "normal",
-    });
-    const windowId = window?.id;
-    const tabId = window?.tabs?.[0]?.id;
-    try {
-        if (signal?.aborted)
-            throw new Error("ページの解析を終了しました。");
-        if (windowId === undefined || tabId === undefined)
-            throw new Error("指定したページを開けませんでした。");
-        await bounded((resolve, reject) => {
-            const onUpdated = (id, change) => {
-                if (id === tabId && change.status === "complete")
-                    resolve();
-            };
-            const onRemoved = (id) => {
-                if (id === tabId)
-                    reject(new Error("解析中のタブが閉じられました。"));
-            };
-            chrome.tabs.onUpdated.addListener(onUpdated);
-            chrome.tabs.onRemoved.addListener(onRemoved);
-            void chrome.tabs.get(tabId).then(current => {
-                if (current.status === "complete")
-                    resolve();
-            }, () => reject(new Error("指定したページを開けませんでした。")));
-            return () => {
-                chrome.tabs.onUpdated.removeListener(onUpdated);
-                chrome.tabs.onRemoved.removeListener(onRemoved);
-            };
-        }, signal);
-        return await scanTab(tabId, signal, url);
-    }
-    finally {
-        if (windowId !== undefined)
-            await chrome.windows.remove(windowId).catch(() => undefined);
-    }
+export function scanUrl(url, signal) {
+    return withTemporaryPage(url, signal, tabId => scanTab(tabId, signal, url));
 }

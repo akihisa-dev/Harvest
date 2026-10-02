@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {createPreviewOrder, findNearestByRect, isPointerAfter} from "../dist/extension/app/image-reorder.js";
+import {createPreviewOrder, findNearestByRect, isPointerAfter} from "../dist/extension/core/image-reorder.js";
 
 const rect = (left, top, width = 100, height = 80) => ({
   left, right: left + width, top, bottom: top + height, width, height,

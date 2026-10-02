@@ -25,13 +25,21 @@ async function serve() {
             const png = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
             const pages = [1, 2].map(index => ({url: "https://images.example.test/" + index + ".jpg", sourcePage: "https://source.example.test"}));
             const get = selector => document.querySelector(selector);
-            const bindings = new WeakMap();
+            const bindings = new Map();
+            let pendingLoads = 0;
             const previewLoader = {
               set(image, item) {
                 bindings.set(image, item.url);
+                delete image.dataset.previewFailed;
                 const value = item.url.endsWith("/1.jpg") ? png : "delay";
                 if (value === png) image.src = png;
-                else setTimeout(() => { if (bindings.get(image) === item.url) image.src = png; }, 350);
+                else {
+                  pendingLoads++;
+                  setTimeout(() => {
+                    pendingLoads--;
+                    if (bindings.get(image) === item.url) image.src = png;
+                  }, 350);
+                }
                 image.dataset.previewUrl = item.url;
               },
               clearImage(image) { bindings.delete(image); image.removeAttribute("src"); },
@@ -48,6 +56,7 @@ async function serve() {
               getImageCount: () => pages.length, previewLoader, onChange: () => controller.render(),
             });
             window.__viewerReady = controller;
+            window.__viewerFixture = {pages, bindings, get pendingLoads() { return pendingLoads; }};
             controller.setOpen(true);
             controller.render();
           </script>
@@ -108,6 +117,63 @@ test("viewer waits for the next preview before its directional transition and ho
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.locator("#previous").click();
     assert.equal(await page.locator(".viewer-motion-image").count(), 0, "reduced motion skips the image transition");
+  } finally {
+    await browser?.close();
+    await new Promise(resolveClose => server.close(resolveClose));
+  }
+});
+
+test("viewer retargeting, failed previews and clearing release obsolete image bindings", async () => {
+  const {server, url} = await serve();
+  let browser;
+  try {
+    browser = await chromium.launch({channel: "chrome", headless: true});
+    const page = await browser.newPage();
+    const errors = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.goto(url);
+    await page.waitForFunction(() => window.__viewerReady && document.querySelector("#image").naturalWidth > 0);
+    await page.evaluate(() => {
+      document.querySelector("#next").click();
+      document.querySelector("#previous").click();
+    });
+    await page.waitForFunction(() => document.querySelector("#image").dataset.direction === "previous");
+    const retargeted = await page.evaluate(async () => {
+      const image = document.querySelector("#image");
+      for (const element of [image, ...document.querySelectorAll(".viewer-motion-image")]) {
+        for (const animation of element.getAnimations()) { animation.pause(); animation.currentTime = 80; }
+      }
+      document.querySelector("#next").click();
+      await Promise.resolve();
+      await Promise.resolve();
+      const ghosts = [...document.querySelectorAll(".viewer-motion-image")];
+      return {ghosts: ghosts.length, holding: ghosts.every(ghost => ghost.dataset.motion === "holding"),
+        detached: [...window.__viewerFixture.bindings.keys()].filter(element => !element.isConnected).length};
+    });
+    assert.ok(retargeted.ghosts > 0 && retargeted.ghosts <= 4, JSON.stringify(retargeted));
+    assert.equal(retargeted.holding, true, "interrupted animation completion does not remove the new holding images");
+    assert.equal(retargeted.detached, 0, "superseded visual layers release their preview bindings");
+
+    await page.evaluate(() => { document.querySelector("#image").dataset.previewFailed = "true"; });
+    await page.waitForFunction(() => !document.querySelector(".viewer-motion-image"));
+    assert.equal(await page.evaluate(() => window.__viewerFixture.bindings.size), 3,
+      "failure releases outgoing images while keeping the active image and two thumbnails");
+
+    const cleared = await page.evaluate(() => {
+      document.querySelector("#previous").click();
+      document.querySelector("#next").click();
+      const pendingGhosts = document.querySelectorAll(".viewer-motion-image").length;
+      window.__viewerFixture.pages.length = 0;
+      window.__viewerReady.render();
+      return {pendingGhosts, bindings: window.__viewerFixture.bindings.size};
+    });
+    assert.ok(cleared.pendingGhosts > 0, "the collection is cleared while an image transition is pending");
+    assert.equal(cleared.bindings, 0);
+    await page.waitForFunction(() => window.__viewerFixture.pendingLoads === 0);
+    assert.equal(await page.locator(".viewer-motion-image").count(), 0);
+    assert.equal(await page.locator("#image").getAttribute("src"), null, "late preview loads cannot restore cleared content");
+    assert.equal(await page.locator("#image").getAttribute("data-motion"), null);
+    assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
     await new Promise(resolveClose => server.close(resolveClose));

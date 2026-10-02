@@ -1,3 +1,4 @@
+import type { Mp4ConversionRequest, Mp4ConversionReply } from "./worker-contracts.js";
 import { checkCancelled, MAX_IMAGE_BYTES } from "./image-data-contract.js";
 
 /** One worker owns one conversion and is released on completion, failure, timeout, or cancellation. */
@@ -21,7 +22,7 @@ export function prepareMp4(blob: Blob, signal?: AbortSignal, maxBytes = MAX_IMAG
     };
     const abort = (): void => finish(new DOMException("動画の変換を中止しました。", "AbortError"));
     const timeout = setTimeout(() => finish(new Error("MP4への変換がタイムアウトしました。")), 120_000);
-    worker.onmessage = (event: MessageEvent<{blob?: Blob; error?: string}>) => {
+    worker.onmessage = (event: MessageEvent<Mp4ConversionReply>) => {
       if (event.data.error) finish(new Error(event.data.error));
       else if (event.data.blob instanceof Blob && event.data.blob.type === "video/mp4" && event.data.blob.size > 0) finish(undefined, event.data.blob);
       else finish(new Error("MP4への変換結果が空です。"));
@@ -29,7 +30,7 @@ export function prepareMp4(blob: Blob, signal?: AbortSignal, maxBytes = MAX_IMAG
     worker.onerror = worker.onmessageerror = () => finish(new Error("動画をMP4へ変換できませんでした。"));
     signal?.addEventListener("abort", abort, {once: true});
     if (signal?.aborted) { abort(); return; }
-    try { worker.postMessage({blob, maxBytes: Math.min(maxBytes, MAX_IMAGE_BYTES)}); }
+    try { worker.postMessage({blob, maxBytes: Math.min(maxBytes, MAX_IMAGE_BYTES)} satisfies Mp4ConversionRequest); }
     catch { finish(new Error("動画をMP4へ変換できませんでした。")); }
   });
 }

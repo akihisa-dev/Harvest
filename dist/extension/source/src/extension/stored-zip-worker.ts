@@ -1,3 +1,4 @@
+import type { ZipChecksumRequest, ZipChecksumReply } from "./worker-contracts.js";
 import {createStoredZip, type StoredZipEntry, type StoredZipOptions} from "../core/stored-zip.js";
 
 function checksumInWorker(worker: Worker, blob: Blob, id: number, signal?: AbortSignal): Promise<number> {
@@ -8,7 +9,7 @@ function checksumInWorker(worker: Worker, blob: Blob, id: number, signal?: Abort
       worker.removeEventListener("error", onError);
       signal?.removeEventListener("abort", onAbort);
     };
-    const onMessage = (event: MessageEvent<{readonly id: number; readonly checksum?: number; readonly error?: string}>): void => {
+    const onMessage = (event: MessageEvent<ZipChecksumReply>): void => {
       if (event.data.id !== id) return;
       cleanup();
       if (event.data.error !== undefined) reject(new Error(event.data.error));
@@ -26,7 +27,7 @@ function checksumInWorker(worker: Worker, blob: Blob, id: number, signal?: Abort
     worker.addEventListener("message", onMessage);
     worker.addEventListener("error", onError, {once: true});
     signal?.addEventListener("abort", onAbort, {once: true});
-    worker.postMessage({id, blob});
+    worker.postMessage({id, blob} satisfies ZipChecksumRequest);
   });
 }
 

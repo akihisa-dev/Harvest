@@ -287,3 +287,65 @@ test("別のsession開始後でも注入済みsessionの遅延portを切断す�
     assert.equal(fixture.controller.session, currentPort.name);
   } finally { fixture.restore(); }
 });
+
+test("停止した注入の遅い失敗と接続は新しい収集の解析済みURLを変えない", async () => {
+  const fixture = setup();
+  let failOldInjection;
+  let oldSession;
+  fixture.executeScript = injection => new Promise((_resolve, reject) => {
+    oldSession = injection.args[0];
+    failOldInjection = reject;
+  });
+  try {
+    const oldStart = fixture.controller.toggle();
+    for (let attempt = 0; attempt < 10 && !failOldInjection; attempt++) await Promise.resolve();
+    assert.equal(typeof failOldInjection, "function");
+    fixture.controller.stop();
+    fixture.executeScript = async injection => {
+      fixture.connect(injection.args[0], 7);
+      return [];
+    };
+    await fixture.controller.toggle();
+    const currentSession = fixture.controller.session;
+    const currentPort = fixture.ports.at(-1);
+    const url = "https://example.test/current";
+    fixture.controller.markAnalyzedUrl(url, currentSession);
+
+    failOldInjection(new Error("late failure"));
+    await oldStart;
+    assert.equal(fixture.connect(oldSession, 7).disconnectCount, 1);
+    assert.equal(fixture.controller.session, currentSession);
+    assert.equal(fixture.controller.analyzedUrl, url);
+    assert.deepEqual(fixture.errors, []);
+    currentPort.send({url});
+    assert.equal(fixture.exports, 1);
+  } finally { fixture.restore(); }
+});
+
+test("sessionの接続許可は一度限りで、解析済みURLは現在のsessionにだけ属する", async () => {
+  const fixture = setup();
+  try {
+    await fixture.controller.toggle();
+    const session = fixture.controller.session;
+    const port = fixture.ports.at(-1);
+    const repeated = fixture.connect(session, 7);
+    repeated.send({url: "https://example.test/repeated"});
+    assert.equal(repeated.onMessageListener, undefined);
+    assert.deepEqual(fixture.scans, []);
+
+    const url = "https://example.test/chapter";
+    fixture.controller.markAnalyzedUrl(url, session);
+    assert.equal(fixture.controller.analyzedUrl, url);
+    fixture.controller.clearAnalyzedUrl();
+    fixture.controller.publishState();
+    assert.equal(port.messages.at(-1).pdfUrl, null);
+    fixture.controller.markAnalyzedUrl(url, session);
+    fixture.controller.markAnalyzedUrl("https://example.test/stale", "previous-session");
+    assert.equal(fixture.controller.analyzedUrl, null);
+    fixture.controller.markAnalyzedUrl(url, session);
+    fixture.controller.stop();
+    assert.equal(fixture.controller.analyzedUrl, null);
+    fixture.controller.markAnalyzedUrl(url, session);
+    assert.equal(fixture.controller.analyzedUrl, null);
+  } finally { fixture.restore(); }
+});

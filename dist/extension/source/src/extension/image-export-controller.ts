@@ -1,61 +1,15 @@
-import {createPreparationWorkers, waitForPreparation} from "../core/preparation-workers.js";
-import {isMediaArchiveFormat, exportFormatMediaKind, type ImageArchiveFormat} from "../core/export-formats.js";
-import type { ImageItem } from "../core/images.js";
-import { storedZipDataLimit } from "../core/stored-zip.js";
-import { createStoredZipInWorker } from "./stored-zip-worker.js";
-import { fetchImage } from "./image-fetch.js";
-import { fetchOriginalMedia, originalMediaExtension } from "./media-fetch.js";
-import { prepareMp4 } from "./mp4-conversion.js";
-import { convertImage } from "./image-format.js";
-import type { FetchedImage } from "./image-data-contract.js";
-import { formatPlural, localizeErrorMessage, t } from "./localization.js";
-import { createExportLifecycle, downloadBlob, type MutablePendingExport } from "./export-lifecycle.js";
+import {isMediaArchiveFormat, type ImageArchiveFormat} from "../core/export-formats.js";
+import type {ImageItem} from "../core/images.js";
+import {createStoredZipInWorker} from "./stored-zip-worker.js";
+import {prepareImageArchive, type ImageArchiveWork} from "./image-archive-preparation.js";
+import {formatPlural, localizeErrorMessage, t} from "./localization.js";
+import {createExportLifecycle, downloadBlob} from "./export-lifecycle.js";
 
-const IMAGE_FETCH_CONCURRENCY = 3;
-
-class ImageArchiveLimitError extends RangeError {
-  constructor() { super("ZIP全体がZIP形式の上限を超えています。"); }
-}
-
-function imageArchiveFilenames(count: number, format: ImageArchiveFormat): string[] {
-  const width = Math.max(3, String(count).length);
-  // For original media, .jpg is the shortest supported suffix and gives a
-  // safe upper bound for payload bytes until the actual MIME types are known.
-  const extension = format === "original" ? "jpg" : format;
-  return Array.from({length: count}, (_, index) => `${String(index + 1).padStart(width, "0")}.${extension}`);
-}
+// Preserve the existing entry-builder API while the core owns archive rules.
+export {createImageZipEntries} from "../core/image-archive.js";
 
 function mediaProgressKind(format: ImageArchiveFormat): "files" | "images" {
   return isMediaArchiveFormat(format) ? "files" : "images";
-}
-
-function validatePreparedMedia(item: ImageItem, blob: Blob, format: ImageArchiveFormat): void {
-  if (format !== "mp4" && format !== "gif") return;
-  const expectedKind = exportFormatMediaKind(format);
-  let actualExtension: string;
-  try {
-    actualExtension = originalMediaExtension(blob.type);
-  } catch {
-    throw new RangeError("保存するデータの形式を確認できません。");
-  }
-  if ((item.kind ?? "image") !== expectedKind || actualExtension !== format) {
-    throw new RangeError("選択項目と保存データの形式が一致しません。");
-  }
-}
-
-type ImageFetchOutcome =
-  | { readonly ok: true; readonly fetched: FetchedImage | Blob }
-  | { readonly ok: false; readonly error: unknown };
-
-interface Deferred<T> {
-  readonly promise: Promise<T>;
-  resolve(value: T): void;
-}
-
-function createDeferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>(resolvePromise => { resolve = resolvePromise; });
-  return {promise, resolve};
 }
 
 export interface PendingImageExport {
@@ -63,10 +17,6 @@ export interface PendingImageExport {
   readonly selected: readonly ImageItem[];
   readonly prepared: ReadonlyMap<ImageItem, Blob>;
   readonly failed: ReadonlyMap<ImageItem, string>;
-}
-
-interface MutablePendingImageExport extends MutablePendingExport<Blob> {
-  readonly format: ImageArchiveFormat;
 }
 
 export interface ImageExportControllerOptions {
@@ -92,42 +42,9 @@ export interface ImageExportController {
   export(format: ImageArchiveFormat): Promise<void>;
 }
 
-export function createImageZipEntries(
-  selected: readonly ImageItem[],
-  prepared: ReadonlyMap<ImageItem, Blob>,
-  format: ImageArchiveFormat,
-): Array<{readonly filename: string; readonly blob: Blob}> {
-  return selected.map((item, index) => {
-    const blob = prepared.get(item);
-    if (!blob) throw new RangeError("保存する画像が準備されていません。");
-    let extension: string;
-    if (format === "original") {
-      try {
-        extension = originalMediaExtension(blob.type);
-      } catch {
-        throw new RangeError("保存するデータの形式を確認できません。");
-      }
-      const kind = item.kind ?? "image";
-      if ((kind === "video" && extension !== "mp4" && extension !== "webm") ||
-          (kind === "gif" && extension !== "gif") ||
-          (kind === "image" && (extension === "mp4" || extension === "webm"))) {
-        throw new RangeError("選択項目と保存データの形式が一致しません。");
-      }
-    } else {
-      extension = format;
-      if (format === "gif" || format === "mp4") {
-        validatePreparedMedia(item, blob, format);
-      }
-    }
-    const width = Math.max(3, String(selected.length).length);
-    const filename = `${String(index + 1).padStart(width, "0")}.${extension}`;
-    return {filename, blob};
-  });
-}
-
 /** Prepares selected image files in order, retries only failures, and writes one ZIP. */
 export function createImageExportController(options: ImageExportControllerOptions): ImageExportController {
-  const lifecycle = createExportLifecycle<Blob, MutablePendingImageExport>({...options, cancelledMessage: t("exportCancelled")});
+  const lifecycle = createExportLifecycle<Blob, ImageArchiveWork>({...options, cancelledMessage: t("exportCancelled")});
 
   async function exportImages(format: ImageArchiveFormat): Promise<void> {
     if (options.isBusy()) return;
@@ -147,69 +64,17 @@ export function createImageExportController(options: ImageExportControllerOption
       `0 / ${remaining.length}`,
       async run => {
         try {
-          const dataLimit = storedZipDataLimit(imageArchiveFilenames(work.selected.length, format));
-          let preparedSize = [...work.prepared.values()].reduce((size, blob) => size + blob.size, 0);
-          if (preparedSize > dataLimit) throw new ImageArchiveLimitError();
-          work.failed.clear();
-          const isOriginalMedia = isMediaArchiveFormat(format);
-          // Preserve the existing opportunity to cancel before ZIP prefetch starts.
-          await Promise.resolve();
-          if (run.stopped) return;
-          const fetchedResults: Array<Deferred<ImageFetchOutcome & {release: () => void}> | undefined> = remaining.map(() => createDeferred());
-          const workers = createPreparationWorkers(remaining.length, isOriginalMedia ? 1 : IMAGE_FETCH_CONCURRENCY, run.signal, async (index, signal, release) => {
-            const item = remaining[index]!;
-            let outcome: ImageFetchOutcome;
-            try {
-              outcome = {
-                ok: true,
-                fetched: isOriginalMedia
-                  ? await fetchOriginalMedia(item.url, item.kind ?? "image", {signal, sourcePage: item.sourcePage})
-                  : await fetchImage(item.url, {signal, sourcePage: item.sourcePage}),
-              };
-            } catch (error) {
-              outcome = {ok: false, error};
-            }
-            fetchedResults[index]!.resolve({...outcome, release});
+          const entries = await prepareImageArchive(work, {
+            signal: run.signal,
+            isStopped: () => run.stopped,
+            fallbackFailure: t("errorImageConvert"),
+            onProgress(completed, total) {
+              if (options.isDisposed()) return;
+              run.reportStatus(t(mediaProgressKind(format) === "files" ? (retry ? "retryFiles" : "prepareFiles") : (retry ? "retryImages" : "prepareImages"), {
+                completed, total,
+              }), "busy", `${completed} / ${total}`);
+            },
           });
-          // Observe failure immediately while conversion consumes the ordered results.
-          const fetchCompletion = Promise.allSettled([workers.finished]);
-          try {
-            for (let index = 0; index < remaining.length; index += 1) {
-              if (run.stopped) return;
-              const outcome = await waitForPreparation(fetchedResults[index]!.promise, workers.signal);
-              if (run.stopped) return;
-              const item = remaining[index]!;
-              try {
-                if (!outcome.ok) throw outcome.error;
-                let blob = isOriginalMedia
-                  ? outcome.fetched as Blob
-                  : await convertImage(outcome.fetched as FetchedImage, format, run.signal);
-                if (format === "mp4") blob = await prepareMp4(blob, run.signal, dataLimit - preparedSize);
-                if (run.stopped) return;
-                validatePreparedMedia(item, blob, format);
-                if (blob.size > dataLimit - preparedSize) throw new ImageArchiveLimitError();
-                work.prepared.set(item, blob);
-                preparedSize += blob.size;
-              } catch (error) {
-                if (run.stopped) return;
-                if (error instanceof ImageArchiveLimitError) throw error;
-                const reason = error instanceof Error ? error.message : t("errorImageConvert");
-                work.failed.set(item, reason);
-              } finally {
-                fetchedResults[index] = undefined;
-                outcome.release();
-              }
-              if (!options.isDisposed()) {
-                run.reportStatus(t(mediaProgressKind(format) === "files" ? (retry ? "retryFiles" : "prepareFiles") : (retry ? "retryImages" : "prepareImages"), {
-                  completed: index + 1,
-                  total: remaining.length,
-                }), "busy", `${index + 1} / ${remaining.length}`);
-              }
-            }
-          } finally {
-            workers.abort();
-            await fetchCompletion;
-          }
           if (run.stopped) return;
           if (work.failed.size) {
             options.onCloseViewer();
@@ -217,9 +82,7 @@ export function createImageExportController(options: ImageExportControllerOption
             return;
           }
 
-          const entries = createImageZipEntries(work.selected, work.prepared, format);
-          const exactDataLimit = storedZipDataLimit(entries.map(entry => entry.filename));
-          if (preparedSize > exactDataLimit) throw new ImageArchiveLimitError();
+          if (!entries) return;
           run.reportStatus(t("zipCreating"), "busy", t("zipCreatingShort"));
           const archive = await createStoredZipInWorker(entries, {
             signal: run.signal,

@@ -1,9 +1,7 @@
+import type { Mp4ConversionRequest, Mp4ConversionReply, WorkerMessageScope } from "./worker-contracts.js";
 import { convertWebmToMp4 } from "./mp4-codec.js";
 
-const scope = self as unknown as {
-  addEventListener(type: "message", listener: (event: MessageEvent<{blob: Blob; maxBytes: number}>) => void): void;
-  postMessage(message: {blob?: Blob; error?: string}): void;
-};
+const scope = self as unknown as WorkerMessageScope<Mp4ConversionRequest, Mp4ConversionReply>;
 
 scope.addEventListener("message", event => {
   void convertWebmToMp4(event.data.blob, event.data.maxBytes).then(blob => {

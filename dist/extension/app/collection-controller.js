@@ -1,33 +1,34 @@
 import { captureCollectionLinks } from "./collection-mode.js";
 export function createCollectionController(options) {
-    const sessions = new Set();
-    const injectionStartedSessions = new Set();
+    // Keep stopped injections until their one permitted connection arrives, so
+    // a late page-side capture can be disconnected without touching a new one.
+    const pendingConnections = new Map();
     let activeSession = null;
-    let activeTabId = null;
-    let activePort = null;
-    let lastAnalyzedUrl = null;
     function publishState() {
-        const port = activePort;
+        const session = activeSession;
+        const port = session?.port;
         if (!port)
             return;
-        const message = { busy: options.isBusy(), pdfUrl: lastAnalyzedUrl, canExport: options.canExport() };
+        const message = { busy: options.isBusy(), pdfUrl: session.analyzedUrl, canExport: options.canExport() };
         try {
             port.postMessage(message);
         }
         catch {
-            if (activePort === port)
+            if (activeSession === session)
                 stop();
         }
     }
     function stop() {
-        lastAnalyzedUrl = null;
-        if (activeSession !== null && !injectionStartedSessions.has(activeSession))
-            sessions.delete(activeSession);
+        const session = activeSession;
+        if (session?.phase === "preparing")
+            pendingConnections.delete(session.name);
         activeSession = null;
-        activeTabId = null;
-        const port = activePort;
-        activePort = null;
-        port?.disconnect();
+        if (session) {
+            session.analyzedUrl = null;
+            const port = session.port;
+            session.port = null;
+            port?.disconnect();
+        }
         options.button.textContent = options.startLabel;
         options.button.setAttribute("aria-pressed", "false");
     }
@@ -36,8 +37,11 @@ export function createCollectionController(options) {
             stop();
             return;
         }
-        const session = `harvest-collection:${crypto.randomUUID()}`;
-        sessions.add(session);
+        const session = {
+            name: `harvest-collection:${crypto.randomUUID()}`,
+            phase: "preparing", tabId: null, port: null, analyzedUrl: null,
+        };
+        pendingConnections.set(session.name, session);
         activeSession = session;
         options.button.textContent = options.stopLabel;
         options.button.setAttribute("aria-pressed", "true");
@@ -47,9 +51,9 @@ export function createCollectionController(options) {
                 return;
             if (tab?.id === undefined || !isWebUrl(tab.url))
                 throw new Error(options.noPageError);
-            activeTabId = tab.id;
-            injectionStartedSessions.add(session);
-            await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: captureCollectionLinks, args: [session] });
+            session.tabId = tab.id;
+            session.phase = "injecting";
+            await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: captureCollectionLinks, args: [session.name] });
         }
         catch (error) {
             if (activeSession !== session)
@@ -58,47 +62,51 @@ export function createCollectionController(options) {
             options.onError(error);
         }
         finally {
-            if (!injectionStartedSessions.has(session))
-                sessions.delete(session);
+            if (session.phase !== "injecting")
+                pendingConnections.delete(session.name);
         }
     }
     chrome.runtime.onConnect?.addListener(port => {
-        if (!sessions.delete(port.name))
+        const session = pendingConnections.get(port.name);
+        if (!session)
             return;
-        injectionStartedSessions.delete(port.name);
-        if (port.name !== activeSession || port.sender?.tab?.id !== activeTabId) {
+        pendingConnections.delete(port.name);
+        session.phase = "connected";
+        if (session !== activeSession || port.sender?.tab?.id !== session.tabId) {
             port.disconnect();
             return;
         }
-        activePort?.disconnect();
-        activePort = port;
+        session.port?.disconnect();
+        session.port = port;
         publishState();
         port.onMessage.addListener(message => {
-            if (activePort !== port || !activeSession || options.isBusy() || options.isDisposed() ||
+            if (activeSession !== session || session.port !== port || options.isBusy() || options.isDisposed() ||
                 typeof message.url !== "string" || !isWebUrl(message.url))
                 return;
-            if (lastAnalyzedUrl === message.url) {
+            if (session.analyzedUrl === message.url) {
                 options.onExport();
                 return;
             }
             options.onScanUrl(message.url);
         });
         port.onDisconnect.addListener(() => {
-            if (activePort === port)
+            if (activeSession === session && session.port === port)
                 stop();
         });
     });
     options.button.addEventListener("click", () => { void toggle(); });
     return {
-        get session() { return activeSession; },
-        get analyzedUrl() { return lastAnalyzedUrl; },
+        get session() { return activeSession?.name ?? null; },
+        get analyzedUrl() { return activeSession?.analyzedUrl ?? null; },
         toggle,
         stop,
         clearAnalyzedUrl() {
-            lastAnalyzedUrl = null;
+            if (activeSession)
+                activeSession.analyzedUrl = null;
         },
         markAnalyzedUrl(url, session) {
-            lastAnalyzedUrl = session !== null && session === activeSession ? url : null;
+            if (activeSession)
+                activeSession.analyzedUrl = session === activeSession.name ? url : null;
         },
         publishState,
     };
