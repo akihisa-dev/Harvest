@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {createExportLifecycle} from "../dist/extension/app/export-lifecycle.js";
 import {createExportSession} from "../dist/extension/app/export-session.js";
 
 const image = name => ({url:`https://images.example.test/${name}.png`, sourcePage:"https://example.test/", selected:true});
@@ -56,23 +57,24 @@ test("保存状態の参照は再試行データを変更せず、選択変更�
   assert.equal(f.session.state.view.phase, "ready");
 });
 
-test("同じ対象と出典設定の変更は再試行を保持し、形式を戻すと対応する失敗を表示する", () => {
+test("同じ形式・対象・出典設定の変更では再試行を保ち、別形式へ変えると準備を解放する", () => {
   const f = fixture();
   const pdfWork = work(f.selected);
-  const pngWork = work(f.selected, "png");
   f.pdf.pending = pdfWork;
-  f.archive.pending = pngWork;
   f.session.setIncludeSourcePage(true);
-  assert.equal(f.session.selectionChanged(), false);
-  assert.equal(f.session.state.view.pending, pdfWork);
-  f.session.setFormat("jpg");
-  assert.equal(f.session.selectionChanged(), false);
-  assert.equal(f.session.state.view.phase, "ready");
-  assert.equal(f.archive.pending, pngWork);
-  f.session.setFormat("png");
-  assert.equal(f.session.state.view.pending, pngWork);
   f.session.setFormat("pdf");
+  assert.equal(f.session.selectionChanged(), false);
   assert.equal(f.session.state.view.pending, pdfWork);
+  f.session.setFormat("png");
+  assert.equal(f.pdf.pending, null);
+  const pngWork = work(f.selected, "png");
+  f.archive.pending = pngWork;
+  f.session.setFormat("png");
+  assert.equal(f.archive.pending, pngWork);
+  f.session.setFormat("jpg");
+  assert.equal(f.archive.pending, null);
+  f.session.setFormat("pdf");
+  assert.equal(f.session.state.view.phase, "ready");
 });
 
 test("保存成功は明示通知と開始時の対象・形式・出典設定で記録し、元へ戻したときだけ再表示する", async () => {
@@ -133,3 +135,61 @@ test("媒体ごとの対象で保存し、画像保存後の出典設定変更�
   assert.equal(f.session.state.view.phase, "ready");
   assert.deepEqual(f.calls.slice(-2), [["pdf", "clear"], ["image", "clear"]]);
 });
+
+for (const archiveFormat of ["png", "jpg", "jxl"]) {
+  for (const [first, next] of [[archiveFormat, "pdf"], ["pdf", archiveFormat]]) {
+    test(`${first}の失敗後に${next}へ切り替えると実際の保存処理の準備参照を解放する`, async () => {
+      const selected = [image("one"), image("two")];
+      let busy = false;
+      let shouldFail = true;
+      let session;
+      let preparedCount = 0;
+      let retried = false;
+      const port = kind => {
+        const lifecycle = createExportLifecycle({
+          cancelledMessage:"cancelled", isBusy:() => busy, isDisposed:() => false,
+          onBusyChange:value => { busy = value; }, onStatus() {}, onScrollToFailures() {},
+        });
+        return {
+          get pending() { return lifecycle.pending; },
+          get isRunning() { return lifecycle.isRunning; }, get progress() { return lifecycle.progress; },
+          clear:() => lifecycle.clear(), abort:() => lifecycle.abort(),
+          discardIfSelectionChanged:items => lifecycle.discardIfSelectionChanged(items),
+          async export(format) {
+            const other = kind === "pdf" ? archive : pdf;
+            assert.equal(other.pending, null, "新形式の準備前に旧形式の参照を解放する");
+            const work = lifecycle.resolveWork(selected, () => ({selected, format, prepared:new Map(), failed:new Map()}));
+            await lifecycle.run(work, "start", "", async run => {
+              retried = run.retry;
+              for (const item of selected) {
+                if (work.prepared.has(item)) continue;
+                if (shouldFail && item === selected[1]) work.failed.set(item, "failed");
+                else { work.prepared.set(item, new Blob([new Uint8Array(1024 * 1024)])); work.failed.delete(item); preparedCount++; }
+              }
+              if (!work.failed.size) { lifecycle.clear(); session.complete(); }
+            });
+          },
+        };
+      };
+      const pdf = port("pdf"), archive = port("image");
+      session = createExportSession({format:first, includeSourcePage:true, getSelectedItems:() => selected, getPdfController:() => pdf, getImageController:() => archive, isBusy:() => busy});
+      await session.start();
+      const old = first === "pdf" ? pdf : archive;
+      assert.equal(old.pending.prepared.size, 1);
+      session.setFormat(first);
+      await session.start();
+      assert.equal(retried, true);
+      assert.equal(preparedCount, 1, "同じ形式の再試行では成功済みを再取得しない");
+      session.setFormat(next);
+      assert.equal(old.pending, null);
+      assert.deepEqual(session.selectedItems, selected);
+      assert.equal(session.includeSourcePage, true);
+      shouldFail = false;
+      await session.start();
+      assert.equal(preparedCount, 3);
+      assert.equal(pdf.pending, null);
+      assert.equal(archive.pending, null);
+      assert.equal(session.state.view.phase, "saved");
+    });
+  }
+}

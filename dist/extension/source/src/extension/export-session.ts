@@ -53,6 +53,13 @@ export function createExportSession(options: ExportSessionOptions) {
     return mediaExportSelection(options.getSelectedItems(), format);
   }
 
+  function discardIncompatibleWork(): void {
+    const pdf = options.getPdfController();
+    const image = options.getImageController();
+    if (format !== "pdf" && pdf?.pending && !pdf.isRunning) pdf.clear();
+    if (image?.pending && image.pending.format !== format && !image.isRunning) image.clear();
+  }
+
   return {
     get format() { return format; },
     get includeSourcePage() { return includeSourcePage; },
@@ -68,7 +75,10 @@ export function createExportSession(options: ExportSessionOptions) {
         pdfProgress: pdf?.progress ?? "", imageProgress: image?.progress ?? "",
       })};
     },
-    setFormat(value: ExportFormat): void { format = value; },
+    setFormat(value: ExportFormat): void {
+      format = value;
+      discardIncompatibleWork();
+    },
     setIncludeSourcePage(value: boolean): void { includeSourcePage = value; },
     invalidateCompletion(): void { completed = null; },
     selectionChanged(): boolean {
@@ -94,6 +104,7 @@ export function createExportSession(options: ExportSessionOptions) {
       if (options.isBusy() || activeRequest) return;
       const selected = selectedItems();
       if (!selected.length) return;
+      discardIncompatibleWork();
       const request: CompletedExport = {format, includeSourcePage, selected};
       completed = null;
       activeRequest = request;
@@ -102,6 +113,7 @@ export function createExportSession(options: ExportSessionOptions) {
         else await options.getImageController()?.export(request.format);
       } finally {
         if (activeRequest === request) activeRequest = null;
+        discardIncompatibleWork();
       }
     },
   };
