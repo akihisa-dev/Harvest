@@ -240,6 +240,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     declaredType?: string | null,
   ): void => {
     checkDeadline();
+    if (/^audio\//i.test(declaredType?.trim() ?? "")) return;
     const candidate = value?.trim();
     if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:")) return;
     try {
@@ -625,6 +626,11 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     if (targetPostId && (tagName === "script" || tagName === "style")) return;
     const finishElement = registry.beginElement(element);
     const declaredSourceType = tagName === "source" ? element.getAttribute("type") : null;
+    if (tagName === "source" && (element.parentElement?.tagName.toLowerCase() === "audio"
+      || /^audio\//i.test(declaredSourceType?.trim() ?? ""))) {
+      finishElement();
+      return;
+    }
     const sourceUrl = tagName === "source"
       ? element.getAttribute("src") || (element as HTMLSourceElement).src
       : null;
@@ -661,9 +667,21 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     }
     if (tagName === "video") {
       const video = element as HTMLVideoElement;
-      recordDirectVideo(video.currentSrc, element, element.getAttribute("type"));
-      recordDirectVideo(video.src, element, element.getAttribute("type"));
-      recordDirectVideo(element.getAttribute("src"), element, element.getAttribute("type"));
+      for (const value of [video.currentSrc, video.src, element.getAttribute("src")]) {
+        let declaredType = element.getAttribute("type");
+        if (value) {
+          for (const source of Array.from(element.querySelectorAll("source"))) {
+            try {
+              const sourceUrl = source.getAttribute("src");
+              if (sourceUrl && new URL(sourceUrl, document.baseURI).href === new URL(value, document.baseURI).href) {
+                declaredType = source.getAttribute("type") ?? declaredType;
+                break;
+              }
+            } catch { /* Ignore malformed source URLs. */ }
+          }
+        }
+        recordDirectVideo(value, element, declaredType);
+      }
     } else if (isVideoSource) {
       const source = element as HTMLSourceElement;
       recordDirectVideo(source.src, element, declaredSourceType);
@@ -807,7 +825,11 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
         continue;
       }
       if (mutation.type === "attributes") {
-        if (mutation.target.nodeType === 1) pendingElements.add(mutation.target as Element);
+        if (mutation.target.nodeType === 1) {
+          const element = mutation.target as Element;
+          const parent = element.parentElement;
+          pendingElements.add(element.tagName.toLowerCase() === "source" && parent?.tagName.toLowerCase() === "video" ? parent : element);
+        }
         continue;
       }
       for (const node of Array.from(mutation.addedNodes)) {

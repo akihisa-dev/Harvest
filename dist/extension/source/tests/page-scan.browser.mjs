@@ -3,6 +3,53 @@ import {readFile} from "node:fs/promises";
 import test from "node:test";
 import {chromium} from "playwright";
 import {normalizeImageUrls} from "../dist/extension/core/images.js";
+import {ImageCollection} from "../dist/extension/core/image-collection.js";
+
+test("audioのsourceを収集せず、画像の初期選択とpicture・videoのsourceを保つ", async () => {
+  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const browser = await chromium.launch({channel:"chrome", headless:true});
+  try {
+    const page = await browser.newPage();
+    await page.route("**/*", route => route.abort());
+    for (const mode of ["audio", "mixed", "video", "picture"]) {
+      await page.setContent('<base href="https://example.test/"><main></main>');
+      const result = await page.evaluate(async ({source, mode}) => {
+        const moduleUrl = URL.createObjectURL(new Blob([source], {type:"text/javascript"}));
+        const {scanDocument} = await import(moduleUrl);
+        URL.revokeObjectURL(moduleUrl);
+        const main = document.querySelector("main");
+        for (const [filename, type] of [["music.mp3","audio/mpeg"], ["music.ogg","audio/ogg"], ["music.mp4","audio/mp4"], ["unknown.mp4", ""], ["misleading.gif", "video/mp4"]]) {
+          const audio = document.createElement("audio"); audio.preload = "none";
+          const entry = document.createElement("source"); entry.src = `https://cdn.example.test/${filename}`; entry.type = type;
+          audio.append(entry); main.append(audio);
+        }
+        const audioSource = document.createElement("source"); audioSource.src = "https://cdn.example.test/declared.mp4"; audioSource.type = " AUDIO/mp4 ";
+        main.append(audioSource);
+        if (mode === "mixed") {
+          const image = document.createElement("img"); image.dataset.src = "https://cdn.example.test/image?id=1"; main.append(image);
+        }
+        if (mode === "video") {
+          const video = document.createElement("video"); video.preload = "none";
+          const entry = document.createElement("source"); entry.src = "https://cdn.example.test/movie"; entry.type = "video/mp4";
+          video.append(entry); main.append(video);
+        }
+        if (mode === "picture") {
+          const picture = document.createElement("picture");
+          const entry = document.createElement("source"); entry.srcset = "https://cdn.example.test/small 1x, https://cdn.example.test/large 2x"; entry.type = "image/webp";
+          picture.append(entry); main.append(picture);
+        }
+        return scanDocument();
+      }, {source, mode});
+      const expected = mode === "audio" ? [] : [`https://cdn.example.test/${{mixed:"image?id=1",video:"movie",picture:"large"}[mode]}`];
+      assert.deepEqual(result.images, mode === "video" ? [] : expected, mode);
+      assert.deepEqual((result.media ?? []).map(item => item.url), expected, mode);
+      const collection = new ImageCollection();
+      collection.replace(normalizeImageUrls([...result.images, ...(result.media ?? []).map(item => item.url)], "https://example.test/"), "https://example.test/", result.media);
+      assert.deepEqual(collection.items.map(item => item.url), expected);
+      assert.deepEqual(collection.selectedItems.map(item => item.url), expected);
+    }
+  } finally { await browser.close(); }
+});
 
 test("CSSのurl境界を読み、クエリ・括弧・エスケープを保って保存候補を重複させない", async () => {
   const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");

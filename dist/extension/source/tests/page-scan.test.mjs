@@ -268,6 +268,32 @@ class EmptyMutationObserver {
   disconnect() {}
 }
 
+test("videoのcurrentSrcでもsourceの音声指定を尊重し、種別変更後の古い動画根拠を除く", async () => {
+  const url = "https://cdn.example.test/audio.mp4";
+  const source = new FixtureElement("source", {src:url, type:"audio/mp4"});
+  const video = new FixtureElement("video", {}, [source], {currentSrc:url});
+  const root = new FixtureElement("html", {}, [video]);
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+  assert.deepEqual(result.images, []);
+  assert.deepEqual(result.media ?? [], []);
+  source.attributesMap.set("type", "video/mp4");
+  let notify, changed = false;
+  class Observer extends EmptyMutationObserver { constructor(callback) { super(); notify = callback; } }
+  const updated = await runWithFixture(new FixtureDocument(root), Observer, () => {
+    globalThis.setTimeout = (callback, delay) => {
+      if (delay === 800) return 0;
+      if (delay === 250 && !changed) {
+        changed = true;
+        source.attributesMap.set("type", "audio/mp4");
+        notify([{type:"attributes",target:source}]);
+      }
+      callback(); return 0;
+    };
+    return scanDocument();
+  });
+  assert.deepEqual(updated.media ?? [], []);
+});
+
 for (const scenario of ["slow", "small", "continuous"]) {
   test(`走査と待機の時計を制御して監視寿命を確認する: ${scenario}`, async () => {
     const before = new FixtureElement("img", {src:"https://cdn.example.test/before.jpg"});

@@ -238,6 +238,8 @@ export async function scanDocument(targetPostId) {
     };
     const recordDirectVideo = (value, sourceElement, declaredType) => {
         checkDeadline();
+        if (/^audio\//i.test(declaredType?.trim() ?? ""))
+            return;
         const candidate = value?.trim();
         if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:"))
             return;
@@ -657,6 +659,11 @@ export async function scanDocument(targetPostId) {
             return;
         const finishElement = registry.beginElement(element);
         const declaredSourceType = tagName === "source" ? element.getAttribute("type") : null;
+        if (tagName === "source" && (element.parentElement?.tagName.toLowerCase() === "audio"
+            || /^audio\//i.test(declaredSourceType?.trim() ?? ""))) {
+            finishElement();
+            return;
+        }
         const sourceUrl = tagName === "source"
             ? element.getAttribute("src") || element.src
             : null;
@@ -699,9 +706,22 @@ export async function scanDocument(targetPostId) {
         }
         if (tagName === "video") {
             const video = element;
-            recordDirectVideo(video.currentSrc, element, element.getAttribute("type"));
-            recordDirectVideo(video.src, element, element.getAttribute("type"));
-            recordDirectVideo(element.getAttribute("src"), element, element.getAttribute("type"));
+            for (const value of [video.currentSrc, video.src, element.getAttribute("src")]) {
+                let declaredType = element.getAttribute("type");
+                if (value) {
+                    for (const source of Array.from(element.querySelectorAll("source"))) {
+                        try {
+                            const sourceUrl = source.getAttribute("src");
+                            if (sourceUrl && new URL(sourceUrl, document.baseURI).href === new URL(value, document.baseURI).href) {
+                                declaredType = source.getAttribute("type") ?? declaredType;
+                                break;
+                            }
+                        }
+                        catch { /* Ignore malformed source URLs. */ }
+                    }
+                }
+                recordDirectVideo(value, element, declaredType);
+            }
         }
         else if (isVideoSource) {
             const source = element;
@@ -868,8 +888,11 @@ export async function scanDocument(targetPostId) {
                 continue;
             }
             if (mutation.type === "attributes") {
-                if (mutation.target.nodeType === 1)
-                    pendingElements.add(mutation.target);
+                if (mutation.target.nodeType === 1) {
+                    const element = mutation.target;
+                    const parent = element.parentElement;
+                    pendingElements.add(element.tagName.toLowerCase() === "source" && parent?.tagName.toLowerCase() === "video" ? parent : element);
+                }
                 continue;
             }
             for (const node of Array.from(mutation.addedNodes)) {
