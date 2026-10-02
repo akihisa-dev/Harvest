@@ -22,7 +22,7 @@ async function serve() {
             <button id="zoom-in"></button><button id="zoom-out"></button><button id="zoom-reset"></button></div></section><button id="toggle"></button>
           <script type="module">
             import {createViewerController} from "/app/viewer-controller.js";
-            const pages = [1, 2, 3].map(index => ({url: "https://images.example.test/" + index + ".jpg", sourcePage: "https://source.example.test"}));
+            let pages = [1, 2, 3].map(index => ({url: "https://images.example.test/" + index + ".jpg", sourcePage: "https://source.example.test"}));
             const get = selector => document.querySelector(selector);
             const bindings = new WeakMap();
             const previewLoader = {
@@ -42,6 +42,7 @@ async function serve() {
               getImageCount: () => pages.length, previewLoader, onChange: () => controller.render(),
             });
             window.__viewer = controller;
+            window.__setPages = indexes => { pages = indexes.map(index => ({url: "https://images.example.test/" + index + ".jpg", sourcePage: "https://source.example.test"})); controller.render(); };
             window.__setBusy = value => { busy = value; };
             controller.setOpen(true);
             controller.render();
@@ -112,5 +113,51 @@ test("viewer thumbnail wheel only cancels when it changes the image", async () =
   } finally {
     await browser?.close();
     await new Promise(resolveClose => server.close(resolveClose));
+  }
+});
+
+
+test("サムネイルのEnter・Space選択と再描画でフォーカスを維持し、削除後は残存項目へ移す", async () => {
+  const {server, url} = await serve();
+  let browser;
+  try {
+    browser = await chromium.launch({channel:"chrome", headless:true});
+    const page = await browser.newPage({reducedMotion:"reduce"});
+    const errors = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.goto(url);
+    await page.waitForFunction(() => Boolean(window.__viewer));
+    const buttons = page.locator("#thumbnails button");
+    await buttons.nth(1).focus();
+    await page.evaluate(() => {
+      window.__thumbnailMutations = 0;
+      new MutationObserver(changes => { window.__thumbnailMutations += changes.filter(change => change.type === "childList").length; })
+        .observe(document.querySelector("#thumbnails"), {childList:true});
+    });
+    for (const key of ["Enter", "Enter", "Space", "Space"]) {
+      await page.keyboard.press(key);
+      assert.equal(await buttons.nth(1).evaluate(button => document.activeElement === button), true);
+      assert.equal(await buttons.nth(1).getAttribute("aria-current"), "true");
+      assert.equal(await page.locator("#position").textContent(), "2 / 3");
+    }
+    await page.evaluate(() => window.__viewer.render());
+    assert.equal(await page.evaluate(() => window.__thumbnailMutations), 0);
+    await page.keyboard.press("Tab");
+    assert.equal(await buttons.nth(2).evaluate(button => document.activeElement === button), true);
+    await page.keyboard.press("Space");
+    assert.equal(await page.locator("#position").textContent(), "3 / 3");
+    await page.evaluate(() => window.__setPages([3, 2, 1]));
+    assert.equal(await buttons.nth(0).evaluate(button => document.activeElement === button), true);
+    assert.equal(await page.locator("#position").textContent(), "1 / 3");
+    await page.evaluate(() => window.__setPages([2, 1]));
+    assert.equal(await buttons.nth(0).evaluate(button => document.activeElement === button), true);
+    assert.equal(await buttons.nth(0).getAttribute("aria-current"), "true");
+    assert.equal(await page.locator("#position").textContent(), "1 / 2");
+    await page.evaluate(() => window.__setPages([]));
+    assert.equal(await page.locator("#empty").evaluate(element => document.activeElement === element), true);
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    await new Promise(resolve => server.close(resolve));
   }
 });

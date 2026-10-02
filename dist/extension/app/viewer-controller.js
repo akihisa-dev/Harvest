@@ -66,6 +66,7 @@ export function createViewerController(options) {
         updateTransform();
     }
     function renderThumbnails(pages, activeUrl) {
+        const focusedUrl = [...thumbnailRows].find(([, row]) => row.children[0] === document.activeElement)?.[0];
         const pageUrls = new Set(pages.map(item => item.url));
         for (const [url, row] of thumbnailRows) {
             if (pageUrls.has(url))
@@ -104,7 +105,14 @@ export function createViewerController(options) {
             number.textContent = String(index + 1);
             return row;
         });
-        elements.thumbnails.replaceChildren(...rows);
+        const previousRows = Array.from(elements.thumbnails.children);
+        if (previousRows.length !== rows.length || rows.some((row, index) => row !== previousRows[index])) {
+            elements.thumbnails.replaceChildren(...rows);
+            if (focusedUrl) {
+                const focusRow = thumbnailRows.get(focusedUrl) ?? thumbnailRows.get(activeUrl);
+                focusRow?.children[0]?.focus({ preventScroll: true });
+            }
+        }
         if (renderedUrl !== activeUrl) {
             const active = thumbnailRows.get(activeUrl)?.children[0];
             active?.scrollIntoView({ block: "center", inline: "nearest",
@@ -146,7 +154,12 @@ export function createViewerController(options) {
             delete elements.image.dataset["direction"];
             renderedUrl = null;
             renderedItem = null;
+            const hadThumbnailFocus = [...thumbnailRows.values()].some(row => row.children[0] === document.activeElement);
             clearThumbnails();
+            if (open && hadThumbnailFocus) {
+                elements.empty.tabIndex = -1;
+                elements.empty.focus({ preventScroll: true });
+            }
             resetTransform();
             options.previewLoader.clearImage(elements.image);
             elements.image.removeAttribute("src");
