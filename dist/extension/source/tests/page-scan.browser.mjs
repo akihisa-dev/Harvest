@@ -3,6 +3,49 @@ import {readFile} from "node:fs/promises";
 import test from "node:test";
 import {chromium} from "playwright";
 
+test("本文候補は属性更新で失われず、追加・削除と共有する根拠を反映する", async () => {
+  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const browser = await chromium.launch({channel: "chrome", headless: true});
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<main></main><div id="host"></div>');
+    const result = await page.evaluate(async source => {
+      const moduleUrl = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));
+      const {scanDocument} = await import(moduleUrl);
+      URL.revokeObjectURL(moduleUrl);
+      const roots = [document.querySelector("main"), document.querySelector("#host").attachShadow({mode: "open"})];
+      const paragraphs = [];
+      roots.forEach((root, index) => {
+        for (const name of ["stable.jpg", "stable.gif", "removed.jpg", "shared.gif"]) {
+          const p = document.createElement("p");
+          p.textContent = `https://cdn.example.test/${index}/${name}`;
+          root.append(p);
+          paragraphs.push(p);
+        }
+        root.append(root.lastChild.cloneNode(true));
+      });
+      const scan = scanDocument();
+      setTimeout(() => {
+        paragraphs.forEach(p => {
+          if (/removed|shared/.test(p.textContent)) p.remove();
+          else { p.className = "ready"; p.setAttribute("aria-label", "ready"); }
+        });
+        document.querySelector("main").className = "ready";
+        roots.forEach((root, index) => {
+          const p = document.createElement("p");
+          p.textContent = `https://cdn.example.test/${index}/added.jpg`;
+          root.append(p);
+        });
+      }, 20);
+      return scan;
+    }, source);
+    const expected = [0, 1].flatMap(index => ["stable.jpg", "stable.gif", "shared.gif", "added.jpg"].map(name => `https://cdn.example.test/${index}/${name}`));
+    assert.deepEqual([...result.images].sort(), [...expected].sort());
+    assert.deepEqual(result.media.map(({url}) => url).sort(), [...expected].sort());
+    assert.ok(result.media.filter(({url}) => url.endsWith(".gif")).every(({kind}) => kind === "gif"));
+  } finally { await browser.close(); }
+});
+
 test("実ブラウザーでopen Shadow DOMを再帰走査し、短時間の変更を反映する", async () => {
   const moduleSource = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});

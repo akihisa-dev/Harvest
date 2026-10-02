@@ -24,6 +24,10 @@ class FixtureElement {
     for (const child of children) this.appendChild(child);
   }
 
+  get childNodes() {
+    return [...(this.textContent ? [{nodeType: 3, textContent: this.textContent, parentElement: this}] : []), ...this.children];
+  }
+
   appendChild(child) {
     child.parentElement = this;
     child.parentNode = this;
@@ -79,6 +83,10 @@ class FixtureShadowRoot {
     this.children = [];
     this.parentNode = null;
     for (const child of children) this.appendChild(child);
+  }
+
+  get childNodes() {
+    return [...(this.textContent ? [{nodeType: 3, textContent: this.textContent, parentElement: this}] : []), ...this.children];
   }
 
   appendChild(child) {

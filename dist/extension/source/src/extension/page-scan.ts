@@ -618,6 +618,16 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     if (tagName === "script" || tagName === "style") {
       scanText(element.textContent, undefined, element);
       if (tagName === "script") scanEmbeddedVideoJson(element);
+    } else {
+      // Rebuild all evidence owned by this element together. Only direct text
+      // belongs here; descendants own their own text and removal lifecycle.
+      for (const parent of [element, element.shadowRoot]) {
+        if (!parent) continue;
+        for (const node of Array.from(parent.childNodes)) {
+          checkDeadline();
+          if (node.nodeType === 3) scanText(node.textContent, undefined, element);
+        }
+      }
     }
     if (tagName === "video") {
       const video = element as HTMLVideoElement;
@@ -841,30 +851,6 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   for (let start = 0; start < elements.length; start += chunkSize) {
     for (const element of elements.slice(start, start + chunkSize)) collectElement(element);
     if (start + chunkSize < elements.length) await yieldToPage();
-  }
-  if (root && typeof document.createTreeWalker === "function") {
-    const textRoots: ParentNode[] = [root, ...observedShadowRoots];
-    let textCount = 0;
-    for (const textRoot of textRoots) {
-      const walker = document.createTreeWalker(textRoot, 4);
-      let textNode = walker.nextNode();
-      while (textNode) {
-        checkDeadline();
-        const parentNode = textNode.parentNode;
-        const parent = textNode.parentElement
-          ?? (parentNode && "host" in parentNode ? (parentNode as ShadowRoot).host : null);
-        const parentTag = parent?.tagName.toLowerCase();
-        // Script and style text is collected with its owning element above.
-        // Associate ordinary page text with its parent too, so removing that
-        // element can remove candidates found only in its text.
-        if (parentTag !== "script" && parentTag !== "style" && (!targetPostId || Boolean(parent && inTargetPost(parent)))) {
-          scanText(textNode.textContent, undefined, parent ?? undefined);
-        }
-        textCount += 1;
-        if (textCount % chunkSize === 0) await yieldToPage();
-        textNode = walker.nextNode();
-      }
-    }
   }
   await flushPending();
   checkDeadline();
