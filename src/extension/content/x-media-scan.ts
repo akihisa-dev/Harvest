@@ -169,14 +169,135 @@ export function scanXMedia(targetPostId?: string | null, onlyPostKeys?: string[]
     if (exhausted()) break;
     read();
   }
+  // Read the store through the mounted list's React ancestors. The entity table
+  // alone is never a collection: it also contains posts from other pages.
+  const object = (input: unknown): object | undefined => input !== null && typeof input === "object" ? input : undefined;
+  const get = (input: unknown, key: string): unknown => { const obj = object(input); return obj ? value(obj, key) : undefined; };
+  const mountedIds = new Set(snapshot.posts.flatMap(post => post.postId ? [post.postId] : []));
+  const stores = new Set<object>();
+  const lists: string[][] = [];
+  const timelineModules = new Set<object>();
+  const seenFibers = new WeakSet<object>();
+  const entryIds = (input: unknown, depth = 0): string[] => {
+    if (depth > 12 || !input) return [];
+    if (performance.now() >= deadline) { snapshot.limited = true; return []; }
+    if (Array.isArray(input)) return input.flatMap(item => entryIds(item, depth + 1));
+    const entry = get(input, "entryId") ?? get(input, "entry_id");
+    if (typeof entry === "string" && /^(?:tweet|sq-I-t)-\d+$/.test(entry)) return [entry.replace(/^(?:tweet|sq-I-t)-/, "")];
+    const tweetId = get(input, "tweetId") ?? get(input, "tweet_id");
+    if (typeof tweetId === "string" && /^\d+$/.test(tweetId)) return [tweetId];
+    const type = get(input, "type") ?? get(input, "entryType");
+    const id = get(get(input, "content"), "id") ?? get(input, "id");
+    if (type === "tweet" && typeof id === "string" && /^\d+$/.test(id)) return [id];
+    return ["item", "itemContent", "content", "items", "entries", "entry", "tweet_results", "result"]
+      .flatMap(key => entryIds(get(input, key), depth + 1));
+  };
+  for (const root of roots) {
+    if (root.closest('aside, [data-testid="sidebarColumn"]')) continue;
+    for (const name of Object.getOwnPropertyNames(root)) {
+      if (!name.startsWith("__reactFiber$") && !name.startsWith("__reactInternalInstance$")) continue;
+      let fiber = object(value(root, name));
+      for (let depth = 0; fiber && depth < 200 && !seenFibers.has(fiber); depth++) {
+        if (performance.now() >= deadline) { snapshot.limited = true; break; }
+        seenFibers.add(fiber);
+        const props = value(fiber, "memoizedProps");
+        const store = object(get(props, "store"));
+        if (store && typeof value(store, "getState") === "function") stores.add(store);
+        for (const key of ["module", "urtModule"]) {
+          const module = object(get(props, key));
+          if (module && typeof value(module, "timelineId") === "string") timelineModules.add(module);
+        }
+        for (const key of ["entries", "items"]) {
+          const items = get(props, key);
+          if (Array.isArray(items)) {
+            const ids = [...new Set(entryIds(items))];
+            if (ids.length && [...mountedIds].every(id => ids.includes(id))) lists.push(ids);
+          }
+        }
+        fiber = object(value(fiber, "return"));
+      }
+    }
+  }
+  let storedTimelineRecovered = false;
+  for (const store of stores) {
+    try {
+      const state = (value(store, "getState") as () => unknown).call(store);
+      const table = get(get(get(state, "entities"), "tweets"), "entities");
+      if (!object(table)) continue;
+      const candidates = [...lists];
+      const moduleCandidates: string[][] = [];
+      for (const module of timelineModules) {
+        // X's active URT module identifies the list and exposes read-only selectors
+        // which apply its injections, dismissals and pinned entry ordering.
+        const selectEntries = value(module, "selectEntries");
+        const selectPinned = value(module, "selectPinnedEntry");
+        let entries: unknown;
+        let pinned: unknown;
+        try {
+          if (typeof selectEntries === "function") {
+            entries = selectEntries.call(module, state);
+            if (typeof selectPinned === "function") pinned = selectPinned.call(module, state);
+          } else {
+            const timelineId = String(value(module, "timelineId"));
+            const scope = value(module, "scopeId");
+            const timeline = get(get(state, "urt"), timelineId + (typeof scope === "string" ? scope : ""));
+            entries = get(timeline, "entries");
+            pinned = get(timeline, "pinnedEntry");
+          }
+        } catch { continue; }
+        const ids = [...new Set([...entryIds(pinned), ...entryIds(entries)])];
+        if (ids.length && [...mountedIds].every(id => ids.includes(id))) moduleCandidates.push(ids);
+      }
+      // Ambiguous lists fail closed. Never fall back to enumerating all entities.
+      const distinct = new Map((moduleCandidates.length ? moduleCandidates : candidates).map(ids => [JSON.stringify(ids), ids]));
+      const ids = targetPostId ? [targetPostId] : mountedIds.size && distinct.size === 1 ? [...distinct.values()][0] : undefined;
+      if (!ids) continue;
+      const recovered: XPostSnapshot[] = [];
+      let complete = true;
+      for (const id of ids) {
+        if (onlyPostKeys && !onlyPostKeys.includes(`post:${id}`)) continue;
+        const tweet = get(table, id);
+        if (!object(tweet)) { complete = false; continue; }
+        if (performance.now() >= deadline) { complete = false; snapshot.limited = true; break; }
+        // Projection is budgeted per post, not by the total number of loaded posts.
+        nodes = 0; textSize = 0;
+        const relatedSeen = new Set<string>();
+        const withRelated = (record: unknown, owner: string, depth = 0): unknown => {
+          if (depth > 4 || relatedSeen.has(owner)) return undefined;
+          relatedSeen.add(owner);
+          const data = project(record);
+          if (!data || typeof data !== "object") return data;
+          const raw = get(record, "legacy") ?? record;
+          for (const kind of ["quoted", "retweeted"]) {
+            const relatedId = get(raw, `${kind}_status_id_str`);
+            if (typeof relatedId !== "string" || !/^\d+$/.test(relatedId)) continue;
+            const related = get(table, relatedId);
+            if (object(related)) (data as {[key: string]: unknown})[`${kind}_status`] = withRelated(related, relatedId, depth + 1);
+          }
+          return data;
+        };
+        const data = withRelated(tweet, id);
+        recovered.push({key: `post:${id}`, postId: id, observed: [],
+          roots: [{value: {rest_id: id, tweet: data}, requireIdentity: true, player: false}]});
+      }
+      const mounted = new Map(snapshot.posts.map(post => [post.key, post]));
+      snapshot.posts = [...recovered.map(post => {
+        const existing = mounted.get(post.key);
+        mounted.delete(post.key);
+        return existing ? {...post, observed: existing.observed, roots: [...post.roots, ...existing.roots]} : post;
+      }), ...mounted.values()];
+      if (!targetPostId && complete) storedTimelineRecovered = true;
+    } catch { /* Store/schema changes must not discard DOM or received media. */ }
+  }
+
   // Received bookmark pages survive X removing offscreen article elements.
   if (!targetPostId && /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname) && typeof window !== "undefined") {
-    snapshot.bookmarkCaptureMissing = true;
+    snapshot.bookmarkCaptureMissing = !storedTimelineRecovered;
     try {
       const read = value(window, "__harvestBookmarkMediaV1");
-      if (typeof read === "function") {
+      if (!storedTimelineRecovered && typeof read === "function") {
         const captured = read() as {posts?: XPostSnapshot[]; limited?: boolean; received?: boolean};
-        snapshot.bookmarkCaptureMissing = captured.received !== true;
+        snapshot.bookmarkCaptureMissing = !storedTimelineRecovered && captured.received !== true;
         if (Array.isArray(captured.posts)) {
           const mounted = new Map(snapshot.posts.map(post => [post.key, post]));
           const combined: XPostSnapshot[] = [];
