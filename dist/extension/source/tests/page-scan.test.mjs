@@ -1164,3 +1164,19 @@ test("背景の最終照合中も20秒期限を確認し、部分結果を返さ
   assert.equal(backgroundReads, 2);
   assert.equal(disconnected, true);
 });
+
+test("本文・script・汎用属性の画像URLは最終拡張子と完全なパスを保つ", async () => {
+  const paths = ["photo.jpg.webp?token=abc", "album.jpg/pages/001.png", "photo.jpeg.avif?token=abc", "photo.gif.webp?token=abc", "photo.jpg?token=abc&size=large#preview"];
+  const rejected = ["photo.jpeg2000", "photo.jpg.txt?token=abc"];
+  const urls = paths.map(path => `https://cdn.example.test/${path}`);
+  for (const mode of ["text", "script", "data-media", "data-src"]) {
+    const children = [...paths, ...rejected].map(path => {
+      const url = `https://cdn.example.test/${path}`;
+      return new FixtureElement(mode === "script" ? "script" : "div", mode.startsWith("data-") ? {[mode]: url} : {}, [], mode.startsWith("data-") ? {} : {textContent: mode === "script" ? JSON.stringify({image: url}) : url});
+    });
+    children.push(new FixtureElement("img", {src: urls[0]}));
+    const result = await runWithFixture(new FixtureDocument(new FixtureElement("html", {}, children)), undefined, scanDocument);
+    assert.deepEqual(new Set(result.images), new Set(urls), mode);
+    assert.equal(result.media.find(item => item.url.includes("photo.gif.webp")).kind, "image");
+  }
+});

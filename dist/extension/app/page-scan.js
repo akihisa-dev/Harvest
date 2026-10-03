@@ -203,7 +203,7 @@ export async function scanDocument(targetPostId) {
     ];
     const relativeImageAttributes = imageAttributes.filter(attribute => attribute !== "data-url" && attribute !== "src");
     const imageSrcsetAttributes = ["data-srcset", "srcset"];
-    const imageUrlPattern = /https?:\/\/[^\s"'\\<>]+?\.(?:jpe?g|png|webp|avif|gif)(?:[?#][^\s"'\\<>]*)?/gi;
+    const imageUrlPattern = /https?:\/\/[^\s"'\\<>]+/gi;
     const mediaUrlPattern = /https?:\/\/[^\s"'\\<>]+/gi;
     const relativeImagePathPattern = /\.(?:jpe?g|png|webp|avif|gif)$/i;
     const mediaKindForUrl = (url) => {
@@ -430,8 +430,9 @@ export async function scanDocument(targetPostId) {
         for (const match of value.matchAll(imageUrlPattern)) {
             checkDeadline();
             const candidate = match[0];
-            if (candidate)
+            if (candidate && /\.(?:jpe?g|png|webp|avif|gif)(?:[?#]|$)/i.test(candidate.split(/[?#]/, 1)[0] ?? "")) {
                 add(candidate.replaceAll("&amp;", "&"), positionElement, sourceElement);
+            }
         }
         scanMediaText(value, sourceElement);
         checkDeadline();
