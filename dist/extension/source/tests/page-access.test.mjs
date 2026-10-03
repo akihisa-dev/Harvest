@@ -423,28 +423,31 @@ for (const outcome of ['ready', 'incomplete', 'disappeared', 'limited', 'moved',
       return [{result}];
     };
     if (outcome === 'ready') assert.equal((await scanTab(8, controller.signal)).media[0].kind, 'video');
-    else await assert.rejects(scanTab(8, controller.signal), outcome === 'limited' ? /上限/ : outcome === 'moved' ? /ページが移動/ : outcome === 'aborted' ? /終了/ : /一部取得できません/);
+    else await assert.rejects(scanTab(8, controller.signal), outcome === 'limited' ? /読み取りきれず/ : outcome === 'moved' ? /ページが移動/ : outcome === 'aborted' ? /終了/ : /一部取得できません/);
     assert.equal(reads, ['limited', 'aborted'].includes(outcome) ? 1 : 2);
   });
 }
 
-test('Xの画像と動画を全グループ表示で公開し、件数だけの診断を保持する', async t => {
+for (const partial of [false, true]) test(`Xの画像と動画を表示し、部分取得=${partial}を区別する`, async t => {
   const url = 'https://x.com/i/history';
   fixture(t, {query: async () => [{id: 8, url}], get: async () => ({url})});
   const candidates = [{kind: 'image', url: 'https://pbs.twimg.com/media/photo.jpg'},
     {kind: 'video', url: 'https://video.twimg.com/clip.mp4'}];
   chrome.scripting.executeScript = async ({func}) => [{result: func.name === 'waitForXPage' ? {status: 'ready'}
-    : func.name === 'scanXMedia' ? mediaSnapshot(url, candidates) : {url, title: 'X', images: []}}];
+    : func.name === 'scanXMedia' ? {...mediaSnapshot(url, candidates), limited: partial} : {url, title: 'X', images: []}}];
   const {ImageCollection} = await import('../dist/extension/core/image-collection.js');
   const {createScanSessionController} = await import('../dist/extension/app/panel/scan-session-controller.js');
   const collection = new ImageCollection();
   let initialGroup = 'not-published';
+  let status = '';
   const controller = createScanSessionController({collection, getEnteredUrl: () => '', getCollectionSession: () => null,
     clearAnalyzedUrl() {}, markAnalyzedUrl() {}, isBusy: () => false, isDisposed: () => false,
-    onHideSourceInput() {}, onShowSourceInput() {}, onBusyChange() {}, onStatus() {},
+    onHideSourceInput() {}, onShowSourceInput() {}, onBusyChange() {}, onStatus(message) {status = message;},
     onResults: (_title, group) => {initialGroup = group;}});
   await controller.start();
   assert.equal(initialGroup, null);
+  assert.equal(controller.state, "results");
+  assert.equal(status.length > 0, partial);
   assert.equal(collection.items.length, 2);
   assert.equal(controller.diagnostics.normalized, 2);
   assert.equal(controller.diagnostics.rejected, 0);

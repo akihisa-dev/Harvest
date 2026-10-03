@@ -332,3 +332,40 @@ test('MAINから返すデータには本文・ユーザー・認証情報・cach
   assert.equal(JSON.stringify(snapshot).includes('private'), false);
   assert.equal(parseXMedia(snapshot).media.length, 1);
 });
+
+test('深い画面部品の祖先で投稿データがなくても、DOM写真を上限エラーにしない', async () => {
+  let fiber = null;
+  for (let index = 0; index < 55; index++) fiber = {memoizedProps: {role: 'presentation'}, return: fiber};
+  const article = {__reactFiber$fixture: fiber};
+  const snapshot = await runOnPage('x.com', [article], () => {
+    article.querySelectorAll = selector => selector === 'img' ? [{src: 'https://pbs.twimg.com/media/photo.jpg', closest: () => null}] : [];
+    return readXMedia();
+  });
+  assert.equal(snapshot.limited, false);
+  assert.equal(parseXMedia(snapshot).media.length, 1);
+});
+
+test('投稿データの補完が予算を使い切っても全投稿のDOM写真を保持する', async () => {
+  const huge = Array.from({length: 256}, () => ({mediaDetails: Array.from({length: 256}, () => ({type: 'photo', media_url_https: 'https://pbs.twimg.com/media/extra.jpg'}))}));
+  const articles = [{__reactProps$fixture: {mediaDetails: huge}}, {}];
+  const snapshot = await runOnPage('x.com', articles, () => {
+    articles.forEach((article, index) => {article.querySelectorAll = selector => selector === 'img' ? [{src: `https://pbs.twimg.com/media/visible-${index}.jpg`, closest: () => null}] : [];});
+    return readXMedia();
+  });
+  assert.equal(snapshot.limited, true);
+  assert.equal(snapshot.posts.length, 2);
+  const urls = parseXMedia(snapshot).media.map(item => item.url);
+  assert.ok(urls.includes('https://pbs.twimg.com/media/visible-0.jpg'));
+  assert.ok(urls.includes('https://pbs.twimg.com/media/visible-1.jpg'));
+});
+
+test('読み込み済みの投稿を60件で打ち切らず、全投稿のDOM写真を取得する', async () => {
+  const articles = Array.from({length: 65}, () => ({}));
+  const snapshot = await runOnPage('x.com', articles, () => {
+    articles.forEach((article, index) => {article.querySelectorAll = selector => selector === 'img' ? [{src: `https://pbs.twimg.com/media/photo-${index}.jpg`, closest: () => null}] : [];});
+    return readXMedia();
+  });
+  assert.equal(snapshot.posts.length, 65);
+  assert.equal(snapshot.limited, false);
+  assert.equal(parseXMedia(snapshot).media.length, 65);
+});

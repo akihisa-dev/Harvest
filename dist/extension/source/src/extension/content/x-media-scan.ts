@@ -82,6 +82,7 @@ export function scanXMedia(targetPostId?: string | null, onlyPostKeys?: string[]
     if (!player.closest('article, dialog, [role="dialog"]') && !roots.includes(player)) roots.push(player);
   }
   roots.sort((a, b) => Number(a.tagName.toLowerCase() === "article") - Number(b.tagName.toLowerCase() === "article"));
+  const supplementalReads: Array<() => void> = [];
   let count = 0;
   for (const root of roots) {
     if (exhausted()) break;
@@ -91,7 +92,6 @@ export function scanXMedia(targetPostId?: string | null, onlyPostKeys?: string[]
     const key = id ? `post:${id}` : `element:${count}`;
     count++;
     if (onlyPostKeys && (!id || !onlyPostKeys.includes(key))) continue;
-    if (snapshot.posts.length >= 60) { snapshot.limited = true; break; }
     const post: XPostSnapshot = {key, ...(id ? {postId: id} : {}), observed: [], roots: []};
     const inScope = (element: Element): boolean => !targetPostId || !element.closest(quote);
     const elements = [root, ...root.querySelectorAll('[data-testid="videoPlayer"], video, [data-testid="tweetPhoto"]')].filter(inScope);
@@ -122,7 +122,7 @@ export function scanXMedia(targetPostId?: string | null, onlyPostKeys?: string[]
         let fiber = value(element, name);
         const seen = new WeakSet<object>();
         for (let depth = 0; fiber && typeof fiber === "object" && !seen.has(fiber) && !exhausted(); depth++) {
-          if (depth >= 40) { snapshot.limited = true; break; }
+          if (depth >= 40) break;
           seen.add(fiber);
           const props = value(fiber, "memoizedProps");
           const owned = add(props, depth > 0);
@@ -134,10 +134,13 @@ export function scanXMedia(targetPostId?: string | null, onlyPostKeys?: string[]
         }
       }
     };
-    for (const element of elements.slice(0, 80)) {
-      if (exhausted()) break;
-      readProps(element, element.matches('video, [data-testid="videoPlayer"]'));
-    }
+    // Read DOM media for every post before optional React supplementation.
+    supplementalReads.push(() => {
+      for (const element of elements.slice(0, 80)) {
+        if (exhausted()) break;
+        readProps(element, element.matches('video, [data-testid="videoPlayer"]'));
+      }
+    });
     for (const image of root.querySelectorAll<HTMLImageElement>("img")) {
       if (exhausted()) break;
       nodes++;
@@ -161,6 +164,10 @@ export function scanXMedia(targetPostId?: string | null, onlyPostKeys?: string[]
       post.observed.push({kind: "video", ...(src ? {url: src} : {}), ...(video.poster ? {previewUrl: video.poster} : {})});
     }
     snapshot.posts.push(post);
+  }
+  for (const read of supplementalReads) {
+    if (exhausted()) break;
+    read();
   }
   if (location.href.split("#")[0] !== url.split("#")[0]) throw new Error("解析中にページが移動しました。もう一度解析してください。");
   return snapshot;

@@ -40,9 +40,9 @@ export async function scanTab(tabId, signal, requestedUrl) {
                 }) };
             analysis = parseXMedia(snapshot, targetPostId);
         }
-        if (analysis.diagnostics.limited)
-            throw new Error("Xの解析が上限に達しました。表示範囲を絞って解析し直してください。");
-        if (analysis.missingPosts.length)
+        if (!analysis.media.length && analysis.diagnostics.limited)
+            throw new Error("Xの投稿情報を読み取りきれず、画像・動画を取得できませんでした。");
+        if (!analysis.media.length && analysis.missingPosts.length)
             throw new Error("Xの表示中の画像または動画を一部取得できませんでした。投稿を表示してから解析し直してください。");
         result.xDiagnostics = analysis.diagnostics;
         if (targetPostId || isBookmarkPage) {

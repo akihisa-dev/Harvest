@@ -52,21 +52,22 @@ export function createScanSessionController(options) {
             if (options.isDisposed() || controller.signal.aborted || activeController !== controller)
                 return;
             const urls = normalizeImageUrls([...result.images, ...(result.media ?? []).map(item => item.url)], result.url);
-            // Publish only a complete scan. A rejected scan keeps the previous working set.
+            // Publish usable media, with an explicit notice when X supplementation is incomplete.
             const media = (result.media ?? []).flatMap(item => {
                 const normalized = normalizeImageUrls([item.url], result.url)[0];
                 return normalized ? [{ ...item, url: normalized }] : [];
             });
             const rejected = (result.media ?? []).length - media.length;
             diagnostics = { ...(result.xDiagnostics ? { scan: result.xDiagnostics } : {}), normalized: urls.length, rejected };
-            if (result.xDiagnostics && rejected)
+            if (result.xDiagnostics && rejected && !urls.length)
                 throw new Error(t("errorXIncomplete"));
             options.collection.replace(urls, result.url, media);
             if (collectionLink)
                 options.markAnalyzedUrl(collectionLink, session);
             state = options.collection.items.length ? "results" : "empty";
             options.onResults(result.title || t("imageFallback"), result.xDiagnostics ? null : defaultDisplayedImageGroup(options.collection.groups), result.url);
-            options.onStatus(options.collection.items.length ? "" : t("scanEmpty"), "info");
+            const partial = result.xDiagnostics && (result.xDiagnostics.limited || result.xDiagnostics.unresolved || rejected);
+            options.onStatus(partial ? t("scanXPartial") : options.collection.items.length ? "" : t("scanEmpty"), "info");
         }
         catch (error) {
             if (options.isDisposed() || controller.signal.aborted || activeController !== controller)

@@ -56,3 +56,52 @@ test('実Chromeの拡張機能から遅れて表示されるX動画プレイヤ�
     await rm(temporary, {recursive: true, force: true});
   }
 });
+
+test('実拡張機能で深い画面部品・補完中断があってもブックマークの写真を返す', {timeout: 30000}, async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'harvest-x-limit-'));
+  let context, cdp;
+  try {
+    context = await chromium.launchPersistentContext(join(temporary, 'profile'), {
+      channel: 'chrome', headless: true, ignoreDefaultArgs: ['--disable-extensions'],
+      args: ['--enable-unsafe-extension-debugging', '--disable-background-networking', '--no-first-run', '--no-default-browser-check'],
+    });
+    cdp = await context.browser().newBrowserCDPSession();
+    const {id} = await cdp.send('Extensions.loadUnpacked', {path: resolve(process.env.HARVEST_TEST_EXTENSION_DIR ?? 'dist/extension')});
+    await context.route('https://x.com/**', route => route.fulfill({contentType: 'text/html', body: '<!doctype html><title>Bookmarks</title><main></main>'}));
+    await context.route('https://pbs.twimg.com/**', route => route.fulfill({contentType: 'image/gif', body: Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64')}));
+    const page = await context.newPage();
+    const url = 'https://x.com/i/history';
+    await page.goto(url);
+    const panel = await context.newPage();
+    await panel.goto(`chrome-extension://${id}/app/index.html`);
+    for (const truncated of [false, true]) {
+      await page.evaluate(truncated => {
+        const main = document.querySelector('main');
+        main.replaceChildren();
+        for (let i = 0; i < 2; i++) {
+          const article = document.createElement('article');
+          article.dataset.testid = 'tweet';
+          article.innerHTML = `<a href="/example/status/${123 + i}"><time>Today</time></a><div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/visible-${i}.jpg"></div>`;
+          let fiber = null;
+          for (let depth = 0; depth < 55; depth++) fiber = {memoizedProps: {role: 'presentation'}, return: fiber};
+          article.__reactFiber$fixture = fiber;
+          if (truncated && i === 0) article.__reactProps$fixture = {mediaDetails: Array.from({length: 256}, () => ({mediaDetails: Array.from({length: 256}, () => ({type: 'photo', media_url_https: 'https://pbs.twimg.com/media/extra.jpg'}))}))};
+          main.append(article);
+        }
+      }, truncated);
+      const result = await panel.evaluate(async url => {
+        const {scanTab} = await import(chrome.runtime.getURL('app/browser/page-access.js'));
+        const [tab] = await chrome.tabs.query({url});
+        return scanTab(tab.id, undefined, url);
+      }, url);
+      assert.equal(result.xDiagnostics.limited, truncated);
+      assert.ok(result.images.includes('https://pbs.twimg.com/media/visible-0.jpg'));
+      assert.ok(result.images.includes('https://pbs.twimg.com/media/visible-1.jpg'));
+      assert.equal(result.images.some(image => image.includes('profile_images')), false);
+    }
+  } finally {
+    await cdp?.detach();
+    await context?.close();
+    await rm(temporary, {recursive: true, force: true});
+  }
+});
