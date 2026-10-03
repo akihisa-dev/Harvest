@@ -127,3 +127,17 @@ test("SVGの明示寸法を外部資源の解決なしで確認する", () => {
   assert.deepEqual(read('<svg xmlns="http://www.w3.org/2000/svg" width="2.5" height="2"/>'), {width: 3, height: 2});
   for (const text of ['<svg width="100%" height="2"/>', '<svg viewBox="0 0 16385 1"/>', '<svg width="2cm" height="2"/>', '<!DOCTYPE svg SYSTEM "https://example.test/a"><svg width="2" height="2"/>', '<svg width="2" width="16385" height="2"/>', '<!-- <svg width="16385" height="1"/> -->']) assert.equal(read(text), null);
 });
+
+test("多数のISOボックスと非AVIFブランドを安全に走査する", () => {
+  const free = box("free", new Uint8Array());
+  for (const size of [1,2,4]) {
+    const bytes = new Uint8Array(size*1024*1024);
+    for(let offset=0;offset<bytes.length;offset+=8) bytes.set(free,offset);
+    assert.equal(getImageDimensions(bytes),null);
+    const ftyp = box("ftyp", new TextEncoder().encode("junk\0\0\0\0junk"));
+    assert.equal(getImageDimensions(join(ftyp,bytes)),null);
+  }
+  const avif = box("ftyp",new TextEncoder().encode("avif\0\0\0\0avif"));
+  assert.equal(getImageDimensions(join(avif,new Uint8Array([0,0,0,7,102,114,101,101]))),null);
+  assert.equal(getImageDimensions(box("ftyp",new TextEncoder().encode("junkavifjunk"))),null,"minor version is not a brand");
+});

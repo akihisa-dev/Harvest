@@ -195,22 +195,21 @@ function bmpDimensions(bytes) {
     const signedHeight = view.getInt32(22, true);
     return { width, height: Math.abs(signedHeight) };
 }
-function isoBoxes(bytes, start, end) {
-    const result = [];
+function* isoBoxes(bytes, start, end) {
     let offset = start;
     while (offset < end) {
         if (offset + 8 > end)
-            return null;
+            throw new Error("Invalid ISO box bounds");
         const size32 = readUint32BigEndian(bytes, offset);
         if (size32 === null)
-            return null;
+            throw new Error("Invalid ISO box bounds");
         let headerSize = 8;
         let size = size32;
         if (size32 === 1) {
             const high = readUint32BigEndian(bytes, offset + 8);
             const low = readUint32BigEndian(bytes, offset + 12);
             if (high === null || low === null || high > 0x1fffff)
-                return null;
+                throw new Error("Invalid ISO box bounds");
             size = high * 0x100000000 + low;
             headerSize = 16;
         }
@@ -218,38 +217,57 @@ function isoBoxes(bytes, start, end) {
             size = end - offset;
         }
         if (size < headerSize || size > end - offset)
-            return null;
+            throw new Error("Invalid ISO box bounds");
         let type = "";
         for (let index = 0; index < 4; index += 1)
             type += String.fromCharCode(bytes[offset + 4 + index] ?? 0);
-        result.push({ type, dataStart: offset + headerSize, end: offset + size });
+        yield { type, dataStart: offset + headerSize, end: offset + size };
         offset += size;
     }
-    return offset === end ? result : null;
 }
 function avifDimensions(bytes) {
-    const topLevel = isoBoxes(bytes, 0, bytes.byteLength);
-    if (!topLevel)
+    try {
+        return inspectAvifDimensions(bytes);
+    }
+    catch {
         return null;
-    const fileType = topLevel.find(box => box.type === "ftyp");
+    }
+}
+/** Traverse all bounds, retaining only the first requested boxes. */
+function selectedIsoBoxes(bytes, start, end, types) {
+    const selected = new Map();
+    for (const box of isoBoxes(bytes, start, end)) {
+        if (types.includes(box.type) && !selected.has(box.type))
+            selected.set(box.type, box);
+    }
+    return selected;
+}
+function inspectAvifDimensions(bytes) {
+    let fileType;
+    for (const box of isoBoxes(bytes, 0, bytes.byteLength)) {
+        if (box.type === "ftyp") {
+            fileType = box;
+            break;
+        }
+    }
     if (!fileType || fileType.end - fileType.dataStart < 8)
         return null;
-    const brands = [];
+    let avif = false;
     for (let offset = fileType.dataStart; offset + 4 <= fileType.end; offset += 4) {
-        let brand = "";
-        for (let index = 0; index < 4; index += 1)
-            brand += String.fromCharCode(bytes[offset + index] ?? 0);
-        brands.push(brand);
+        if (offset === fileType.dataStart + 4)
+            continue; // minor version is not a brand
+        if (hasAscii(bytes, offset, "avif") || hasAscii(bytes, offset, "avis")) {
+            avif = true;
+            break;
+        }
     }
-    if (!brands.some(brand => brand === "avif" || brand === "avis"))
+    if (!avif)
         return null;
-    const meta = topLevel.find(box => box.type === "meta");
+    const meta = selectedIsoBoxes(bytes, 0, bytes.byteLength, ["meta"]).get("meta");
     if (!meta || meta.dataStart + 4 > meta.end)
         return null;
-    const metaChildren = isoBoxes(bytes, meta.dataStart + 4, meta.end);
-    if (!metaChildren)
-        return null;
-    const primaryBox = metaChildren.find(box => box.type === "pitm");
+    const metaChildren = selectedIsoBoxes(bytes, meta.dataStart + 4, meta.end, ["pitm", "iprp"]);
+    const primaryBox = metaChildren.get("pitm");
     if (!primaryBox || primaryBox.dataStart + 4 > primaryBox.end)
         return null;
     const primaryVersion = bytes[primaryBox.dataStart] ?? 0;
@@ -261,38 +279,36 @@ function avifDimensions(bytes) {
         : readUint32BigEndian(bytes, primaryBox.dataStart + 4);
     if (primaryId === null)
         return null;
-    const itemProperties = metaChildren.find(box => box.type === "iprp");
+    const itemProperties = metaChildren.get("iprp");
     if (!itemProperties)
         return null;
-    const propertyChildren = isoBoxes(bytes, itemProperties.dataStart, itemProperties.end);
-    if (!propertyChildren)
-        return null;
-    const propertyContainer = propertyChildren.find(box => box.type === "ipco");
+    const propertyContainer = selectedIsoBoxes(bytes, itemProperties.dataStart, itemProperties.end, ["ipco"]).get("ipco");
     if (!propertyContainer)
         return null;
-    const properties = isoBoxes(bytes, propertyContainer.dataStart, propertyContainer.end);
-    if (!properties)
-        return null;
-    const spatialExtents = avifSpatialExtents(bytes, properties);
-    return avifPrimaryDimensions(bytes, propertyChildren, primaryId, spatialExtents);
+    const spatialExtents = avifSpatialExtents(bytes, isoBoxes(bytes, propertyContainer.dataStart, propertyContainer.end));
+    return avifPrimaryDimensions(bytes, isoBoxes(bytes, itemProperties.dataStart, itemProperties.end), primaryId, spatialExtents);
 }
 /** Property indexes are one-based; non-dimension properties keep their slot. */
 function avifSpatialExtents(bytes, properties) {
-    const spatialExtents = [null];
+    const spatialExtents = new Map();
+    let index = 0;
     for (const property of properties) {
+        index += 1;
         if (property.type !== "ispe" || property.dataStart + 12 > property.end) {
-            spatialExtents.push(null);
             continue;
         }
         const width = readUint32BigEndian(bytes, property.dataStart + 4);
         const height = readUint32BigEndian(bytes, property.dataStart + 8);
-        spatialExtents.push(width === null || height === null ? null : { width, height });
+        if (width !== null && height !== null)
+            spatialExtents.set(index, { width, height });
     }
     return spatialExtents;
 }
 /** Follow item/property associations in file order and retain the first matching dimensions. */
 function avifPrimaryDimensions(bytes, propertyChildren, primaryId, spatialExtents) {
-    for (const associationBox of propertyChildren.filter(box => box.type === "ipma")) {
+    for (const associationBox of propertyChildren) {
+        if (associationBox.type !== "ipma")
+            continue;
         if (associationBox.dataStart + 8 > associationBox.end)
             return null;
         const version = bytes[associationBox.dataStart] ?? 0;
@@ -322,7 +338,7 @@ function avifPrimaryDimensions(bytes, propertyChildren, primaryId, spatialExtent
                 offset += hasWidePropertyIndex ? 2 : 1;
                 const propertyIndex = hasWidePropertyIndex ? association & 0x7fff : association & 0x7f;
                 if (itemId === primaryId)
-                    primaryDimensions ??= spatialExtents[propertyIndex] ?? null;
+                    primaryDimensions ??= spatialExtents.get(propertyIndex) ?? null;
             }
             if (itemId === primaryId && primaryDimensions)
                 return primaryDimensions;
