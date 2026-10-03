@@ -261,12 +261,36 @@ export async function scanDocument(targetPostId) {
             // Media candidates must be usable HTTP(S) URLs.
         }
     };
+    const trimTextUrl = (candidate) => {
+        // Only recognize prose suffixes on a bare path. Query/fragment punctuation
+        // belongs to the URL, and balanced parentheses inside paths remain intact.
+        if (candidate && !/[?#]/.test(candidate)) {
+            candidate = candidate.replace(/[.,;]+$/, "");
+            let balance = 0;
+            for (let index = 0; index < candidate.length; index += 1) {
+                if (index % 256 === 0)
+                    checkDeadline();
+                if (candidate[index] === "(")
+                    balance += 1;
+                else if (candidate[index] === ")")
+                    balance -= 1;
+            }
+            while (balance < 0 && candidate.endsWith(")")) {
+                candidate = candidate.slice(0, -1).replace(/[.,;]+$/, "");
+                balance += 1;
+            }
+        }
+        return candidate;
+    };
     const scanMediaText = (value, sourceElement) => {
         if (!value)
             return;
         for (const match of value.matchAll(mediaUrlPattern)) {
             checkDeadline();
-            const candidate = (match[0] ?? "").replaceAll("&amp;", "&").replace(/[),.;!?]+$/, "");
+            const decoded = (match[0] ?? "").replaceAll("&amp;", "&");
+            let candidate = trimTextUrl(decoded);
+            if (!/[?#]/.test(decoded))
+                candidate = candidate.replace(/!+$/, "");
             const kind = mediaKindForUrl(candidate);
             if (kind === "gif")
                 recordMedia(candidate, kind, sourceElement);
@@ -429,25 +453,7 @@ export async function scanDocument(targetPostId) {
             return;
         for (const match of value.matchAll(imageUrlPattern)) {
             checkDeadline();
-            let candidate = match[0];
-            // Only recognize prose suffixes on a bare path. Query/fragment punctuation
-            // belongs to the URL, and balanced parentheses inside paths remain intact.
-            if (candidate && !/[?#]/.test(candidate)) {
-                candidate = candidate.replace(/[.,;]+$/, "");
-                let balance = 0;
-                for (let index = 0; index < candidate.length; index += 1) {
-                    if (index % 256 === 0)
-                        checkDeadline();
-                    if (candidate[index] === "(")
-                        balance += 1;
-                    else if (candidate[index] === ")")
-                        balance -= 1;
-                }
-                while (balance < 0 && candidate.endsWith(")")) {
-                    candidate = candidate.slice(0, -1).replace(/[.,;]+$/, "");
-                    balance += 1;
-                }
-            }
+            const candidate = trimTextUrl(match[0]);
             if (candidate && relativeImagePathPattern.test(candidate.split(/[?#]/, 1)[0] ?? "")) {
                 add(candidate.replaceAll("&amp;", "&"), positionElement, sourceElement);
             }

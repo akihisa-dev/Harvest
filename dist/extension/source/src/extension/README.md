@@ -167,3 +167,5 @@ fetchのRequest形式では本文を複製から読み、元のRequestを消費�
 応答構造の参考: [twitter-web-exporterのBookmarks処理](https://github.com/prinsss/twitter-web-exporter/blob/master/src/modules/bookmarks/api.ts)。独自の実装であり、他の実装のコードやデータベース保存処理は使用しません。`scripts/build.mjs` は自己完結した関数からclassic scriptの起動ファイルを生成し、manifestはその生成ファイルを参照します。
 
 一覧構造の確認元（2026年10月3日に開いているXのscript参照から確認）: [Xのmainスクリプト](https://abs.twimg.com/responsive-web/client-web/main.bbbbbc3a3b2a833ba.js)、[Historyスクリプト](https://abs.twimg.com/responsive-web/client-web/bundle.History.83142327f5c44202a.js)。配信コードの変更で取得できなくなった場合は部分取得として扱います。
+
+本文、JSON文字列、汎用属性からGIF URLを抽出する際も、一般画像URLと同じ括弧・句読点の境界判定を使います。クエリ・fragment内の末尾記号はURLの一部として保持し、切れた別URLを追加しません。GIFの分類と通常の文章括弧の除去は維持します。
