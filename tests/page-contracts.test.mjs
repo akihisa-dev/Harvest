@@ -12,6 +12,8 @@ test("ページ契約は正常な省略項目と未解析証拠を許容し、UR
   assert.equal(isPageScan({...page, media: [{url: "blob:anything", kind: "gif", previewUrl: ""}]}), true);
   for (const status of ["ready", "restricted", "unavailable", "timeout"]) assert.equal(isXPageState({status}), true);
   assert.equal(isXMediaSnapshot(snapshot), true);
+  for (const bookmarkList of ["bookmarks", "other"]) assert.equal(isXMediaSnapshot({...snapshot, bookmarkList}), true);
+  for (const bookmarkList of [null, true, "likes"]) assert.equal(isXMediaSnapshot({...snapshot, bookmarkList}), false);
   assert.equal(isXMediaSnapshot({url: "", posts: [], limited: true}), true);
 });
 

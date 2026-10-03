@@ -194,3 +194,41 @@ test("初回解析を停止すると空の初期画面へ戻り、エラー扱�
   assert.equal(f.statuses.at(-1)[1], "info");
   assert.deepEqual(f.results, []);
 });
+
+for (const ending of ["advanced", "end", "failed"]) for (const list of ["other", "bookmarks", "unknown"]) {
+  test(`${ending}後の一覧${list}を継続取得能力と区別して公開する`, async t => {
+    const f = setup(t), url = "https://x.com/i/history";
+    f.collection.replace(["https://example.test/A1.png", "https://example.test/A2.png"], f.source);
+    f.collection.setSelected(f.collection.items[0].url, false);
+    f.collection.applyVisibleOrder(f.collection.items, [...f.collection.items].reverse());
+    const previous = f.collection.items;
+    const selection = previous.map(item => item.selected);
+    f.query = async () => [{id: 7, url}]; chrome.tabs.get = async () => ({url});
+    let fetched = false;
+    const post = id => ({key: `post:${id}`, postId: id, observed: [], roots: [{requireIdentity: false, player: false,
+      value: {rest_id: id, extended_entities: {media: [{type: "photo", media_url_https: `https://pbs.twimg.com/media/image${id}.jpg`}]}}}]});
+    f.read = async ({func}) => {
+      if (func.name === "fetchXBookmarkPage") { fetched = true; return [{result: {status: ending, ...(ending === "advanced" ? {cursor: "next"} : {})}}]; }
+      if (func.name === "scanXMedia") return [{result: {url, limited: false,
+        bookmarkContinuation: !fetched,
+        ...(fetched && list === "unknown" ? {} : {bookmarkList: fetched ? list : "bookmarks"}),
+        posts: [post(fetched ? list === "other" ? "99" : "2" : "1")],
+      }}];
+      return [{result: {url, title: "Bookmarks", images: []}}];
+    };
+    await f.controller.start();
+    assert.equal(f.controller.isRunning, false);
+    if (list === "other") {
+      assert.equal(f.collection.items, previous);
+      assert.deepEqual(previous.map(item => item.selected), selection);
+      assert.deepEqual(f.results, []);
+      assert.match(f.statuses.at(-1)[0], /ページが移動/);
+      assert.equal(f.statuses.at(-1)[1], "error");
+    } else {
+      const expected = list === "bookmarks" ? ["1", "2"] : ["1"];
+      assert.deepEqual(f.collection.items.map(item => item.url), expected.map(id => `https://pbs.twimg.com/media/image${id}?format=jpg&name=orig`));
+      assert.equal(f.results.length, 1);
+      assert.equal(f.controller.diagnostics.scan.bookmarkIncomplete, ending === "end" && list === "bookmarks" ? undefined : true);
+    }
+  });
+}

@@ -55,7 +55,9 @@ export async function scanTab(tabId, signal, requestedUrl, options = {}) {
                     break;
                 }
                 // The same history URL also hosts Likes. Never merge another list.
-                if (!next.bookmarkContinuation)
+                if (next.bookmarkList === "other")
+                    throw new Error("解析中にページが移動しました。もう一度解析してください。");
+                if (!next.bookmarkContinuation && next.bookmarkList !== "bookmarks")
                     break;
                 const posts = new Map(snapshot.posts.map(post => [post.key, post]));
                 for (const post of next.posts) {

@@ -16,6 +16,8 @@ export interface XMediaSnapshot {
   limited: boolean;
   bookmarkCaptureMissing?: boolean;
   bookmarkContinuation?: boolean;
+  /** Observed active list identity; independent of continuation availability. */
+  bookmarkList?: "bookmarks" | "other";
 }
 export interface XMediaCandidate {
   url: string;

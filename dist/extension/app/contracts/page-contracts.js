@@ -44,5 +44,6 @@ function postSnapshot(value) {
 export function isXMediaSnapshot(value) {
     return record(value) && typeof value["url"] === "string" && typeof value["limited"] === "boolean"
         && optionalBoolean(value["bookmarkCaptureMissing"]) && optionalBoolean(value["bookmarkContinuation"])
+        && (value["bookmarkList"] === undefined || value["bookmarkList"] === "bookmarks" || value["bookmarkList"] === "other")
         && Array.isArray(value["posts"]) && value["posts"].every(postSnapshot);
 }

@@ -250,7 +250,8 @@ export function scanXMedia(targetPostId, onlyPostKeys) {
         return ["item", "itemContent", "content", "items", "entries", "entry", "tweet_results", "result"]
             .flatMap(key => entryIds(get(input, key), depth + 1));
     };
-    for (const root of roots) {
+    const listRoots = new Set([...roots, ...document.querySelectorAll('[data-testid="primaryColumn"]')]);
+    for (const root of listRoots) {
         if (root.closest('aside, [data-testid="sidebarColumn"]'))
             continue;
         for (const name of Object.getOwnPropertyNames(root)) {
@@ -283,6 +284,14 @@ export function scanXMedia(targetPostId, onlyPostKeys) {
                 fiber = object(value(fiber, "return"));
             }
         }
+    }
+    // Identify the active history list even if its store has no usable posts or
+    // continuation action. Losing fetchBottom does not mean switching to Likes.
+    if (!targetPostId && !onlyPostKeys && /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname)
+        && timelineModules.size === 1) {
+        const module = [...timelineModules][0];
+        snapshot.bookmarkList = value(module, "timelineId") === "bookmarks" && !value(module, "scopeId")
+            ? "bookmarks" : "other";
     }
     let storedTimelineRecovered = false;
     for (const store of stores) {
