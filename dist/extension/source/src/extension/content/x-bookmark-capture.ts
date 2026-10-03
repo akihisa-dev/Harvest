@@ -23,6 +23,7 @@ export function installXBookmarkCapture(): void {
       generation(): number { return generation; },
       accepts(token: number | undefined): boolean { return token !== undefined && token === generation; },
       add(id: string, post: XPostSnapshot): void { posts.set(id, post); },
+      metadata(): {epoch: number} { return {epoch}; },
       snapshot(): {posts: XPostSnapshot[]; limited: boolean; received: boolean; epoch: number} {
         return bookmarkPage() ? {posts: [...posts.values()], limited: failed, received, epoch}
           : {posts: [], limited: false, received: false, epoch};
@@ -124,9 +125,9 @@ export function installXBookmarkCapture(): void {
     };
     return {begin, syncPage, resetScope, settled: (): Promise<void> => pendingMetadata};
   })();
-  Object.defineProperty(window, bridge, {value: () => {
+  Object.defineProperty(window, bridge, {value: (metadataOnly = false) => {
     requests.syncPage();
-    return capture.snapshot();
+    return metadataOnly ? capture.metadata() : capture.snapshot();
   }});
   type CapturedResponse = {ok: true; data: unknown} | {ok: false};
   const observe = (token: Promise<number | undefined>, response: Promise<CapturedResponse>): void => {

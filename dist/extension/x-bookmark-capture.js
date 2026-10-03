@@ -23,6 +23,7 @@ function installXBookmarkCapture() {
             generation() { return generation; },
             accepts(token) { return token !== undefined && token === generation; },
             add(id, post) { posts.set(id, post); },
+            metadata() { return { epoch }; },
             snapshot() {
                 return bookmarkPage() ? { posts: [...posts.values()], limited: failed, received, epoch }
                     : { posts: [], limited: false, received: false, epoch };
@@ -161,9 +162,9 @@ function installXBookmarkCapture() {
         };
         return { begin, syncPage, resetScope, settled: () => pendingMetadata };
     })();
-    Object.defineProperty(window, bridge, { value: () => {
+    Object.defineProperty(window, bridge, { value: (metadataOnly = false) => {
             requests.syncPage();
-            return capture.snapshot();
+            return metadataOnly ? capture.metadata() : capture.snapshot();
         } });
     const observe = (token, response) => {
         void Promise.all([token, response]).then(async ([generationToken, result]) => {

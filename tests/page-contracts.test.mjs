@@ -98,3 +98,17 @@ for (const change of ["none", "list", "unknown", "url", "document", "loading"]) 
     assert.equal(listeners.size, 0);
   });
 }
+
+ test("ブックマーク世代は非負の安全な整数だけを受け付ける", () => {
+ for (const bookmarkEpoch of [0, 1, Number.MAX_SAFE_INTEGER]) assert.equal(isXMediaSnapshot({...snapshot, bookmarkEpoch}), true);
+ for (const bookmarkEpoch of [-1, 0.5, NaN, Infinity, '1', null]) assert.equal(isXMediaSnapshot({...snapshot, bookmarkEpoch}), false);
+ });
+
+for (const documentId of [undefined, "doc"]) test(`既知のBookmark世代が失われた最終確認を拒否する: ${documentId}`, async t => {
+ const previous=globalThis.chrome, url='https://x.com/i/history', listeners=new Set();let epoch=1;
+ globalThis.chrome={tabs:{get:async()=>({url,status:'complete'}),onRemoved:{addListener:fn=>listeners.add(fn),removeListener:fn=>listeners.delete(fn)}},scripting:{executeScript:async request=>[{documentId,result:request.func.name==='scanDocument'?{url,title:'',images:[]}:{url,limited:false,posts:[],bookmarkList:'bookmarks',bookmarkEpoch:epoch}}]}};
+ t.after(()=>globalThis.chrome=previous);
+ const session=new PageReadSession(1);await session.scanInitialPage();await session.scanPostMedia();
+ epoch=undefined;await assert.rejects(session.verifyCurrentPage(true),/取得状態/);assert.equal(listeners.size,0);
+ epoch=1;await assert.rejects(session.verifyCurrentPage(true),/取得状態/);assert.equal(listeners.size,0);
+});

@@ -16,6 +16,8 @@ export interface XMediaSnapshot {
   limited: boolean;
   bookmarkCaptureMissing?: boolean;
   bookmarkContinuation?: boolean;
+  /** Page-local capture generation; changes on head refresh or cache clear. */
+  bookmarkEpoch?: number;
   /** Observed active list identity; independent of continuation availability. */
   bookmarkList?: "bookmarks" | "other";
 }

@@ -54,6 +54,8 @@ interface ScriptRead<T, A extends unknown[], R> {
 export class PageReadSession {
   private documentId: string | undefined;
   private sourceUrl = "";
+  private bookmarkEpoch: number | undefined;
+  private bookmarkChanged = false;
 
   constructor(private readonly tabId: number, private readonly signal?: AbortSignal) {}
 
@@ -126,6 +128,10 @@ export class PageReadSession {
       accept: result => {
         if (!isXMediaSnapshot(result)) throw new Error("Xの動画情報を読み取れませんでした。");
         this.assertSourceUrl(result.url);
+        if (!targetPostId && /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/i\/(?:history|bookmarks)(?:[/?#]|$)/i.test(this.sourceUrl)) {
+          this.assertBookmarkEpoch(result);
+          this.bookmarkEpoch ??= result.bookmarkEpoch;
+        }
         return result;
       },
     });
@@ -151,6 +157,11 @@ export class PageReadSession {
     if (url.split("#")[0] !== this.sourceUrl.split("#")[0]) throw new Error(pageMovedMessage);
   }
 
+  private assertBookmarkEpoch(snapshot: XMediaSnapshot): void {
+    this.bookmarkChanged ||= this.bookmarkEpoch !== undefined && snapshot.bookmarkEpoch !== this.bookmarkEpoch;
+    if (this.bookmarkChanged) throw new Error("解析中にブックマーク一覧の取得状態が変わりました。もう一度解析してください。");
+  }
+
   async verifyCurrentPage(checkBookmarkList = false): Promise<void> {
     await bounded<void>((resolve, reject) => {
       void chrome.tabs.get(this.tabId).then(tab => {
@@ -161,7 +172,7 @@ export class PageReadSession {
         } catch (error) { reject(error as Error); }
       }, () => reject(new Error(closedMessage)));
     }, this.signal);
-    if (this.documentId) {
+    if (this.documentId || (checkBookmarkList && this.bookmarkEpoch !== undefined)) {
       if (checkBookmarkList) {
         await this.read({
           func: scanXMedia, args: [null, [], true], world: "MAIN",
@@ -171,6 +182,7 @@ export class PageReadSession {
             if (!isXMediaSnapshot(snapshot)) throw new Error(pageMovedMessage);
             this.assertSourceUrl(snapshot.url);
             if (snapshot.bookmarkList === "other") throw new Error(pageMovedMessage);
+            this.assertBookmarkEpoch(snapshot);
           },
         });
         return;

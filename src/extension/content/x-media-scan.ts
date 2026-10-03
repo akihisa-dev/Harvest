@@ -249,9 +249,18 @@ export function scanXMedia(targetPostId?: string | null, onlyPostKeys?: string[]
     snapshot.bookmarkList = value(module, "timelineId") === "bookmarks" && !value(module, "scopeId")
       ? "bookmarks" : "other";
   }
-  // Final verification reuses the same identity discovery without reading
-  // tweet entities, captured responses, or media evidence again.
-  if (identityOnly) return snapshot;
+  // Final verification reads identity and generation only, without media evidence.
+  if (identityOnly) {
+    if (!targetPostId && snapshot.bookmarkList !== "other" && /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname)) {
+      try {
+        const read = value(window, "__harvestBookmarkMediaV1");
+        const metadata = typeof read === "function" ? object(read(true)) : undefined;
+        const epoch = metadata ? value(metadata, "epoch") : undefined;
+        if (typeof epoch === "number" && Number.isSafeInteger(epoch) && epoch >= 0) snapshot.bookmarkEpoch = epoch;
+      } catch { /* Missing metadata is rejected by a reader with a known generation. */ }
+    }
+    return snapshot;
+  }
   let storedTimelineRecovered = false;
   let bookmarkIdentity: object | undefined;
   for (const store of stores) {
@@ -337,7 +346,8 @@ export function scanXMedia(targetPostId?: string | null, onlyPostKeys?: string[]
       const read = value(window, "__harvestBookmarkMediaV1");
       if (typeof read === "function") {
         const captured = read() as {posts?: XPostSnapshot[]; limited?: boolean; received?: boolean; epoch?: number};
-        captureEpoch = Number.isSafeInteger(captured.epoch) ? captured.epoch : undefined;
+        captureEpoch = typeof captured.epoch === "number" && Number.isSafeInteger(captured.epoch) && captured.epoch >= 0 ? captured.epoch : undefined;
+        if (captureEpoch !== undefined) snapshot.bookmarkEpoch = captureEpoch;
         const sameCollection = !storedTimelineRecovered || (bookmarkIdentity && captureEpoch !== undefined);
         snapshot.bookmarkCaptureMissing = !storedTimelineRecovered && captured.received !== true;
         if (sameCollection && Array.isArray(captured.posts)) {

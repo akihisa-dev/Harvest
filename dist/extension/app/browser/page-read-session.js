@@ -46,6 +46,8 @@ export class PageReadSession {
     signal;
     documentId;
     sourceUrl = "";
+    bookmarkEpoch;
+    bookmarkChanged = false;
     constructor(tabId, signal) {
         this.tabId = tabId;
         this.signal = signal;
@@ -124,6 +126,10 @@ export class PageReadSession {
                 if (!isXMediaSnapshot(result))
                     throw new Error("Xの動画情報を読み取れませんでした。");
                 this.assertSourceUrl(result.url);
+                if (!targetPostId && /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/i\/(?:history|bookmarks)(?:[/?#]|$)/i.test(this.sourceUrl)) {
+                    this.assertBookmarkEpoch(result);
+                    this.bookmarkEpoch ??= result.bookmarkEpoch;
+                }
                 return result;
             },
         });
@@ -147,6 +153,11 @@ export class PageReadSession {
         if (url.split("#")[0] !== this.sourceUrl.split("#")[0])
             throw new Error(pageMovedMessage);
     }
+    assertBookmarkEpoch(snapshot) {
+        this.bookmarkChanged ||= this.bookmarkEpoch !== undefined && snapshot.bookmarkEpoch !== this.bookmarkEpoch;
+        if (this.bookmarkChanged)
+            throw new Error("解析中にブックマーク一覧の取得状態が変わりました。もう一度解析してください。");
+    }
     async verifyCurrentPage(checkBookmarkList = false) {
         await bounded((resolve, reject) => {
             void chrome.tabs.get(this.tabId).then(tab => {
@@ -162,7 +173,7 @@ export class PageReadSession {
                 }
             }, () => reject(new Error(closedMessage)));
         }, this.signal);
-        if (this.documentId) {
+        if (this.documentId || (checkBookmarkList && this.bookmarkEpoch !== undefined)) {
             if (checkBookmarkList) {
                 await this.read({
                     func: scanXMedia, args: [null, [], true], world: "MAIN",
@@ -174,6 +185,7 @@ export class PageReadSession {
                         this.assertSourceUrl(snapshot.url);
                         if (snapshot.bookmarkList === "other")
                             throw new Error(pageMovedMessage);
+                        this.assertBookmarkEpoch(snapshot);
                     },
                 });
                 return;
