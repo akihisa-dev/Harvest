@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
   "description": "__MSG_extensionDescription__",
-  "version": "0.42.2",
+  "version": "0.42.3",
   "default_locale": "en",
   "icons": {
     "16": "icons/icon-16.png",
@@ -13,7 +13,8 @@
   "permissions": [
     "tabs",
     "scripting",
-    "sidePanel"
+    "sidePanel",
+    "downloads"
   ],
   "host_permissions": [
     "http://*/*",

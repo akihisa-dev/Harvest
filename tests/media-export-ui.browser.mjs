@@ -33,7 +33,26 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
     browser = await chromium.launch({channel: 'chrome', headless: true});
     const context = await browser.newContext({locale: 'ja-JP', reducedMotion: 'reduce', acceptDownloads: true});
     await context.addInitScript(() => {
+      // This Web fixture mocks only the downloads API; real-extension coverage is separate.
+      const listeners = new Set(), downloads = new Map();
+      let nextDownload = 1;
       window.chrome = {
+        downloads: {
+          async download({url, filename}) {
+            const id = nextDownload++;
+            const link = document.createElement('a');
+            link.href = url; link.download = filename; document.body.append(link); link.click(); link.remove();
+            downloads.set(id, {id, state: 'in_progress'});
+            setTimeout(() => {
+              downloads.set(id, {id, state: 'complete'});
+              for (const listener of listeners) listener({id, state: {current: 'complete'}});
+            }, 0);
+            return id;
+          },
+          async search({id}) { return downloads.has(id) ? [downloads.get(id)] : []; },
+          async cancel(id) { for (const listener of listeners) listener({id, state: {current: 'interrupted'}}); },
+          onChanged: {addListener: listener => listeners.add(listener), removeListener: listener => listeners.delete(listener)},
+        },
         runtime: {onConnect: {addListener() {} }},
         i18n: {getUILanguage: () => 'ja'},
         tabs: {

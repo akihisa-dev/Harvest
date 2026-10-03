@@ -65,10 +65,12 @@ export function createExportLifecycle(options) {
                     activeController = null;
                 progress = "";
                 if (controller.signal.aborted) {
-                    work.prepared.clear();
-                    work.failed.clear();
-                    if (pending === work)
-                        pending = null;
+                    if (!options.retainAbortedWork?.(work)) {
+                        work.prepared.clear();
+                        work.failed.clear();
+                        if (pending === work)
+                            pending = null;
+                    }
                     if (!options.isDisposed())
                         reportStatus(options.cancelledMessage, "info");
                 }

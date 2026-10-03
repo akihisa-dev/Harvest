@@ -2,6 +2,7 @@ import {isMediaArchiveFormat, type ImageArchiveFormat} from "../core/export-form
 import {ImageArchiveLimitError, ImageArchivePlan} from "../core/image-archive.js";
 import {createPreparationWorkers, waitForPreparation} from "../core/preparation-workers.js";
 import type {StoredZipEntry} from "../core/stored-zip.js";
+import type {ImageItem} from "../core/images.js";
 import type {MutablePendingExport} from "./export-lifecycle.js";
 import type {FetchedImage} from "./image-data-contract.js";
 import {fetchImage} from "./image-fetch.js";
@@ -28,6 +29,8 @@ function createDeferred<T>(): Deferred<T> {
 
 export interface ImageArchiveWork extends MutablePendingExport<Blob> {
   readonly format: ImageArchiveFormat;
+  readonly saved?: Set<ImageItem>;
+  savingStarted?: boolean;
 }
 
 export interface ImageArchivePreparationOptions {

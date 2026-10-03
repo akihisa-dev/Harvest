@@ -15,6 +15,7 @@ export interface ExportLifecycleOptions {
   readonly onBusyChange: (busy: boolean) => void;
   readonly onStatus: (message: string, state: ExportStatusState, progress?: string) => void;
   readonly onScrollToFailures: () => void;
+  readonly retainAbortedWork?: (work: MutablePendingExport<unknown>) => boolean;
 }
 
 export interface ExportRun<TWork> {
@@ -107,9 +108,11 @@ export function createExportLifecycle<TPrepared, TWork extends MutablePendingExp
         if (activeController === controller) activeController = null;
         progress = "";
         if (controller.signal.aborted) {
-          work.prepared.clear();
-          work.failed.clear();
-          if (pending === work) pending = null;
+          if (!options.retainAbortedWork?.(work)) {
+            work.prepared.clear();
+            work.failed.clear();
+            if (pending === work) pending = null;
+          }
           if (!options.isDisposed()) reportStatus(options.cancelledMessage, "info");
         }
         if (!options.isDisposed()) {

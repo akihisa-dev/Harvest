@@ -4,6 +4,7 @@ import { createStoredZipInWorker } from "./stored-zip-worker.js";
 import { prepareImageArchive } from "./image-archive-preparation.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { createExportLifecycle, downloadBlob } from "./export-lifecycle.js";
+import { downloadManagedBlob } from "./managed-download.js";
 // Preserve the existing entry-builder API while the core owns archive rules.
 export { createImageZipEntries } from "../core/image-archive.js";
 function mediaProgressKind(format) {
@@ -11,7 +12,22 @@ function mediaProgressKind(format) {
 }
 /** Prepares selected image files in order, retries only failures, and saves individual files or one ZIP. */
 export function createImageExportController(options) {
-    const lifecycle = createExportLifecycle({ ...options, cancelledMessage: t("exportCancelled") });
+    function markUnsaved(work) {
+        for (const item of work.selected) {
+            if (!work.saved?.has(item))
+                work.failed.set(item, t("errorFileSave"));
+        }
+    }
+    const lifecycle = createExportLifecycle({
+        ...options, cancelledMessage: t("exportCancelled"),
+        retainAbortedWork(pending) {
+            const work = pending;
+            if (options.isDisposed() || !work.savingStarted)
+                return false;
+            markUnsaved(work);
+            return true;
+        },
+    });
     async function exportImages(format) {
         if (options.isBusy())
             return;
@@ -23,6 +39,7 @@ export function createImageExportController(options) {
             selected,
             prepared: new Map(),
             failed: new Map(),
+            saved: new Set(),
         }), pending => pending.format === format);
         const retry = work.failed.size > 0;
         const remaining = work.selected.filter(item => !work.prepared.has(item));
@@ -54,10 +71,21 @@ export function createImageExportController(options) {
                 if (!entries)
                     return;
                 if (saveFilesIndividually(format, entries.length)) {
-                    for (const entry of entries) {
+                    for (const [index, entry] of entries.entries()) {
                         if (run.stopped)
                             return;
-                        downloadBlob(entry.blob, individualFilename(options.getZipFilename(), entry.filename, entries.length));
+                        const item = work.selected[index];
+                        if (work.saved?.has(item))
+                            continue;
+                        const filename = individualFilename(options.getZipFilename(), entry.filename, entries.length);
+                        if (format === "mp4") {
+                            work.savingStarted = true;
+                            run.reportStatus(t("saveFiles", { completed: work.saved?.size ?? 0, total: entries.length }), "busy", `${work.saved?.size ?? 0} / ${entries.length}`);
+                            await downloadManagedBlob(entry.blob, filename, run.signal);
+                            work.saved?.add(item);
+                        }
+                        else
+                            downloadBlob(entry.blob, filename);
                     }
                 }
                 else {
@@ -82,6 +110,11 @@ export function createImageExportController(options) {
             catch (error) {
                 if (run.stopped)
                     return;
+                if (work.savingStarted) {
+                    markUnsaved(work);
+                    run.reportStatus(t("fileFailedSummary", { count: work.failed.size, plural: formatPlural(work.failed.size) }), "error");
+                    return;
+                }
                 if (error instanceof RangeError) {
                     work.prepared.clear();
                     work.failed.clear();

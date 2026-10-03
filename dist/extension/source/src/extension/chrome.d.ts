@@ -20,6 +20,15 @@ interface HarvestManifest {
 }
 
 declare const chrome: {
+  downloads: {
+    download(options: {url: string; filename: string; conflictAction: "uniquify"}): Promise<number>;
+    search(query: {id: number}): Promise<Array<{id: number; state: string; error?: string}>>;
+    cancel(id: number): Promise<void>;
+    onChanged: {
+      addListener(listener: (delta: {id: number; state?: {current?: string}; error?: {current?: string}}) => void): void;
+      removeListener(listener: (delta: {id: number; state?: {current?: string}; error?: {current?: string}}) => void): void;
+    };
+  };
   i18n: {
     getUILanguage(): string;
   };
