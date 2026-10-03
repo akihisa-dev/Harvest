@@ -107,3 +107,12 @@ test("mediaはWorkerのURLを作れるがWorkerの処理をimportできない", 
   assert.equal(errors.length, 1);
   assert.ok(errors[0].includes("mediaからworkersへの依存は禁止"));
 });
+
+test("変数を使う動的importも依存検査をすり抜けられない", t => {
+  for (const layer of ["content", "media"]) {
+    const errors = check(t, {
+      [`src/extension/${layer}/entry.ts`]: 'export const load = (path: string) => import(path);',
+    });
+    assert.ok(errors.some(error => error.includes("動的importの参照先")), layer);
+  }
+});

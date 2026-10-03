@@ -22,8 +22,8 @@ function moduleReferences(sourceFile) {
   function visit(node) {
     if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteralLike(node.moduleSpecifier)) {
       references.push(node.moduleSpecifier.text);
-    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
-      references.push(node.arguments[0].text);
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      references.push(node.arguments[0] && ts.isStringLiteralLike(node.arguments[0]) ? node.arguments[0].text : null);
     } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteralLike(node.argument.literal)) {
       references.push(node.argument.literal.text);
     }
@@ -53,6 +53,10 @@ export function checkArchitecture(root = process.cwd()) {
     const emitted = ts.transpileModule(source, { compilerOptions: parsed.options, fileName: file }).outputText;
     const runtimeReferences = new Set(moduleReferences(ts.createSourceFile(file + ".js", emitted, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)));
     for (const reference of moduleReferences(sourceFile)) {
+      if (reference === null) {
+        errors.push(`${name(file)}: 動的importの参照先は文字列リテラルで指定し、依存検査で解決できるようにしてください。`);
+        continue;
+      }
       const target = ts.resolveModuleName(reference, file, parsed.options, ts.sys).resolvedModule?.resolvedFileName;
       if (name(file).startsWith("src/core/") && (!target || !name(target).startsWith("src/core/"))) {
         errors.push(`${name(file)}: coreの依存はcore内に限定します: ${reference}`);
