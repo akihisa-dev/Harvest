@@ -232,6 +232,7 @@ export function scanXMedia(targetPostId?: string | null, onlyPostKeys?: string[]
   // tweet entities, captured responses, or media evidence again.
   if (identityOnly) return snapshot;
   let storedTimelineRecovered = false;
+  let bookmarkIdentity: object | undefined;
   for (const store of stores) {
     try {
       const state = (value(store, "getState") as () => unknown).call(store);
@@ -269,6 +270,10 @@ export function scanXMedia(targetPostId?: string | null, onlyPostKeys?: string[]
         const module = [...timelineModules][0]!;
         snapshot.bookmarkContinuation = value(module, "timelineId") === "bookmarks" && !value(module, "scopeId")
           && typeof value(module, "fetchBottom") === "function" && typeof value(store, "dispatch") === "function";
+      }
+      if (!targetPostId && moduleCandidates.length === 1 && timelineModules.size === 1) {
+        const module = [...timelineModules][0]!;
+        if (value(module, "timelineId") === "bookmarks" && !value(module, "scopeId")) bookmarkIdentity = module;
       }
       const recovered: XPostSnapshot[] = [];
       let complete = true;
@@ -308,15 +313,18 @@ export function scanXMedia(targetPostId?: string | null, onlyPostKeys?: string[]
     } catch { /* Store/schema changes must not discard DOM or received media. */ }
   }
 
+  let captureEpoch: number | undefined;
   // Received bookmark pages survive X removing offscreen article elements.
-  if (!targetPostId && /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname) && typeof window !== "undefined") {
+  if (!targetPostId && snapshot.bookmarkList !== "other" && /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname) && typeof window !== "undefined") {
     snapshot.bookmarkCaptureMissing = !storedTimelineRecovered;
     try {
       const read = value(window, "__harvestBookmarkMediaV1");
-      if (!storedTimelineRecovered && typeof read === "function") {
-        const captured = read() as {posts?: XPostSnapshot[]; limited?: boolean; received?: boolean};
+      if (typeof read === "function") {
+        const captured = read() as {posts?: XPostSnapshot[]; limited?: boolean; received?: boolean; epoch?: number};
+        captureEpoch = Number.isSafeInteger(captured.epoch) ? captured.epoch : undefined;
+        const sameCollection = !storedTimelineRecovered || (bookmarkIdentity && captureEpoch !== undefined);
         snapshot.bookmarkCaptureMissing = !storedTimelineRecovered && captured.received !== true;
-        if (Array.isArray(captured.posts)) {
+        if (sameCollection && Array.isArray(captured.posts)) {
           const mounted = new Map(snapshot.posts.map(post => [post.key, post]));
           const combined: XPostSnapshot[] = [];
           for (const post of captured.posts) {
@@ -330,6 +338,28 @@ export function scanXMedia(targetPostId?: string | null, onlyPostKeys?: string[]
         snapshot.limited ||= captured.limited === true;
       }
     } catch { snapshot.limited = true; }
+  }
+  // Keep evidence across separate Analyze operations, not just fetches in one scan.
+  // This lives in the X document, never in persistent extension storage.
+  if (typeof window !== "undefined") {
+    type Memory = {url: string; identity: object; epoch?: number; posts: XPostSnapshot[]};
+    const key = "__harvestBookmarkScanMemoryV1";
+    const previous = value(window, key) as Memory | undefined;
+    if (bookmarkIdentity && !onlyPostKeys && /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname)) {
+      const same = previous?.url === url && previous.identity === bookmarkIdentity && previous.epoch === captureEpoch;
+      const combined = new Map<string, XPostSnapshot>((same ? previous.posts : []).map(post => [post.key, post]));
+      for (const post of snapshot.posts) {
+        const old = combined.get(post.key);
+        combined.set(post.key, old ? {...post,
+          observed: [...new Map([...old.observed, ...post.observed].map(item => [JSON.stringify(item), item])).values()],
+          roots: [...new Map([...old.roots, ...post.roots].map(item => [JSON.stringify(item), item])).values()],
+        } : post);
+      }
+      snapshot.posts = [...combined.values()];
+      Object.defineProperty(window, key, {configurable: true, value: {url, identity: bookmarkIdentity, epoch: captureEpoch, posts: snapshot.posts}});
+    } else if (!onlyPostKeys && previous) {
+      delete (window as unknown as Record<string, unknown>)[key];
+    }
   }
   if (location.href.split("#")[0] !== url.split("#")[0]) throw new Error("解析中にページが移動しました。もう一度解析してください。");
   return snapshot;

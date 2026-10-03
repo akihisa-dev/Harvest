@@ -5,12 +5,12 @@ export function installXBookmarkCapture(): void {
   const bridge = "__harvestBookmarkMediaV1";
   if (Object.getOwnPropertyDescriptor(window, bridge)) return;
   const posts = new Map<string, XPostSnapshot>();
-  let generation = 0, failed = false, received = false;
+  let generation = 0, memoryEpoch = 0, failed = false, received = false;
   let scope = 0;
   let pendingMetadata = Promise.resolve();
   let pageUrl = location.href.split("#")[0];
   const bookmarkPage = (): boolean => /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname);
-  const reset = (): void => { posts.clear(); generation++; failed = false; received = false; };
+  const reset = (): void => { posts.clear(); generation++; memoryEpoch++; delete (window as unknown as Record<string, unknown>)["__harvestBookmarkScanMemoryV1"]; failed = false; received = false; };
   const resetScope = (): void => { reset(); scope++; pendingMetadata = Promise.resolve(); };
   const syncPage = (): void => {
     const current = location.href.split("#")[0];
@@ -56,7 +56,7 @@ export function installXBookmarkCapture(): void {
     };
     for (const instruction of instructions) {
       const row = record(instruction);
-      if (row?.["type"] === "TimelineClearCache") posts.clear();
+      if (row?.["type"] === "TimelineClearCache") { posts.clear(); memoryEpoch++; delete (window as unknown as Record<string, unknown>)["__harvestBookmarkScanMemoryV1"]; }
       const entries = Array.isArray(row?.["entries"]) ? row["entries"] : row?.["entry"] ? [row["entry"]] : [];
       for (const entry of entries) {
         const content = record(record(entry)?.["content"]);
@@ -102,7 +102,7 @@ export function installXBookmarkCapture(): void {
   };
   Object.defineProperty(window, bridge, {value: () => {
     syncPage();
-    return bookmarkPage() ? {posts: [...posts.values()], limited: failed, received} : {posts: [], limited: false, received: false};
+    return bookmarkPage() ? {posts: [...posts.values()], limited: failed, received, epoch: memoryEpoch} : {posts: [], limited: false, received: false, epoch: memoryEpoch};
   }});
   type CapturedResponse = {ok: true; data: unknown} | {ok: false};
   const observe = (token: Promise<number | undefined>, response: Promise<CapturedResponse>): void => {
