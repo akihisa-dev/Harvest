@@ -1192,3 +1192,27 @@ test("有効なJSON画像文字列のエスケープを復元し、生文字列�
     assert.deepEqual(result.images, [url]);
   }
 });
+
+test("本文の囲み括弧・句読点を区別し、URL自身の括弧とクエリを保持する", async () => {
+  const base = "https://cdn.example.test/";
+  const cases = [
+    ["(photo.jpg)", "photo.jpg"],
+    ["photo.jpg,", "photo.jpg"], ["photo.jpg.", "photo.jpg"], ["photo.jpg;", "photo.jpg"],
+    ["((photo.jpg)),", "photo.jpg"],
+    ["photo(1).jpg", "photo(1).jpg"], ["(photo).jpg", "(photo).jpg"],
+    ["photo.jpg?token=(abc)", "photo.jpg?token=(abc)"],
+    ["photo.jpg?token=a,b", "photo.jpg?token=a,b"],
+    ["photo.jpg?token=abc)", "photo.jpg?token=abc)"],
+    ["photo.jpg?token=abc;", "photo.jpg?token=abc;"],
+    ["photo.jpg#(preview)", "photo.jpg#(preview)"],
+    ["photo.jpg.webp,", "photo.jpg.webp"], ["album.jpg/pages/001.png)", "album.jpg/pages/001.png"],
+    ["photo.jpeg2000,", null], ["photo.jpg.txt)", null],
+  ];
+  for (const [input,expected] of cases) {
+    const textContent = input.startsWith("(photo.jpg") ? `(${base}${input.slice(1)}`
+      : input.startsWith("((photo.jpg") ? `((${base}${input.slice(2)}` : base + input;
+    const root = new FixtureElement("html", {}, [new FixtureElement("div", {}, [], {textContent})]);
+    const result = await runWithFixture(new FixtureDocument(root), undefined, scanDocument);
+    assert.deepEqual(result.images, expected ? [base + expected] : [], input);
+  }
+});

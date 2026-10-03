@@ -467,3 +467,40 @@ test("結果確定前にCSS変更で消えた背景の根拠を更新し、共�
     await browser.close();
   }
 });
+
+test("実Chromeの本文URLで句読点を除き、URL自身の括弧・クエリと最終拡張子を保持する", async () => {
+  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const browser = await chromium.launch({channel:"chrome",headless:true});
+  try {
+    const page = await browser.newPage();
+    await page.route("**/*", route => route.abort());
+    await page.setContent('<base href="https://example.test/"><main></main>');
+    const base = "https://cdn.example.test/";
+    const cases = [
+      [`(${base}photo.jpg)`, `${base}photo.jpg`],
+      ...[",", ".", ";"].map(mark => [base + "photo.jpg" + mark, base + "photo.jpg"]),
+      ...["photo(1).jpg", "(photo).jpg", "photo.jpg?token=(abc)", "photo.jpg?token=a,b", "photo.jpg#(preview)"].map(path => [base + path, base + path]),
+      [`(${base}photo.jpg?token=abc)`, base + "photo.jpg?token=abc)"],
+      [base + "photo.jpg.webp,", base + "photo.jpg.webp"],
+      [base + "album.jpg/pages/001.png)", base + "album.jpg/pages/001.png"],
+      [base + "photo.jpeg2000,", null], [base + "photo.jpg.txt)", null],
+    ];
+    const results = await page.evaluate(async ({source,cases}) => {
+      const moduleUrl = URL.createObjectURL(new Blob([source], {type:"text/javascript"}));
+      try {
+        const {scanDocument} = await import(moduleUrl);
+        const results = [];
+        for (const [text] of cases) {
+          document.querySelector("main").textContent = text;
+          results.push((await scanDocument()).images);
+        }
+        return results;
+      } finally {URL.revokeObjectURL(moduleUrl);}
+    }, {source,cases});
+    for (let index=0;index<cases.length;index++) {
+      const [input,expected] = cases[index];
+      assert.deepEqual(results[index], expected ? [expected] : [], input);
+      assert.deepEqual(normalizeImageUrls(results[index],"https://example.test/"), expected ? [expected.split("#")[0]] : [], input);
+    }
+  } finally {await browser.close();}
+});
