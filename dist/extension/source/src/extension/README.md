@@ -91,7 +91,7 @@ MP4は個別ファイル、画像・GIFは1枚なら直接保存し、複数枚�
 
 ## ページ解析の入口と実行制約
 
-[page-access.ts](browser/page-access.ts) は通常のページ走査とXの追加読み取りの順序・結果統合を担当します。ホーム・プロフィールでは、投稿解析で確認できた写真の原寸URLを初回DOM結果にも反映してから補完候補を統合します。同じ写真の表示サイズ違いは1件にし、投稿写真と確認できないページ候補は保持します。[page-read-session.ts](browser/page-read-session.ts) はChromeへの読み取り要求、同じ文書であることの照合、時間制限、中断、解析用ウィンドウ・タブの解放を管理します。[page-scan.ts](content/page-scan.ts)、[x-page-state.ts](content/x-page-state.ts)、[x-media-scan.ts](content/x-media-scan.ts)、[collection-mode.ts](content/collection-mode.ts) の注入関数はChromeが関数単体をページへコピーして実行するため、外側の変数やimportに依存しない形を保ちます。この制約のある関数内の処理を、通常のモジュール分割で外へ移すことは避けます。
+[page-access.ts](browser/page-access.ts) は通常のページ走査とXの追加読み取りの順序・結果統合を担当します。ホーム・プロフィールでは、投稿解析で確認できた写真の原寸URLを初回DOM結果にも反映してから補完候補を統合します。同じ写真の表示サイズ違いは1件にし、投稿写真と確認できないページ候補は保持します。解決済み動画のpreviewUrlに対応する画像候補は、初回DOM結果からも除いて動画のプレビューとして保持します。対応する動画を解決できない画像候補はこの規則で除きません。[page-read-session.ts](browser/page-read-session.ts) はChromeへの読み取り要求、同じ文書であることの照合、時間制限、中断、解析用ウィンドウ・タブの解放を管理します。[page-scan.ts](content/page-scan.ts)、[x-page-state.ts](content/x-page-state.ts)、[x-media-scan.ts](content/x-media-scan.ts)、[collection-mode.ts](content/collection-mode.ts) の注入関数はChromeが関数単体をページへコピーして実行するため、外側の変数やimportに依存しない形を保ちます。この制約のある関数内の処理を、通常のモジュール分割で外へ移すことは避けます。
 
 初回走査中は変更監視を保ち、初回走査とその差分反映が終わってから静穏250ms・最大800msの待機を開始します。要素の多いページでも、走査途中のURL変更・追加・削除を待機上限の都合で捨てません。
 

@@ -51,6 +51,8 @@ export async function scanTab(tabId: number, signal?: AbortSignal, requestedUrl?
       result.images = analysis.media.filter(item => item.kind === "image").map(item => item.url);
       result.media = mergeMediaCandidates([], analysis.media);
     } else {
+      const posters = new Set(analysis.media.filter(item => item.kind === "video" && item.previewUrl)
+        .map(item => xMediaUrlKey(item.previewUrl!)));
       const photos = new Map(analysis.media.filter(item => item.kind === "image").map(item => [xMediaUrlKey(item.url), item.url]));
       const confirmedPhotoUrl = (url: string): string => {
         const original = xOriginalPhotoUrl(url);
@@ -58,9 +60,10 @@ export async function scanTab(tabId: number, signal?: AbortSignal, requestedUrl?
       };
       // Keep page-wide candidates, but replace confirmed post-photo renditions
       // before filtering supplements so their original URL is not discarded.
-      result.images = [...new Set(result.images.map(confirmedPhotoUrl))];
+      result.images = [...new Set(result.images.filter(url => !posters.has(xMediaUrlKey(url))).map(confirmedPhotoUrl))];
       const known = new Set(result.images.map(xMediaUrlKey));
-      const media = (result.media ?? []).map(item => item.kind === "image" ? {...item, url: confirmedPhotoUrl(item.url)} : item);
+      const media = (result.media ?? []).filter(item => item.kind === "video" || !posters.has(xMediaUrlKey(item.url)))
+        .map(item => item.kind === "image" ? {...item, url: confirmedPhotoUrl(item.url)} : item);
       result.media = mergeMediaCandidates(media, analysis.media.filter(item =>
         item.kind !== "image" || !known.has(xMediaUrlKey(item.url))));
     }

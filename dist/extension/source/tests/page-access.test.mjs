@@ -36,6 +36,26 @@ for (const path of ['/home', '/user']) test(`Xの${path}は確認済み写真だ
   assert.deepEqual(scan.media, [...expected.map(url => ({url, kind: 'image'})), video]);
 });
 
+for (const path of ['/home', '/user']) test(`Xの${path}は解決済み動画のposterだけを除き、不足メディアを保持する`, async t => {
+  const url = `https://x.com${path}`;
+  fixture(t, {get: async () => ({url})});
+  const poster = 'https://pbs.twimg.com/ext_tw_video_thumb/123/img/poster.jpg?name=small';
+  const posterThumb = poster.replace('small', 'thumb');
+  const unresolved = 'https://pbs.twimg.com/ext_tw_video_thumb/456/img/poster.jpg';
+  const other = 'https://pbs.twimg.com/ext_tw_video_thumb/789/img/poster.jpg';
+  const photo = 'https://pbs.twimg.com/media/photo.png';
+  const video = {kind: 'video', url: 'https://video.twimg.com/clip.mp4', previewUrl: poster};
+  const images = [poster, posterThumb, unresolved, other, photo];
+  chrome.scripting.executeScript = async ({func}) => [{result: func.name === 'scanXMedia'
+    ? mediaSnapshot(url, [{kind: 'image', url: photo}, video], [{kind: 'image', url: unresolved}])
+    : {url, title: 'X', images, media: [...images.map(url => ({url, kind: 'image'})), video]}}];
+  const scan = await scanTab(8, undefined, url);
+  const expected = [unresolved, other, 'https://pbs.twimg.com/media/photo?format=png&name=orig'];
+  assert.deepEqual(scan.images, expected);
+  assert.deepEqual(scan.media, [...expected.map(url => ({url, kind: 'image'})), video]);
+  assert.equal(scan.xDiagnostics.unresolved, 1, '未解決動画の不足通知を保持する');
+});
+
 for (const path of ["/i/history", "/i/bookmarks"]) {
   test(`${path}は取得済み投稿を使い、写真の重複とプロフィールを除いて全メディアを結合する`, async t => {
     const url = `https://x.com${path}`;

@@ -5,7 +5,7 @@ import test from 'node:test';
 import {join, resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 
-test('Xの4画面で投稿写真を原寸1件に統合しcollectionと保存用取得へ渡す', {timeout: 30000}, async () => {
+test('Xの4画面で原寸写真を統合し動画posterを静止画像へ混入させない', {timeout: 30000}, async () => {
   const extensionRoot = resolve(process.env.HARVEST_TEST_EXTENSION_DIR ?? 'dist/extension');
   const temp = await mkdtemp(join(tmpdir(), 'harvest-x-photo-'));
   let context, cdp;
@@ -41,12 +41,12 @@ test('Xの4画面で投稿写真を原寸1件に統合しcollectionと保存用�
       await page.goto(url);
       await page.evaluate(() => {
         const main = document.querySelector('main');
-        main.innerHTML = `<article data-testid="tweet"><a href="/user/status/123"><time>Today</time></a><div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/photo?format=png&amp;name=small"><img src="https://pbs.twimg.com/media/photo?format=png&amp;name=thumb"><img src="https://pbs.twimg.com/media/unknown?format=unknownformat&amp;name=small"></div><img src="https://pbs.twimg.com/media/second?format=png&amp;name=small"><video preload="none" src="https://video.twimg.com/low.mp4" poster="https://pbs.twimg.com/media/poster?format=png&amp;name=small"></video></article>`;
+        main.innerHTML = `<article data-testid="tweet"><a href="/user/status/123"><time>Today</time></a><div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/photo?format=png&amp;name=small"><img src="https://pbs.twimg.com/media/photo?format=png&amp;name=thumb"><img src="https://pbs.twimg.com/media/unknown?format=unknownformat&amp;name=small"></div><img src="https://pbs.twimg.com/media/second?format=png&amp;name=small"><img src="https://pbs.twimg.com/ext_tw_video_thumb/999/img/poster.jpg"><video preload="none" src="https://video.twimg.com/low.mp4" poster="https://pbs.twimg.com/ext_tw_video_thumb/999/img/poster.jpg"></video></article><img src="https://pbs.twimg.com/ext_tw_video_thumb/998/img/other.jpg">`;
         document.querySelector('article').__reactProps$fixture = {tweet: {rest_id: '123', legacy: {extended_entities: {media: [
           {type: 'photo', media_url_https: 'https://pbs.twimg.com/media/photo?format=png&name=orig'},
           {type: 'photo', media_url_https: 'https://pbs.twimg.com/media/second.png'},
           {type: 'photo', media_url_https: 'https://pbs.twimg.com/media/unknown?format=unknownformat&name=small'},
-          {type: 'video', media_url_https: 'https://pbs.twimg.com/media/poster?format=png&name=small', video_info: {variants: [{url: 'https://video.twimg.com/clip.mp4', content_type: 'video/mp4', bitrate: 100}, {url: 'https://video.twimg.com/low.mp4', content_type: 'video/mp4', bitrate: 10}]}},
+          {type: 'video', media_url_https: 'https://pbs.twimg.com/ext_tw_video_thumb/999/img/poster.jpg', video_info: {variants: [{url: 'https://video.twimg.com/clip.mp4', content_type: 'video/mp4', bitrate: 100}, {url: 'https://video.twimg.com/low.mp4', content_type: 'video/mp4', bitrate: 10}]}},
         ]}}}};
       });
       await page.bringToFront();
@@ -85,7 +85,7 @@ test('Xの4画面で投稿写真を原寸1件に統合しcollectionと保存用�
       assert.equal(result.analysis.media.filter(i => i.url.includes('/media/photo')).length, 1);
       assert.equal(result.analysis.media.find(i => i.url.includes('/media/photo')).url, 'https://pbs.twimg.com/media/photo?format=png&name=orig');
       assert.equal(result.analysis.media.find(i => i.url.includes('/media/unknown')).url, 'https://pbs.twimg.com/media/unknown?format=unknownformat&name=small');
-      assert.equal(result.analysis.media.find(i => i.kind === 'video').previewUrl, 'https://pbs.twimg.com/media/poster?format=png&name=small');
+      assert.equal(result.analysis.media.find(i => i.kind === 'video').previewUrl, 'https://pbs.twimg.com/ext_tw_video_thumb/999/img/poster.jpg');
       assert.equal(result.saved.length, 1, path);
       assert.deepEqual(result.saved[0], {url: 'https://pbs.twimg.com/media/photo?format=png&name=orig', dimensions: {width: 832, height: 1216}}, path);
       const scoped = path === '/i/bookmarks' || path.includes('/status/');
@@ -93,11 +93,14 @@ test('Xの4画面で投稿写真を原寸1件に統合しcollectionと保存用�
       const unknown = 'https://pbs.twimg.com/media/unknown?format=unknownformat&name=small';
       assert.deepEqual(result.collection.map(i => i.url), [
         'https://pbs.twimg.com/media/photo?format=png&name=orig',
-        ...(scoped ? [second, unknown] : [unknown, second]),
+        ...(scoped ? [second, unknown] : [unknown, second, 'https://pbs.twimg.com/ext_tw_video_thumb/998/img/other.jpg']),
         'https://video.twimg.com/clip.mp4',
       ], path);
-      assert.equal(result.collection.find(i => i.kind === 'video').previewUrl, 'https://pbs.twimg.com/media/poster?format=png&name=small');
+      assert.equal(result.collection.find(i => i.kind === 'video').previewUrl, 'https://pbs.twimg.com/ext_tw_video_thumb/999/img/poster.jpg');
       assert.ok(result.requests.includes('https://pbs.twimg.com/media/photo?format=png&name=orig'));
+      assert.equal(result.collection.some(i => i.url.includes('/999/img/poster.jpg')), false, path);
+      assert.equal(result.scan.images.some(i => i.includes('/999/img/poster.jpg')), false, path);
+      assert.equal(result.scan.media.some(i => i.kind !== 'video' && i.url.includes('/999/img/poster.jpg')), false, path);
       assert.equal(result.controller.diagnostics.rejected, 0);
       assert.equal(result.controller.diagnostics.scan.unresolved, 0);
       assert.equal(result.controller.diagnostics.scan.limited, false);
