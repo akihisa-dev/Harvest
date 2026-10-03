@@ -1,11 +1,14 @@
 function record(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+function optionalBoolean(value) {
+    return value === undefined || typeof value === "boolean";
+}
 function optionalString(value) {
     return value === undefined || typeof value === "string";
 }
 function diagnostics(value) {
-    if (!record(value) || typeof value["limited"] !== "boolean")
+    if (!record(value) || typeof value["limited"] !== "boolean" || !optionalBoolean(value["bookmarkCaptureMissing"]))
         return false;
     return ["posts", "observed", "extracted", "merged", "excluded", "unavailable", "unresolved"].every(key => {
         const count = value[key];
@@ -40,5 +43,6 @@ function postSnapshot(value) {
 }
 export function isXMediaSnapshot(value) {
     return record(value) && typeof value["url"] === "string" && typeof value["limited"] === "boolean"
+        && optionalBoolean(value["bookmarkCaptureMissing"])
         && Array.isArray(value["posts"]) && value["posts"].every(postSnapshot);
 }

@@ -56,7 +56,7 @@ export function isXVideoPreview(value) {
 export function parseXMedia(snapshot, targetPostId) {
     const records = [];
     const missing = new Set();
-    let excluded = 0, unavailable = 0, visited = 0;
+    let excluded = 0, unavailable = 0;
     let limited = snapshot.limited;
     const obj = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : undefined;
     const http = (value) => {
@@ -77,6 +77,7 @@ export function parseXMedia(snapshot, targetPostId) {
     const relatedKeys = new Set(["quoted_status_result", "quotedRefResult", "retweeted_status_result", "quoted_status", "quotedStatus", "retweeted_status", "retweetedStatus"]);
     const keys = ["tweet", "tweetResult", "tweet_results", "tweetResults", "tweet_result", "post", "result", "legacy", "extended_entities", "extendedEntities", "entities", "media", "mediaDetails", "media_details", ...relatedKeys];
     for (const post of snapshot.posts) {
+        let visited = 0;
         if (targetPostId && post.postId !== targetPostId) {
             excluded++;
             continue;
@@ -254,6 +255,7 @@ export function parseXMedia(snapshot, targetPostId) {
     const resolved = media.filter(m => m.kind !== "image" || !posters.has(xMediaUrlKey(m.url)))
         .map(item => item.kind === "image" ? { ...item, url: xOriginalPhotoUrl(item.url) } : item);
     return { media: resolved, missingPosts: [...missing], diagnostics: {
+            ...(snapshot.bookmarkCaptureMissing ? { bookmarkCaptureMissing: true } : {}),
             posts: snapshot.posts.length, observed: snapshot.posts.reduce((n, post) => n + post.observed.length, 0),
             extracted: records.filter(r => r.source === "data").length, merged: resolved.length,
             excluded: excluded + media.length - resolved.length, unavailable, unresolved: missing.size, limited,

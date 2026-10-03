@@ -22,6 +22,7 @@ async function filesUnder(directory) {
 
 for (const path of [
   "background.js",
+  "x-bookmark-capture.js",
   "app/index.html",
   "app/index.js",
   "app/workers/mp4-conversion-worker.js",

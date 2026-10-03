@@ -11,7 +11,8 @@ export async function scanTab(tabId, signal, requestedUrl) {
         const expectVideo = /\/status\/\d+\/video\/\d+(?:[?#]|$)/i.test(targetUrl);
         const targetPostId = /\/status\/(\d+)(?:[/?#]|$)/i.exec(targetUrl)?.[1];
         const isBookmarkPage = /^\/i\/(?:history|bookmarks)(?:\/|$)/i.test(new URL(result.url).pathname);
-        if (targetPostId || isBookmarkPage) {
+        let snapshot = isBookmarkPage ? await session.scanPostMedia() : undefined;
+        if (targetPostId || (isBookmarkPage && !snapshot?.posts.length)) {
             const state = await session.waitForPost(expectVideo, targetPostId);
             if (state.status === "restricted")
                 throw new Error("Xがこの投稿の表示を制限しています。Chromeで投稿を表示できる状態にしてから解析してください。");
@@ -20,9 +21,10 @@ export async function scanTab(tabId, signal, requestedUrl) {
             if (state.status !== "ready")
                 throw new Error("Xの投稿の読み込みが完了しませんでした。Chromeで投稿を開いてから解析し直してください。");
             result = await session.scanPost(targetPostId);
+            snapshot = undefined;
         }
         session.assertSourceUrl(result.url);
-        let snapshot = await session.scanPostMedia(targetPostId);
+        snapshot ??= await session.scanPostMedia(targetPostId);
         let analysis = parseXMedia(snapshot, targetPostId);
         if (!analysis.diagnostics.limited && analysis.missingPosts.length) {
             await session.waitForMediaRetry();

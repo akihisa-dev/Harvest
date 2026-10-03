@@ -67,7 +67,7 @@ export function createScanSessionController(options) {
             state = options.collection.items.length ? "results" : "empty";
             options.onResults(result.title || t("imageFallback"), result.xDiagnostics ? null : defaultDisplayedImageGroup(options.collection.groups), result.url);
             const partial = result.xDiagnostics && (result.xDiagnostics.limited || result.xDiagnostics.unresolved || rejected);
-            options.onStatus(partial ? t("scanXPartial") : options.collection.items.length ? "" : t("scanEmpty"), "info");
+            options.onStatus(result.xDiagnostics?.bookmarkCaptureMissing ? t("scanXBookmarksReload") : partial ? t("scanXPartial") : options.collection.items.length ? "" : t("scanEmpty"), "info");
         }
         catch (error) {
             if (options.isDisposed() || controller.signal.aborted || activeController !== controller)

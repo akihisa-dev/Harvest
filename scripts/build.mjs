@@ -83,6 +83,16 @@ async function copyRuntimeModules() {
   }
 }
 
+async function buildBookmarkCaptureEntry() {
+  const code = await readFile(join(stage, "app/content/x-bookmark-capture.js"), "utf8");
+  if (!code.startsWith("/**") || !code.includes("export function installXBookmarkCapture()")) {
+    throw new Error("Xの読み取りスクリプトを生成できません。");
+  }
+  await writeFile(join(stage, "x-bookmark-capture.js"),
+    "(() => {\n" + code.replace("export function installXBookmarkCapture()", "function installXBookmarkCapture()")
+      + "\ninstallXBookmarkCapture();\n})();\n");
+}
+
 async function copyVendorLibraries() {
   const jxlPackage = join(root, "node_modules", "@jsquash", "jxl");
   const jxlVendor = join(stage, "app", "vendor", "jxl");
@@ -169,6 +179,7 @@ try {
   await compileTypeScript();
   await prepareOutputDirectories();
   await copyRuntimeModules();
+  await buildBookmarkCaptureEntry();
   await copyVendorLibraries();
   await copyApplicationAssets();
   await copyCorrespondingSource();

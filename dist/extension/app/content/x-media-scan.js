@@ -219,6 +219,33 @@ export function scanXMedia(targetPostId, onlyPostKeys) {
             break;
         read();
     }
+    // Received bookmark pages survive X removing offscreen article elements.
+    if (!targetPostId && /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname) && typeof window !== "undefined") {
+        snapshot.bookmarkCaptureMissing = true;
+        try {
+            const read = value(window, "__harvestBookmarkMediaV1");
+            if (typeof read === "function") {
+                const captured = read();
+                snapshot.bookmarkCaptureMissing = captured.received !== true;
+                if (Array.isArray(captured.posts)) {
+                    const mounted = new Map(snapshot.posts.map(post => [post.key, post]));
+                    const combined = [];
+                    for (const post of captured.posts) {
+                        if (onlyPostKeys && !onlyPostKeys.includes(post.key))
+                            continue;
+                        const existing = mounted.get(post.key);
+                        combined.push(existing ? { ...post, observed: existing.observed, roots: [...post.roots, ...existing.roots] } : post);
+                        mounted.delete(post.key);
+                    }
+                    snapshot.posts = [...combined, ...mounted.values()];
+                }
+                snapshot.limited ||= captured.limited === true;
+            }
+        }
+        catch {
+            snapshot.limited = true;
+        }
+    }
     if (location.href.split("#")[0] !== url.split("#")[0])
         throw new Error("解析中にページが移動しました。もう一度解析してください。");
     return snapshot;

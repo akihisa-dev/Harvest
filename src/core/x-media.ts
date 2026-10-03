@@ -14,6 +14,7 @@ export interface XMediaSnapshot {
   url: string;
   posts: XPostSnapshot[];
   limited: boolean;
+  bookmarkCaptureMissing?: boolean;
 }
 export interface XMediaCandidate {
   url: string;
@@ -30,6 +31,7 @@ export interface XScanDiagnostics {
   unavailable: number;
   unresolved: number;
   limited: boolean;
+  bookmarkCaptureMissing?: boolean;
 }
 export interface XMediaAnalysis {
   media: XMediaCandidate[];
@@ -83,7 +85,7 @@ export function parseXMedia(snapshot: XMediaSnapshot, targetPostId?: string): XM
   type Record = {candidate: XMediaCandidate; identity?: string; bitrate: number; post: string; source: "dom" | "data"};
   const records: Record[] = [];
   const missing = new Set<string>();
-  let excluded = 0, unavailable = 0, visited = 0;
+  let excluded = 0, unavailable = 0;
   let limited = snapshot.limited;
   const obj = (value: unknown): {[key: string]: unknown} | undefined =>
     value !== null && typeof value === "object" && !Array.isArray(value) ? value as {[key: string]: unknown} : undefined;
@@ -100,6 +102,7 @@ export function parseXMedia(snapshot: XMediaSnapshot, targetPostId?: string): XM
   const keys = ["tweet", "tweetResult", "tweet_results", "tweetResults", "tweet_result", "post", "result", "legacy", "extended_entities", "extendedEntities", "entities", "media", "mediaDetails", "media_details", ...relatedKeys];
 
   for (const post of snapshot.posts) {
+    let visited = 0;
     if (targetPostId && post.postId !== targetPostId) { excluded++; continue; }
     const start = records.length;
     const unresolved: Array<{identity?: string; preview?: string}> = [];
@@ -239,6 +242,7 @@ export function parseXMedia(snapshot: XMediaSnapshot, targetPostId?: string): XM
   const resolved = media.filter(m => m.kind !== "image" || !posters.has(xMediaUrlKey(m.url)))
     .map(item => item.kind === "image" ? {...item, url: xOriginalPhotoUrl(item.url)} : item);
   return {media: resolved, missingPosts: [...missing], diagnostics: {
+    ...(snapshot.bookmarkCaptureMissing ? {bookmarkCaptureMissing: true} : {}),
     posts: snapshot.posts.length, observed: snapshot.posts.reduce((n, post) => n + post.observed.length, 0),
     extracted: records.filter(r => r.source === "data").length, merged: resolved.length,
     excluded: excluded + media.length - resolved.length, unavailable, unresolved: missing.size, limited,

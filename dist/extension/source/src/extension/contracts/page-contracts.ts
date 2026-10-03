@@ -17,12 +17,16 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function optionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === "boolean";
+}
+
 function optionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string";
 }
 
 function diagnostics(value: unknown): value is XScanDiagnostics {
-  if (!record(value) || typeof value["limited"] !== "boolean") return false;
+  if (!record(value) || typeof value["limited"] !== "boolean" || !optionalBoolean(value["bookmarkCaptureMissing"])) return false;
   return ["posts", "observed", "extracted", "merged", "excluded", "unavailable", "unresolved"].every(key => {
     const count = value[key];
     return typeof count === "number" && Number.isSafeInteger(count) && count >= 0;
@@ -58,5 +62,6 @@ function postSnapshot(value: unknown): value is XPostSnapshot {
 
 export function isXMediaSnapshot(value: unknown): value is XMediaSnapshot {
   return record(value) && typeof value["url"] === "string" && typeof value["limited"] === "boolean"
+    && optionalBoolean(value["bookmarkCaptureMissing"])
     && Array.isArray(value["posts"]) && value["posts"].every(postSnapshot);
 }

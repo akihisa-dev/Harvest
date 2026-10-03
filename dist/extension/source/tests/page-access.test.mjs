@@ -37,7 +37,7 @@ for (const path of ['/home', '/user']) test(`Xの${path}は確認済み写真だ
 });
 
 for (const path of ["/i/history", "/i/bookmarks"]) {
-  test(`${path}は投稿表示を待ち、写真の重複とプロフィールを除いて全メディアを結合する`, async t => {
+  test(`${path}は取得済み投稿を使い、写真の重複とプロフィールを除いて全メディアを結合する`, async t => {
     const url = `https://x.com${path}`;
     fixture(t, {get: async () => ({url})});
     const avatar = "https://pbs.twimg.com/profile_images/1/person.jpg";
@@ -63,7 +63,7 @@ for (const path of ["/i/history", "/i/bookmarks"]) {
         media: [{url: avatar, kind: "image"}, ...(scans === 1 ? [] : [{url: photo, kind: "image"}])]}}];
     };
     const result = await scanTab(8, undefined, url);
-    assert.deepEqual(calls, ["scanDocument", "waitForXPage", "scanDocument", "scanXMedia"]);
+    assert.deepEqual(calls, ["scanDocument", "scanXMedia"]);
     assert.deepEqual(result.images, ["https://pbs.twimg.com/media/first?format=jpg&name=orig", "https://pbs.twimg.com/media/second?format=jpg&name=orig"]);
     assert.deepEqual(result.media, [{url: "https://pbs.twimg.com/media/first?format=jpg&name=orig", kind: "image"}, {url: "https://pbs.twimg.com/media/second?format=jpg&name=orig", kind: "image"}, video]);
   });
@@ -73,7 +73,7 @@ test("履歴画面の投稿が読み込めなければプロフィール画像�
   const url = "https://x.com/i/history";
   fixture(t, {get: async () => ({url})});
   chrome.scripting.executeScript = async ({func}) => [{result: func.name === "waitForXPage"
-    ? {status: "timeout"} : {url, title: "X", images: ["https://pbs.twimg.com/profile_images/1/person.jpg"]}}];
+    ? {status: "timeout"} : func.name === "scanXMedia" ? {url, posts: [], limited: false} : {url, title: "X", images: ["https://pbs.twimg.com/profile_images/1/person.jpg"]}}];
   await assert.rejects(scanTab(8), /読み込みが完了しませんでした/);
 });
 
