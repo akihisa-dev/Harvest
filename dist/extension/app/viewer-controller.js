@@ -240,7 +240,10 @@ export function createViewerController(options) {
     return {
         get isOpen() { return open; },
         setOpen(value) { open = value; },
-        clearCurrentPage() { currentUrl = null; },
+        clearCurrentPage() {
+            currentUrl = null;
+            imageTransition.clear();
+        },
         render,
     };
 }

@@ -163,11 +163,16 @@ test("viewer retargeting, failed previews and clearing release obsolete image bi
       document.querySelector("#previous").click();
       document.querySelector("#next").click();
       const pendingGhosts = document.querySelectorAll(".viewer-motion-image").length;
+      window.__viewerReady.clearCurrentPage();
+      const clearedPage = {ghosts: document.querySelectorAll(".viewer-motion-image").length,
+        bindings: window.__viewerFixture.bindings.size, src: document.querySelector("#image").getAttribute("src")};
       window.__viewerFixture.pages.length = 0;
       window.__viewerReady.render();
-      return {pendingGhosts, bindings: window.__viewerFixture.bindings.size};
+      return {pendingGhosts, clearedPage, bindings: window.__viewerFixture.bindings.size};
     });
     assert.ok(cleared.pendingGhosts > 0, "the collection is cleared while an image transition is pending");
+    assert.deepEqual(cleared.clearedPage, {ghosts: 0, bindings: 2, src: null},
+      "clearing the current page releases its active and outgoing bindings before another render");
     assert.equal(cleared.bindings, 0);
     await page.waitForFunction(() => window.__viewerFixture.pendingLoads === 0);
     assert.equal(await page.locator(".viewer-motion-image").count(), 0);
