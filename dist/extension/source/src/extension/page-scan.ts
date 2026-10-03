@@ -675,7 +675,9 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     }
     if (tagName === "video") {
       const video = element as HTMLVideoElement;
-      for (const value of [video.currentSrc, video.src, element.getAttribute("src")]) {
+      // Chrome can retain old currentSrc after load() empties the media element.
+      const currentSrc = video.networkState === 0 ? "" : video.currentSrc;
+      for (const value of [currentSrc, video.src, element.getAttribute("src")]) {
         let declaredType = element.getAttribute("type");
         if (value) {
           for (const source of Array.from(element.querySelectorAll("source"))) {
@@ -840,6 +842,10 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
         }
         continue;
       }
+      // Child source additions/removals also invalidate the video's own evidence.
+      if (mutation.target?.nodeType === 1 && (mutation.target as Element).tagName.toLowerCase() === "video") {
+        pendingElements.add(mutation.target as Element);
+      }
       for (const node of Array.from(mutation.addedNodes)) {
         if (performance.now() >= deadline) return false;
         if (node.nodeType === 1) pendingElements.add(node as Element);
@@ -943,7 +949,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     } while (discovered);
   };
 
-  const refreshBackgrounds = async (): Promise<void> => {
+  const refreshElementProperties = async (): Promise<void> => {
     // Stylesheet edits can change another element without mutating that element.
     // Reconcile all scanned backgrounds once, including initially empty values
     // and CSSOM edits
@@ -953,7 +959,9 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     for (let index = 0; index < snapshots.length; index += 1) {
       const [element, previous] = snapshots[index]!;
       checkDeadline();
-      if (isInPageTree(element) && backgroundFor(element) !== previous) collectElement(element);
+      // currentSrc can change asynchronously after source mutation/load() without
+      // another DOM record. Reconcile connected videos at the observation boundary.
+      if (isInPageTree(element) && (element.tagName.toLowerCase() === "video" || backgroundFor(element) !== previous)) collectElement(element);
       if ((index + 1) % chunkSize === 0 && index + 1 < snapshots.length) await yieldToPage();
     }
   };
@@ -977,7 +985,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   checkDeadline();
   await flushPending();
   await discoverShadowRoots();
-  await refreshBackgrounds();
+  await refreshElementProperties();
   registry.retainElements(isInPageTree);
   checkDeadline();
   } finally { finish(); }
