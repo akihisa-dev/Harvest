@@ -7,6 +7,7 @@ function isWebUrl(url) {
 /** Owns one scan from URL validation through atomic publication and cancellation. */
 export function createScanSessionController(options) {
     let state = "initial";
+    let diagnostics = null;
     let activeController = null;
     async function start(collectionLink) {
         if (options.isBusy())
@@ -32,6 +33,7 @@ export function createScanSessionController(options) {
         const controller = new AbortController();
         activeController = controller;
         state = "scanning";
+        diagnostics = null;
         options.onBusyChange(true);
         options.onStatus(t("scanBusy"), "busy");
         try {
@@ -53,11 +55,15 @@ export function createScanSessionController(options) {
                 const normalized = normalizeImageUrls([item.url], result.url)[0];
                 return normalized ? [{ ...item, url: normalized }] : [];
             });
+            const rejected = (result.media ?? []).length - media.length;
+            diagnostics = { ...(result.xDiagnostics ? { scan: result.xDiagnostics } : {}), normalized: urls.length, rejected };
+            if (result.xDiagnostics && rejected)
+                throw new Error(t("errorXIncomplete"));
             options.collection.replace(urls, result.url, media);
             if (collectionLink)
                 options.markAnalyzedUrl(collectionLink, session);
             state = options.collection.items.length ? "results" : "empty";
-            options.onResults(result.title || t("imageFallback"), defaultDisplayedImageGroup(options.collection.groups), result.url);
+            options.onResults(result.title || t("imageFallback"), result.xDiagnostics ? null : defaultDisplayedImageGroup(options.collection.groups), result.url);
             options.onStatus(options.collection.items.length ? "" : t("scanEmpty"), "info");
         }
         catch (error) {
@@ -78,10 +84,11 @@ export function createScanSessionController(options) {
         }
     }
     return {
+        get diagnostics() { return diagnostics; },
         get state() { return state; },
         get isRunning() { return activeController !== null; },
         start,
         abort() { activeController?.abort(); },
-        reset() { state = "initial"; },
+        reset() { state = "initial"; diagnostics = null; },
     };
 }

@@ -2,6 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {scanTab, scanUrl} from "../dist/extension/app/page-access.js";
 
+function mediaSnapshot(url, candidates = [], observed = []) {
+  return {url, limited: false, posts: [{key: 'post:123', postId: '123', observed,
+    roots: [{requireIdentity: false, player: false, value: {tweet: {rest_id: '123', legacy: {extended_entities: {
+      media: candidates.map(item => item.kind === 'image' ? {type: 'photo', media_url_https: item.url} : {
+        type: 'video', media_url_https: item.previewUrl,
+        video_info: {variants: [item.url, ...(item.variantUrls ?? [])].map((url, index) => ({url, content_type: 'video/mp4', bitrate: index ? 1 : 10}))},
+      }),
+    }}}}}]}]};
+}
+
 for (const path of ["/i/history", "/i/bookmarks"]) {
   test(`${path}は投稿表示を待ち、写真の重複とプロフィールを除いて全メディアを結合する`, async t => {
     const url = `https://x.com${path}`;
@@ -18,19 +28,19 @@ for (const path of ["/i/history", "/i/bookmarks"]) {
         assert.deepEqual(args, [false, 10_000]);
         return [{result: {status: "ready"}}];
       }
-      if (func.name === "scanXMedia") return [{result: [
+      if (func.name === "scanXMedia") return [{result: mediaSnapshot(url, [
         {url: "https://pbs.twimg.com/media/first.jpg", kind: "image"},
         {url: extraPhoto, kind: "image"},
         {url: "https://pbs.twimg.com/media/second?format=jpg&name=large", kind: "image"},
         video,
-      ]}];
+      ], [{url: photo, kind: "image"}])}];
       scans++;
       return [{result: {url, title: "History", images: scans === 1 ? [avatar] : [avatar, photo],
         media: [{url: avatar, kind: "image"}, ...(scans === 1 ? [] : [{url: photo, kind: "image"}])]}}];
     };
     const result = await scanTab(8, undefined, url);
     assert.deepEqual(calls, ["scanDocument", "waitForXPage", "scanDocument", "scanXMedia"]);
-    assert.deepEqual(result.images, [photo]);
+    assert.deepEqual(result.images, [photo, extraPhoto]);
     assert.deepEqual(result.media, [{url: photo, kind: "image"}, {url: extraPhoto, kind: "image"}, video]);
   });
 }
@@ -205,7 +215,7 @@ test("X動画ページは投稿の読み込みを待って再解析し、MAINで
     calls.push({name: injection.func.name, world: injection.world, args: injection.args});
     if (injection.func.name === "waitForXPage") return [{result: {status: "ready"}}];
     if (injection.func.name === "scanXMedia")
-      return [{result: [{url: "https://video.twimg.com/example.mp4", kind: "video"}]}];
+      return [{result: mediaSnapshot(url, [{url: "https://video.twimg.com/example.mp4", kind: "video"}], [{url: "https://pbs.twimg.com/media/photo.jpg", kind: "image"}])}];
     pageScans++;
     return [{
       result: {
@@ -220,7 +230,7 @@ test("X動画ページは投稿の読み込みを待って再解析し、MAINで
   const result = await scanTab(8, undefined, url);
   assert.equal(pageScans, 2);
   assert.deepEqual(result.images, ["https://pbs.twimg.com/media/photo.jpg"]);
-  assert.deepEqual(result.media, [{url: "https://video.twimg.com/example.mp4", kind: "video"}]);
+  assert.deepEqual(result.media, [{url: "https://video.twimg.com/example.mp4", kind: "video"}, {url: "https://pbs.twimg.com/media/photo.jpg", kind: "image"}]);
   assert.deepEqual(calls.map(call => call.name), ["scanDocument", "waitForXPage", "scanDocument", "scanXMedia"]);
   assert.deepEqual(calls[1].args, [true, 10_000, "123"]);
   assert.deepEqual(calls[2].args, ["123"]);
@@ -240,7 +250,7 @@ test("X動画ページでMP4を読めない場合は理由を示し、画像だ�
   fixture(t, {get: async () => ({url})});
   chrome.scripting.executeScript = async ({func}) => {
     if (func.name === "waitForXPage") return [{result: {status: "ready"}}];
-    if (func.name === "scanXMedia") return [{result: []}];
+    if (func.name === "scanXMedia") return [{result: mediaSnapshot(url)}];
     return [{result: {url, title: "post", images: []}}];
   };
   await assert.rejects(scanTab(8), /MP4のURLを取得できません/);
@@ -264,7 +274,7 @@ test("Xの読み込み待機中の中止で遅い結果を採用しない", asyn
   finish([{result: {status: "ready"}}]);
 });
 
-test("Xの対象投稿の解析失敗では確定済みの画像集合を置き換えない", async t => {
+for (const failure of ["unavailable", "incomplete"]) test(`Xの${failure}では確定済みの画像集合を置き換えない`, async t => {
   const url = "https://x.com/example/status/123";
   fixture(t, {query: async () => [{id: 8, url}], get: async () => ({url})});
   chrome.i18n = {getUILanguage: () => "ja"};
@@ -273,7 +283,10 @@ test("Xの対象投稿の解析失敗では確定済みの画像集合を置き�
   t.after(() => { globalThis.document = previousDocument; });
   chrome.scripting.executeScript = async ({func}) => [{
     result: func.name === "waitForXPage"
-      ? {status: "unavailable"} : {url, title: "post", images: ["https://pbs.twimg.com/media/other.jpg"]}
+      ? {status: failure === "unavailable" ? "unavailable" : "ready"}
+      : func.name === "scanXMedia"
+        ? mediaSnapshot(url, [], [{kind: "video", url: "blob:https://x.com/unresolved"}])
+        : {url, title: "post", images: ["https://pbs.twimg.com/media/other.jpg"]}
   }];
   const {ImageCollection} = await import("../dist/extension/core/image-collection.js");
   const {createScanSessionController} = await import("../dist/extension/app/scan-session-controller.js");
@@ -300,7 +313,7 @@ test("Xの対象投稿の解析失敗では確定済みの画像集合を置き�
   assert.equal(collection.items, previousItems);
   assert.equal(published, false);
   assert.equal(controller.state, "results");
-  assert.match(messages.at(-1), /削除|表示できません/);
+  assert.match(messages.at(-1), failure === "unavailable" ? /削除|表示できません/ : /一部取得できません/);
 });
 
 
@@ -311,11 +324,11 @@ test("DOMの低画質URLを既知のvariantだけで置き換え、別動画と�
   const other = "https://video.twimg.com/two/high/clip.mp4", photo = "https://images.test/photo.jpg";
   chrome.scripting.executeScript = async ({func}) => {
     if (func.name === "waitForXPage") return [{result: {status: "ready"}}];
-    if (func.name === "scanXMedia") return [{result: [{url: high, kind: "video", variantUrls: [low], previewUrl: photo}]}];
+    if (func.name === "scanXMedia") return [{result: mediaSnapshot(url, [{url: high, kind: "video", variantUrls: [low], previewUrl: "https://pbs.twimg.com/media/poster.jpg"}], [{url: low, kind: "video"}, {url: other, kind: "video"}, {url: photo, kind: "image"}])}];
     return [{result: {url, title: "post", images: [photo], media: [{url: low, kind: "video"}, {url: other, kind: "video"}, {url: photo, kind: "image"}]}}];
   };
   const result = await scanTab(8, undefined, url);
-  assert.deepEqual(result.media, [{url: other, kind: "video"}, {url: photo, kind: "image"}, {url: high, kind: "video", previewUrl: photo}]);
+  assert.deepEqual(result.media, [{url: high, kind: "video", previewUrl: "https://pbs.twimg.com/media/poster.jpg"}, {url: other, kind: "video"}, {url: photo, kind: "image"}]);
   assert.deepEqual(result.images, [photo]);
 });
 
@@ -328,7 +341,7 @@ for (const stage of ["waitForXPage", "scanPost", "scanXMedia"]) {
       const name = func.name === "scanDocument" && args?.length ? "scanPost" : func.name;
       calls.push(name);
       const result = name === "waitForXPage" ? {status: "ready"}
-        : name === "scanXMedia" ? [] : {url, title: "post", images: []};
+        : name === "scanXMedia" ? mediaSnapshot(url) : {url, title: "post", images: []};
       return [{result, documentId: name === stage ? "replacement" : "original"}];
     };
     await assert.rejects(scanTab(8), /ページが移動/);
@@ -343,11 +356,13 @@ test("初回にdocument IDがない環境では後続のIDを採用せず、hash
   let scans = 0;
   chrome.scripting.executeScript = async ({func}) => {
     if (func.name === "waitForXPage") return [{result: {status: "ready"}, documentId: "wait"}];
-    if (func.name === "scanXMedia") return [];
+    if (func.name === "scanXMedia") return [{result: mediaSnapshot(url)}];
     scans += 1;
     return [{result: {url, title: "post", images: []}, ...(scans > 1 ? {documentId: "post"} : {})}];
   };
-  assert.deepEqual(await scanTab(8), {url, title: "post", images: [], media: []});
+  const result = await scanTab(8);
+  assert.equal(result.url, url);
+  assert.deepEqual(result.media, []);
 });
 
 test("中止済みの解析はタブへ注入せず、一時ウィンドウも作らない", async t => {
@@ -383,4 +398,58 @@ test("各注入段階の失敗理由を保ち、初回の読み取り失敗で�
     await assert.rejects(scanTab(8), {message: expected});
     assert.equal(state.removed.size, 0);
   }
+});
+
+for (const outcome of ['ready', 'incomplete', 'disappeared', 'limited', 'moved', 'aborted']) {
+  test(`不足投稿だけの再試行: ${outcome}`, async t => {
+    const url = 'https://x.com/i/history';
+    fixture(t, {get: async () => ({url})});
+    const controller = new AbortController();
+    const preview = 'https://pbs.twimg.com/ext_tw_video_thumb/1/img/poster.jpg';
+    let reads = 0;
+    chrome.scripting.executeScript = async ({func, args}) => {
+      if (func.name === 'waitForXPage') return [{result: {status: 'ready'}}];
+      if (func.name !== 'scanXMedia') return [{result: {url, title: 'X', images: []}}];
+      reads++;
+      if (reads === 2) {
+        assert.deepEqual(args, [null, ['post:123']]);
+        if (outcome === 'ready') return [{result: mediaSnapshot(url, [{url: 'https://video.twimg.com/clip.mp4', kind: 'video', previewUrl: preview}])}];
+        if (outcome === 'disappeared') return [{result: mediaSnapshot(url)}];
+        if (outcome === 'moved') return [{result: mediaSnapshot(url + '?changed=1')}];
+      }
+      const result = mediaSnapshot(url, [], [{kind: 'image', url: preview}]);
+      if (outcome === 'limited') result.limited = true;
+      if (outcome === 'aborted') queueMicrotask(() => controller.abort());
+      return [{result}];
+    };
+    if (outcome === 'ready') assert.equal((await scanTab(8, controller.signal)).media[0].kind, 'video');
+    else await assert.rejects(scanTab(8, controller.signal), outcome === 'limited' ? /上限/ : outcome === 'moved' ? /ページが移動/ : outcome === 'aborted' ? /終了/ : /一部取得できません/);
+    assert.equal(reads, ['limited', 'aborted'].includes(outcome) ? 1 : 2);
+  });
+}
+
+test('Xの画像と動画を全グループ表示で公開し、件数だけの診断を保持する', async t => {
+  const url = 'https://x.com/i/history';
+  fixture(t, {query: async () => [{id: 8, url}], get: async () => ({url})});
+  const candidates = [{kind: 'image', url: 'https://pbs.twimg.com/media/photo.jpg'},
+    {kind: 'video', url: 'https://video.twimg.com/clip.mp4'}];
+  chrome.scripting.executeScript = async ({func}) => [{result: func.name === 'waitForXPage' ? {status: 'ready'}
+    : func.name === 'scanXMedia' ? mediaSnapshot(url, candidates) : {url, title: 'X', images: []}}];
+  const {ImageCollection} = await import('../dist/extension/core/image-collection.js');
+  const {createScanSessionController} = await import('../dist/extension/app/scan-session-controller.js');
+  const collection = new ImageCollection();
+  let initialGroup = 'not-published';
+  const controller = createScanSessionController({collection, getEnteredUrl: () => '', getCollectionSession: () => null,
+    clearAnalyzedUrl() {}, markAnalyzedUrl() {}, isBusy: () => false, isDisposed: () => false,
+    onHideSourceInput() {}, onShowSourceInput() {}, onBusyChange() {}, onStatus() {},
+    onResults: (_title, group) => {initialGroup = group;}});
+  await controller.start();
+  assert.equal(initialGroup, null);
+  assert.equal(collection.items.length, 2);
+  assert.equal(controller.diagnostics.normalized, 2);
+  assert.equal(controller.diagnostics.rejected, 0);
+  assert.equal(controller.diagnostics.scan.posts, 1);
+  assert.equal(JSON.stringify(controller.diagnostics).includes('https:'), false);
+  controller.reset();
+  assert.equal(controller.diagnostics, null);
 });

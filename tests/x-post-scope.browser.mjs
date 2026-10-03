@@ -6,7 +6,7 @@ import test from "node:test";
 import {chromium} from "playwright";
 
 const extensionRoot = resolve(process.env.HARVEST_TEST_EXTENSION_DIR ?? fileURLToPath(new URL("../dist/extension/", import.meta.url)));
-const modules = Object.fromEntries(await Promise.all(["page-scan", "x-page-state", "x-media-scan"].map(async name =>
+const modules = Object.fromEntries(await Promise.all(["page-scan", "x-page-state", "x-media-scan", "../core/x-media"].map(async name =>
   [name, await readFile(resolve(extensionRoot, "app", `${name}.js`), "utf8")])));
 const post = (id, content) => `<article data-testid="tweet" id="post-${id}"><a role="link" href="/user/status/${id}"><time>Today</time></a>${content}</article>`;
 const photo = name => `<a role="link" href="/user/status/123/photo/1"><img src="https://pbs.twimg.com/media/${name}.jpg" width="40" height="40"></a>`;
@@ -46,13 +46,13 @@ test("履歴画面で遅れて表示される投稿と引用の複数写真・�
       }, 350);
       const state = await loaded["x-page-state"].waitForXPage(false, 2_000);
       return {before, state, after: await loaded["page-scan"].scanDocument(),
-        media: loaded["x-media-scan"].scanXMedia(), scoped: loaded["x-media-scan"].scanXMedia("123")};
+        media: loaded["../core/x-media"].parseXMedia(loaded["x-media-scan"].scanXMedia()).media, scoped: loaded["../core/x-media"].parseXMedia(loaded["x-media-scan"].scanXMedia("123"), "123").media};
     }, modules);
     assert.deepEqual(result.before.images, ["https://pbs.twimg.com/profile_images/1/person.jpg"]);
     assert.equal(result.state.status, "ready");
     assert.ok(result.after.images.includes("https://pbs.twimg.com/media/first?format=jpg&name=small"));
     assert.deepEqual(new Set(result.media.map(item => item.url)), new Set([
-      "https://pbs.twimg.com/media/first.jpg", "https://pbs.twimg.com/media/second.jpg",
+      "https://pbs.twimg.com/media/first?format=jpg&name=small", "https://pbs.twimg.com/media/second.jpg",
       "https://pbs.twimg.com/media/quoted.jpg", "https://video.twimg.com/clip.mp4",
     ]));
     assert.equal(result.media.find(item => item.kind === "video").previewUrl, "https://pbs.twimg.com/media/poster.jpg");
@@ -88,7 +88,7 @@ test("Xの対象投稿IDを待機・DOM・再生情報の全経路で照合し�
       return await page.evaluate(async video => {
         const {waitForXPage} = window.scopedModules["x-page-state"];
         const {scanDocument} = window.scopedModules["page-scan"];
-        const {scanXMedia} = window.scopedModules["x-media-scan"];
+        const scanXMedia = id => window.scopedModules["../core/x-media"].parseXMedia(window.scopedModules["x-media-scan"].scanXMedia(id), id).media;
         const state = await waitForXPage(video, 650, "123");
         let scan;
         try {
@@ -136,11 +136,15 @@ test("Xの対象投稿IDを待機・DOM・再生情報の全経路で照合し�
     assert.equal(normal.state.status, "ready");
     assert.deepEqual(normal.scan.images, ["https://pbs.twimg.com/media/target.jpg"]);
     assert.deepEqual(new Set(normal.scan.media.map(item => item.url)), new Set(["https://pbs.twimg.com/media/target.jpg", "https://video.twimg.com/target.mp4"]));
-    assert.deepEqual(normal.extra, [{url: "https://video.twimg.com/target-state.mp4", kind: "video"}]);
+    assert.deepEqual(normal.extra, [
+      {url: "https://video.twimg.com/target-state.mp4", kind: "video"},
+      {url: "https://pbs.twimg.com/media/target.jpg", kind: "image"},
+      {url: "https://video.twimg.com/target.mp4", kind: "video"},
+    ]);
 
     const timeline = await page.evaluate(async () => ({
       scan: await window.scopedModules["page-scan"].scanDocument(),
-      extra: window.scopedModules["x-media-scan"].scanXMedia(),
+      extra: window.scopedModules["../core/x-media"].parseXMedia(window.scopedModules["x-media-scan"].scanXMedia()).media,
     }));
     assert.ok(timeline.scan.images.includes("https://pbs.twimg.com/media/reply.jpg"));
     assert.ok(timeline.scan.images.includes("https://pbs.twimg.com/media/quoted.jpg"));

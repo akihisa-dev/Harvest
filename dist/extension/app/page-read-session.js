@@ -114,12 +114,23 @@ export class PageReadSession {
             },
         });
     }
-    scanPostMedia(targetPostId) {
+    scanPostMedia(targetPostId, onlyPostKeys) {
         return this.read({
-            func: scanXMedia, args: targetPostId ? [targetPostId] : [], world: "MAIN",
-            failureMessage: "Xの動画情報を読み取れませんでした。", preserveNavigationError: false,
-            accept: result => result ?? [],
+            func: scanXMedia, args: onlyPostKeys ? [targetPostId ?? null, onlyPostKeys] : targetPostId ? [targetPostId] : [], world: "MAIN",
+            failureMessage: "Xの動画情報を読み取れませんでした。",
+            accept: result => {
+                if (!result)
+                    throw new Error("Xの動画情報を読み取れませんでした。");
+                this.assertSourceUrl(result.url);
+                return result;
+            },
         });
+    }
+    waitForMediaRetry() {
+        return bounded(resolve => {
+            const timer = setTimeout(() => resolve(), 400);
+            return () => clearTimeout(timer);
+        }, this.signal);
     }
     assertSourceUrl(url) {
         if (url.split("#")[0] !== this.sourceUrl.split("#")[0])

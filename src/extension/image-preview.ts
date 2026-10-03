@@ -24,6 +24,8 @@ interface BoundPreview {
 }
 
 export interface ImagePreviewLoader {
+  /** Counts remote preview resources only; no URLs or persisted telemetry. */
+  readonly diagnostics: {bound: number; ready: number; failed: number; pending: number};
   /** Attach a local image or schedule a network preview; eager previews start immediately. */
   set(image: HTMLImageElement, item: ImageItem, eager?: boolean): void;
   /** Release one image element's fetch and object URL reference. */
@@ -181,6 +183,14 @@ export function createImagePreviewLoader(): ImagePreviewLoader {
   }
 
   return {
+    get diagnostics() {
+      let ready = 0, failed = 0;
+      for (const entry of entries.values()) {
+        if (entry.objectUrl) ready++;
+        else if ([...entry.elements].some(image => image.dataset["previewFailed"] === "true")) failed++;
+      }
+      return {bound: entries.size, ready, failed, pending: entries.size - ready - failed};
+    },
     set(image, item, eager = false) {
       if (item.kind === "video" && !item.previewUrl) {
         clearImage(image);

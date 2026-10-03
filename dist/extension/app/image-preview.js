@@ -159,6 +159,16 @@ export function createImagePreviewLoader() {
         delete image.dataset["previewFailed"];
     }
     return {
+        get diagnostics() {
+            let ready = 0, failed = 0;
+            for (const entry of entries.values()) {
+                if (entry.objectUrl)
+                    ready++;
+                else if ([...entry.elements].some(image => image.dataset["previewFailed"] === "true"))
+                    failed++;
+            }
+            return { bound: entries.size, ready, failed, pending: entries.size - ready - failed };
+        },
         set(image, item, eager = false) {
             if (item.kind === "video" && !item.previewUrl) {
                 clearImage(image);

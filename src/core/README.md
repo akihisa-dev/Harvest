@@ -20,6 +20,12 @@
 
 [source-text.ts](source-text.ts) は不正なUTF-16を置換する規則を所有し、出典プレビューの配置・PDFの字形検索・コピー文字列で共用します。
 
+## Xの投稿メディア
+
+[x-media.ts](x-media.ts) は、ページから読み取った限定的なデータとDOMのメディア候補を投稿IDごとに照合します。`quoted_status_result.result`、`legacy.retweeted_status_result.result`、`TweetWithVisibilityResults.tweet` を展開し、`extended_entities.media` を優先します。一覧では引用・再投稿を含み、指定投稿の解析では別投稿を除きます。最高ビットレートのMP4とプレビューを分け、メディアID・同一URL・明示的な画質候補の関係だけで統合します。
+
+画面の動画プレビューに対応する動画がない場合や、既知のメディア構造から保存URLを解決できない場合は、不足投稿を返します。探索上限は完全な解析と区別します。DOMに存在せず、投稿データにもない未読み込みメディアの存在は判定できません。
+
 ## メディアの種類・寸法・完全性検査
 
 [media-types.ts](media-types.ts) は取得したデータのMIME、先頭バイトによる形式判定、画像・GIF・動画の対応、拡張子を一元管理します。

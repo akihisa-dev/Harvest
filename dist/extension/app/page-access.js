@@ -1,14 +1,7 @@
-import { mergeMediaCandidates, xPhotoKey } from "../core/media-selection.js";
+import { parseXMedia, xMediaUrlKey } from "../core/x-media.js";
+import { mergeMediaCandidates } from "../core/media-selection.js";
 import { PageReadSession, withTemporaryPage } from "./page-read-session.js";
 const isXUrl = (url) => /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(url);
-const isProfileImage = (url) => {
-    try {
-        return /\/profile_(?:images|banners)\//i.test(new URL(url).pathname);
-    }
-    catch {
-        return false;
-    }
-};
 export async function scanTab(tabId, signal, requestedUrl) {
     const session = new PageReadSession(tabId, signal);
     let result = await session.scanInitialPage();
@@ -29,21 +22,40 @@ export async function scanTab(tabId, signal, requestedUrl) {
             result = await session.scanPost(targetPostId);
         }
         session.assertSourceUrl(result.url);
-        const extra = await session.scanPostMedia(targetPostId);
-        const knownPhotos = new Set([...result.images, ...(result.media ?? [])
-                .filter(item => item.kind === "image").map(item => item.url)].map(xPhotoKey));
-        result.media = mergeMediaCandidates(result.media ?? [], extra.filter(item => {
-            if (item.kind !== "image")
-                return true;
-            const key = xPhotoKey(item.url);
-            if (knownPhotos.has(key))
-                return false;
-            knownPhotos.add(key);
-            return true;
-        }));
+        let snapshot = await session.scanPostMedia(targetPostId);
+        let analysis = parseXMedia(snapshot, targetPostId);
+        if (!analysis.diagnostics.limited && analysis.missingPosts.length) {
+            await session.waitForMediaRetry();
+            const retry = await session.scanPostMedia(targetPostId, analysis.missingPosts);
+            const replacements = new Map(retry.posts.map(post => [post.key, post]));
+            snapshot = { ...snapshot, limited: retry.limited,
+                posts: snapshot.posts.map(post => {
+                    const replacement = replacements.get(post.key);
+                    if (!replacement)
+                        return post;
+                    // A disappearing thumbnail during a retry must not erase evidence of
+                    // a missing video. Keep the first read and supplement it atomically.
+                    const observed = new Map([...post.observed, ...replacement.observed].map(item => [JSON.stringify(item), item]));
+                    return { ...post, observed: [...observed.values()], roots: [...post.roots, ...replacement.roots] };
+                }) };
+            analysis = parseXMedia(snapshot, targetPostId);
+        }
+        if (analysis.diagnostics.limited)
+            throw new Error("Xの解析が上限に達しました。表示範囲を絞って解析し直してください。");
+        if (analysis.missingPosts.length)
+            throw new Error("Xの表示中の画像または動画を一部取得できませんでした。投稿を表示してから解析し直してください。");
+        result.xDiagnostics = analysis.diagnostics;
         if (targetPostId || isBookmarkPage) {
-            result.images = result.images.filter(url => !isProfileImage(url));
-            result.media = result.media.filter(item => !isProfileImage(item.url));
+            if (!snapshot.posts.length)
+                throw new Error("Xの投稿を読み取れませんでした。");
+            // The scoped snapshot is authoritative: page-wide decorations must not
+            // stand in for missing post media, even when the first DOM scan found them.
+            result.images = analysis.media.filter(item => item.kind === "image").map(item => item.url);
+            result.media = mergeMediaCandidates([], analysis.media);
+        }
+        else {
+            const known = new Set(result.images.map(xMediaUrlKey));
+            result.media = mergeMediaCandidates(result.media ?? [], analysis.media.filter(item => item.kind !== "image" || !known.has(xMediaUrlKey(item.url))));
         }
         if (expectVideo && !result.media.some(item => item.kind === "video")) {
             throw new Error("動画は表示されていますが、保存できるMP4のURLを取得できませんでした。");

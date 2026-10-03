@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {scanXMedia} from "../dist/extension/app/x-media-scan.js";
+import {scanXMedia as readXMedia} from "../dist/extension/app/x-media-scan.js";
+import {parseXMedia} from "../dist/extension/core/x-media.js";
+const scanXMedia = target => parseXMedia(readXMedia(target), target).media;
 
 test("ブックマークの投稿データから未描画の複数写真と動画をすべて補う", async () => {
   const photos = ["first", "second", "third", "fourth"].map(name => ({
@@ -53,11 +55,14 @@ async function runOnPage(hostname, articles, callback = scanXMedia, mediaElement
     document: globalThis.document,
     location: globalThis.location,
   };
-  globalThis.document = {
-    querySelectorAll: selector => selector === "article"
-      ? articles
-      : mediaElements.filter(entry => entry.selectors.includes(selector)).map(entry => entry.element),
-  };
+  const elements = [...articles, ...mediaElements.map(entry => entry.element)];
+  for (const element of elements) {
+    element.tagName = mediaElements.some(entry => entry.element === element) ? 'DIALOG' : 'ARTICLE';
+    element.closest = () => null;
+    element.querySelectorAll = () => [];
+    element.matches = () => mediaElements.some(entry => entry.element === element);
+  }
+  globalThis.document = {querySelectorAll: () => elements};
   globalThis.location = {hostname, href: `https://${hostname}${pathname}`, pathname};
   try {
     return callback();
@@ -200,7 +205,7 @@ test("video/1のdialog player props.source.srcを記事の候補より先に返�
   ]);
 });
 
-test("投稿動画を見つけたら祖先探索を止め、store・cache・clientの投稿外動画を拾わない", async () => {
+test("許可した投稿データだけを読み、store・cache・clientの投稿外動画を拾わない", async () => {
   const video = url => ({
     video_info: {
       variants: [
@@ -294,4 +299,36 @@ test("複数の再生情報にまたがる同一動画の画質関係を保持�
   assert.equal(candidates[0].url, high);
   assert.deepEqual(candidates[0].variantUrls.sort(), [low, medium].sort());
   assert.equal(candidates[0].previewUrl, "https://pbs.twimg.com/preview.jpg");
+});
+
+for (const relation of ['quoted_status_result', 'retweeted_status_result']) {
+  test(`公開実装の${relation}構造から写真と動画を取得する`, async () => {
+    const inner = {rest_id: '456', legacy: {extended_entities: {media: [
+      {type: 'photo', media_url_https: 'https://pbs.twimg.com/media/attached.jpg'},
+      {type: 'video', media_url_https: 'https://pbs.twimg.com/ext_tw_video_thumb/preview.jpg',
+        video_info: {variants: [{url: 'https://video.twimg.com/attached.mp4', content_type: 'video/mp4'}]}},
+    ]}}};
+    const wrapper = {result: {__typename: 'TweetWithVisibilityResults', tweet: inner}};
+    const tweet = relation === 'quoted_status_result'
+      ? {rest_id: '123', legacy: {}, [relation]: wrapper}
+      : {rest_id: '123', legacy: {[relation]: wrapper}};
+    const media = await runOnPage('x.com', [{__reactProps$fixture: {tweet}}]);
+    assert.equal(media.length, 2);
+    assert.deepEqual(media.map(item => item.kind), ['image', 'video']);
+  });
+}
+
+test('投稿IDがない要素は、再描画で同じ位置になった別投稿と再試行統合しない', async () => {
+  const article = {__reactProps$fixture: {media: [{type: 'photo', media_url_https: 'https://pbs.twimg.com/media/photo.jpg'}]}};
+  const result = await runOnPage('x.com', [article], () => readXMedia(null, ['element:0']));
+  assert.deepEqual(result.posts, []);
+});
+
+test('MAINから返すデータには本文・ユーザー・認証情報・cacheを含めない', async () => {
+  const article = {__reactProps$fixture: {tweet: {rest_id: '123', full_text: 'private-text', core: {user_results: {name: 'private-name'}},
+    legacy: {extended_entities: {media: [{type: 'photo', media_url_https: 'https://pbs.twimg.com/media/photo.jpg'}]}}},
+    authorization: 'private-token', cache: {media: [{url: 'https://unrelated.test/private'}]}}};
+  const snapshot = await runOnPage('x.com', [article], readXMedia);
+  assert.equal(JSON.stringify(snapshot).includes('private'), false);
+  assert.equal(parseXMedia(snapshot).media.length, 1);
 });

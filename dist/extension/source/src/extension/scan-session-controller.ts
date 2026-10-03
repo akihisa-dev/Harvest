@@ -1,3 +1,4 @@
+import type { XScanDiagnostics } from "../core/x-media.js";
 import type { ImageCollection } from "../core/image-collection.js";
 import { defaultDisplayedImageGroup, normalizeImageUrls } from "../core/images.js";
 import { localizeErrorMessage, t } from "./localization.js";
@@ -21,6 +22,7 @@ export interface ScanSessionControllerOptions {
 }
 
 export interface ScanSessionController {
+  readonly diagnostics: {scan?: XScanDiagnostics; normalized: number; rejected: number} | null;
   readonly state: ScanState;
   readonly isRunning: boolean;
   start(collectionLink?: string): Promise<void>;
@@ -35,6 +37,7 @@ function isWebUrl(url: string | undefined): url is string {
 /** Owns one scan from URL validation through atomic publication and cancellation. */
 export function createScanSessionController(options: ScanSessionControllerOptions): ScanSessionController {
   let state: ScanState = "initial";
+  let diagnostics: ScanSessionController["diagnostics"] = null;
   let activeController: AbortController | null = null;
 
   async function start(collectionLink?: string): Promise<void> {
@@ -58,6 +61,7 @@ export function createScanSessionController(options: ScanSessionControllerOption
     const controller = new AbortController();
     activeController = controller;
     state = "scanning";
+    diagnostics = null;
     options.onBusyChange(true);
     options.onStatus(t("scanBusy"), "busy");
     try {
@@ -76,10 +80,13 @@ export function createScanSessionController(options: ScanSessionControllerOption
         const normalized = normalizeImageUrls([item.url], result.url)[0];
         return normalized ? [{...item, url: normalized}] : [];
       });
+      const rejected = (result.media ?? []).length - media.length;
+      diagnostics = {...(result.xDiagnostics ? {scan: result.xDiagnostics} : {}), normalized: urls.length, rejected};
+      if (result.xDiagnostics && rejected) throw new Error(t("errorXIncomplete"));
       options.collection.replace(urls, result.url, media);
       if (collectionLink) options.markAnalyzedUrl(collectionLink, session);
       state = options.collection.items.length ? "results" : "empty";
-      options.onResults(result.title || t("imageFallback"), defaultDisplayedImageGroup(options.collection.groups), result.url);
+      options.onResults(result.title || t("imageFallback"), result.xDiagnostics ? null : defaultDisplayedImageGroup(options.collection.groups), result.url);
       options.onStatus(options.collection.items.length ? "" : t("scanEmpty"), "info");
     } catch (error) {
       if (options.isDisposed() || controller.signal.aborted || activeController !== controller) return;
@@ -97,10 +104,11 @@ export function createScanSessionController(options: ScanSessionControllerOption
   }
 
   return {
+    get diagnostics() { return diagnostics; },
     get state() { return state; },
     get isRunning() { return activeController !== null; },
     start,
     abort() { activeController?.abort(); },
-    reset() { state = "initial"; },
+    reset() { state = "initial"; diagnostics = null; },
   };
 }

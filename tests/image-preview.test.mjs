@@ -381,6 +381,7 @@ test("一覧とビュアーは一時失敗後に待ち時間を置いて同じ�
   observers[0].intersect(listImage);
   await waitFor(() => listImage.dataset.previewFailed === "true");
   assert.equal(requests.length, 1);
+  assert.deepEqual(loader.diagnostics, {bound: 1, ready: 0, failed: 1, pending: 0});
 
   observers[0].intersect(listImage, false);
   observers[0].intersect(listImage, true);
@@ -396,6 +397,7 @@ test("一覧とビュアーは一時失敗後に待ち時間を置いて同じ�
   assert.equal(listImage.src, viewerImage.src, "一覧とViewerは同じ再試行結果を共有する");
   assert.equal(listImage.dataset.previewFailed, undefined, "成功後に一覧の失敗状態を解除する");
   assert.equal(viewerImage.dataset.previewFailed, undefined, "成功後にViewerの失敗状態を解除する");
+  assert.deepEqual(loader.diagnostics, {bound: 1, ready: 1, failed: 0, pending: 0});
   loader.clear();
 });
 

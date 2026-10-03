@@ -1,6 +1,7 @@
 import { scanDocument, type PageScan } from "./page-scan.js";
 import { waitForXPage, type XPageState } from "./x-page-state.js";
-import { scanXMedia, type XMediaCandidate } from "./x-media-scan.js";
+import { scanXMedia } from "./x-media-scan.js";
+import type { XMediaSnapshot } from "../core/x-media.js";
 
 const pageMovedMessage = "解析中にページが移動しました。もう一度解析してください。";
 const abortedMessage = "ページの解析を終了しました。";
@@ -116,12 +117,23 @@ export class PageReadSession {
     });
   }
 
-  scanPostMedia(targetPostId?: string): Promise<XMediaCandidate[]> {
+  scanPostMedia(targetPostId?: string, onlyPostKeys?: string[]): Promise<XMediaSnapshot> {
     return this.read({
-      func: scanXMedia, args: targetPostId ? [targetPostId] : [], world: "MAIN",
-      failureMessage: "Xの動画情報を読み取れませんでした。", preserveNavigationError: false,
-      accept: result => result ?? [],
+      func: scanXMedia, args: onlyPostKeys ? [targetPostId ?? null, onlyPostKeys] : targetPostId ? [targetPostId] : [], world: "MAIN",
+      failureMessage: "Xの動画情報を読み取れませんでした。",
+      accept: result => {
+        if (!result) throw new Error("Xの動画情報を読み取れませんでした。");
+        this.assertSourceUrl(result.url);
+        return result;
+      },
     });
+  }
+
+  waitForMediaRetry(): Promise<void> {
+    return bounded<void>(resolve => {
+      const timer = setTimeout(() => resolve(), 400);
+      return () => clearTimeout(timer);
+    }, this.signal);
   }
 
   assertSourceUrl(url: string): void {

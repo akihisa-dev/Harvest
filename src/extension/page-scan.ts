@@ -1,6 +1,9 @@
+import type {XScanDiagnostics} from "../core/x-media.js";
+
 export interface PageScan {
   url: string;
   title: string;
+  xDiagnostics?: XScanDiagnostics;
   images: string[];
   media?: Array<{url: string; kind: "image" | "gif" | "video"; previewUrl?: string}>;
 }

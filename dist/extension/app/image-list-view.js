@@ -340,6 +340,7 @@ export function createImageListView(options) {
     }
     allVisibilityButton.addEventListener("click", toggleAllGroups);
     return {
+        get diagnostics() { return { total: collection.items.length, visible: visibleImages.length, hidden: collection.items.length - visibleImages.length }; },
         get isDragging() { return drag.draggedImage !== null; },
         showInitialGroup(key) {
             visibleGroupKeys = new Set(key === null ? Object.keys(collection.groups) : [key]);
