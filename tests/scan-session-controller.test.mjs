@@ -22,7 +22,7 @@ function setup(t) {
       get: async () => ({url: source}),
       onRemoved: {addListener() {}, removeListener() {}},
     },
-    scripting: {executeScript: () => { scriptCount++; return read(); }},
+    scripting: {executeScript: (...args) => { scriptCount++; return read(...args); }},
   };
   t.after(() => { globalThis.chrome = previous; });
   const controller = createScanSessionController({
@@ -107,4 +107,26 @@ test("ページ読み取り失敗時には以前の選択・順序を原子的�
   assert.equal(fixture.controller.state, "results");
   assert.equal(fixture.statuses.at(-1)[1], "error");
   assert.deepEqual(fixture.busy, [true, false]);
+});
+
+test('続き取得中の停止は取得済み画像を公開し、それ以上取得しない',async t=>{
+  const f=setup(t),url='https://x.com/i/history';
+  f.query=async()=>[{id:7,url}];chrome.tabs.get=async()=>({url});
+  let requests=0;
+  f.read=async({func})=>{
+    if(func.name==='fetchXBookmarkPage'){
+      requests++;f.controller.stop();
+      return [{result:{status:'advanced',cursor:'next'}}];
+    }
+    if(func.name==='scanXMedia')return [{result:{url,limited:false,bookmarkContinuation:true,posts:
+      Array.from({length:requests+1},(_,i)=>({key:`post:${i+1}`,postId:String(i+1),observed:[],roots:[{requireIdentity:false,player:false,
+        value:{rest_id:String(i+1),extended_entities:{media:[{type:'photo',media_url_https:`https://pbs.twimg.com/media/image${i+1}.jpg`}]}}}]}))}}];
+    return [{result:{url,title:'Bookmarks',images:[]}}];
+  };
+  await f.controller.start();
+  assert.equal(requests,1);
+  assert.equal(f.collection.items.length,2);
+  assert.equal(f.controller.diagnostics.scan.bookmarkStopped,true);
+  assert.equal(f.controller.state,'results');
+  assert.equal(f.controller.isRunning,false);
 });

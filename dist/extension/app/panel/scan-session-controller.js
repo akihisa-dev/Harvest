@@ -8,6 +8,7 @@ function isWebUrl(url) {
 export function createScanSessionController(options) {
     let state = "initial";
     let diagnostics = null;
+    let stopRequested = false;
     let activeController = null;
     async function start(collectionLink) {
         if (activeController || options.isBusy() || options.isDisposed())
@@ -32,14 +33,19 @@ export function createScanSessionController(options) {
         options.onHideSourceInput();
         const controller = new AbortController();
         activeController = controller;
+        stopRequested = false;
         state = "scanning";
         diagnostics = null;
         options.onBusyChange(true);
         options.onStatus(t("scanBusy"), "busy");
         try {
+            const scanOptions = { shouldStop: () => stopRequested, onProgress: (posts) => {
+                    if (!options.isDisposed() && !controller.signal.aborted)
+                        options.onStatus(t("scanBookmarksBusy", { count: posts }), "busy");
+                } };
             let result;
             if (targetUrl) {
-                result = await scanUrl(targetUrl, controller.signal);
+                result = await scanUrl(targetUrl, controller.signal, scanOptions);
             }
             else {
                 const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -47,7 +53,7 @@ export function createScanSessionController(options) {
                     return;
                 if (activeTab?.id === undefined || !isWebUrl(activeTab.url))
                     throw new Error(t("errorNoActivePage"));
-                result = await scanTab(activeTab.id, controller.signal, activeTab.url);
+                result = await scanTab(activeTab.id, controller.signal, activeTab.url, scanOptions);
             }
             if (options.isDisposed() || controller.signal.aborted || activeController !== controller)
                 return;
@@ -67,7 +73,7 @@ export function createScanSessionController(options) {
             state = options.collection.items.length ? "results" : "empty";
             options.onResults(result.title || t("imageFallback"), result.xDiagnostics ? null : defaultDisplayedImageGroup(options.collection.groups), result.url);
             const partial = result.xDiagnostics && (result.xDiagnostics.limited || result.xDiagnostics.unresolved || rejected);
-            options.onStatus(result.xDiagnostics?.bookmarkCaptureMissing ? t("scanXBookmarksReload") : partial ? t("scanXPartial") : options.collection.items.length ? "" : t("scanEmpty"), "info");
+            options.onStatus(result.xDiagnostics?.bookmarkStopped ? t("scanBookmarksStopped") : result.xDiagnostics?.bookmarkIncomplete ? t("scanBookmarksIncomplete") : result.xDiagnostics?.bookmarkCaptureMissing ? t("scanXBookmarksReload") : partial ? t("scanXPartial") : options.collection.items.length ? "" : t("scanEmpty"), "info");
         }
         catch (error) {
             if (options.isDisposed() || controller.signal.aborted || activeController !== controller)
@@ -91,6 +97,7 @@ export function createScanSessionController(options) {
         get state() { return state; },
         get isRunning() { return activeController !== null; },
         start,
+        stop() { stopRequested = true; },
         abort() { activeController?.abort(); },
         reset() {
             activeController?.abort();

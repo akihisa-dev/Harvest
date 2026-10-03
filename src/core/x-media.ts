@@ -15,6 +15,7 @@ export interface XMediaSnapshot {
   posts: XPostSnapshot[];
   limited: boolean;
   bookmarkCaptureMissing?: boolean;
+  bookmarkContinuation?: boolean;
 }
 export interface XMediaCandidate {
   url: string;
@@ -32,6 +33,8 @@ export interface XScanDiagnostics {
   unresolved: number;
   limited: boolean;
   bookmarkCaptureMissing?: boolean;
+  bookmarkIncomplete?: boolean;
+  bookmarkStopped?: boolean;
 }
 export interface XMediaAnalysis {
   media: XMediaCandidate[];

@@ -26,6 +26,7 @@ export interface ScanSessionController {
   readonly state: ScanState;
   readonly isRunning: boolean;
   start(collectionLink?: string): Promise<void>;
+  stop(): void;
   abort(): void;
   reset(): void;
 }
@@ -38,6 +39,7 @@ function isWebUrl(url: string | undefined): url is string {
 export function createScanSessionController(options: ScanSessionControllerOptions): ScanSessionController {
   let state: ScanState = "initial";
   let diagnostics: ScanSessionController["diagnostics"] = null;
+  let stopRequested = false;
   let activeController: AbortController | null = null;
 
   async function start(collectionLink?: string): Promise<void> {
@@ -60,19 +62,23 @@ export function createScanSessionController(options: ScanSessionControllerOption
     options.onHideSourceInput();
     const controller = new AbortController();
     activeController = controller;
+    stopRequested = false;
     state = "scanning";
     diagnostics = null;
     options.onBusyChange(true);
     options.onStatus(t("scanBusy"), "busy");
     try {
+      const scanOptions = {shouldStop: () => stopRequested, onProgress: (posts: number) => {
+        if (!options.isDisposed() && !controller.signal.aborted) options.onStatus(t("scanBookmarksBusy", {count: posts}), "busy");
+      }};
       let result;
       if (targetUrl) {
-        result = await scanUrl(targetUrl, controller.signal);
+        result = await scanUrl(targetUrl, controller.signal, scanOptions);
       } else {
         const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
         if (options.isDisposed() || controller.signal.aborted || activeController !== controller) return;
         if (activeTab?.id === undefined || !isWebUrl(activeTab.url)) throw new Error(t("errorNoActivePage"));
-        result = await scanTab(activeTab.id, controller.signal, activeTab.url);
+        result = await scanTab(activeTab.id, controller.signal, activeTab.url, scanOptions);
       }
       if (options.isDisposed() || controller.signal.aborted || activeController !== controller) return;
       const urls = normalizeImageUrls([...result.images, ...(result.media ?? []).map(item => item.url)], result.url);
@@ -89,7 +95,7 @@ export function createScanSessionController(options: ScanSessionControllerOption
       state = options.collection.items.length ? "results" : "empty";
       options.onResults(result.title || t("imageFallback"), result.xDiagnostics ? null : defaultDisplayedImageGroup(options.collection.groups), result.url);
       const partial = result.xDiagnostics && (result.xDiagnostics.limited || result.xDiagnostics.unresolved || rejected);
-      options.onStatus(result.xDiagnostics?.bookmarkCaptureMissing ? t("scanXBookmarksReload") : partial ? t("scanXPartial") : options.collection.items.length ? "" : t("scanEmpty"), "info");
+      options.onStatus(result.xDiagnostics?.bookmarkStopped ? t("scanBookmarksStopped") : result.xDiagnostics?.bookmarkIncomplete ? t("scanBookmarksIncomplete") : result.xDiagnostics?.bookmarkCaptureMissing ? t("scanXBookmarksReload") : partial ? t("scanXPartial") : options.collection.items.length ? "" : t("scanEmpty"), "info");
     } catch (error) {
       if (options.isDisposed() || controller.signal.aborted || activeController !== controller) return;
       state = options.collection.items.length ? "results" : "error";
@@ -110,6 +116,7 @@ export function createScanSessionController(options: ScanSessionControllerOption
     get state() { return state; },
     get isRunning() { return activeController !== null; },
     start,
+    stop() { stopRequested = true; },
     abort() { activeController?.abort(); },
     reset() {
       activeController?.abort();

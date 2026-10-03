@@ -389,7 +389,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(collection.getAttribute("aria-pressed"), "true");
     assert.equal(createdUrls.length, 0, "開始時には解析しない");
     capturedMessage({url: "https://example.com/linked"});
-    await waitUntil(() => !document.querySelector("#scan").disabled);
+    await waitUntil(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
     assert.equal(createdUrls.at(-1), "https://example.com/linked");
     assert.equal(document.dispatch("dragover", {target: document.body, dataTransfer: pageUrlDrag}).prevented, true, "解析後も画面下部で受け付ける");
     assert.equal(document.dispatch("dragover", {target: document.querySelector("#viewer"), dataTransfer: pageUrlDrag}).prevented, true, "解析後も中央の表示領域で受け付ける");
@@ -401,7 +401,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     const scansBeforePdf = executionCount;
     capturedMessage({url: "https://example.com/linked"});
     capturedMessage({url: "https://example.com/linked"});
-    await waitUntil(() => !document.querySelector("#scan").disabled);
+    await waitUntil(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
     assert.equal(document.downloads.length, 1, "同じリンクの再クリックはPDF保存し、処理中の連打は無視する");
     assert.equal(executionCount, scansBeforePdf, "PDF保存では再解析しない");
     assert.equal(document.querySelector("#source-url").value, "", "保存成功時は入力したURLを消す");
@@ -409,11 +409,11 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     document.downloads.length = 0;
     rejectScan = true;
     capturedMessage({url: "https://example.com/failed"});
-    await waitUntil(() => !document.querySelector("#scan").disabled);
+    await waitUntil(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
     assert.equal(sourceDrop.textContent, "ページ.pdf", "保存後の再解析失敗でも旧結果のファイル名を表示する");
     const failedScanTabs = createdUrls.length;
     capturedMessage({url: "https://example.com/failed"});
-    await waitUntil(() => !document.querySelector("#scan").disabled);
+    await waitUntil(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
     assert.equal(createdUrls.length, failedScanTabs + 1, "解析失敗後は同じリンクでも解析を再試行");
     assert.equal(document.downloads.length, 0);
     rejectScan = false;
@@ -448,8 +448,9 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     const thumbnailsBeforeScan = document.querySelector("#images").children.map(row => previewUrl(row.children[0]));
     scanButton.dispatch("click");
     assert.equal(scanButton.dataset.scanning, "true", "解析中はボタンのロード表示を有効にする");
-    assert.equal(scanButton.textContent, "解析", "解析中も同じラベルを保持し、見た目だけ処理中へ移す");
-    assert.equal(scanButton.getAttribute("aria-label"), "ページを調べています…", "解析中のボタンには読み上げ名を残す");
+    assert.equal(scanButton.textContent, "停止", "解析中に停止できる");
+    assert.equal(scanButton.disabled, false);
+    assert.equal(scanButton.getAttribute("aria-label"), "停止", "解析中のボタンには読み上げ名を残す");
     assert.equal(scanOverlay.hidden, false, "既存画像を表示中でも解析リングを重ねる");
     assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), thumbnailsBeforeScan, "解析中も既存画像を保持する");
     assert.equal(document.querySelector("#status").dataset.state, "busy");
@@ -475,19 +476,19 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(sourceDrop.textContent, "ページ.pdf", "入力だけで表示中の結果のファイル名を変更しない");
     rejectScan = true;
     scanButton.dispatch("click");
-    await waitUntil(() => !scanButton.disabled);
+    await waitUntil(() => scanButton.dataset.scanning === "false");
     assert.equal(sourceDrop.textContent, "ページ.pdf", "再解析失敗時も旧結果のファイル名を表示する");
     assert.equal(sourceUrl.value, "https://example.com/new-page", "再試行用の入力を保持する");
     assert.deepEqual(document.querySelector("#images").children, retainedRows, "失敗時は旧結果と順序を保持する");
     rejectScan = false;
     scanResultUrl = "https://example.com/new-page";
     scanButton.dispatch("click");
-    await waitUntil(() => !scanButton.disabled);
+    await waitUntil(() => scanButton.dataset.scanning === "false");
     assert.equal(sourceDrop.textContent, "ページ.pdf", "成功時に結果とファイル名表示を同時に切り替える");
     scanResultUrl = "https://example.com/view";
     sourceUrl.value = "";
     scanButton.dispatch("click");
-    await waitUntil(() => !scanButton.disabled);
+    await waitUntil(() => scanButton.dataset.scanning === "false");
     const orderBeforeFormatChange = document.querySelector("#images").children.map(row => previewUrl(row.children[0]));
     const selectionBeforeFormatChange = document.querySelector("#images").children.map(row => row.getAttribute("aria-pressed"));
     exportFormat.value = "png";
@@ -783,7 +784,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     allSelection.checked = false;
     allSelection.dispatch("change");
     document.querySelector("#images").children[0].dispatch("keydown", {altKey: true, key: "ArrowDown"});
-    await waitUntil(() => !document.querySelector("#scan").disabled);
+    await waitUntil(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
     assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), busyOrder);
     assert.match(document.querySelector("#status").textContent, /前の収集結果を保持/);
     assert.equal(document.querySelector("#status").title, document.querySelector("#status").textContent, "画面で省略された状態文も全文を確認できる");
@@ -851,7 +852,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     savedSelection.dispatch("click");
     rejectScan = true;
     document.querySelector("#scan").dispatch("click");
-    await waitUntil(() => !document.querySelector("#scan").disabled);
+    await waitUntil(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
     rejectScan = false;
 
     groupButton("シリーズ").dispatch("click");
@@ -863,7 +864,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
 
     // Reusing a row after a successful scan of the same URLs must target the new items.
     document.querySelector("#scan").dispatch("click");
-    await waitUntil(() => !document.querySelector("#scan").disabled);
+    await waitUntil(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
     assert.equal(document.querySelector("#images").children.length, 2);
     assert.equal(document.querySelector("#groups").children[0].children[0].textContent, "シリーズ\nJPG\n(2枚)");
     document.querySelector("#all-visibility").dispatch("click");
@@ -898,7 +899,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     sourceUrl.dispatch("input");
     document.dispatch("drop", {target: document.querySelector(".workspace-sidebar"), dataTransfer: pageUrlDrag});
     assert.equal(urlDropOverlay.hidden, true, "ドロップ後は画面全体の案内を消す");
-    await waitUntil(() => !document.querySelector("#scan").disabled);
+    await waitUntil(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
     assert.deepEqual(createdUrls, ["https://example.com/dropped"], "URL入力済みでも右の操作欄へのドロップで解析する");
   } finally {
     globalThis.fetch = previousFetch;

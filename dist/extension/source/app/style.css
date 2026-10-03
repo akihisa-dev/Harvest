@@ -387,7 +387,7 @@ section, aside {
   color: var(--pressed-ink);
   background: var(--ink);
   border-color: var(--ink);
-  cursor: wait;
+  cursor: pointer;
 }
 
 #export[data-saving="true"] {
@@ -401,7 +401,7 @@ section, aside {
   cursor: wait;
 }
 
-#scan[data-scanning="true"]::before, #export[data-saving="true"]::after {
+#export[data-saving="true"]::after {
   content: "";
   display: block;
   width: 16px;
@@ -672,7 +672,7 @@ section, aside {
   display: none;
 }
 
-.viewer-meta:has(#status[data-state="busy"]) {
+.viewer-meta:has(#status[data-state="busy"]:not([data-scan-progress="true"])) {
   margin: 0;
   padding: 0;
   height: 0;
@@ -713,7 +713,7 @@ section, aside {
   color: var(--ink);
 }
 
-#status[data-state="busy"] {
+#status[data-state="busy"]:not([data-scan-progress="true"]) {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1601,8 +1601,7 @@ button[data-shown="false"] .eye-slash, button[data-shown="false"] .eye-slash-gap
 }
 
 #scan[data-scanning="true"] .button-label {
-  opacity: 0;
-  transform: scale(.9);
+  opacity: 1;
 }
 
 #scan::before {
@@ -1620,7 +1619,7 @@ button[data-shown="false"] .eye-slash, button[data-shown="false"] .eye-slash-gap
 }
 
 #scan[data-scanning="true"]::before {
-  opacity: 1;
+  content: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -26,7 +26,7 @@ function optionalString(value: unknown): boolean {
 }
 
 function diagnostics(value: unknown): value is XScanDiagnostics {
-  if (!record(value) || typeof value["limited"] !== "boolean" || !optionalBoolean(value["bookmarkCaptureMissing"])) return false;
+  if (!record(value) || typeof value["limited"] !== "boolean" || !optionalBoolean(value["bookmarkCaptureMissing"]) || !optionalBoolean(value["bookmarkIncomplete"]) || !optionalBoolean(value["bookmarkStopped"])) return false;
   return ["posts", "observed", "extracted", "merged", "excluded", "unavailable", "unresolved"].every(key => {
     const count = value[key];
     return typeof count === "number" && Number.isSafeInteger(count) && count >= 0;
@@ -62,6 +62,6 @@ function postSnapshot(value: unknown): value is XPostSnapshot {
 
 export function isXMediaSnapshot(value: unknown): value is XMediaSnapshot {
   return record(value) && typeof value["url"] === "string" && typeof value["limited"] === "boolean"
-    && optionalBoolean(value["bookmarkCaptureMissing"])
+    && optionalBoolean(value["bookmarkCaptureMissing"]) && optionalBoolean(value["bookmarkContinuation"])
     && Array.isArray(value["posts"]) && value["posts"].every(postSnapshot);
 }

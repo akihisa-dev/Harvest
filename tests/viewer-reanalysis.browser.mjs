@@ -44,7 +44,7 @@ test("再解析した同じ画像URLを中央に再表示し、現在のsourcePa
         window.__scanFixture = {url, title: "Viewer regression", images: [1, 2].map(i => `https://images.example.test/${i}.png`)};
       }, sourcePage);
       await page.locator("#scan").click();
-      await page.waitForFunction(() => !document.querySelector("#scan").disabled);
+      await page.waitForFunction(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
     }
     async function openViewer() {
       await page.locator("#viewer-toggle").click();

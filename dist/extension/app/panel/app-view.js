@@ -29,6 +29,7 @@ export function createAppView(elements, positionOf) {
         setMotionText(statusElement, success ? "" : status.state === "busy" ? status.progress : status.message);
         statusElement.setAttribute("aria-label", status.state === "busy" ? status.message : "");
         statusElement.dataset["state"] = status.state;
+        statusElement.dataset["scanProgress"] = String(snapshot.busy && view.phase !== "running" && status.state === "busy" && Boolean(status.progress));
         statusElement.title = success ? "" : status.message;
         const running = view.phase === "running";
         exportButton.dataset["saving"] = String(running);
@@ -68,7 +69,7 @@ export function createAppView(elements, positionOf) {
             excludedCount ? t("mediaExcludedHint", { count: excludedCount, plural: formatPlural(excludedCount), format: format.toUpperCase() }) : "",
         ].filter(Boolean).join(" ");
         exportMediaHint.hidden = !exportMediaHint.textContent;
-        scanButton.disabled = busy;
+        scanButton.disabled = busy && !scanRunning;
         sourceDrop.disabled = busy;
         sourceUrl.disabled = busy;
         resetButton.disabled = busy;
@@ -84,9 +85,9 @@ export function createAppView(elements, positionOf) {
         }
         sourcePageOption.hidden = format !== "pdf";
         scanButton.dataset["scanning"] = String(scanRunning);
-        setButtonLabel(scanButton, t("scan"));
+        setButtonLabel(scanButton, t(scanRunning ? "scanStop" : "scan"));
         if (scanRunning)
-            scanButton.setAttribute("aria-label", t("scanBusy"));
+            scanButton.setAttribute("aria-label", t("scanStop"));
         else
             scanButton.removeAttribute("aria-label");
         renderProgress(snapshot);

@@ -491,7 +491,7 @@ for (const partial of [false, true]) test(`Xの画像と動画を表示し、部
   await controller.start();
   assert.equal(initialGroup, null);
   assert.equal(controller.state, "results");
-  assert.equal(status.length > 0, partial);
+  assert.equal(status.length > 0, true, "続き取得を確認できない場合は部分取得を通知する");
   assert.equal(collection.items.length, 2);
   assert.equal(controller.diagnostics.normalized, 2);
   assert.equal(controller.diagnostics.rejected, 0);
@@ -518,4 +518,40 @@ for (const isX of [false, true]) {
       else assert.equal((await scanTab(8, undefined, url)).title, "old");
     });
   }
+}
+
+for (const ending of ['end', 'failed', 'stalled', 'stop', 'cycle', 'changed']) {
+  test(`未読み込みブックマークを順次取得し結果を保護する: ${ending}`, async t => {
+    const url='https://x.com/i/history';
+    fixture(t, {get:async()=>({url})});
+    let fetched=0, reads=0;
+    const progress=[];
+    chrome.scripting.executeScript=async ({func})=> {
+      if (func.name==='fetchXBookmarkPage') {
+        fetched++;
+        return [{result:fetched===1 || ending==='cycle' ? {status:'advanced',cursor:'next'} : {status:ending}}];
+      }
+      if (func.name==='scanXMedia') {
+        reads++;
+        // Only the latest page remains in X; Harvest must preserve older pages.
+        const id=String(fetched+1);
+        const value=mediaSnapshot(url,[{kind:'image',url:`https://pbs.twimg.com/media/image${id}.jpg`}]);
+        value.posts[0].key=`post:${id}`;value.posts[0].postId=id;
+        value.posts[0].roots[0].value.tweet.rest_id=id;
+        if(fetched) value.posts.push({key:'post:1',postId:'1',observed:[],roots:[]});
+        value.bookmarkContinuation=true;
+        return [{result:value}];
+      }
+      return [{result:{url,title:'Bookmarks',images:[]}}];
+    };
+    const scan=scanTab(8,undefined,url,{shouldStop:()=>ending==='stop' && fetched===1,onProgress:n=>progress.push(n)});
+    if(ending==='changed') {await assert.rejects(scan,/ページが移動/);return;}
+    const result=await scan;
+    assert.equal(fetched,ending==='stop'?1:2);
+    assert.equal(result.images.length,ending==='stop'?2:3);
+    assert.equal(result.xDiagnostics.bookmarkIncomplete,ending==='end'?undefined:true);
+    assert.equal(result.xDiagnostics.bookmarkStopped,ending==='stop'?true:undefined);
+    assert.deepEqual(progress,[1,2]);
+    assert.equal(reads,fetched+1);
+  });
 }

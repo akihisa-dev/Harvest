@@ -179,7 +179,7 @@ async function inspectLayout(page, width, height, label) {
 async function scan(page, fixture) {
   await page.evaluate(value => { window.__harvestScanFixture = value; }, fixture);
   await page.locator("#scan").click();
-  await page.waitForFunction(() => !document.querySelector("#scan").disabled);
+  await page.waitForFunction(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
   await page.waitForTimeout(280);
 }
 
@@ -308,11 +308,11 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
                 overlayRingWidth: ring.width,
               };
             });
-            assert.equal(spinnerState.scanButtonText, locale === "ja-JP" ? "解析" : "Analyze", `${caseName}: analyzing button should retain the same label`);
-            assert.equal(spinnerState.scanLabelOpacity, "0", `${caseName}: analyzing label should be visually hidden`);
-            assert.equal(spinnerState.scanButtonLabel, locale === "ja-JP" ? "ページを調べています…" : "Analyzing the page…", `${caseName}: analyzing button should keep an accessible name`);
+            assert.equal(spinnerState.scanButtonText, locale === "ja-JP" ? "停止" : "Stop", `${caseName}: analyzing button should offer stop`);
+            assert.equal(spinnerState.scanLabelOpacity, "1", `${caseName}: stop label should stay visible`);
+            assert.equal(spinnerState.scanButtonLabel, locale === "ja-JP" ? "停止" : "Stop", `${caseName}: stop button should keep an accessible name`);
             assert.equal(spinnerState.scanButtonState, "true", `${caseName}: analyzing button should enter loading state`);
-            assert.notEqual(spinnerState.scanButtonRingContent, "none", `${caseName}: analyzing button should show a loading ring`);
+            assert.equal(spinnerState.scanButtonRingContent, "none", `${caseName}: ring should not cover the stop label`);
             assert.equal(spinnerState.scanButtonRingWidth, "16px", `${caseName}: analyzing ring should fit inside button`);
             assert.equal(spinnerState.scanButtonRingAnimation, "none", `${caseName}: reduced motion should stop button ring`);
             assert.equal(spinnerState.statusText, "", `${caseName}: busy status should not render its message`);
@@ -329,7 +329,7 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
               return {animationName: ring.animationName, animationDuration: ring.animationDuration};
             });
             const movingButtonRing = await page.locator("#scan").evaluate(element => getComputedStyle(element, "::before").animationName);
-            assert.notEqual(movingButtonRing, "none", `${caseName}: analyzing button ring should animate when motion is allowed`);
+            assert.equal(movingButtonRing, "none", `${caseName}: stop button stays readable while the overlay animates`);
             assert.notEqual(movingSpinner.animationName, "none", `${caseName}: spinner should animate when motion is allowed`);
             assert.equal(movingSpinner.animationDuration, "0.9s", `${caseName}: spinner should use the specified rotation interval`);
             await page.emulateMedia({reducedMotion: "reduce"});
@@ -340,7 +340,7 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
             assert.equal(spinnerState.scanOverlayHidden, false, `${caseName}: overlay should be visible while scanning`);
             assert.equal(spinnerState.overlayRingWidth, "64px", `${caseName}: scanning overlay ring should be large`);
             await page.evaluate(() => window.__releaseScanFixture());
-            await page.waitForFunction(() => !document.querySelector("#scan").disabled);
+            await page.waitForFunction(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
             await page.waitForTimeout(280);
             const resultsDrop = await inspectUrlDropZone(page, ".workspace-sidebar");
             assert.equal(resultsDrop.accepted, true, `${caseName}: sidebar should accept a dragged URL after scanning`);
@@ -453,7 +453,7 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
             assert.equal(await page.locator("#scan-overlay").isHidden(), false, `${caseName}: overlay should cover thumbnails during re-analysis`);
             assert.equal(await page.locator("#images img").count(), firstResultCount, `${caseName}: thumbnails should remain present under the overlay`);
             await page.evaluate(() => window.__releaseScanFixture());
-            await page.waitForFunction(() => !document.querySelector("#scan").disabled);
+            await page.waitForFunction(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
             assert.equal(await page.locator("#scan-overlay").isHidden(), true, `${caseName}: overlay should hide when re-analysis completes`);
             assert.equal(await page.locator(".results").isVisible(), true, `${caseName}: re-analysis should return to the image list`);
             assert.equal(await page.locator("#viewer").isHidden(), true, `${caseName}: re-analysis should close the viewer`);
@@ -510,7 +510,7 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
             await page.locator("#reset").click();
             await page.evaluate(message => { window.__harvestScanFixture = {error: message}; }, "A deliberately long scan error used to exercise status rendering. ".repeat(12));
             await page.locator("#scan").click();
-            await page.waitForFunction(() => !document.querySelector("#scan").disabled && Boolean(document.querySelector("#status").textContent));
+            await page.waitForFunction(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled) && Boolean(document.querySelector("#status").textContent));
             await page.waitForTimeout(280);
             const longStatus = await inspectLayout(page, width, height, `${caseName} long status`);
             assert.equal(longStatus.header.height, empty.header.height, `${caseName}: status text must not change header height`);

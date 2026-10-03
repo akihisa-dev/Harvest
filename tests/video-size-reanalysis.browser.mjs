@@ -36,7 +36,7 @@ test('実拡張機能の再解析で動画サイズを更新し、HEAD失敗か�
     });
     const scan = async expected => {
       await page.locator('#scan').click();
-      await page.waitForFunction(() => !document.querySelector('#scan').disabled);
+      await page.waitForFunction(() => (document.querySelector('#scan').dataset.scanning === "false" && !document.querySelector('#scan').disabled));
       await page.waitForFunction(expected => document.querySelector('.item-resolution')?.textContent === expected, expected);
     };
     await scan('1.0 KB');

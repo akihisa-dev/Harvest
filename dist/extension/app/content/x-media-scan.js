@@ -326,6 +326,11 @@ export function scanXMedia(targetPostId, onlyPostKeys) {
             const ids = targetPostId ? [targetPostId] : mountedIds.size && distinct.size === 1 ? [...distinct.values()][0] : undefined;
             if (!ids)
                 continue;
+            if (!targetPostId && !onlyPostKeys && moduleCandidates.length === 1 && timelineModules.size === 1 && stores.size === 1) {
+                const module = [...timelineModules][0];
+                snapshot.bookmarkContinuation = value(module, "timelineId") === "bookmarks" && !value(module, "scopeId")
+                    && typeof value(module, "fetchBottom") === "function" && typeof value(store, "dispatch") === "function";
+            }
             const recovered = [];
             let complete = true;
             for (const id of ids) {

@@ -247,7 +247,7 @@ scanSessionController = createScanSessionController({
     onHideSourceInput: sourceInput.hide,
     onShowSourceInput: sourceInput.show,
     onBusyChange: setBusy,
-    onStatus: setStatus,
+    onStatus: (message, state) => setStatus(message, state, state === "busy" && message !== t("scanBusy") ? message : ""),
     onResults(nextPageTitle, initialGroup, sourcePage) {
         exportSession.setFormat(initialExportFormat(imageCollection.items, loadExportPreferences().format));
         pageTitle = nextPageTitle;
@@ -260,7 +260,12 @@ scanSessionController = createScanSessionController({
         viewerController.clearCurrentPage();
     },
 });
-scanButton.addEventListener("click", () => startScan());
+scanButton.addEventListener("click", () => {
+    if (scanSessionController.isRunning)
+        scanSessionController.stop();
+    else
+        startScan();
+});
 exportButton.addEventListener("click", () => {
     if (exportSession.state.view.phase === "running") {
         exportSession.abort();

@@ -67,7 +67,7 @@ test("日英の操作・動画保存失敗・ライセンス画面が同じ表�
         assert.equal(await page.title(), ja ? "Harvest | 画像を集める" : "Harvest | Collect images");
         assert.equal(await page.locator("html").getAttribute("lang"), ja ? "ja" : "en");
         await page.getByRole("button", {name: ja ? "解析" : "Analyze", exact: true}).click();
-        await page.waitForFunction(() => !document.querySelector("#scan").disabled);
+        await page.waitForFunction(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
         await page.locator("#all-selection").check();
         await page.locator("#export-format-mp4").check();
         assert.equal(await page.locator("#export-media-hint").textContent(), ja

@@ -1,11 +1,16 @@
-import {parseXMedia, xMediaUrlKey, xOriginalPhotoUrl} from "../../core/x-media.js";
+import {type XPostSnapshot, parseXMedia, xMediaUrlKey, xOriginalPhotoUrl} from "../../core/x-media.js";
 import { mergeMediaCandidates } from "../../core/media-selection.js";
 import type { PageScan } from "../contracts/page-contracts.js";
 import { PageReadSession, withTemporaryPage } from "./page-read-session.js";
 
 const isXUrl = (url: string): boolean => /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(url);
 
-export async function scanTab(tabId: number, signal?: AbortSignal, requestedUrl?: string): Promise<PageScan> {
+export interface ScanOptions {
+  shouldStop?: () => boolean;
+  onProgress?: (posts: number) => void;
+}
+
+export async function scanTab(tabId: number, signal?: AbortSignal, requestedUrl?: string, options: ScanOptions = {}): Promise<PageScan> {
   const session = new PageReadSession(tabId, signal);
   let result = await session.scanInitialPage();
   if (isXUrl(result.url)) {
@@ -25,6 +30,37 @@ export async function scanTab(tabId: number, signal?: AbortSignal, requestedUrl?
     }
     session.assertSourceUrl(result.url);
     snapshot ??= await session.scanPostMedia(targetPostId);
+    let bookmarkIncomplete = false, bookmarkStopped = false;
+    if (isBookmarkPage && !targetPostId) {
+      bookmarkIncomplete = true;
+      const cursors = new Set<string>();
+      while (snapshot.bookmarkContinuation && !signal?.aborted) {
+        options.onProgress?.(snapshot.posts.length);
+        if (options.shouldStop?.()) { bookmarkStopped = true; break; }
+        let page;
+        try { page = await session.fetchBookmarkPage(); }
+        catch { break; }
+        if (page.status === "changed") throw new Error("解析中にページが移動しました。もう一度解析してください。");
+        if (page.status === "unavailable") break;
+        // Re-read even on failure: X may have received some usable data.
+        let next;
+        try { next = await session.scanPostMedia(); } catch { break; }
+        // The same history URL also hosts Likes. Never merge another list.
+        if (!next.bookmarkContinuation) break;
+        const posts: Map<string, XPostSnapshot> = new Map(snapshot.posts.map(post => [post.key, post]));
+        for (const post of next.posts) {
+          const previous = posts.get(post.key);
+          posts.set(post.key, previous ? {...post,
+            observed: [...new Map([...previous.observed, ...post.observed].map(item => [JSON.stringify(item), item])).values()],
+            roots: [...new Map([...previous.roots, ...post.roots].map(item => [JSON.stringify(item), item])).values()],
+          } : post);
+        }
+        snapshot = {...next, limited: snapshot.limited || next.limited, posts: [...posts.values()]};
+        if (page.status === "end") { bookmarkIncomplete = false; break; }
+        if (page.status !== "advanced" || !page.cursor || cursors.has(page.cursor)) break;
+        cursors.add(page.cursor);
+      }
+    }
     let analysis = parseXMedia(snapshot, targetPostId);
     if (!analysis.diagnostics.limited && analysis.missingPosts.length) {
       await session.waitForMediaRetry();
@@ -43,7 +79,7 @@ export async function scanTab(tabId: number, signal?: AbortSignal, requestedUrl?
     }
     if (!analysis.media.length && analysis.diagnostics.limited) throw new Error("Xの投稿情報を読み取りきれず、画像・動画を取得できませんでした。");
     if (!analysis.media.length && analysis.missingPosts.length) throw new Error("Xの表示中の画像または動画を一部取得できませんでした。投稿を表示してから解析し直してください。");
-    result.xDiagnostics = analysis.diagnostics;
+    result.xDiagnostics = {...analysis.diagnostics, ...(bookmarkIncomplete ? {bookmarkIncomplete: true} : {}), ...(bookmarkStopped ? {bookmarkStopped: true} : {})};
     if (targetPostId || isBookmarkPage) {
       if (!snapshot.posts.length) throw new Error("Xの投稿を読み取れませんでした。");
       // The scoped snapshot is authoritative: page-wide decorations must not
@@ -75,6 +111,6 @@ export async function scanTab(tabId: number, signal?: AbortSignal, requestedUrl?
   return result;
 }
 
-export function scanUrl(url: string, signal?: AbortSignal): Promise<PageScan> {
-  return withTemporaryPage(url, signal, tabId => scanTab(tabId, signal, url));
+export function scanUrl(url: string, signal?: AbortSignal, options?: ScanOptions): Promise<PageScan> {
+  return withTemporaryPage(url, signal, tabId => scanTab(tabId, signal, url, options));
 }

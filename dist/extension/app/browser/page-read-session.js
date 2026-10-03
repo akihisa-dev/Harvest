@@ -1,3 +1,4 @@
+import { fetchXBookmarkPage } from "../content/x-bookmark-page.js";
 import { isPageScan, isXPageState, isXMediaSnapshot } from "../contracts/page-contracts.js";
 import { scanDocument } from "../content/page-scan.js";
 import { waitForXPage } from "../content/x-page-state.js";
@@ -126,6 +127,18 @@ export class PageReadSession {
                 return result;
             },
         });
+    }
+    fetchBookmarkPage() {
+        return this.read({ func: fetchXBookmarkPage, args: [this.sourceUrl], world: "MAIN",
+            failureMessage: "ブックマークの続きを取得できませんでした。",
+            accept: value => {
+                const result = value;
+                if (!result || !["advanced", "end", "unavailable", "stalled", "failed", "changed"].includes(result.status)
+                    || (result.cursor !== undefined && typeof result.cursor !== "string")
+                    || (result.status === "advanced" && !result.cursor))
+                    throw new Error("ブックマークの続きを取得できませんでした。");
+                return result;
+            } });
     }
     waitForMediaRetry() {
         return bounded(resolve => {

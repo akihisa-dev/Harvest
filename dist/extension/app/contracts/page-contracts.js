@@ -8,7 +8,7 @@ function optionalString(value) {
     return value === undefined || typeof value === "string";
 }
 function diagnostics(value) {
-    if (!record(value) || typeof value["limited"] !== "boolean" || !optionalBoolean(value["bookmarkCaptureMissing"]))
+    if (!record(value) || typeof value["limited"] !== "boolean" || !optionalBoolean(value["bookmarkCaptureMissing"]) || !optionalBoolean(value["bookmarkIncomplete"]) || !optionalBoolean(value["bookmarkStopped"]))
         return false;
     return ["posts", "observed", "extracted", "merged", "excluded", "unavailable", "unresolved"].every(key => {
         const count = value[key];
@@ -43,6 +43,6 @@ function postSnapshot(value) {
 }
 export function isXMediaSnapshot(value) {
     return record(value) && typeof value["url"] === "string" && typeof value["limited"] === "boolean"
-        && optionalBoolean(value["bookmarkCaptureMissing"])
+        && optionalBoolean(value["bookmarkCaptureMissing"]) && optionalBoolean(value["bookmarkContinuation"])
         && Array.isArray(value["posts"]) && value["posts"].every(postSnapshot);
 }

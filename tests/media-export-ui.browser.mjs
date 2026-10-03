@@ -111,7 +111,7 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
     const scan = async (images, media = []) => {
       await page.evaluate(({images, media}) => { window.fixture = {url: 'https://source.example.test/gallery', title: 'media', images, media}; }, {images, media});
       await page.locator('#scan').click();
-      await page.waitForFunction(() => !document.querySelector('#scan').disabled);
+      await page.waitForFunction(() => (document.querySelector('#scan').dataset.scanning === "false" && !document.querySelector('#scan').disabled));
     };
     const photo = 'https://files.example.test/photo.png';
     const animation = 'https://files.example.test/animation.gif';

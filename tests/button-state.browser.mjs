@@ -38,7 +38,8 @@ test('ボタンのラベルと処理中表示、チェックと中間状態は�
     await page.waitForTimeout(220);
     await page.locator('#scan').evaluate(e => {
       e.dataset.scanning = 'true';
-      e.setAttribute('aria-label', '解析中');
+      e.setAttribute('aria-label', '停止');
+      window.setButtonLabel(e, '停止');
       getComputedStyle(e).opacity;
       e.getAnimations({subtree: true}).forEach(a => {
         a.pause();
@@ -49,12 +50,12 @@ test('ボタンのラベルと処理中表示、チェックと中間状態は�
       same: window.label === document.querySelector('#scan .button-label'),
       text: document.querySelector('#scan').textContent,
       label: Number(getComputedStyle(window.label).opacity),
-      spinner: Number(getComputedStyle(document.querySelector('#scan'), '::before').opacity)
+      spinner: getComputedStyle(document.querySelector('#scan'), '::before').content
     }));
     assert.equal(state.same, true);
-    assert.equal(state.text, '解析');
+    assert.equal(state.text, '停止');
     assert.ok(state.label > 0 && state.label < 1);
-    assert.ok(state.spinner > 0 && state.spinner < 1);
+    assert.equal(state.spinner, 'none', '停止ラベルを読み込みリングで隠さない');
     await page.locator('#export').evaluate(e => {
       window.setButtonLabel(e, '再試行');
       e.getAnimations({subtree: true}).forEach(a => {

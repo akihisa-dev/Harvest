@@ -39,7 +39,7 @@ for (const count of [12, 25]) test(`実拡張機能でMP4 ${count}件を完了�
         media: Array.from({length: count}, (_, i) => ({url: `https://files.example.test/${i}.mp4`, kind: 'video'}))}}];
     }, count);
     await page.locator('#scan').click();
-    await page.waitForFunction(() => !document.querySelector('#scan').disabled);
+    await page.waitForFunction(() => (document.querySelector('#scan').dataset.scanning === "false" && !document.querySelector('#scan').disabled));
     assert.equal(await page.locator('#images > li').count(), count);
     await page.locator('#export').click();
     await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'success');
@@ -101,7 +101,7 @@ for (const mode of ['rejected', 'interrupted', 'abort', 'pending-abort']) test(`
         media: Array.from({length: 3}, (_, i) => ({url: `https://files.example.test/${i}.mp4`, kind: 'video'}))}}];
     }, {mode, port: server.address().port});
     await page.locator('#scan').click();
-    await page.waitForFunction(() => !document.querySelector('#scan').disabled);
+    await page.waitForFunction(() => (document.querySelector('#scan').dataset.scanning === "false" && !document.querySelector('#scan').disabled));
     await page.locator('#export').click();
     if (mode !== 'rejected') {
       await page.waitForFunction(() => window.waitingId !== undefined);

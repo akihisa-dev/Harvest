@@ -191,7 +191,7 @@ test("英語画面で解析・分類・選択・エラー表示が翻訳され�
     },
   };
   const waitForScan = async () => {
-    for (let attempt = 0; attempt < 100 && root.querySelector("#scan").disabled; attempt++) {
+    for (let attempt = 0; attempt < 100 && root.querySelector("#scan").dataset.scanning === "true"; attempt++) {
       await new Promise(resolve => setImmediate(resolve));
     }
     assert.equal(root.querySelector("#scan").disabled, false);
