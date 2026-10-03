@@ -252,7 +252,7 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
             await page.locator("#images-heading").waitFor();
             assert.equal(await page.locator("#completion").count(), 0, `${caseName}: image list should not have a save-started banner`);
             assert.equal(await page.title(), locale === "ja-JP" ? "Harvest | 画像を集める" : "Harvest | Collect images", `${caseName}: document title should follow browser locale`);
-            assert.equal(await page.locator("#images-heading").textContent(), locale === "ja-JP" ? "画像グループ" : "Image groups");
+            assert.equal(await page.locator("#images-heading").textContent(), locale === "ja-JP" ? "グループ" : "Groups");
             const resetName = locale === "ja-JP" ? "全部元に戻す" : "Restore order and selection";
             assert.equal(await page.getByRole("button", {name: resetName, exact: true}).count(), 1, `${caseName}: reset action needs an accessible name`);
             assert.equal(await page.locator("#all-visibility").getAttribute("aria-label"), locale === "ja-JP" ? "すべての画像を表示" : "Show all images");
@@ -382,6 +382,14 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
             assert.equal(saveButtonState.saving.background, saveButtonState.ink, `${caseName}: saving button should remain visually prominent`);
             assert.equal(saveButtonState.restoredRing, "none", `${caseName}: save ring should disappear afterward`);
             assert.equal(await page.locator(".results").isVisible(), true, `${caseName}: successful scan opens image list`);
+            const groupLines = await page.locator(".group-label").first().evaluate(element => {
+              const style = getComputedStyle(element);
+              return {lines: element.textContent.split("\n"), height: element.getBoundingClientRect().height, lineHeight: parseFloat(style.lineHeight)};
+            });
+            assert.equal(groupLines.lines.length, 3, `${caseName}: group name, file type and count must have separate lines`);
+            assert.equal(groupLines.lines[1], "JPG", `${caseName}: file type must be on the second line`);
+            assert.ok(Math.abs(groupLines.height - groupLines.lineHeight * 3) < 1, `${caseName}: each label line must stay on one line`);
+
             assert.equal(await page.locator("#viewer").isHidden(), true, `${caseName}: viewer remains closed after scanning`);
             assert.equal(await page.locator("#viewer-toggle").getAttribute("aria-pressed"), "false", `${caseName}: viewer toggle starts unpressed`);
             await page.locator("#viewer-toggle").click();

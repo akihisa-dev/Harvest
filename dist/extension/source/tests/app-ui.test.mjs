@@ -467,7 +467,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(scanButton.getAttribute("aria-label"), null, "解析完了後は通常のボタン名に戻す");
     assert.equal(document.querySelector("#status").textContent, "");
     assert.equal(document.querySelector("#images").children.length, 2);
-    assert.equal(document.querySelector("#groups").children[0].children[0].textContent, "JPG · シリーズ\n(2枚)");
+    assert.equal(document.querySelector("#groups").children[0].children[0].textContent, "シリーズ\nJPG\n(2枚)");
     const retainedRows = document.querySelector("#images").children.slice();
     sourceUrl.value = "https://example.com/new-page";
     sourceUrl.dispatch("input");
@@ -639,9 +639,9 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
       .find(input => input.getAttribute("data-focus-kind") === "pdf-group" && input.getAttribute("data-focus-key") === key);
     const groupChips = document.querySelector("#groups").children.filter(element => element.className === "group-chip");
     assert.ok(groupChips.length > 0);
-    assert.ok(groupChips.some(chip => /^JPG · シリーズ\n\(\d+枚\)$/.test(chip.children[0].textContent)), "グループ名と枚数を二行に分ける");
+    assert.ok(groupChips.some(chip => /^シリーズ\nJPG\n\(\d+枚\)$/.test(chip.children[0].textContent)), "シリーズ名、ファイル種類、枚数を三行に分ける");
     assert.equal(groupChips.every(chip => chip.children.length === 3 && chip.children[0].tagName === "span" && chip.children[1].tagName === "button" && chip.children[2].children[0].tagName === "input"), true);
-    const groupButton = prefix => groupChips.find(chip => chip.children[0].textContent.includes(`· ${prefix}`))?.children[1];
+    const groupButton = prefix => groupChips.find(chip => chip.children[0].textContent.startsWith(prefix))?.children[1];
     const coverFilter = groupButton("表紙");
     const coverPdfCheckbox = getPdfGroupCheckbox(coverFilter.getAttribute("data-focus-key"));
     assert.match(coverPdfCheckbox.getAttribute("aria-label"), /保存対象に含める JPG · 表紙/);
@@ -865,7 +865,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     document.querySelector("#scan").dispatch("click");
     await waitUntil(() => !document.querySelector("#scan").disabled);
     assert.equal(document.querySelector("#images").children.length, 2);
-    assert.equal(document.querySelector("#groups").children[0].children[0].textContent, "JPG · シリーズ\n(2枚)");
+    assert.equal(document.querySelector("#groups").children[0].children[0].textContent, "シリーズ\nJPG\n(2枚)");
     document.querySelector("#all-visibility").dispatch("click");
     const rescannedRow = document.querySelector("#images").children[0];
     rescannedRow.dispatch("pointerdown");

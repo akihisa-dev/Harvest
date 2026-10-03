@@ -116,7 +116,9 @@ export function createImageListView(options) {
                 return kind === "gif" || kind === "video";
             }))
                 groupLabel = groupLabel.replace(/(\d+)枚/, "$1件").replace(/ image(s?)\)/, " file$1)");
-            element.children[0].textContent = groupLabel.replace(/ (\([^()]+\))$/, "\n$1");
+            element.children[0].textContent = groupLabel.includes(" · ")
+                ? groupLabel.replace(/^(.+) · (.+) (\([^()]+\))$/, "$2\n$1\n$3")
+                : groupLabel.replace(/ (\([^()]+\))$/, "\n$1");
             const button = element.children[1];
             renderEye(button, visibleGroupKeys.has(key), groupLabel);
             button.disabled = options.isBusy();

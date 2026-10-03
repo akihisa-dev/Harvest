@@ -569,7 +569,9 @@ section, aside {
 .group-label {
   min-width: 0;
   font-weight: 500;
-  white-space: pre-line;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .group-chip button {

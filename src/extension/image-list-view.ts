@@ -152,7 +152,9 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
           const kind = collection.itemForUrl(url)?.kind;
           return kind === "gif" || kind === "video";
         })) groupLabel = groupLabel.replace(/(\d+)枚/, "$1件").replace(/ image(s?)\)/, " file$1)");
-        (element.children[0] as HTMLSpanElement).textContent = groupLabel.replace(/ (\([^()]+\))$/, "\n$1");
+        (element.children[0] as HTMLSpanElement).textContent = groupLabel.includes(" · ")
+          ? groupLabel.replace(/^(.+) · (.+) (\([^()]+\))$/, "$2\n$1\n$3")
+          : groupLabel.replace(/ (\([^()]+\))$/, "\n$1");
         const button = element.children[1] as HTMLButtonElement;
         renderEye(button, visibleGroupKeys.has(key), groupLabel);
         button.disabled = options.isBusy();

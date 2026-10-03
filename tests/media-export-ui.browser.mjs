@@ -126,7 +126,7 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     await scan([photo, animation], [{url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
     assert.equal(await page.locator('#export-format-mp4').isChecked(), true);
     const groups = page.locator('#groups .group-label');
-    assert.deepEqual(await groups.allTextContents(), ['MP4\n(1件)', 'GIF\n(1件)', 'PNG · その他\n(1枚)']);
+    assert.deepEqual(await groups.allTextContents(), ['MP4\n(1件)', 'GIF\n(1件)', 'その他\nPNG\n(1枚)']);
     const gifGroup = page.locator('#groups .group-chip').filter({hasText: 'GIF'});
     await gifGroup.locator('input').check();
     assert.equal(await gifGroup.locator('input').isChecked(), true);
