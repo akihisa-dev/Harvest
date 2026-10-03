@@ -12,6 +12,8 @@ Harvest is a Chrome extension that collects images, GIFs, and videos from a page
 2. Analyze the current page, or enter a URL and click **Analyze**. You can drop a URL anywhere in the side panel, even when another URL or analysis results are already present. A full-panel drop guide appears while dragging a URL. An entered or dropped URL takes precedence over the current page.
 3. After analysis, the image list appears with an initial group selected for saving. Loaded image and GIF thumbnails show their resolution above the filename. Click an image to toggle selection; drag it or use the keyboard to reorder it. Videos, GIFs, and still images are grouped by format, preserving groupings such as image series. Each group's eye button controls visibility, and its checkbox controls selection for saving. Choose a format and click **Save**. PDF produces one document; videos are saved as individual MP4 files. A single image or GIF is saved directly, while multiple images or GIFs become numbered files in a ZIP.
 
+While analyzing an ordinary page or an individual X post, **Stop** cancels the pending analysis and keeps the previous results, selection, and order. You can analyze again once it stops. An already injected page reader may finish, but its result is not published. Bookmark analysis instead waits for the current continuation request and displays the bookmarks collected so far.
+
 #### Analyze links continuously
 
 Click **Collect** at the top to analyze links on the current page by clicking them. Links to analyze glow light blue; links you can click again to save the current selection glow a stronger gold. The color changes after analysis even if the pointer stays still. Successfully analyzed links keep glowing after the pointer leaves, and the glow disappears when the link is removed from the page. No text labels are added, and stopping collection removes all glows. A normal left click prevents navigation and analyzes the linked page in a minimized analysis window, replacing the results.
@@ -147,6 +149,8 @@ Harvestは、Chromeで開いているページの画像・GIF・動画を集め�
 1. Chromeで画像のあるページを開き、Harvestのアイコンを押してサイドパネルを開きます。
 2. 表示中のページを解析するか、URLを入力して「解析」を押します。URLは入力済みのURLや解析結果があってもサイドパネル全体へドロップできます。URLをドラッグすると画面全体にドロップの案内が表示されます。URLを入力・ドロップした場合は、そのURLを解析します。
 3. 解析後は画像一覧が表示され、初期選択したまとまりの画像が保存対象になります。サムネイルでは読み込めた画像・GIFの解像度をファイル名の上へ表示します。画像をクリックして選択を切り替え、ドラッグまたはキーボード操作で順番を変更します。動画・GIF・静止画像は形式ごとの別グループに分け、静止画像のシリーズなどのまとまりも保持します。まとまりごとの目のボタンで表示を、チェックボックスで保存対象を切り替えます。保存形式を選び、「保存」を押します。PDFは1つのPDF、動画は1件ずつMP4として保存します。画像・GIFは1枚なら直接保存し、複数枚なら連番ファイルを含むZIPとして保存します。
+
+普通のWebページやX個別投稿の解析中に「停止」を押すと、未完了の解析を中止し、前の結果・選択・並び順を保持します。停止後は再び解析できます。ページへ実行済みの読み取りが完了しても、その結果は反映しません。ブックマークでは実行中の続き取得1回を待ち、取得済みの分を表示します。
 
 #### リンクを続けて解析する
 

@@ -130,3 +130,67 @@ test('続き取得中の停止は取得済み画像を公開し、それ以上�
   assert.equal(f.controller.state,'results');
   assert.equal(f.controller.isRunning,false);
 });
+
+for (const phase of ["query", "initial", "post-wait"]) {
+  test(`${phase}で繰り返し停止しても旧選択・順序を保持し、遅い応答を公開せず再解析できる`, async t => {
+    const f = setup(t);
+    const url = phase === "post-wait" ? "https://x.com/user/status/123" : f.source;
+    f.collection.replace(["https://example.test/old1.png", "https://example.test/old2.png"], f.source);
+    f.collection.setSelected(f.collection.items[0].url, false);
+    f.collection.applyVisibleOrder(f.collection.items, [...f.collection.items].reverse());
+    const previous = f.collection.items;
+    const previousSelection = previous.map(item => item.selected);
+    let release, reached;
+    const waiting = new Promise(resolve => { reached = resolve; });
+    const gate = () => new Promise(resolve => { release = resolve; reached(); });
+    if (phase === "query") f.query = gate;
+    else {
+      f.query = async () => [{id: 7, url}];
+      chrome.tabs.get = async () => ({url});
+      f.read = async ({func}) => {
+        if (func.name === (phase === "initial" ? "scanDocument" : "waitForXPage")) return gate();
+        return [{result: {url, title: "Page", images: []}, documentId: "fixture"}];
+      };
+    }
+    const execution = f.controller.start();
+    await waiting;
+    f.controller.stop(); f.controller.stop(); f.controller.stop();
+    await f.controller.start(); // Until ownership is released, a start is ignored.
+    if (phase === "query") release([{id: 7, url}]);
+    await execution;
+    assert.equal(f.controller.isRunning, false);
+    assert.equal(f.controller.state, "results");
+    assert.equal(f.collection.items, previous);
+    assert.deepEqual(previous.map(item => item.selected), previousSelection);
+    assert.deepEqual(f.results, []);
+    assert.equal(f.statuses.at(-1)[1], "info");
+    assert.deepEqual(f.busy, [true, false]);
+    if (phase !== "query") {
+      release([{result: phase === "post-wait" ? {status: "ready"} : {url, title: "Late", images: [f.nextImage]}, documentId: "fixture"}]);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      assert.equal(f.collection.items, previous);
+      assert.deepEqual(f.results, []);
+    } else assert.equal(f.scriptCount, 0);
+    f.query = async () => [{id: 7, url: f.source}];
+    chrome.tabs.get = async () => ({url: f.source});
+    f.read = async () => [{result: {url: f.source, title: "New", images: [f.nextImage]}}];
+    await f.controller.start();
+    assert.deepEqual(f.collection.items.map(item => item.url), [f.nextImage]);
+    assert.equal(f.results.length, 1);
+    assert.deepEqual(f.busy, [true, false, true, false]);
+  });
+}
+
+test("初回解析を停止すると空の初期画面へ戻り、エラー扱いにしない", async t => {
+  const f = setup(t);
+  let release;
+  f.query = () => new Promise(resolve => { release = resolve; });
+  const execution = f.controller.start();
+  f.controller.stop();
+  release([{id: 7, url: f.source}]);
+  await execution;
+  assert.equal(f.controller.state, "initial");
+  assert.equal(f.controller.isRunning, false);
+  assert.equal(f.statuses.at(-1)[1], "info");
+  assert.deepEqual(f.results, []);
+});

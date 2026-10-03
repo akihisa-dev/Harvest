@@ -4,12 +4,18 @@ import { scanTab, scanUrl } from "../browser/page-access.js";
 function isWebUrl(url) {
     return url !== undefined && /^https?:\/\//i.test(url);
 }
+function isBookmarkUrl(url) {
+    const parsed = new URL(url);
+    return /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(url)
+        && /^\/i\/(?:history|bookmarks)(?:\/|$)/i.test(parsed.pathname);
+}
 /** Owns one scan from URL validation through atomic publication and cancellation. */
 export function createScanSessionController(options) {
     let state = "initial";
     let diagnostics = null;
     let stopRequested = false;
     let activeController = null;
+    let bookmarkScan = null;
     async function start(collectionLink) {
         if (activeController || options.isBusy() || options.isDisposed())
             return;
@@ -34,6 +40,7 @@ export function createScanSessionController(options) {
         const controller = new AbortController();
         activeController = controller;
         stopRequested = false;
+        bookmarkScan = targetUrl ? isBookmarkUrl(targetUrl) : null;
         state = "scanning";
         diagnostics = null;
         options.onBusyChange(true);
@@ -53,6 +60,11 @@ export function createScanSessionController(options) {
                     return;
                 if (activeTab?.id === undefined || !isWebUrl(activeTab.url))
                     throw new Error(t("errorNoActivePage"));
+                bookmarkScan = isBookmarkUrl(activeTab.url);
+                if (stopRequested && !bookmarkScan) {
+                    controller.abort();
+                    throw new Error(t("errorScanCancelled"));
+                }
                 result = await scanTab(activeTab.id, controller.signal, activeTab.url, scanOptions);
             }
             if (options.isDisposed() || controller.signal.aborted || activeController !== controller)
@@ -76,8 +88,15 @@ export function createScanSessionController(options) {
             options.onStatus(result.xDiagnostics?.bookmarkStopped ? t("scanBookmarksStopped") : result.xDiagnostics?.bookmarkIncomplete ? t("scanBookmarksIncomplete") : result.xDiagnostics?.bookmarkCaptureMissing ? t("scanXBookmarksReload") : partial ? t("scanXPartial") : options.collection.items.length ? "" : t("scanEmpty"), "info");
         }
         catch (error) {
-            if (options.isDisposed() || controller.signal.aborted || activeController !== controller)
+            if (options.isDisposed() || activeController !== controller)
                 return;
+            if (controller.signal.aborted) {
+                if (stopRequested) {
+                    state = options.collection.items.length ? "results" : "initial";
+                    options.onStatus(t("errorScanCancelled") + (options.collection.items.length ? t("previousResults") : ""), "info");
+                }
+                return;
+            }
             state = options.collection.items.length ? "results" : "error";
             const reason = error instanceof Error
                 ? localizeErrorMessage(error.message, "errorPageRead", true)
@@ -87,6 +106,7 @@ export function createScanSessionController(options) {
         finally {
             if (activeController === controller) {
                 activeController = null;
+                bookmarkScan = null;
                 if (!options.isDisposed())
                     options.onBusyChange(false);
             }
@@ -97,7 +117,11 @@ export function createScanSessionController(options) {
         get state() { return state; },
         get isRunning() { return activeController !== null; },
         start,
-        stop() { stopRequested = true; },
+        stop() {
+            stopRequested = true;
+            if (bookmarkScan === false)
+                activeController?.abort();
+        },
         abort() { activeController?.abort(); },
         reset() {
             activeController?.abort();
