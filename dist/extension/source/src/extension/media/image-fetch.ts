@@ -2,6 +2,7 @@ import { inspectJpegStructure } from "../../core/jpeg.js";
 import { getImageDimensions } from "../../core/image-dimensions.js";
 import {checkCancelled, imageDimensionsError, invalidImage, ImageDataError, type FetchedImage, type ImageDataOptions} from "../contracts/image-data-contract.js";
 import {fetchResponse, type ResponseFetchErrors} from "./response-fetch.js";
+import {withDecodedImage} from "./decoded-image.js";
 import {readImageBytes} from "./image-response-bytes.js";
 
 export {readImageBytes} from "./image-response-bytes.js";
@@ -52,21 +53,16 @@ export async function fetchImage(url: string, options: ImageDataOptions): Promis
     const jpeg = isJpeg ? inspectJpegStructure(bytes) : null;
     if (isJpeg && !jpeg) throw invalidImage("画像を読み込めませんでした。形式が対応していないか、データが壊れています。");
     if (jpeg?.canEmbed) {
-      let bitmap: ImageBitmap;
-      try {
-        bitmap = await createImageBitmap(new Blob([bytes.buffer as ArrayBuffer], {type: "image/jpeg"}));
-      } catch {
-        checkCancelled(sourceSignal);
-        throw invalidImage("画像を読み込めませんでした。形式が対応していないか、データが壊れています。");
-      }
-      try {
-        checkCancelled(signal);
-        const dimensionsError = imageDimensionsError(bitmap.width, bitmap.height);
-        if (dimensionsError) throw invalidImage(dimensionsError);
-        if (bitmap.width !== jpeg.width || bitmap.height !== jpeg.height) throw invalidImage("画像の大きさが不正です。");
-      } finally {
-        bitmap.close();
-      }
+      await withDecodedImage(new Blob([bytes.buffer as ArrayBuffer], {type: "image/jpeg"}), {
+        signal,
+        invalidDimensions: invalidImage,
+        decodeFailure() {
+          checkCancelled(sourceSignal);
+          return invalidImage("画像を読み込めませんでした。形式が対応していないか、データが壊れています。");
+        },
+      }, image => {
+        if (image.width !== jpeg.width || image.height !== jpeg.height) throw invalidImage("画像の大きさが不正です。");
+      });
       return {kind: "original", page: {jpeg: bytes, width: jpeg.width, height: jpeg.height}};
     }
     // PDF embedding has stricter JPEG requirements than saving a JPEG file.

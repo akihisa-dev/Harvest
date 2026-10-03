@@ -1,3 +1,5 @@
+import { gifColorTableSize, readGifSubBlocks } from "./gif-blocks.js";
+import { isoBoxes } from "./iso-boxes.js";
 const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 function hasAscii(bytes, offset, value) {
     if (offset < 0 || offset + value.length > bytes.byteLength)
@@ -90,10 +92,7 @@ function gifDimensions(bytes) {
     if (bytes.byteLength < 13)
         return { width: maximumWidth, height: maximumHeight };
     const logicalScreenFlags = bytes[10] ?? 0;
-    let offset = 13;
-    if ((logicalScreenFlags & 0x80) !== 0) {
-        offset += 3 * (1 << ((logicalScreenFlags & 0x07) + 1));
-    }
+    let offset = 13 + gifColorTableSize(logicalScreenFlags);
     while (offset < bytes.byteLength) {
         const marker = bytes[offset++] ?? 0;
         if (marker === 0x3b)
@@ -102,7 +101,7 @@ function gifDimensions(bytes) {
             if (offset >= bytes.byteLength)
                 break;
             offset += 1;
-            offset = skipGifSubBlocks(bytes, offset) ?? bytes.byteLength;
+            offset = readGifSubBlocks(bytes, offset)?.end ?? bytes.byteLength;
             continue;
         }
         if (marker !== 0x2c || offset + 9 > bytes.byteLength)
@@ -114,26 +113,12 @@ function gifDimensions(bytes) {
         maximumWidth = Math.max(maximumWidth, left + frameWidth);
         maximumHeight = Math.max(maximumHeight, top + frameHeight);
         const imageFlags = bytes[offset + 8] ?? 0;
-        offset += 9;
-        if ((imageFlags & 0x80) !== 0)
-            offset += 3 * (1 << ((imageFlags & 0x07) + 1));
+        offset += 9 + gifColorTableSize(imageFlags);
         if (offset >= bytes.byteLength)
             break;
-        offset = skipGifSubBlocks(bytes, offset + 1) ?? bytes.byteLength;
+        offset = readGifSubBlocks(bytes, offset + 1)?.end ?? bytes.byteLength;
     }
     return { width: maximumWidth, height: maximumHeight };
-}
-function skipGifSubBlocks(bytes, start) {
-    let offset = start;
-    while (offset < bytes.byteLength) {
-        const size = bytes[offset++] ?? 0;
-        if (size === 0)
-            return offset;
-        if (offset + size > bytes.byteLength)
-            return null;
-        offset += size;
-    }
-    return null;
 }
 function webpDimensions(bytes) {
     if (bytes.byteLength < 20 || !hasAscii(bytes, 0, "RIFF") || !hasAscii(bytes, 8, "WEBP"))
@@ -194,36 +179,6 @@ function bmpDimensions(bytes) {
     const width = view.getInt32(18, true);
     const signedHeight = view.getInt32(22, true);
     return { width, height: Math.abs(signedHeight) };
-}
-function* isoBoxes(bytes, start, end) {
-    let offset = start;
-    while (offset < end) {
-        if (offset + 8 > end)
-            throw new Error("Invalid ISO box bounds");
-        const size32 = readUint32BigEndian(bytes, offset);
-        if (size32 === null)
-            throw new Error("Invalid ISO box bounds");
-        let headerSize = 8;
-        let size = size32;
-        if (size32 === 1) {
-            const high = readUint32BigEndian(bytes, offset + 8);
-            const low = readUint32BigEndian(bytes, offset + 12);
-            if (high === null || low === null || high > 0x1fffff)
-                throw new Error("Invalid ISO box bounds");
-            size = high * 0x100000000 + low;
-            headerSize = 16;
-        }
-        else if (size32 === 0) {
-            size = end - offset;
-        }
-        if (size < headerSize || size > end - offset)
-            throw new Error("Invalid ISO box bounds");
-        let type = "";
-        for (let index = 0; index < 4; index += 1)
-            type += String.fromCharCode(bytes[offset + 4 + index] ?? 0);
-        yield { type, dataStart: offset + headerSize, end: offset + size };
-        offset += size;
-    }
 }
 function avifDimensions(bytes) {
     try {

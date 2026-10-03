@@ -497,3 +497,43 @@ test("ブラウザーが影の色表記を正規化しても停止時に元へ�
     fixture.restore();
   }
 });
+
+test("ホバーの残像は3個までで、終了・中止・切断で描画とアニメーションを解放する", () => {
+  const fixture = setup();
+  const previousStyle = globalThis.getComputedStyle;
+  const animations = [];
+  const animate = function() {
+    const animation = {overlay: this, canceled: 0, cancel() { this.canceled++; this.oncancel?.(); }};
+    animations.push(animation);
+    return animation;
+  };
+  fixture.glow.animate = animate;
+  fixture.glow.cloneNode = () => ({style: {...fixture.glow.style}, setAttribute() {}, animate,
+    remove() { this.removed = true; }});
+  globalThis.getComputedStyle = element => ({opacity: element.style.opacity, transform: element.style.transform});
+  try {
+    captureCollectionLinks("test-session");
+    fixture.glow.style.display = "none";
+    const targets = Array.from({length: 5}, (_, index) => new Anchor(`/hover-${index}`));
+    for (const target of targets) fixture.hover(target);
+    assert.equal(animations.length, 4);
+    assert.equal(animations[0].canceled, 1);
+    assert.equal(animations[0].overlay.removed, true);
+    assert.equal(animations.filter(animation => !animation.overlay.removed).length, 3);
+    animations[1].onfinish();
+    assert.equal(animations[1].overlay.removed, true);
+    fixture.click(targets[4]);
+    fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/hover-4", canExport: true});
+    assert.equal(fixture.pendingFrames, 1);
+    fixture.disconnect();
+    assert.equal(fixture.pendingFrames, 0);
+    assert.deepEqual(animations.slice(0, 4).map(animation => animation.canceled), [1, 0, 1, 1]);
+    assert.equal(animations.slice(0, 4).every(animation => animation.overlay.removed), true);
+    assert.equal(animations.at(-1).overlay, fixture.glow, "切断後の通常の消灯効果を保つ");
+    animations.at(-1).onfinish();
+    assert.equal(fixture.glow.removed, true);
+  } finally {
+    globalThis.getComputedStyle = previousStyle;
+    fixture.restore();
+  }
+});

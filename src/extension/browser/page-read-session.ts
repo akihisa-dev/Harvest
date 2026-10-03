@@ -1,5 +1,5 @@
-import {fetchXBookmarkPage, type BookmarkPageResult} from "../content/x-bookmark-page.js";
-import {isPageScan, isXPageState, isXMediaSnapshot, type PageScan, type XPageState} from "../contracts/page-contracts.js";
+import {fetchXBookmarkPage} from "../content/x-bookmark-page.js";
+import {isBookmarkPageResult, isPageScan, isXPageState, isXMediaSnapshot, type BookmarkPageResult, type PageScan, type XPageState} from "../contracts/page-contracts.js";
 import { scanDocument } from "../content/page-scan.js";
 import { waitForXPage } from "../content/x-page-state.js";
 import { scanXMedia } from "../content/x-media-scan.js";
@@ -135,11 +135,8 @@ export class PageReadSession {
     return this.read({func: fetchXBookmarkPage, args: [this.sourceUrl], world: "MAIN",
       failureMessage: "ブックマークの続きを取得できませんでした。",
       accept: value => {
-        const result = value as BookmarkPageResult | undefined;
-        if (!result || !["advanced", "end", "unavailable", "stalled", "failed", "changed"].includes(result.status)
-          || (result.cursor !== undefined && typeof result.cursor !== "string")
-          || (result.status === "advanced" && !result.cursor)) throw new Error("ブックマークの続きを取得できませんでした。");
-        return result;
+        if (!isBookmarkPageResult(value)) throw new Error("ブックマークの続きを取得できませんでした。");
+        return value;
       }});
   }
 

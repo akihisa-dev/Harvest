@@ -8,7 +8,6 @@ function listItemKey(item) {
 /** Owns group visibility and the image-list DOM interactions for one collection. */
 export function createImageListView(options) {
     const videoSizes = createVideoSizeLoader({ loading: t("videoSizeLoading"), unknown: t("videoSizeUnknown") });
-    window.addEventListener?.("pagehide", () => videoSizes.clear());
     const { collection, allVisibilityButton, groupsElement, imagesElement } = options;
     let visibleGroupKeys = new Set();
     let focusTarget = null;

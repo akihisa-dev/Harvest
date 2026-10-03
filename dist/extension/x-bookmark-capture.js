@@ -4,21 +4,31 @@ function installXBookmarkCapture() {
     const bridge = "__harvestBookmarkMediaV1";
     if (Object.getOwnPropertyDescriptor(window, bridge))
         return;
-    const posts = new Map();
-    let generation = 0, memoryEpoch = 0, failed = false, received = false;
-    let scope = 0;
-    let pendingMetadata = Promise.resolve();
-    let pageUrl = location.href.split("#")[0];
     const bookmarkPage = () => /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname);
-    const reset = () => { posts.clear(); generation++; memoryEpoch++; delete window["__harvestBookmarkScanMemoryV1"]; failed = false; received = false; };
-    const resetScope = () => { reset(); scope++; pendingMetadata = Promise.resolve(); };
-    const syncPage = () => {
-        const current = location.href.split("#")[0];
-        if (pageUrl !== current) {
-            resetScope();
-            pageUrl = current;
-        }
-    };
+    // Retained evidence and its generation are changed atomically. Request
+    // classification owns a separate scope so pending body reads can be invalidated.
+    const capture = (() => {
+        const posts = new Map();
+        let generation = 0, epoch = 0, failed = false, received = false;
+        const clear = () => {
+            posts.clear();
+            epoch++;
+            delete window["__harvestBookmarkScanMemoryV1"];
+        };
+        return {
+            clear,
+            reset() { clear(); generation++; failed = false; received = false; },
+            fail() { failed = true; },
+            receive() { received = true; },
+            generation() { return generation; },
+            accepts(token) { return token !== undefined && token === generation; },
+            add(id, post) { posts.set(id, post); },
+            snapshot() {
+                return bookmarkPage() ? { posts: [...posts.values()], limited: failed, received, epoch }
+                    : { posts: [], limited: false, received: false, epoch };
+            },
+        };
+    })();
     const record = (input) => input !== null && typeof input === "object" && !Array.isArray(input) ? input : undefined;
     const fields = ["__typename", "rest_id", "id_str", "media_key", "type", "media_url_https", "media_url",
         "thumbnail_url", "preview_image_url", "content_type", "bitrate", "url", "tweet", "result", "legacy",
@@ -26,7 +36,7 @@ function installXBookmarkCapture() {
         "quoted_status_result", "retweeted_status_result", "quoted_status", "retweeted_status"];
     const project = (input, depth = 0) => {
         if (depth > 24) {
-            failed = true;
+            capture.fail();
             return undefined;
         }
         if (typeof input === "string")
@@ -47,17 +57,17 @@ function installXBookmarkCapture() {
         return output;
     };
     const ingest = (input, token) => {
-        syncPage();
-        if (token !== generation || !bookmarkPage())
+        requests.syncPage();
+        if (!capture.accepts(token) || !bookmarkPage())
             return;
         const data = record(record(input)?.["data"]);
         const timeline = record(record(data?.["bookmark_timeline_v2"])?.["timeline"]);
         const instructions = timeline?.["instructions"];
         if (!Array.isArray(instructions)) {
-            failed = true;
+            capture.fail();
             return;
         }
-        received = true;
+        capture.receive();
         const addItem = (input) => {
             const item = record(input);
             const result = record(record(item?.["tweet_results"])?.["result"]);
@@ -66,16 +76,13 @@ function installXBookmarkCapture() {
             const id = tweet?.["rest_id"] ?? legacy?.["id_str"];
             if (typeof id !== "string" || !/^\d+$/.test(id))
                 return;
-            posts.set(id, { key: `post:${id}`, postId: id, observed: [],
+            capture.add(id, { key: `post:${id}`, postId: id, observed: [],
                 roots: [{ value: project(result), requireIdentity: true, player: false }] });
         };
         for (const instruction of instructions) {
             const row = record(instruction);
-            if (row?.["type"] === "TimelineClearCache") {
-                posts.clear();
-                memoryEpoch++;
-                delete window["__harvestBookmarkScanMemoryV1"];
-            }
+            if (row?.["type"] === "TimelineClearCache")
+                capture.clear();
             const entries = Array.isArray(row?.["entries"]) ? row["entries"] : row?.["entry"] ? [row["entry"]] : [];
             for (const entry of entries) {
                 const content = record(record(entry)?.["content"]);
@@ -87,78 +94,92 @@ function installXBookmarkCapture() {
             }
         }
     };
-    // Request metadata is used transiently for scope/cursor detection, never retained.
-    const unreadableBody = Symbol();
-    const begin = (rawUrl, body, readBody) => {
-        syncPage();
-        if (!bookmarkPage())
-            return undefined;
-        try {
-            const url = new URL(rawUrl, location.href);
-            if (url.origin !== location.origin)
-                return undefined;
-            const operation = /^\/i\/api\/graphql\/[^/]+\/([^/]+)$/.exec(url.pathname)?.[1];
-            // /i/history shares its URL with Likes. Never mix that tab with bookmarks.
-            if (operation === "Likes") {
+    const requests = (() => {
+        let scope = 0;
+        let pendingMetadata = Promise.resolve();
+        let pageUrl = location.href.split("#")[0];
+        const resetScope = () => { capture.reset(); scope++; pendingMetadata = Promise.resolve(); };
+        const syncPage = () => {
+            const current = location.href.split("#")[0];
+            if (pageUrl !== current) {
                 resetScope();
-                return undefined;
+                pageUrl = current;
             }
-            if (operation !== "Bookmarks")
+        };
+        // Request metadata is used transiently for scope/cursor detection, never retained.
+        const unreadableBody = Symbol();
+        const begin = (rawUrl, body, readBody) => {
+            syncPage();
+            if (!bookmarkPage())
                 return undefined;
-            const requestScope = scope;
-            // Clone/read before native fetch consumes Request, but classify in start order.
-            let bodyResult;
             try {
-                bodyResult = readBody ? readBody().catch(() => unreadableBody) : Promise.resolve(body);
-            }
-            catch {
-                bodyResult = Promise.resolve(unreadableBody);
-            }
-            const token = pendingMetadata.then(async () => {
-                const rawBody = await bodyResult;
-                syncPage();
-                if (requestScope !== scope)
+                const url = new URL(rawUrl, location.href);
+                if (url.origin !== location.origin)
                     return undefined;
+                const operation = /^\/i\/api\/graphql\/[^/]+\/([^/]+)$/.exec(url.pathname)?.[1];
+                // /i/history shares its URL with Likes. Never mix that tab with bookmarks.
+                if (operation === "Likes") {
+                    resetScope();
+                    return undefined;
+                }
+                if (operation !== "Bookmarks")
+                    return undefined;
+                const requestScope = scope;
+                // Clone/read before native fetch consumes Request, but classify in start order.
+                let bodyResult;
                 try {
-                    if (rawBody != null && typeof rawBody !== "string")
-                        throw new Error("Unreadable request body");
-                    const request = typeof rawBody === "string" ? record(JSON.parse(rawBody)) : undefined;
-                    const variables = record(request?.["variables"] ?? JSON.parse(url.searchParams.get("variables") ?? "{}"));
-                    if (!variables?.["cursor"])
-                        reset();
-                    return generation;
+                    bodyResult = readBody ? readBody().catch(() => unreadableBody) : Promise.resolve(body);
                 }
                 catch {
-                    failed = true;
-                    return undefined;
+                    bodyResult = Promise.resolve(unreadableBody);
                 }
-            });
-            pendingMetadata = token.then(() => undefined);
-            return token;
-        }
-        catch {
-            return undefined;
-        }
-    };
+                const token = pendingMetadata.then(async () => {
+                    const rawBody = await bodyResult;
+                    syncPage();
+                    if (requestScope !== scope)
+                        return undefined;
+                    try {
+                        if (rawBody != null && typeof rawBody !== "string")
+                            throw new Error("Unreadable request body");
+                        const request = typeof rawBody === "string" ? record(JSON.parse(rawBody)) : undefined;
+                        const variables = record(request?.["variables"] ?? JSON.parse(url.searchParams.get("variables") ?? "{}"));
+                        if (!variables?.["cursor"])
+                            capture.reset();
+                        return capture.generation();
+                    }
+                    catch {
+                        capture.fail();
+                        return undefined;
+                    }
+                });
+                pendingMetadata = token.then(() => undefined);
+                return token;
+            }
+            catch {
+                return undefined;
+            }
+        };
+        return { begin, syncPage, resetScope, settled: () => pendingMetadata };
+    })();
     Object.defineProperty(window, bridge, { value: () => {
-            syncPage();
-            return bookmarkPage() ? { posts: [...posts.values()], limited: failed, received, epoch: memoryEpoch } : { posts: [], limited: false, received: false, epoch: memoryEpoch };
+            requests.syncPage();
+            return capture.snapshot();
         } });
     const observe = (token, response) => {
         void Promise.all([token, response]).then(async ([generationToken, result]) => {
             // Later requests may still be identifying a head reset. Wait before ingesting.
-            await pendingMetadata;
-            syncPage();
-            if (generationToken === undefined || generationToken !== generation || !bookmarkPage())
+            await requests.settled();
+            requests.syncPage();
+            if (generationToken === undefined || !capture.accepts(generationToken) || !bookmarkPage())
                 return;
             try {
                 if (result.ok)
                     ingest(result.data, generationToken);
                 else
-                    failed = true;
+                    capture.fail();
             }
             catch {
-                failed = true;
+                capture.fail();
             }
         });
     };
@@ -169,7 +190,7 @@ function installXBookmarkCapture() {
         try {
             const input = args[0];
             const body = args[1]?.body;
-            token = begin(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, body, input instanceof Request && body == null && input.body !== null ? () => input.clone().text() : undefined);
+            token = requests.begin(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, body, input instanceof Request && body == null && input.body !== null ? () => input.clone().text() : undefined);
         }
         catch { /* Leave X's request untouched. */ }
         const promise = Reflect.apply(originalFetch, this, args);
@@ -190,7 +211,7 @@ function installXBookmarkCapture() {
         urls.set(this, String(url));
     };
     XMLHttpRequest.prototype.send = function (body) {
-        const token = begin(urls.get(this) ?? "", body);
+        const token = requests.begin(urls.get(this) ?? "", body);
         const onLoad = () => {
             if (token === undefined)
                 return;
@@ -214,11 +235,11 @@ function installXBookmarkCapture() {
         const original = history[name];
         history[name] = function (...args) {
             Reflect.apply(original, this, args);
-            syncPage();
+            requests.syncPage();
         };
     }
-    addEventListener("popstate", syncPage);
-    addEventListener("pagehide", resetScope);
+    addEventListener("popstate", requests.syncPage);
+    addEventListener("pagehide", requests.resetScope);
 }
 
 installXBookmarkCapture();

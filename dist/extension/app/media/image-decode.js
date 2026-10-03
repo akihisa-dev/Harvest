@@ -1,46 +1,26 @@
-import { checkCancelled, fetchedImageDimensions, imageDimensionsError, invalidImage, validatePositiveInteger } from "../contracts/image-data-contract.js";
+import { checkCancelled, invalidImage, validatePositiveInteger } from "../contracts/image-data-contract.js";
+import { validateFetchedDimensions, withDecodedImage } from "./decoded-image.js";
 const DEFAULT_PIXEL_CHUNK_PIXELS = 262_144;
 function yieldToEventLoop() {
     return new Promise((resolve) => setTimeout(resolve, 0));
 }
 export async function decodeImage(fetched, options) {
     checkCancelled(options.signal);
-    const headerDimensions = await fetchedImageDimensions(fetched);
-    checkCancelled(options.signal);
-    if (headerDimensions) {
-        const dimensionsError = imageDimensionsError(headerDimensions.width, headerDimensions.height);
-        if (dimensionsError)
-            throw invalidImage(dimensionsError);
-    }
+    await validateFetchedDimensions(fetched, options.signal, invalidImage);
     if (fetched.kind === "original")
         return fetched.page;
-    let bitmap;
-    try {
-        bitmap = await createImageBitmap(fetched.blob);
-    }
-    catch {
-        throw invalidImage("画像を読み込めませんでした。形式が対応していないか、データが壊れています。");
-    }
-    let canvas;
-    try {
-        checkCancelled(options.signal);
-        const width = bitmap.width;
-        const height = bitmap.height;
-        const dimensionsError = imageDimensionsError(width, height);
-        if (dimensionsError)
-            throw invalidImage(dimensionsError);
-        canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        if (canvas.width !== width || canvas.height !== height) {
-            throw invalidImage("画像が大きすぎてPDF用に変換できませんでした。");
-        }
-        const context = canvas.getContext("2d", { willReadFrequently: true });
-        if (!context)
-            throw invalidImage("画像をPDF用に変換できませんでした。");
-        context.fillStyle = "#ffffff";
-        context.fillRect(0, 0, width, height);
-        context.drawImage(bitmap, 0, 0);
+    return withDecodedImage(fetched.blob, {
+        signal: options.signal,
+        invalidDimensions: invalidImage,
+        decodeFailure: () => invalidImage("画像を読み込めませんでした。形式が対応していないか、データが壊れています。"),
+    }, async (image) => {
+        const { width, height } = image;
+        const { context } = image.canvas({
+            context: { willReadFrequently: true },
+            opaque: true,
+            invalidSize: () => invalidImage("画像が大きすぎてPDF用に変換できませんでした。"),
+            unavailable: () => invalidImage("画像をPDF用に変換できませんでした。"),
+        });
         const requestedRows = options.pixelRowsPerChunk;
         if (requestedRows !== undefined)
             validatePositiveInteger(requestedRows, "pixelRowsPerChunk");
@@ -138,13 +118,5 @@ export async function decodeImage(fetched, options) {
             checkCancelled(options.signal);
             throw invalidImage("画像をPDF用に変換できませんでした。");
         }
-    }
-    finally {
-        bitmap.close();
-        // Release the browser's backing store as soon as the compressed page exists.
-        if (canvas) {
-            canvas.width = 0;
-            canvas.height = 0;
-        }
-    }
+    });
 }

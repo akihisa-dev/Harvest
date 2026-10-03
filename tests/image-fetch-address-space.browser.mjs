@@ -1,45 +1,33 @@
+import {startServer, temporaryDirectory, launchExtensionContext} from "./support/browser.mjs";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { createServer } from "node:http";
-import { join, resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
+import {join, resolve} from "node:path";
+import {tmpdir} from "node:os";
+import {fileURLToPath} from "node:url";
 import test from "node:test";
-import { chromium } from "playwright";
 
 const repository = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const extensionRoot = resolve(repository, "dist/extension");
 const localImage = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j+ioAAAAASUVORK5CYII=", "base64");
 
-test("Chrome blocks a public image hostname that resolves to loopback", {timeout: 60_000}, async () => {
+test("Chrome blocks a public image hostname that resolves to loopback", {timeout: 60_000}, async (t) => {
   const received = [];
-  const server = createServer((request, response) => {
+  const server = await startServer(t, (request, response) => {
     received.push(request.url);
     response.writeHead(200, {"access-control-allow-origin": "*", "content-type": "image/png"});
     response.end(localImage);
   });
-  await new Promise((resolveListen, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolveListen);
-  });
 
-  const temporaryRoot = await mkdtemp(join(tmpdir(), "harvest-image-address-space-"));
-  let context;
-  let cdp;
+  const temporaryRoot = await temporaryDirectory(t, join(tmpdir(), "harvest-image-address-space-"));
+    let cdp;
   try {
-    context = await chromium.launchPersistentContext(join(temporaryRoot, "profile"), {
-      channel: "chrome",
-      headless: true,
-      ignoreDefaultArgs: ["--disable-extensions"],
-      args: [
+    const context = await launchExtensionContext(t, join(temporaryRoot, "profile"), {args: [
         "--enable-unsafe-extension-debugging",
         "--host-resolver-rules=MAP dns-public-test.invalid 127.0.0.1, MAP * ~NOTFOUND",
         "--disable-background-networking",
         "--disable-component-update",
         "--no-first-run",
         "--no-default-browser-check",
-      ],
-    });
+      ]});
     const browser = context.browser();
     assert.ok(browser, "the persistent Chrome context must expose its browser session");
     cdp = await browser.newBrowserCDPSession();
@@ -69,8 +57,6 @@ test("Chrome blocks a public image hostname that resolves to loopback", {timeout
     assert.deepEqual(received, ["/image.png?case=without-address-space"]);
   } finally {
     await cdp?.detach();
-    await context?.close();
-    await new Promise(resolveClose => server.close(resolveClose));
-    await rm(temporaryRoot, {recursive: true, force: true});
+
   }
 });

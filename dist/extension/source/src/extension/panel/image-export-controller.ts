@@ -4,7 +4,8 @@ import type {ImageItem} from "../../core/images.js";
 import {createStoredZipInWorker} from "../media/stored-zip-worker.js";
 import {prepareImageArchive, type ImageArchiveWork} from "../media/image-archive-preparation.js";
 import {formatPlural, localizeErrorMessage, t} from "./localization.js";
-import {createExportLifecycle, downloadBlob} from "./export-lifecycle.js";
+import {downloadBlob, type ExportControllerState} from "./export-lifecycle.js";
+import {createExportOperation, type ExportControllerOptions} from "./export-operation.js";
 import {downloadManagedBlob} from "../browser/managed-download.js";
 
 // Preserve the existing entry-builder API while the core owns archive rules.
@@ -21,26 +22,11 @@ export interface PendingImageExport {
   readonly failed: ReadonlyMap<ImageItem, string>;
 }
 
-export interface ImageExportControllerOptions {
-  readonly getSelectedItems: () => readonly ImageItem[];
+export interface ImageExportControllerOptions extends ExportControllerOptions {
   readonly getZipFilename: () => string;
-  readonly isBusy: () => boolean;
-  readonly isDisposed: () => boolean;
-  readonly onBusyChange: (busy: boolean) => void;
-  readonly onStatus: (message: string, state: "info" | "busy" | "success" | "error", progress?: string) => void;
-  readonly onCloseViewer: () => void;
-  readonly onClearSourceUrl: () => void;
-  readonly onCompleted?: () => void;
-  readonly onScrollToFailures: () => void;
 }
 
-export interface ImageExportController {
-  readonly pending: PendingImageExport | null;
-  readonly isRunning: boolean;
-  readonly progress: string;
-  clear(): void;
-  abort(): void;
-  discardIfSelectionChanged(selected: readonly ImageItem[]): boolean;
+export interface ImageExportController extends ExportControllerState<PendingImageExport> {
   export(format: ImageArchiveFormat): Promise<void>;
 }
 
@@ -51,10 +37,9 @@ export function createImageExportController(options: ImageExportControllerOption
       if (!work.saved?.has(item)) work.failed.set(item, t("errorFileSave"));
     }
   }
-  const lifecycle = createExportLifecycle<Blob, ImageArchiveWork>({
-    ...options, cancelledMessage: t("exportCancelled"),
-    retainAbortedWork(pending) {
-      const work = pending as ImageArchiveWork;
+  const operation = createExportOperation<Blob, ImageArchiveWork>({
+    ...options,
+    retainAbortedWork(work) {
       if (options.isDisposed() || !work.savingStarted) return false;
       markUnsaved(work);
       return true;
@@ -62,38 +47,30 @@ export function createImageExportController(options: ImageExportControllerOption
   });
 
   async function exportImages(format: ImageArchiveFormat): Promise<void> {
-    if (lifecycle.isRunning || options.isBusy() || options.isDisposed()) return;
-    const selected = [...options.getSelectedItems()];
-    if (!selected.length) return;
-    const work = lifecycle.resolveWork(selected, () => ({
-      format,
-      selected,
-      prepared: new Map<ImageItem, Blob>(),
-      failed: new Map<ImageItem, string>(),
-      saved: new Set<ImageItem>(),
-    }), pending => pending.format === format);
-    const retry = work.failed.size > 0;
-    const remaining = work.selected.filter(item => !work.prepared.has(item));
     const progressKind = mediaProgressKind(format);
-    const progressMessage = progressKind === "files"
-      ? (retry ? "retryFiles" : "prepareFiles")
-      : (retry ? "retryImages" : "prepareImages");
-    await lifecycle.run(
-      work,
-      t(progressMessage, {completed: 0, total: remaining.length}),
-      `0 / ${remaining.length}`,
-      async run => {
+    await operation.start({
+      createWork: selected => ({
+        format,
+        selected,
+        prepared: new Map<ImageItem, Blob>(),
+        failed: new Map<ImageItem, string>(),
+        saved: new Set<ImageItem>(),
+      }),
+      isCompatible: pending => pending.format === format,
+      preparationMessage(retry, completed, total) {
+        const message = progressKind === "files"
+          ? (retry ? "retryFiles" : "prepareFiles")
+          : (retry ? "retryImages" : "prepareImages");
+        return t(message, {completed, total});
+      },
+      async run(run) {
+        const {work} = run;
         try {
           const entries = await prepareImageArchive(work, {
             signal: run.signal,
             isStopped: () => run.stopped,
             fallbackFailure: t("errorImageConvert"),
-            onProgress(completed, total) {
-              if (options.isDisposed()) return;
-              run.reportStatus(t(progressMessage, {
-                completed, total,
-              }), "busy", `${completed} / ${total}`);
-            },
+            onProgress: run.reportPreparation,
           });
           if (run.stopped) return;
           if (work.failed.size) {
@@ -128,10 +105,7 @@ export function createImageExportController(options: ImageExportControllerOption
             if (run.stopped) return;
             downloadBlob(archive, options.getZipFilename());
           }
-          options.onClearSourceUrl();
-          lifecycle.clear();
-          options.onCompleted?.();
-          run.reportStatus(t("exportSaved"), "success");
+          run.complete();
         } catch (error) {
           if (run.stopped) return;
           if (work.savingStarted) {
@@ -142,7 +116,7 @@ export function createImageExportController(options: ImageExportControllerOption
           if (error instanceof RangeError) {
             work.prepared.clear();
             work.failed.clear();
-            lifecycle.clear();
+            operation.clear();
           }
           run.reportStatus(
             error instanceof Error ? localizeErrorMessage(error.message, "errorFileSave", true) : t("errorFileSave"),
@@ -150,16 +124,16 @@ export function createImageExportController(options: ImageExportControllerOption
           );
         }
       },
-    );
+    });
   }
 
   return {
-    get pending() { return lifecycle.pending; },
-    get isRunning() { return lifecycle.isRunning; },
-    get progress() { return lifecycle.progress; },
-    clear: lifecycle.clear,
-    abort: lifecycle.abort,
-    discardIfSelectionChanged: lifecycle.discardIfSelectionChanged,
+    get pending() { return operation.pending; },
+    get isRunning() { return operation.isRunning; },
+    get progress() { return operation.progress; },
+    clear: operation.clear,
+    abort: operation.abort,
+    discardIfSelectionChanged: operation.discardIfSelectionChanged,
     export: exportImages,
   };
 }

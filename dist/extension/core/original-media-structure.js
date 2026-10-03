@@ -1,26 +1,10 @@
-const GIF_COLOR_TABLE_FLAG = 0x80;
+import { GIF_COLOR_TABLE_FLAG, gifColorTableSize, readGifSubBlocks } from "./gif-blocks.js";
+import { readIsoBox } from "./iso-boxes.js";
 const GIF_TRAILER = 0x3b;
 const GIF_EXTENSION = 0x21;
 const GIF_IMAGE_DESCRIPTOR = 0x2c;
 function readUint16LittleEndian(bytes, offset) {
     return bytes[offset] | (bytes[offset + 1] << 8);
-}
-function gifColorTableSize(flags) {
-    return flags & GIF_COLOR_TABLE_FLAG ? 3 * (1 << ((flags & 7) + 1)) : 0;
-}
-/** Return the next position and payload size only when a zero-length terminator exists. */
-function readGifSubBlocks(bytes, offset) {
-    let dataSize = 0;
-    while (offset < bytes.length) {
-        const size = bytes[offset++];
-        if (size === 0)
-            return { end: offset, dataSize };
-        if (offset + size > bytes.length)
-            return null;
-        dataSize += size;
-        offset += size;
-    }
-    return null;
 }
 /** Validate container boundaries without decoding or changing original media bytes. */
 export function hasCompleteGif(bytes) {
@@ -71,7 +55,6 @@ export function hasCompleteGif(bytes) {
 }
 /** Opaque boxes/codecs are allowed; known container boxes must fit their parent. */
 export function hasCompleteMp4Boxes(bytes) {
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const containerTypes = new Set(["moov", "trak", "mdia", "minf", "stbl", "edts", "mvex", "moof", "traf"]);
     let hasMovieBox = false;
     let hasMediaData = false;
@@ -79,29 +62,16 @@ export function hasCompleteMp4Boxes(bytes) {
         if (depth > 16)
             return false;
         for (let offset = start; offset < end;) {
-            if (end - offset < 8)
+            const box = readIsoBox(bytes, offset, end);
+            if (!box)
                 return false;
-            let size = view.getUint32(offset);
-            let headerSize = 8;
-            const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
-            if (size === 1) {
-                if (end - offset < 16)
-                    return false;
-                size = Number(view.getBigUint64(offset + 8));
-                headerSize = 16;
-            }
-            else if (size === 0) {
-                size = end - offset;
-            }
-            if (!Number.isSafeInteger(size) || size < headerSize || size > end - offset)
-                return false;
-            if (depth === 0 && type === "moov")
+            if (depth === 0 && box.type === "moov")
                 hasMovieBox = true;
-            if (depth === 0 && type === "mdat" && size > headerSize)
+            if (depth === 0 && box.type === "mdat" && box.end > box.dataStart)
                 hasMediaData = true;
-            if (containerTypes.has(type) && !validateBoxRange(offset + headerSize, offset + size, depth + 1))
+            if (containerTypes.has(box.type) && !validateBoxRange(box.dataStart, box.end, depth + 1))
                 return false;
-            offset += size;
+            offset = box.end;
         }
         return true;
     };

@@ -4,8 +4,8 @@ import type { PdfImagePage, PdfSourcePageOptions } from "../../core/pdf-types.js
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { preparePdfImages, PdfImageError } from "../media/pdf-image.js";
 import { prepareSourceGlyphs } from "../media/pdf-source-glyphs.js";
-import { prefersReducedMotion } from "./motion.js";
-import { createExportLifecycle, downloadBlob } from "./export-lifecycle.js";
+import { downloadBlob, type ExportControllerState } from "./export-lifecycle.js";
+import { createExportOperation, type ExportControllerOptions } from "./export-operation.js";
 import type { MutablePendingExport } from "../contracts/export-contracts.js";
 
 export interface PendingPdfExport {
@@ -16,50 +16,29 @@ export interface PendingPdfExport {
 
 interface MutablePendingPdfExport extends MutablePendingExport<PdfImagePage> {}
 
-export interface PdfExportControllerOptions {
-  readonly getSelectedItems: () => readonly ImageItem[];
+export interface PdfExportControllerOptions extends ExportControllerOptions {
   readonly getFilename: () => string;
   readonly getSourcePage: (firstSelected: ImageItem, filename: string) => Omit<PdfSourcePageOptions, "glyphs"> | undefined;
-  readonly isBusy: () => boolean;
-  readonly isDisposed: () => boolean;
-  readonly onBusyChange: (busy: boolean) => void;
-  readonly onStatus: (message: string, state: "info" | "busy" | "success" | "error", progress?: string) => void;
-  readonly onCloseViewer: () => void;
-  readonly onClearSourceUrl: () => void;
-  readonly onScrollToFailures: () => void;
-  readonly onCompleted?: () => void;
 }
 
-export interface PdfExportController {
-  readonly pending: PendingPdfExport | null;
-  readonly isRunning: boolean;
-  readonly progress: string;
-  clear(): void;
-  abort(): void;
-  discardIfSelectionChanged(selected: readonly ImageItem[]): boolean;
+export interface PdfExportController extends ExportControllerState<PendingPdfExport> {
   export(): Promise<void>;
 }
 
 /** Owns image preparation, retry state, PDF assembly, and browser download. */
 export function createPdfExportController(options: PdfExportControllerOptions): PdfExportController {
-  const lifecycle = createExportLifecycle<PdfImagePage, MutablePendingPdfExport>({...options, cancelledMessage: t("exportCancelled")});
+  const operation = createExportOperation<PdfImagePage, MutablePendingPdfExport>(options);
 
   async function exportPdf(): Promise<void> {
-    if (lifecycle.isRunning || options.isBusy() || options.isDisposed()) return;
-    const selected = [...options.getSelectedItems()];
-    if (!selected.length) return;
-    const work = lifecycle.resolveWork(selected, () => ({
-      selected,
-      prepared: new Map<ImageItem, PdfImagePage>(),
-      failed: new Map<ImageItem, string>(),
-    }));
-    const retry = work.failed.size > 0;
-    const remaining = work.selected.filter(item => !work.prepared.has(item));
-    await lifecycle.run(
-      work,
-      t(retry ? "retryImages" : "prepareImages", {completed: 0, total: remaining.length}),
-      `0 / ${remaining.length}`,
-      async run => {
+    await operation.start({
+      createWork: selected => ({
+        selected,
+        prepared: new Map<ImageItem, PdfImagePage>(),
+        failed: new Map<ImageItem, string>(),
+      }),
+      preparationMessage: (retry, completed, total) => t(retry ? "retryImages" : "prepareImages", {completed, total}),
+      async run(run) {
+        const {work, remaining} = run;
         try {
           work.failed.clear();
           let completed = 0;
@@ -67,13 +46,7 @@ export function createPdfExportController(options: PdfExportControllerOptions): 
             if (result instanceof PdfImageError) work.failed.set(image, result.message);
             else work.prepared.set(image, result);
             completed += 1;
-            if (!options.isDisposed()) {
-              run.reportStatus(
-                t(retry ? "retryImages" : "prepareImages", {completed, total: remaining.length}),
-                "busy",
-                `${completed} / ${remaining.length}`,
-              );
-            }
+            run.reportPreparation(completed, remaining.length);
           }, {signal: run.signal});
           if (run.stopped) return;
           if (work.failed.size) {
@@ -91,29 +64,26 @@ export function createPdfExportController(options: PdfExportControllerOptions): 
           if (run.stopped) return;
           const blob = createPdf(pages, sourcePage ? {...sourcePage, glyphs} : undefined);
           downloadBlob(blob, filename);
-          options.onClearSourceUrl();
-          lifecycle.clear();
-          options.onCompleted?.();
-          run.reportStatus(t("exportSaved"), "success");
+          run.complete();
         } catch (error) {
           if (run.stopped) return;
-          if (!work.prepared.size && !work.failed.size) lifecycle.clear();
+          if (!work.prepared.size && !work.failed.size) operation.clear();
           run.reportStatus(
             error instanceof Error ? localizeErrorMessage(error.message, "errorPdfCreate", true) : t("errorPdfCreate"),
             "error",
           );
         }
       },
-    );
+    });
   }
 
   return {
-    get pending() { return lifecycle.pending; },
-    get isRunning() { return lifecycle.isRunning; },
-    get progress() { return lifecycle.progress; },
-    clear: lifecycle.clear,
-    abort: lifecycle.abort,
-    discardIfSelectionChanged: lifecycle.discardIfSelectionChanged,
+    get pending() { return operation.pending; },
+    get isRunning() { return operation.isRunning; },
+    get progress() { return operation.progress; },
+    clear: operation.clear,
+    abort: operation.abort,
+    discardIfSelectionChanged: operation.discardIfSelectionChanged,
     export: exportPdf,
   };
 }

@@ -1,3 +1,5 @@
+import {readIsoBox} from "./iso-boxes.js";
+
 /** Shared MIME, signature, and media-kind rules for retrieval and archive naming. */
 export type ImageItemMediaKind = "image" | "gif" | "video";
 
@@ -11,27 +13,17 @@ function ascii(bytes: Uint8Array, start: number, end: number): string {
   return String.fromCharCode(...bytes.subarray(start, end));
 }
 
-function uint32be(bytes: Uint8Array, offset: number): number {
-  return ((bytes[offset]! << 24) | (bytes[offset + 1]! << 16) | (bytes[offset + 2]! << 8) | bytes[offset + 3]!) >>> 0;
-}
-
 function hasPrefix(bytes: Uint8Array, signature: readonly number[]): boolean {
   return bytes.length >= signature.length && signature.every((byte, index) => bytes[index] === byte);
 }
 
 function ftypBrands(bytes: Uint8Array): string[] {
-  if (bytes.length < 16 || ascii(bytes, 4, 8) !== "ftyp") return [];
-  const size32 = uint32be(bytes, 0);
-  let boxSize = size32;
-  let majorBrandOffset = 8;
-  let compatibleBrandsOffset = 16;
-  if (size32 === 1) {
-    if (bytes.length < 24 || uint32be(bytes, 8) !== 0) return [];
-    boxSize = uint32be(bytes, 12);
-    majorBrandOffset = 16;
-    compatibleBrandsOffset = 24;
-  }
-  if (boxSize < compatibleBrandsOffset || boxSize > bytes.length || (boxSize - compatibleBrandsOffset) % 4 !== 0) return [];
+  const box = readIsoBox(bytes, 0, bytes.byteLength);
+  if (!box || box.type !== "ftyp" || box.extendsToEnd || box.end > 0xffff_ffff) return [];
+  const boxSize = box.end;
+  const majorBrandOffset = box.dataStart;
+  const compatibleBrandsOffset = box.dataStart + 8;
+  if (boxSize < compatibleBrandsOffset || (boxSize - compatibleBrandsOffset) % 4 !== 0) return [];
   const brands = [ascii(bytes, majorBrandOffset, majorBrandOffset + 4)];
   // The ftyp box should be small. Bound inspection even if its declared size is hostile.
   const inspectionEnd = Math.min(boxSize, 4 * 1024);

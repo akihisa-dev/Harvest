@@ -1,17 +1,10 @@
+import {extensionFile} from "./support/extension-files.mjs";
+import {startServer, launchBrowser} from "./support/browser.mjs";
 import assert from "node:assert/strict";
-import {createServer} from "node:http";
-import {readFile} from "node:fs/promises";
-import {extname, resolve, sep} from "node:path";
-import {fileURLToPath} from "node:url";
 import test from "node:test";
-import {chromium} from "playwright";
-import ts from "typescript";
 
-const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const extension = resolve(root, "dist/extension");
-
-async function serve() {
-  const server = createServer(async (request, response) => {
+async function serve(t) {
+  const server = await startServer(t, async (request, response) => {
     try {
       const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
       if (pathname === "/test.html") {
@@ -53,82 +46,63 @@ async function serve() {
         </body></html>`);
         return;
       }
-      if (pathname === "/app/panel/image-list-view.js") {
-        const source = await readFile(resolve(root, "src/extension/panel/image-list-view.ts"), "utf8");
-        const {outputText} = ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022}});
-        response.writeHead(200, {"content-type": "text/javascript"});
-        response.end(outputText);
-        return;
-      }
-      const target = resolve(extension, `.${pathname}`);
-      if (target !== extension && !target.startsWith(`${extension}${sep}`)) throw new Error("outside extension");
-      const body = await readFile(target);
-      const mime = {[".css"]: "text/css", [".js"]: "text/javascript"};
-      response.writeHead(200, {"content-type": mime[extname(target)] ?? "application/octet-stream"});
-      response.end(body);
+      const file = await extensionFile(pathname);
+      response.writeHead(200, {"content-type": file.contentType});
+      response.end(file.body);
     } catch {
       if (!response.headersSent) response.writeHead(404).end();
     }
   });
-  await new Promise((resolveListen, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolveListen);
-  });
+
   return {server, url: `http://127.0.0.1:${server.address().port}/test.html`};
 }
 
-test("Source row entry and removal animate while selection updates reuse layout", async () => {
-  const {server, url} = await serve();
-  let browser;
-  try {
-    browser = await chromium.launch({channel: "chrome", headless: true});
-    const page = await browser.newPage();
-    await page.goto(url);
-    await page.waitForFunction(() => Boolean(window.__fixture));
-    const baseline = await page.evaluate(() => {
-      const fixture = window.__fixture;
-      fixture.images = [...fixture.imagesElement.children];
-      fixture.collection.toggleSelected(fixture.urls[0]);
-      fixture.view.render();
-      const afterSelection = fixture.rowMeasurements;
-      fixture.view.render(new Set(), fixture.source);
-      const afterSourceEntry = fixture.rowMeasurements;
-      fixture.collection.toggleSelected(fixture.urls[1]);
-      fixture.view.render(new Set(), fixture.source);
-      const afterStableRender = fixture.rowMeasurements;
-      const sourceEntryAnimated = fixture.animations.some(animation => animation.className === "source-preview");
-      fixture.view.render(new Set(), null);
-      return {
-        afterSelection,
-        afterSourceEntry,
-        afterStableRender,
-        afterSourceRemoved: fixture.imagesElement.children.length,
-        imagesRetained: fixture.images.every((row, index) => fixture.imagesElement.children[index] === row),
-        sourceEntryAnimated,
-        sourceGhostAnimated: fixture.animations.some(animation => animation.className.includes("motion-ghost"))
-      };
-    });
-    assert.equal(baseline.afterSelection, 0, "selection-only updates do not measure list layout");
-    assert.ok(baseline.afterSourceEntry > 0, "Source entry measures the list layout for motion");
-    assert.equal(baseline.afterStableRender, baseline.afterSourceEntry, "an unchanged Source row does not trigger layout measurement");
-    assert.equal(baseline.afterSourceRemoved, 2);
-    assert.equal(baseline.imagesRetained, true, "adding and removing Source preserves existing image rows");
-    assert.equal(baseline.sourceEntryAnimated, true, "Source addition uses the existing entry animation");
-    assert.equal(baseline.sourceGhostAnimated, true, "Source removal uses the existing exit animation");
+test("Source row entry and removal animate while selection updates reuse layout", async (t) => {
+  const {server, url} = await serve(t);
+  const browser = await launchBrowser(t);
+  const page = await browser.newPage();
+  await page.goto(url);
+  await page.waitForFunction(() => Boolean(window.__fixture));
+  const baseline = await page.evaluate(() => {
+    const fixture = window.__fixture;
+    fixture.images = [...fixture.imagesElement.children];
+    fixture.collection.toggleSelected(fixture.urls[0]);
+    fixture.view.render();
+    const afterSelection = fixture.rowMeasurements;
+    fixture.view.render(new Set(), fixture.source);
+    const afterSourceEntry = fixture.rowMeasurements;
+    fixture.collection.toggleSelected(fixture.urls[1]);
+    fixture.view.render(new Set(), fixture.source);
+    const afterStableRender = fixture.rowMeasurements;
+    const sourceEntryAnimated = fixture.animations.some(animation => animation.className === "source-preview");
+    fixture.view.render(new Set(), null);
+    return {
+      afterSelection,
+      afterSourceEntry,
+      afterStableRender,
+      afterSourceRemoved: fixture.imagesElement.children.length,
+      imagesRetained: fixture.images.every((row, index) => fixture.imagesElement.children[index] === row),
+      sourceEntryAnimated,
+      sourceGhostAnimated: fixture.animations.some(animation => animation.className.includes("motion-ghost"))
+    };
+  });
+  assert.equal(baseline.afterSelection, 0, "selection-only updates do not measure list layout");
+  assert.ok(baseline.afterSourceEntry > 0, "Source entry measures the list layout for motion");
+  assert.equal(baseline.afterStableRender, baseline.afterSourceEntry, "an unchanged Source row does not trigger layout measurement");
+  assert.equal(baseline.afterSourceRemoved, 2);
+  assert.equal(baseline.imagesRetained, true, "adding and removing Source preserves existing image rows");
+  assert.equal(baseline.sourceEntryAnimated, true, "Source addition uses the existing entry animation");
+  assert.equal(baseline.sourceGhostAnimated, true, "Source removal uses the existing exit animation");
 
-    await page.emulateMedia({reducedMotion: "reduce"});
-    const reducedMotion = await page.evaluate(() => {
-      const fixture = window.__fixture;
-      const before = fixture.animations.length;
-      fixture.view.render(new Set(), fixture.source);
-      const enteredCount = fixture.imagesElement.children.length;
-      fixture.view.render(new Set(), null);
-      return {before, after: fixture.animations.length, enteredCount};
-    });
-    assert.equal(reducedMotion.enteredCount, 3);
-    assert.equal(reducedMotion.after, reducedMotion.before, "reduced motion suppresses Source entry and exit animations");
-  } finally {
-    await browser?.close();
-    await new Promise(resolveClose => server.close(resolveClose));
-  }
+  await page.emulateMedia({reducedMotion: "reduce"});
+  const reducedMotion = await page.evaluate(() => {
+    const fixture = window.__fixture;
+    const before = fixture.animations.length;
+    fixture.view.render(new Set(), fixture.source);
+    const enteredCount = fixture.imagesElement.children.length;
+    fixture.view.render(new Set(), null);
+    return {before, after: fixture.animations.length, enteredCount};
+  });
+  assert.equal(reducedMotion.enteredCount, 3);
+  assert.equal(reducedMotion.after, reducedMotion.before, "reduced motion suppresses Source entry and exit animations");
 });

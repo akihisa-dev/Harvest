@@ -2,7 +2,7 @@
 
 ## 実行場所と依存方向
 
-`app.ts` はパネルの初期化と各担当の接続、`background.ts` はChromeのサイドパネル設定だけを担当します。解析結果や保存処理はパネルが所有し、停止・再起動するService Workerの変数には保持しません。
+`app.ts` は翻訳とDOM要素を初期化してパネルを生成する入口、`panel/application.ts` は各担当の接続とパネルの生存期間、`background.ts` はChromeのサイドパネル設定だけを担当します。解析結果や保存処理はパネルが所有し、停止・再起動するService Workerの変数には保持しません。
 
 | ディレクトリ | 責務 | 依存できる領域（自身を除く） |
 | --- | --- | --- |
@@ -19,7 +19,7 @@
 
 ## 受信データと非同期処理の所有権
 
-[page-contracts.ts](contracts/page-contracts.ts) はページ結果をunknownから検証します。ページ名・URL・画像一覧・メディア一覧・Xの状態と証拠の構造を確認し、不正な値を確定済みの収集結果へ反映しません。URLの採否と未知の投稿データの探索は従来の担当に残します。
+[page-contracts.ts](contracts/page-contracts.ts) はページ結果をunknownから検証します。ページ名・URL・画像一覧・メディア一覧・Xの状態と証拠の構造、ブックマーク続き取得の結果とcursorを確認し、不正な値を確定済みの収集結果へ反映しません。URLの採否と未知の投稿データの探索は従来の担当に残します。
 
 [worker-contracts.ts](contracts/worker-contracts.ts) はWorkerの要求と応答を検証します。処理ID、画素寸法とバイト長、Blobの種類、CRC32の範囲、成功と失敗の排他性を両端で確認します。返答の復元失敗や送信失敗でも待機とリスナーを解放し、古いWorkerの通知を新しいWorkerへ反映しません。JXLの待機終了期限は未完了要求がなくなってから設定します。
 
@@ -27,9 +27,11 @@
 
 ## 画面の接続と状態管理
 
-[app.ts](app.ts) は画面全体の接続と利用者の操作を受け持ちます。[export-session.ts](panel/export-session.ts) が保存形式・出典設定・開始時の保存対象・完了記録を所有し、選択変更による再試行データの破棄は操作の経路から明示的に行います。保存完了は各保存処理から通知し、ステータスの文言には依存しません。[app-view.ts](panel/app-view.ts) は渡された状態をDOMへ表示するだけで、描画による作業データの変更や収集先への通知は行いません。
+[application.ts](panel/application.ts) はパネルごとに状態と各担当を生成し、操作の購読と終了時の解放を受け持ちます。[result-session.ts](panel/result-session.ts) は確定した結果のタイトルと、その結果に対応する出典・初期形式・表示グループ・プレビューの公開とリセットをまとめます。解析の失敗時には結果の公開を呼ばず、前の結果を維持します。
 
-DOM要素の契約は [app-elements.ts](panel/app-elements.ts)、設定の永続化は [export-preferences.ts](browser/export-preferences.ts)、表示状態の導出とファイル名・Sourceプレビューは [export-presentation.ts](panel/export-presentation.ts)、解析の開始・中断・結果公開は [scan-session-controller.ts](panel/scan-session-controller.ts) が所有します。
+[export-session.ts](panel/export-session.ts) が保存形式・出典設定・開始時の保存対象・完了記録を所有し、選択変更による再試行データの破棄は操作の経路から明示的に行います。保存完了は各保存処理から通知し、ステータスの文言には依存しません。[app-view.ts](panel/app-view.ts) は渡された状態をDOMへ表示するだけで、描画による作業データの変更や収集先への通知は行いません。
+
+DOM要素の契約は [app-elements.ts](panel/app-elements.ts)、設定保存を呼ぶ操作は [export-preferences-controller.ts](panel/export-preferences-controller.ts)、設定の読み書きは [export-preferences.ts](browser/export-preferences.ts)、表示状態の導出とファイル名・Sourceプレビューは [export-presentation.ts](panel/export-presentation.ts)、解析の開始・中断・収集結果の確定は [scan-session-controller.ts](panel/scan-session-controller.ts) が所有します。
 
 [image-list-view.ts](panel/image-list-view.ts) は画像グループの表示、選択操作、キー操作による並べ替えと一覧DOMを担当します。[image-drag-controller.ts](panel/image-drag-controller.ts) はドラッグ中の一時順序、計測済み座標、スクロール・サイズ変更の監視を所有し、確定結果だけを画像集合へ渡します。DOMを使わない挿入位置の計算は [src/core/image-reorder.ts](../core/image-reorder.ts) に置きます。
 
@@ -47,7 +49,7 @@ Sourceプレビューも通常画像と同じ一覧の更新管理へ含め、�
 
 [viewer-controller.ts](panel/viewer-controller.ts) はプレビューのページ位置・ズーム・移動を管理し、選択画像は画像集合から受け取ります。[viewer-image-transition.ts](panel/viewer-image-transition.ts) は画像の取得待ち、切り替え中の残像、アニメーション、読み込み監視とその解放を所有します。
 
-[collection-controller.ts](panel/collection-controller.ts) は収集セッションごとにタブ、注入開始、接続を一つの記録へまとめ、現在の記録で許可した接続だけを解析・保存操作へ渡します。状態通知の送信に失敗した接続が現在の接続なら収集モードを終了し、画面更新を止めません。遅れて届く古い切断通知は新しい接続を終了させません。[app.ts](app.ts) は処理中・終了済みの状態を渡し、パネルを閉じたときには収集接続を切り、解析と画像準備を中断します。
+[collection-controller.ts](panel/collection-controller.ts) は収集セッションごとにタブ、注入開始、接続を一つの記録へまとめ、現在の記録で許可した接続だけを解析・保存操作へ渡します。状態通知の送信に失敗した接続が現在の接続なら収集モードを終了し、画面更新を止めません。遅れて届く古い切断通知は新しい接続を終了させません。[application.ts](panel/application.ts) は処理中・終了済みの状態を渡し、パネルを閉じたときには収集接続を切り、解析と画像準備を中断します。[collection-mode.ts](content/collection-mode.ts) 内のアニメーションと一時要素は一つの記録で対応付け、完了・中止・残像数の制限・切断時に同じ解放処理を使います。
 
 画像一覧のドラッグ並べ替えでは、ドラッグ開始時に行位置を記録し、通常のドラッグ移動ではその記録を使います。祖先のスクロール量で位置記録を補正し、一覧やウィンドウのサイズが変わった場合だけ全行と列構成を再計測します。スクロール通知は描画フレームごとにまとめ、ポインターが静止していても挿入位置を更新します。順番が変わったときは、位置が変わる行だけを測ってアニメーションし、その結果で位置記録を更新します。ドラッグ中だけブラウザーのスクロール位置の自動補正を無効にし、確定・中止時に元の設定へ戻します。
 
@@ -55,7 +57,7 @@ Sourceプレビューも通常画像と同じ一覧の更新管理へ含め、�
 
 MP4は個別ファイル、画像・GIFは1枚なら直接保存し、複数枚ならZIPにまとめます。[src/core/export-files.ts](../core/export-files.ts) が保存方式と個別ファイル名を決めます。全件の準備が成功してから保存を開始し、単体はページ名、複数動画はページ名と連番を使います。既存の準備データの合計上限は個別保存でもメモリ使用量の制限として維持します。Chromeが複数ダウンロードの許可を求めた場合は利用者の操作が必要です。
 
-[pdf-export-controller.ts](panel/pdf-export-controller.ts) と [image-export-controller.ts](panel/image-export-controller.ts) は各保存操作の進捗・失敗通知・成果物の組み立て・ダウンロードを接続します。ZIP向けの取得と入力順の変換、未消費結果の解放は [image-archive-preparation.ts](media/image-archive-preparation.ts)、名前・形式照合・容量予算は [src/core/image-archive.ts](../core/image-archive.ts) が所有します。両方に共通する選択一致、保留中の準備結果、失敗分だけの再試行、中断、進捗、終了時の後始末、Blobのダウンロードは [export-lifecycle.ts](panel/export-lifecycle.ts) が一元管理します。
+[pdf-export-controller.ts](panel/pdf-export-controller.ts) と [image-export-controller.ts](panel/image-export-controller.ts) は形式ごとの準備・成果物の組み立て・ダウンロードを接続します。[export-operation.ts](panel/export-operation.ts) が両者の開始前確認、保存対象の確定、失敗分の選定、準備進捗と完了通知の順序を共通化します。[export-lifecycle.ts](panel/export-lifecycle.ts) は保留中の準備結果、選択一致、中断、進捗、終了時の後始末、Blobのダウンロードを管理します。ZIP向けの取得と入力順の変換、未消費結果の解放は [image-archive-preparation.ts](media/image-archive-preparation.ts)、名前・形式照合・容量予算は [src/core/image-archive.ts](../core/image-archive.ts) が所有します。
 
 保存中も保存ボタンだけは有効にし、再クリックで進行中の保存を中止します。進捗表示は維持し、中止後は通信・変換の終了を待って準備済み画像と失敗情報を破棄し、エラーにせず通常の保存可能状態へ戻します。収集モードからの保存要求はこの中止操作と分けます。
 
@@ -64,6 +66,8 @@ MP4は個別ファイル、画像・GIFは1枚なら直接保存し、複数枚�
 保存形式を変更した時点で、互換性のない形式の再試行用準備結果と失敗情報を解放します。同じ形式・同じ選択の再試行は成功済み結果を保ち、出典ページ設定だけの変更では破棄しません。
 
 形式固有の準備と組み立ては共通処理へ混ぜません。[image-format.ts](media/image-format.ts) はJPG・PNG・JXLへの変換を担当し、[jxl-encoder.ts](media/jxl-encoder.ts) と [jxl-encode-worker.ts](workers/jxl-encode-worker.ts) はJXL変換を画面操作と分けて実行します。[jxl-codec.ts](workers/jxl-codec.ts) は単一スレッド用のWebAssemblyエンコーダーを明示的に初期化し、ビルドでは未使用の複数スレッド版を配布対象から除きます。
+
+[decoded-image.ts](media/decoded-image.ts) は取得した画像の寸法検査と、画素へ展開したbitmap・描画用canvasの生存期間を管理します。取得時のJPEG確認、PDF、JPG・PNG・JXLの各経路がこの処理を使い、変換の成功・失敗・中止で資源を解放します。形式ごとの原本再利用、透過・白背景、エラーと中止の優先順位は各利用側が指定し、画素上限や元データの保存方針は維持します。
 
 画像の選択と確定した順序、ZIPの組み立ては `src/core/` に置き、画面やChromeの状態を参照させません。
 
@@ -91,7 +95,11 @@ MP4は個別ファイル、画像・GIFは1枚なら直接保存し、複数枚�
 
 ## ページ解析の入口と実行制約
 
-[page-access.ts](browser/page-access.ts) は通常のページ走査とXの追加読み取りの順序・結果統合を担当します。ホーム・プロフィールでは、投稿解析で確認できた写真の原寸URLを初回DOM結果にも反映してから補完候補を統合します。同じ写真の表示サイズ違いは1件にし、投稿写真と確認できないページ候補は保持します。解決済み動画のpreviewUrlに対応する画像候補は、初回DOM結果からも除いて動画のプレビューとして保持します。対応する動画を解決できない画像候補はこの規則で除きません。[page-read-session.ts](browser/page-read-session.ts) はChromeへの読み取り要求、同じ文書であることの照合、時間制限、中断、解析用ウィンドウ・タブの解放を管理します。[page-scan.ts](content/page-scan.ts)、[x-page-state.ts](content/x-page-state.ts)、[x-media-scan.ts](content/x-media-scan.ts)、[collection-mode.ts](content/collection-mode.ts) の注入関数はChromeが関数単体をページへコピーして実行するため、外側の変数やimportに依存しない形を保ちます。この制約のある関数内の処理を、通常のモジュール分割で外へ移すことは避けます。
+[page-access.ts](browser/page-access.ts) は解析の公開入口として、初回走査、サイトごとの取得、公開前の最終確認を接続します。[page-read-session.ts](browser/page-read-session.ts) はChromeへの読み取り要求、同じ文書であることの照合、時間制限、中断、解析用ウィンドウ・タブの解放を管理します。Xの取得順序、続き取得、不足投稿の再試行、取得結果の反映は [x-page-acquisition.ts](browser/x-page-acquisition.ts) が担当し、[x-scan-evidence.ts](browser/x-scan-evidence.ts) が複数回の読み取りから得た投稿の順序と証拠を統合します。利用側は従来どおり `scanTab`・`scanUrl`・`ScanOptions` を公開入口から使用します。
+
+ホーム・プロフィールでは、投稿解析で確認できた写真の原寸URLを初回DOM結果にも反映してから補完候補を統合します。同じ写真の表示サイズ違いは1件にし、投稿写真と確認できないページ候補は保持します。解決済み動画のpreviewUrlに対応する画像候補は、初回DOM結果からも除いて動画のプレビューとして保持します。対応する動画を解決できない画像候補はこの規則で除きません。
+
+[page-scan.ts](content/page-scan.ts)、[x-page-state.ts](content/x-page-state.ts)、[x-media-scan.ts](content/x-media-scan.ts)、[collection-mode.ts](content/collection-mode.ts) の注入関数はChromeが関数単体をページへコピーして実行するため、外側の変数やimportに依存しない形を保ちます。ページ走査の変更キュー・監視対象・待機タイマーは注入関数内の一つの担当が所有し、初回走査、変更反映、待機、最終照合、解放の順序を管理します。Xの投稿情報の投影も関数内で探索予算と循環・読み取り済み情報をまとめて管理します。この制約のある関数内の処理を、通常のモジュール分割で外へ移すことは避けます。
 
 初回走査中は変更監視を保ち、初回走査とその差分反映が終わってから静穏250ms・最大800msの待機を開始します。要素の多いページでも、走査途中のURL変更・追加・削除を待機上限の都合で捨てません。
 
@@ -126,7 +134,7 @@ MP4・GIFの保存は [media-fetch.ts](media/media-fetch.ts) が共通の取得�
 
 Xの追加解析は [x-media-scan.ts](content/x-media-scan.ts) をページの実行環境で実行し、投稿と動画要素に紐づく既存データの必要なフィールドだけを読みます。getterを実行せず、投稿本文・ユーザー情報・認証情報は出力対象に含めません。属性の補完ではstore・cacheを丸ごと走査しません。投稿IDと一致する祖先までで探索を止め、1回の読み取りは2.5秒・18,000ノード・文字列合計1,000,000文字・投稿ごと80要素・祖先40段・データ深さ36段・配列256要素を上限にします。画面上のメディアを全投稿から先に収集し、その後に既存データから補完します。投稿数による打ち切りは行いません。祖先40段で投稿データが見つからない場合は補完を止めるだけで、取得済みのDOM画像を失敗にしません。補完の処理予算を使い切った場合も取得済みの候補を返し、件数診断で不完全であることを区別します。
 
-データの解釈・重複統合・投稿単位の照合は [src/core/x-media.ts](../core/x-media.ts) が担当します。[page-access.ts](browser/page-access.ts) は不足投稿だけを400ms後に1回再読し、不足や補完中断があっても利用できる候補を返し、パネルに部分取得の案内を表示します。候補がない場合はエラーを返します。ページ移動・中止の確認を各読み取りへ適用し、エラー時は確定済みの画像集合を置き換えません。この投稿データの読み取りと補完自体は追加通信を行いません。ブックマーク解析では、後述するX自身の続き取得処理を呼び出して未読み込みのページを追加取得します。既存のサイト権限を使い、権限や永続保存は追加しません。
+データの解釈・重複統合・投稿単位の照合は [src/core/x-media.ts](../core/x-media.ts) が担当します。[x-page-acquisition.ts](browser/x-page-acquisition.ts) は不足投稿だけを400ms後に1回再読し、不足や補完中断があっても利用できる候補を返し、パネルに部分取得の案内を表示します。再読時に消えた観測も保持して同じ投稿の証拠を補い、再読で見つかった無関係な投稿は追加しません。候補がない場合はエラーを返します。ページ移動・中止の確認を各読み取りへ適用し、エラー時は確定済みの画像集合を置き換えません。この投稿データの読み取りと補完自体は追加通信を行いません。ブックマーク解析では、後述するX自身の続き取得処理を呼び出して未読み込みのページを追加取得します。既存のサイト権限を使い、権限や永続保存は追加しません。
 
 解析件数は `PageScan.xDiagnostics`、正規化後と除外の件数は `ScanSessionController.diagnostics`、表示・非表示の件数は `ImageListView.diagnostics`、リモートプレビューの取得済み・失敗・待機件数は `ImagePreviewLoader.diagnostics` で確認できます。プレビュー件数は共有URLごとの取得状態であり、画像要素の描画完了件数ではありません。診断はメモリ上の件数だけで、ログ保存や外部送信を行いません。Xの解析後は全グループを初期表示し、一般URLの除外規則で一部候補が失われた場合も部分取得として案内し、残った候補を表示します。全候補が失われた場合は前の結果を維持します。
 
@@ -146,7 +154,7 @@ GIF・MP4の元データ保存では識別子の検査に加え、GIFの画面�
 
 データは当該ページのメモリだけに保持し、画面から投稿要素が除去されても解析時に統合します。先頭ページの再取得、URL変更、いいね一覧の取得、ページ離脱で破棄します。ページ追加は投稿IDで重複排除し、写真の原寸化と動画候補の選択は共通パーサーを使います。パーサーの探索予算は投稿単位で適用し、一覧全体の累積件数で後続投稿を切り捨てません。既存の保存ファイルや確定済みのパネル結果への移行・上書きはありません。
 
-fetchのRequest形式では本文を複製から読み、元のRequestを消費・変更しません。initに文字列のbodyを指定した場合はその本文を優先し、bodyがnullまたはundefinedならRequestの本文を参照します。本文の判定は要求開始順に処理し、応答はその順序で決めた一覧の世代へ対応付けます。判定待ち中のURL変更・いいね取得・ページ離脱は待機中の要求も無効にします。本文の複製・読み取り・JSON解析に失敗した場合や、initのbodyが文字列以外の場合は一覧を消去せず、その応答を捕捉せずに部分取得として案内します。要求本文は判定まで一時的に扱うだけで永続保存しません。
+fetchのRequest形式では本文を複製から読み、元のRequestを消費・変更しません。initに文字列のbodyを指定した場合はその本文を優先し、bodyがnullまたはundefinedならRequestの本文を参照します。本文の判定は要求開始順に処理し、応答はその順序で決めた一覧の世代へ対応付けます。保持する投稿・世代・部分取得の状態と、要求判定の待ち行列・ページの切替状態はそれぞれ専用の担当が管理します。判定待ち中のURL変更・いいね取得・ページ離脱は待機中の要求も無効にします。本文の複製・読み取り・JSON解析に失敗した場合や、initのbodyが文字列以外の場合は一覧を消去せず、その応答を捕捉せずに部分取得として案内します。要求本文は判定まで一時的に扱うだけで永続保存しません。
 
 [x-media-scan.ts](content/x-media-scan.ts) は、解析時に画面のReact祖先から現在の一覧モジュールとstoreを確認し、getStateによる読み取りと一覧の選択処理で既存投稿を補います。過去の通信応答自体は回収しません。Xの現行公開コードでは、一覧モジュールのtimelineId・scopeIdがurtの一覧を識別し、selectEntries/selectPinnedEntryは追加・除外・固定投稿を反映します。これらがない場合は現在の祖先に直接渡されたentries/itemsを照合します。全表示投稿のIDと一致し、一意に一覧を決められる場合だけentities.tweets.entitiesから該当IDのメディアを投影します。このstore読み取りでは全投稿表の列挙・任意のstate探索・fetch/dispatchの呼び出しを行わず、追加通信も行いません。引用と再投稿はその投稿が参照するIDだけ補完し、個別投稿の解析では対象IDのみに限定します。
 
@@ -154,7 +162,7 @@ fetchのRequest形式では本文を複製から読み、元のRequestを消費�
 
 解析操作に伴う続き取得は [x-bookmark-page.ts](content/x-bookmark-page.ts) が担当します。現在のブックマーク画面に結び付いたstoreと一覧モジュールを一意に確認し、`timelineId` が `bookmarks`、`scopeId` が未指定である場合だけ、そのモジュールの `fetchBottom` が返すactionをstoreの `dispatch` へ渡します。追加通信と認証はX自身が処理し、拡張機能は認証情報を取り出したり独自にAPI要求を再送したりしません。スクロール操作や複数ページの並行要求は行いません。
 
-[page-access.ts](browser/page-access.ts) は、この続き取得と一覧の再読み取りを順番に繰り返します。同じブックマーク一覧であることを確認して候補を統合し、終端応答でも最後のページを取り込んでから完了します。停止時は実行中の1要求が完了するか時間切れになるまで待ち、取得済みの分をパネルへ公開します。
+[x-page-acquisition.ts](browser/x-page-acquisition.ts) は、この続き取得と一覧の再読み取りを順番に繰り返します。同じブックマーク一覧であることを確認して候補を統合し、終端応答でも最後のページを取り込んでから完了します。停止時は実行中の1要求が完了するか時間切れになるまで待ち、取得済みの分をパネルへ公開します。
 
 続き取得後の再読み取りでは、現在の一覧モジュールの識別を継続取得機能の有無と分けて受け渡します。Likesなど別一覧の識別を確認した場合は、取得途中のブックマークも公開せず移動エラーにします。同じブックマーク一覧で `fetchBottom` だけが利用できなくなった場合は、再読み取りした候補を統合し、終端応答なら最後のページを含めて完了します。一覧を識別できず継続取得もできない構造では、別一覧と断定せず従来どおり取得済み分を部分取得として扱います。
 

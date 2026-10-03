@@ -16,11 +16,44 @@ export function captureCollectionLinks(session: string): void {
   const markedTargets = new Map<Element, PersistentGlow>();
   const targetAnchors = new WeakMap<Element, HTMLAnchorElement>();
   const overlayElements = new WeakSet<Element>();
-  const motionAnimations = new Set<Animation>();
-  const motionElements = new Set<HTMLElement>();
-  const hoverGhosts = new Set<HTMLElement>();
-  const ghostAnimations = new Map<HTMLElement, Animation>();
-  const motionFrames = new Set<number>();
+  // Each fading overlay has one animation owner, including hover ghosts.
+  // Completion, cancellation, ghost eviction and disconnect use the same release.
+  const motion = (() => {
+    const overlays = new Map<HTMLElement, {animation: Animation; ghost: boolean}>();
+    const frames = new Set<number>();
+    const release = (overlay: HTMLElement, animation: Animation): void => {
+      if (overlays.get(overlay)?.animation !== animation) return;
+      overlays.delete(overlay);
+      overlay.remove();
+    };
+    const cancel = (overlay: HTMLElement, animation: Animation): void => {
+      animation.cancel();
+      release(overlay, animation);
+    };
+    return {
+      track(overlay: HTMLElement, animation: Animation, ghost = false): void {
+        overlays.set(overlay, {animation, ghost});
+        const finish = (): void => release(overlay, animation);
+        animation.onfinish = finish;
+        animation.oncancel = finish;
+        if (!ghost) return;
+        const ghosts = [...overlays].filter(([, entry]) => entry.ghost);
+        for (const [old, entry] of ghosts.slice(0, Math.max(0, ghosts.length - 3))) cancel(old, entry.animation);
+      },
+      nextFrame(draw: () => void): void {
+        const frame = window.requestAnimationFrame(() => {
+          frames.delete(frame);
+          draw();
+        });
+        frames.add(frame);
+      },
+      cancelAll(): void {
+        for (const frame of frames) window.cancelAnimationFrame(frame);
+        frames.clear();
+        for (const [overlay, {animation}] of [...overlays]) cancel(overlay, animation);
+      },
+    };
+  })();
   let hideTimer: number | null = null;
 
   const prefersReducedMotion = (): boolean => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -35,15 +68,7 @@ export function captureCollectionLinks(session: string): void {
       {opacity: style.opacity, transform: style.transform},
       {opacity: "0", transform: "scale(.78)"},
     ], {duration: 160, easing: "cubic-bezier(.2,.75,.25,1)"});
-    motionAnimations.add(animation);
-    motionElements.add(overlay);
-    const finish = (): void => {
-      motionAnimations.delete(animation);
-      motionElements.delete(overlay);
-      overlay.remove();
-    };
-    animation.onfinish = finish;
-    animation.oncancel = finish;
+    motion.track(overlay, animation);
   };
 
   const resolveLinkUrl = (anchor: HTMLAnchorElement): URL | null => {
@@ -202,13 +227,11 @@ export function captureCollectionLinks(session: string): void {
       state = {url, anchor, overlay};
       markedTargets.set(target, state);
       if (!prefersReducedMotion()) {
-        const frame = window.requestAnimationFrame(() => {
-          motionFrames.delete(frame);
+        motion.nextFrame(() => {
           if (markedTargets.get(target)?.overlay !== overlay) return;
           overlay.style.opacity = "1";
           overlay.style.transform = "scale(1)";
         });
-        motionFrames.add(frame);
       } else {
         overlay.style.transition = "none";
         overlay.style.opacity = "1";
@@ -303,28 +326,7 @@ export function captureCollectionLinks(session: string): void {
         {opacity: oldStyle.opacity, transform: oldStyle.transform},
         {opacity: "0", transform: "scale(.78)"},
       ], {duration: 140, easing: "cubic-bezier(.2,.75,.25,1)"});
-      motionAnimations.add(animation);
-      motionElements.add(oldGlow);
-      const finish = (): void => {
-        motionAnimations.delete(animation);
-        motionElements.delete(oldGlow);
-        hoverGhosts.delete(oldGlow);
-        ghostAnimations.delete(oldGlow);
-        oldGlow.remove();
-      };
-      animation.onfinish = finish;
-      animation.oncancel = finish;
-      hoverGhosts.add(oldGlow);
-      ghostAnimations.set(oldGlow, animation);
-      while (hoverGhosts.size > 3) {
-        const oldestGhost = hoverGhosts.values().next().value as HTMLElement | undefined;
-        if (!oldestGhost) break;
-        ghostAnimations.get(oldestGhost)?.cancel();
-        hoverGhosts.delete(oldestGhost);
-        ghostAnimations.delete(oldestGhost);
-        motionElements.delete(oldestGhost);
-        oldestGhost.remove();
-      }
+      motion.track(oldGlow, animation, true);
     }
     hovered = target;
     visualTarget = target;
@@ -427,15 +429,7 @@ export function captureCollectionLinks(session: string): void {
     window.removeEventListener("resize", onResize);
     if (redrawFrame !== null) window.cancelAnimationFrame(redrawFrame);
     if (hideTimer !== null) window.clearTimeout(hideTimer);
-    for (const frame of motionFrames) window.cancelAnimationFrame(frame);
-    motionFrames.clear();
-    for (const animation of motionAnimations) animation.cancel();
-    motionAnimations.clear();
-    for (const element of [...motionElements]) element.remove();
-    motionElements.clear();
-    for (const ghost of hoverGhosts) ghost.remove();
-    hoverGhosts.clear();
-    ghostAnimations.clear();
+    motion.cancelAll();
     for (const state of markedTargets.values()) animateOut(state.overlay);
     markedTargets.clear();
     pendingClicks.clear();

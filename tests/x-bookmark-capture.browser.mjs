@@ -1,6 +1,5 @@
+import {temporaryDirectory, launchExtensionContext} from "./support/browser.mjs";
 import assert from 'node:assert/strict';
-import {mkdtemp, rm} from 'node:fs/promises';
-import {chromium} from 'playwright';
 import test from 'node:test';
 import {join, resolve} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -16,14 +15,11 @@ const response = ids => ({data: {bookmark_timeline_v2: {timeline: {instructions:
     ]}}}}}},
   }))}]}}}});
 
-test('受信したブックマークをDOM脱落後も原寸・動画付きで解析し、追加通信せず画面を分離する', {timeout: 30000}, async () => {
-  const temp = await mkdtemp(join(tmpdir(), 'harvest-bookmark-capture-'));
+test('受信したブックマークをDOM脱落後も原寸・動画付きで解析し、追加通信せず画面を分離する', {timeout: 30000}, async (t) => {
+  const temp = await temporaryDirectory(t, join(tmpdir(), 'harvest-bookmark-capture-'));
   let context, cdp;
   try {
-    context = await chromium.launchPersistentContext(`${temp}/profile`, {
-      channel: 'chrome', headless: true, ignoreDefaultArgs: ['--disable-extensions'],
-      args: ['--enable-unsafe-extension-debugging', '--disable-background-networking', '--no-first-run', '--no-default-browser-check'],
-    });
+    const context = await launchExtensionContext(t, `${temp}/profile`, {args: ['--enable-unsafe-extension-debugging', '--disable-background-networking', '--no-first-run', '--no-default-browser-check']});
     cdp = await context.browser().newBrowserCDPSession();
     const {id} = await cdp.send('Extensions.loadUnpacked', {path: resolve(process.env.HARVEST_TEST_EXTENSION_DIR ?? 'dist/extension')});
     let nextResponse = response([1, 2]);
@@ -102,20 +98,16 @@ test('受信したブックマークをDOM脱落後も原寸・動画付きで�
     assert.equal((await snapshot()).snapshot.posts.length, 0, 'いいねタブと混ぜない');
   } finally {
     await cdp?.detach();
-    await context?.close();
-    await rm(temp, {recursive: true, force: true});
+
   }
 });
 
-test('RequestのPOST本文を消費せずページ追加し、非同期判定も要求開始順と画面の世代を守る', {timeout: 30000}, async () => {
-  const temp = await mkdtemp(join(tmpdir(), 'harvest-bookmark-request-'));
+test('RequestのPOST本文を消費せずページ追加し、非同期判定も要求開始順と画面の世代を守る', {timeout: 30000}, async (t) => {
+  const temp = await temporaryDirectory(t, join(tmpdir(), 'harvest-bookmark-request-'));
   let context, cdp;
   const pending = new Map(), requests = [];
   try {
-    context = await chromium.launchPersistentContext(`${temp}/profile`, {
-      channel: 'chrome', headless: true, ignoreDefaultArgs: ['--disable-extensions'],
-      args: ['--enable-unsafe-extension-debugging', '--disable-background-networking', '--no-first-run', '--no-default-browser-check'],
-    });
+    const context = await launchExtensionContext(t, `${temp}/profile`, {args: ['--enable-unsafe-extension-debugging', '--disable-background-networking', '--no-first-run', '--no-default-browser-check']});
     cdp = await context.browser().newBrowserCDPSession();
     await cdp.send('Extensions.loadUnpacked', {path: resolve(process.env.HARVEST_TEST_EXTENSION_DIR ?? 'dist/extension')});
     await context.route(/^https?:\/\//, async route => {
@@ -125,7 +117,7 @@ test('RequestのPOST本文を消費せずページ追加し、非同期判定も
       const finish = () => url.searchParams.get('fail') === 'network' ? route.abort('failed') : route.fulfill({
         status: url.searchParams.get('fail') === 'http' ? 500 : 200, contentType: 'application/json',
         body: url.searchParams.get('fail') === 'json' ? 'invalid json' : JSON.stringify(response([Number(url.searchParams.get('id'))])),
-      });
+        });
       const key = url.searchParams.get('delay');
       if (key) { pending.set(key, finish); return; }
       return finish();
@@ -263,7 +255,6 @@ test('RequestのPOST本文を消費せずページ追加し、非同期判定も
     assert.equal(requests.length, sequence, '捕捉処理は追加API要求を送らない');
   } finally {
     await cdp?.detach();
-    await context?.close();
-    await rm(temp, {recursive: true, force: true});
+
   }
 });

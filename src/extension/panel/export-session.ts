@@ -1,6 +1,7 @@
 import type { ExportFormat, ImageArchiveFormat } from "../../core/export-formats.js";
 import type { ImageItem } from "../../core/images.js";
 import { mediaExportSelection } from "../../core/media-selection.js";
+import type { ExportControllerState } from "./export-lifecycle.js";
 import {
   deriveExportViewState,
   type CompletedExport,
@@ -8,15 +9,6 @@ import {
   type PendingExportView,
   type PendingImageExportView,
 } from "./export-presentation.js";
-
-interface ExportControllerState<TPending extends PendingExportView> {
-  readonly pending: TPending | null;
-  readonly isRunning: boolean;
-  readonly progress: string;
-  clear(): void;
-  abort(): void;
-  discardIfSelectionChanged(selected: readonly ImageItem[]): boolean;
-}
 
 interface PdfSessionController extends ExportControllerState<PendingExportView> {
   export(): Promise<void>;

@@ -1,27 +1,18 @@
+import { readIsoBox } from "./iso-boxes.js";
 function ascii(bytes, start, end) {
     return String.fromCharCode(...bytes.subarray(start, end));
-}
-function uint32be(bytes, offset) {
-    return ((bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3]) >>> 0;
 }
 function hasPrefix(bytes, signature) {
     return bytes.length >= signature.length && signature.every((byte, index) => bytes[index] === byte);
 }
 function ftypBrands(bytes) {
-    if (bytes.length < 16 || ascii(bytes, 4, 8) !== "ftyp")
+    const box = readIsoBox(bytes, 0, bytes.byteLength);
+    if (!box || box.type !== "ftyp" || box.extendsToEnd || box.end > 0xffff_ffff)
         return [];
-    const size32 = uint32be(bytes, 0);
-    let boxSize = size32;
-    let majorBrandOffset = 8;
-    let compatibleBrandsOffset = 16;
-    if (size32 === 1) {
-        if (bytes.length < 24 || uint32be(bytes, 8) !== 0)
-            return [];
-        boxSize = uint32be(bytes, 12);
-        majorBrandOffset = 16;
-        compatibleBrandsOffset = 24;
-    }
-    if (boxSize < compatibleBrandsOffset || boxSize > bytes.length || (boxSize - compatibleBrandsOffset) % 4 !== 0)
+    const boxSize = box.end;
+    const majorBrandOffset = box.dataStart;
+    const compatibleBrandsOffset = box.dataStart + 8;
+    if (boxSize < compatibleBrandsOffset || (boxSize - compatibleBrandsOffset) % 4 !== 0)
         return [];
     const brands = [ascii(bytes, majorBrandOffset, majorBrandOffset + 4)];
     // The ftyp box should be small. Bound inspection even if its declared size is hostile.

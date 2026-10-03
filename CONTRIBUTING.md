@@ -27,7 +27,11 @@ Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion�
 
 `pnpm check:architecture`は依存方向・実行時循環・ページ注入関数の実行時import・coreとWorkerの型環境を検査します。通常の`verify`に含まれるため、新しいモジュールも同じ境界を守る必要があります。動的importの参照先も文字列リテラルで指定し、変数経由で依存検査をすり抜けないようにします。詳細は[src/extension/README.md](src/extension/README.md)を参照してください。Nodeで生成済みJavaScriptを検証する際の形式推測をなくすため、packageのモジュール形式は`type: module`で明示しています。
 
-[scripts/build.mjs](scripts/build.mjs) は、コンパイル、実行コードの配置、同梱ライブラリ、画面・画像、対応ソースの配置をそれぞれの関数で行います。最後にmanifestを確定し、一時フォルダーから配布先へ置き換えます。既存の配布物は置換前に退避し、置換に失敗した場合は元へ戻します。
+[scripts/build.mjs](scripts/build.mjs) はコマンドの入口です。[build/pipeline.mjs](scripts/build/pipeline.mjs) がコンパイルから配布までの順序を、[build/runtime.mjs](scripts/build/runtime.mjs) が実行コード・ページ注入用スクリプト・同梱ライブラリの配置を担当します。これらのモジュールを読み込むだけではビルドを開始しません。
+
+[build/artifact-plan.mjs](scripts/build/artifact-plan.mjs) は画面・画像と対応ソースの配置先を定義し、生成と `check:build` が同じ定義を参照します。`scripts/` と `tests/` の下に追加する補助モジュールも階層を保って収録し、検査では正本との内容一致を確認します。ソースと生成コードの依存検査は [lib/module-references.mjs](scripts/lib/module-references.mjs) の構文解析を共用し、WorkerへのURL参照と実行時importを区別します。
+
+[build/output-transaction.mjs](scripts/build/output-transaction.mjs) は一意の一時フォルダー、既存配布物の退避、完成した配布物への置換と失敗時の復元を管理します。準備が失敗した場合は既存配布物を保持し、置換が失敗した場合は元へ戻します。復元も失敗した場合は退避先を残してエラーに表示します。失敗時の復元は一時フォルダーを使った自動テストで確認します。
 
 ## 同梱ライブラリ
 
@@ -54,6 +58,10 @@ GitHub Actionsを導入していないのは意図的な開発方針です。検
 画面検証には開発用のPlaywright 1.62.1（Apache-2.0）を完全な版で固定して使用します。導入目的は、CSSの文字列チェックでは検出できない重なり・見切れ・スクロール位置の誤りを実際の表示寸法と操作で検出することです。配布する拡張機能の実行コードには含めません。
 
 拡張機能のHTML・CSS・JavaScriptを読み込み、Chromeから取得するページ情報だけをテスト用の値に置き換えます。外部サイトの読み込みや実際の利用者データは使用しません。
+
+画面テストのブラウザー、一時プロファイル、ローカルサーバーは [tests/support/browser.mjs](tests/support/browser.mjs) の関数へテストのコンテキスト `t` を渡して作成します。[resources.mjs](tests/support/resources.mjs) が取得の逆順で解放するため、準備途中の失敗でも後片付けが実行され、解放の一つが失敗しても残りを処理します。テストごとの画面操作と期待値は各テストに置きます。
+
+配布物をHTTPで読み込むテストは [extension-files.mjs](tests/support/extension-files.mjs) で配布フォルダー内のファイルを配信します。`pnpm test` と `pnpm test:ui` はビルド済みの内容を検証するため、ソースを変更した後は先に `pnpm build` を実行します。`pnpm verify:full` はこの順序を含めて実行します。
 
 画面の変更では、空の結果、大量の画像グループ、長い状態文、日本語・英語と複数の画面寸法を確認します。上下の領域の大きさ、操作ボタンの表示範囲、グループ領域だけのスクロールと最後のボタンへの到達を守ります。失敗した場合は一時フォルダーに画像を保存します。失敗を消すために期待値を緩めず、表示の不具合を修正してください。
 

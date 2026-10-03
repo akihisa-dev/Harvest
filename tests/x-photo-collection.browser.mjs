@@ -1,20 +1,16 @@
+import {temporaryDirectory, launchExtensionContext} from "./support/browser.mjs";
 import assert from 'node:assert/strict';
-import {mkdtemp, rm} from 'node:fs/promises';
-import {chromium} from 'playwright';
 import test from 'node:test';
 import {join, resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 
-test('Xの4画面で原寸写真を統合し動画posterを静止画像へ混入させない', {timeout: 30000}, async () => {
+test('Xの4画面で原寸写真を統合し動画posterを静止画像へ混入させない', {timeout: 30000}, async (t) => {
   const extensionRoot = resolve(process.env.HARVEST_TEST_EXTENSION_DIR ?? 'dist/extension');
-  const temp = await mkdtemp(join(tmpdir(), 'harvest-x-photo-'));
+  const temp = await temporaryDirectory(t, join(tmpdir(), 'harvest-x-photo-'));
   let context, cdp;
 
   try {
-    context = await chromium.launchPersistentContext(`${temp}/profile`, {
-      channel: 'chrome', headless: true, ignoreDefaultArgs: ['--disable-extensions'],
-      args: ['--enable-unsafe-extension-debugging', '--disable-background-networking', '--no-first-run', '--no-default-browser-check'],
-    });
+    const context = await launchExtensionContext(t, `${temp}/profile`, {args: ['--enable-unsafe-extension-debugging', '--disable-background-networking', '--no-first-run', '--no-default-browser-check']});
 
     cdp = await context.browser().newBrowserCDPSession();
     const {id} = await cdp.send('Extensions.loadUnpacked', {path: extensionRoot});
@@ -108,8 +104,7 @@ test('Xの4画面で原寸写真を統合し動画posterを静止画像へ混入
 
   } finally {
     await cdp?.detach();
-    await context?.close();
-    await rm(temp, {recursive: true, force: true});
+
   }
 
 });

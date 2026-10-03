@@ -5,13 +5,6 @@ export function scanXMedia(targetPostId, onlyPostKeys, identityOnly = false) {
     if (!/^(?:www\.)?(?:x\.com|twitter\.com)$/i.test(location.hostname))
         return snapshot;
     const deadline = performance.now() + 2_500;
-    let nodes = 0, textSize = 0;
-    const exhausted = () => {
-        if (performance.now() < deadline && nodes < 18_000 && textSize < 1_000_000)
-            return false;
-        snapshot.limited = true;
-        return true;
-    };
     const value = (object, key) => {
         try {
             const d = Object.getOwnPropertyDescriptor(object, key);
@@ -21,70 +14,98 @@ export function scanXMedia(targetPostId, onlyPostKeys, identityOnly = false) {
             return undefined;
         }
     };
-    // Copy only the schema needed by the pure parser. Never serialize React
-    // itself, author information, post text, caches, stores or callback props.
-    const fields = ["__typename", "rest_id", "id_str", "media_key", "type", "media_url_https", "media_url",
-        "thumbnail_url", "preview_image_url", "poster", "src", "url", "content_type", "mime_type", "bitrate", "bit_rate",
-        "tweet", "tweetResult", "tweet_results", "tweetResults", "tweet_result", "post", "result", "legacy",
-        "extended_entities", "extendedEntities", "entities", "media", "mediaDetails", "media_details",
-        "quoted_status_result", "quotedRefResult", "retweeted_status_result", "quoted_status", "quotedStatus", "retweeted_status", "retweetedStatus",
-        "video_info", "videoInfo", "variants", "source"];
-    const copying = new WeakSet();
-    const copied = new WeakMap();
-    const project = (input, depth = 0) => {
-        if (exhausted())
-            return undefined;
-        nodes++;
-        if (typeof input === "string") {
-            if (input.length > 8_192) {
+    // DOM and React evidence share a deadline; this owner keeps the projection
+    // budget and cycle/cache state together when each stored post starts a new budget.
+    const projection = (() => {
+        let nodes = 0, textSize = 0;
+        const exhausted = () => {
+            if (performance.now() < deadline && nodes < 18_000 && textSize < 1_000_000)
+                return false;
+            snapshot.limited = true;
+            return true;
+        };
+        // Copy only the schema needed by the pure parser. Never serialize React
+        // itself, author information, post text, caches, stores or callback props.
+        const fields = ["__typename", "rest_id", "id_str", "media_key", "type", "media_url_https", "media_url",
+            "thumbnail_url", "preview_image_url", "poster", "src", "url", "content_type", "mime_type", "bitrate", "bit_rate",
+            "tweet", "tweetResult", "tweet_results", "tweetResults", "tweet_result", "post", "result", "legacy",
+            "extended_entities", "extendedEntities", "entities", "media", "mediaDetails", "media_details",
+            "quoted_status_result", "quotedRefResult", "retweeted_status_result", "quoted_status", "quotedStatus", "retweeted_status", "retweetedStatus",
+            "video_info", "videoInfo", "variants", "source"];
+        const copying = new WeakSet();
+        const copied = new WeakMap();
+        const project = (input, depth = 0) => {
+            if (exhausted())
+                return undefined;
+            nodes++;
+            if (typeof input === "string") {
+                if (input.length > 8_192) {
+                    snapshot.limited = true;
+                    return undefined;
+                }
+                textSize += input.length;
+                return input;
+            }
+            if (typeof input === "number" || typeof input === "boolean")
+                return input;
+            if (!input || typeof input !== "object" || copying.has(input))
+                return undefined;
+            if (depth > 36) {
                 snapshot.limited = true;
                 return undefined;
             }
-            textSize += input.length;
-            return input;
-        }
-        if (typeof input === "number" || typeof input === "boolean")
-            return input;
-        if (!input || typeof input !== "object" || copying.has(input))
-            return undefined;
-        if (depth > 36) {
-            snapshot.limited = true;
-            return undefined;
-        }
-        if (copied.has(input))
-            return copied.get(input);
-        copying.add(input);
-        let output;
-        if (Array.isArray(input)) {
-            const result = [];
-            const size = value(input, "length");
-            const length = typeof size === "number" ? Math.min(size, 256) : 0;
-            if (typeof size === "number" && size > length)
-                snapshot.limited = true;
-            for (let i = 0; i < length && !exhausted(); i++) {
-                const child = project(value(input, String(i)), depth + 1);
-                if (child !== undefined)
-                    result.push(child);
+            if (copied.has(input))
+                return copied.get(input);
+            copying.add(input);
+            let output;
+            if (Array.isArray(input)) {
+                const result = [];
+                const size = value(input, "length");
+                const length = typeof size === "number" ? Math.min(size, 256) : 0;
+                if (typeof size === "number" && size > length)
+                    snapshot.limited = true;
+                for (let i = 0; i < length && !exhausted(); i++) {
+                    const child = project(value(input, String(i)), depth + 1);
+                    if (child !== undefined)
+                        result.push(child);
+                }
+                output = result;
             }
-            output = result;
-        }
-        else {
-            const result = {};
-            for (const key of fields) {
-                if (exhausted())
-                    break;
-                const raw = value(input, key);
-                if (raw === undefined)
-                    continue;
-                const child = project(raw, depth + 1);
-                if (child !== undefined)
-                    result[key] = child;
+            else {
+                const result = {};
+                for (const key of fields) {
+                    if (exhausted())
+                        break;
+                    const raw = value(input, key);
+                    if (raw === undefined)
+                        continue;
+                    const child = project(raw, depth + 1);
+                    if (child !== undefined)
+                        result[key] = child;
+                }
+                output = result;
             }
-            output = result;
-        }
-        copying.delete(input);
-        copied.set(input, output);
-        return output;
+            copying.delete(input);
+            copied.set(input, output);
+            return output;
+        };
+        return {
+            exhausted,
+            read: project,
+            cached: (input) => copied.get(input),
+            countNode() { nodes++; },
+            resetPostBudget() { nodes = 0; textSize = 0; },
+        };
+    })();
+    // A recovered timeline and captured response use the same precedence: keep
+    // their order and roots, supplement with DOM observations, then append extras.
+    const mergePreferredPosts = (preferred) => {
+        const mounted = new Map(snapshot.posts.map(post => [post.key, post]));
+        snapshot.posts = [...preferred.map(post => {
+                const existing = mounted.get(post.key);
+                mounted.delete(post.key);
+                return existing ? { ...post, observed: existing.observed, roots: [...post.roots, ...existing.roots] } : post;
+            }), ...mounted.values()];
     };
     const quote = '[data-testid="quoteTweet"], [data-testid="quotedTweet"], [role="link"]:not(a):has(a[href*="/status/"])';
     const postId = (root) => {
@@ -112,7 +133,7 @@ export function scanXMedia(targetPostId, onlyPostKeys, identityOnly = false) {
     for (const root of roots) {
         if (identityOnly)
             break;
-        if (exhausted())
+        if (projection.exhausted())
             break;
         if (root.closest('aside, [data-testid="sidebarColumn"]') || root.parentElement?.closest('article, dialog, [role="dialog"]'))
             continue;
@@ -141,12 +162,12 @@ export function scanXMedia(targetPostId, onlyPostKeys, identityOnly = false) {
         const readProps = (element, player) => {
             const ownKeys = Object.getOwnPropertyNames(element);
             const add = (props, ancestor) => {
-                if (!props || typeof props !== "object" || exhausted())
+                if (!props || typeof props !== "object" || projection.exhausted())
                     return false;
                 if (seenProps.has(props))
-                    return ownsPost(copied.get(props));
+                    return ownsPost(projection.cached(props));
                 seenProps.add(props);
-                const data = project(props);
+                const data = projection.read(props);
                 if (data && typeof data === "object" && Object.keys(data).length) {
                     post.roots.push({ value: data, player, requireIdentity: Boolean(id && ancestor) });
                 }
@@ -160,7 +181,7 @@ export function scanXMedia(targetPostId, onlyPostKeys, identityOnly = false) {
                     continue;
                 let fiber = value(element, name);
                 const seen = new WeakSet();
-                for (let depth = 0; fiber && typeof fiber === "object" && !seen.has(fiber) && !exhausted(); depth++) {
+                for (let depth = 0; fiber && typeof fiber === "object" && !seen.has(fiber) && !projection.exhausted(); depth++) {
                     if (depth >= 40)
                         break;
                     seen.add(fiber);
@@ -179,15 +200,15 @@ export function scanXMedia(targetPostId, onlyPostKeys, identityOnly = false) {
         // Read DOM media for every post before optional React supplementation.
         supplementalReads.push(() => {
             for (const element of elements.slice(0, 80)) {
-                if (exhausted())
+                if (projection.exhausted())
                     break;
                 readProps(element, element.matches('video, [data-testid="videoPlayer"]'));
             }
         });
         for (const image of root.querySelectorAll("img")) {
-            if (exhausted())
+            if (projection.exhausted())
                 break;
-            nodes++;
+            projection.countNode();
             if (!inScope(image))
                 continue;
             const src = image.currentSrc || image.src;
@@ -205,9 +226,9 @@ export function scanXMedia(targetPostId, onlyPostKeys, identityOnly = false) {
             catch { /* Ignore malformed image references. */ }
         }
         for (const video of [...(root.tagName.toLowerCase() === "video" ? [root] : []), ...root.querySelectorAll("video")]) {
-            if (exhausted())
+            if (projection.exhausted())
                 break;
-            nodes++;
+            projection.countNode();
             if (!inScope(video))
                 continue;
             const sources = [video.currentSrc, video.src, video.querySelector("source")?.src];
@@ -217,7 +238,7 @@ export function scanXMedia(targetPostId, onlyPostKeys, identityOnly = false) {
         snapshot.posts.push(post);
     }
     for (const read of supplementalReads) {
-        if (exhausted())
+        if (projection.exhausted())
             break;
         read();
     }
@@ -368,14 +389,13 @@ export function scanXMedia(targetPostId, onlyPostKeys, identityOnly = false) {
                     break;
                 }
                 // Projection is budgeted per post, not by the total number of loaded posts.
-                nodes = 0;
-                textSize = 0;
+                projection.resetPostBudget();
                 const relatedSeen = new Set();
                 const withRelated = (record, owner, depth = 0) => {
                     if (depth > 4 || relatedSeen.has(owner))
                         return undefined;
                     relatedSeen.add(owner);
-                    const data = project(record);
+                    const data = projection.read(record);
                     if (!data || typeof data !== "object")
                         return data;
                     const raw = get(record, "legacy") ?? record;
@@ -393,12 +413,7 @@ export function scanXMedia(targetPostId, onlyPostKeys, identityOnly = false) {
                 recovered.push({ key: `post:${id}`, postId: id, observed: [],
                     roots: [{ value: { rest_id: id, tweet: data }, requireIdentity: true, player: false }] });
             }
-            const mounted = new Map(snapshot.posts.map(post => [post.key, post]));
-            snapshot.posts = [...recovered.map(post => {
-                    const existing = mounted.get(post.key);
-                    mounted.delete(post.key);
-                    return existing ? { ...post, observed: existing.observed, roots: [...post.roots, ...existing.roots] } : post;
-                }), ...mounted.values()];
+            mergePreferredPosts(recovered);
             if (!targetPostId && complete)
                 storedTimelineRecovered = true;
         }
@@ -416,16 +431,7 @@ export function scanXMedia(targetPostId, onlyPostKeys, identityOnly = false) {
                 const sameCollection = !storedTimelineRecovered || (bookmarkIdentity && captureEpoch !== undefined);
                 snapshot.bookmarkCaptureMissing = !storedTimelineRecovered && captured.received !== true;
                 if (sameCollection && Array.isArray(captured.posts)) {
-                    const mounted = new Map(snapshot.posts.map(post => [post.key, post]));
-                    const combined = [];
-                    for (const post of captured.posts) {
-                        if (onlyPostKeys && !onlyPostKeys.includes(post.key))
-                            continue;
-                        const existing = mounted.get(post.key);
-                        combined.push(existing ? { ...post, observed: existing.observed, roots: [...post.roots, ...existing.roots] } : post);
-                        mounted.delete(post.key);
-                    }
-                    snapshot.posts = [...combined, ...mounted.values()];
+                    mergePreferredPosts(captured.posts.filter(post => !onlyPostKeys || onlyPostKeys.includes(post.key)));
                 }
                 snapshot.limited ||= captured.limited === true;
             }

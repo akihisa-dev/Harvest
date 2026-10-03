@@ -1,7 +1,6 @@
-export interface BookmarkPageResult {
-  status: "advanced" | "end" | "unavailable" | "stalled" | "failed" | "changed";
-  cursor?: string;
-}
+import type {BookmarkPageResult} from "../contracts/page-contracts.js";
+
+export type {BookmarkPageResult} from "../contracts/page-contracts.js";
 
 /** Runs in MAIN. Only invokes the active bookmark module's existing continuation action. */
 export async function fetchXBookmarkPage(expectedUrl: string): Promise<BookmarkPageResult> {

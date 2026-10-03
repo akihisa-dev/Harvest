@@ -1,24 +1,15 @@
 import assert from "node:assert/strict";
-import { access, readFile, readdir } from "node:fs/promises";
-import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { access, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import {projectRoot, filesUnder} from "./lib/project.mjs";
+import {applicationAssets, correspondingSource} from "./build/artifact-plan.mjs";
 import { checkRelativeImports } from "./build-imports.mjs";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
+const root = projectRoot;
 const output = join(root, "dist", "extension");
 const expected = JSON.parse(await readFile(join(root, "manifest.template.json"), "utf8"));
 const actual = JSON.parse(await readFile(join(output, "manifest.json"), "utf8"));
 assert.deepEqual(actual, expected, "生成manifestがtemplateと一致しません。");
-
-async function filesUnder(directory) {
-  const files = [];
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) files.push(...await filesUnder(path));
-    else if (entry.isFile()) files.push(path);
-  }
-  return files;
-}
 
 for (const path of [
   "background.js",
@@ -44,11 +35,10 @@ for (const path of [
 const runtimeFiles = (await filesUnder(output)).filter((path) => path.endsWith(".js"));
 await checkRelativeImports(runtimeFiles, output);
 
-for (const sourceFile of (await filesUnder(join(root, "src"))).filter((path) => !path.endsWith("/.DS_Store"))) {
-  const distributed = join(output, "source", relative(root, sourceFile));
-  await access(distributed).catch(() => {
-    assert.fail(`配布sourceに必要なファイルがありません: ${relative(root, sourceFile)}`);
-  });
+for (const [source, destination] of [...applicationAssets(), ...await correspondingSource(root)]) {
+  const distributed = join(output, destination);
+  const [input, built] = await Promise.all([readFile(join(root, source)), readFile(distributed)]);
+  assert.deepEqual(built, input, `配布物の内容が正本と一致しません: ${destination}`);
 }
 
 console.log("Extension build output and module imports are complete.");

@@ -1,17 +1,11 @@
+import {extensionFile} from "./support/extension-files.mjs";
+import {startServer, launchBrowser} from "./support/browser.mjs";
 import assert from "node:assert/strict";
-import {createServer} from "node:http";
-import {readFile} from "node:fs/promises";
-import {extname, resolve, sep} from "node:path";
-import {fileURLToPath} from "node:url";
 import test from "node:test";
-import {chromium} from "playwright";
 
-const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const extension = resolve(root, "dist/extension");
-const mime = {".css": "text/css", ".js": "text/javascript"};
 
-async function serve({sharedPoster = false} = {}) {
-  const server = createServer(async (request, response) => {
+async function serve(t, {sharedPoster = false} = {}) {
+  const server = await startServer(t, async (request, response) => {
     try {
       const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
       if (pathname === "/test.html") {
@@ -84,326 +78,297 @@ async function serve({sharedPoster = false} = {}) {
         </body></html>`);
         return;
       }
-      const target = resolve(extension, `.${pathname}`);
-      if (target !== extension && !target.startsWith(`${extension}${sep}`)) throw new Error("outside extension");
-      const body = await readFile(target);
-      response.writeHead(200, {"content-type": mime[extname(target)] ?? "application/octet-stream"});
-      response.end(body);
+      const file = await extensionFile(pathname);
+      response.writeHead(200, {"content-type": file.contentType});
+      response.end(file.body);
     } catch {
       if (!response.headersSent) response.writeHead(404).end();
     }
   });
-  await new Promise((resolveListen, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolveListen);
-  });
+
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
   return {server, url: `${baseUrl}/test.html`};
 }
 
-test("shared video posters finish transitions without another load or retained bindings", async () => {
-  const {server, url} = await serve({sharedPoster: true});
-  let browser;
-  try {
-    browser = await chromium.launch({channel: "chrome", headless: true});
-    const page = await browser.newPage({reducedMotion: "no-preference"});
-    const errors = [], requests = [];
-    page.on("pageerror", error => errors.push(error.message));
-    await page.route("https://images.example.test/**", async route => {
-      requests.push(route.request().url());
-      if (route.request().url().endsWith("shared.gif")) {
-        await route.fulfill({status: 200, contentType: "image/gif",
-          body: Buffer.from("R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=", "base64"),
-          headers: {"access-control-allow-origin": "*"}});
-      } else {
-        await route.fulfill({status: 404, headers: {"access-control-allow-origin": "*"}});
-      }
-    });
-    await page.goto(url);
-    await page.waitForFunction(() => window.__viewerReady && document.querySelector("#image").naturalWidth > 0);
-    const originalSrc = await page.locator("#image").getAttribute("src");
-    await page.locator("#image").evaluate(image => {
-      window.__posterLoads = 0;
-      image.addEventListener("load", () => window.__posterLoads++);
-    });
-    const bindings = () => page.evaluate(() => ({
-      total: window.__viewerFixture.bindings.size,
-      eager: [...window.__viewerFixture.eagerBindings.values()].filter(Boolean).length,
-      detached: [...window.__viewerFixture.bindings.keys()].filter(image => !image.isConnected).length,
-    }));
-    const waitForTransition = () => page.waitForFunction(() => !document.querySelector(".viewer-motion-image"), null, {timeout: 3000});
-    for (const direction of ["next", "previous", "next", "previous", "next", "previous"]) {
-      const motion = await page.evaluate(direction => {
-        document.querySelector("#" + direction).click();
-        const image = document.querySelector("#image");
-        return {motion: image.dataset.motion, direction: image.dataset.direction};
-      }, direction);
-      assert.deepEqual(motion, {motion: "incoming", direction}, "a ready shared poster uses the normal directional transition");
-      await waitForTransition();
-      assert.deepEqual(await bindings(), {total: 3, eager: 2, detached: 0});
-      assert.equal(await page.locator("#image").getAttribute("data-motion"), null);
-      assert.equal(await page.locator("#image").getAttribute("src"), originalSrc);
+test("shared video posters finish transitions without another load or retained bindings", async (t) => {
+  const {server, url} = await serve(t, {sharedPoster: true});
+  const browser = await launchBrowser(t);
+  const page = await browser.newPage({reducedMotion: "no-preference"});
+  const errors = [], requests = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.route("https://images.example.test/**", async route => {
+    requests.push(route.request().url());
+    if (route.request().url().endsWith("shared.gif")) {
+      await route.fulfill({status: 200, contentType: "image/gif",
+        body: Buffer.from("R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=", "base64"),
+        headers: {"access-control-allow-origin": "*"}});
+    } else {
+      await route.fulfill({status: 404, headers: {"access-control-allow-origin": "*"}});
     }
-    assert.equal(await page.evaluate(() => window.__posterLoads), 0);
-    assert.deepEqual(requests, ["https://images.example.test/shared.gif"], "switching does not fetch posters again or request video data");
-
-    await page.evaluate(() => {
-      document.querySelector("#next").click();
-      document.querySelector("#previous").click();
-      document.querySelector("#next").click();
-      document.querySelector("#previous").click();
-    });
-    await waitForTransition();
-    assert.deepEqual(await bindings(), {total: 3, eager: 2, detached: 0}, "rapid switching releases superseded and completed layers");
-
-    await page.evaluate(() => {
-      window.__viewerFixture.pages[1].previewUrl = "https://images.example.test/failed.gif";
-      document.querySelector("#next").click();
-    });
-    await page.waitForFunction(() => document.querySelector("#image").dataset.previewFailed === "true");
-    await waitForTransition();
-    assert.deepEqual(await bindings(), {total: 3, eager: 2, detached: 0}, "fetch failure releases every outgoing binding");
-    await page.evaluate(() => {
-      window.__viewerFixture.pages[1].previewUrl = "https://images.example.test/shared.gif";
-      document.querySelector("#previous").click();
-    });
-    await page.waitForFunction(() => document.querySelector("#image").naturalWidth > 0);
-    await waitForTransition();
-    await page.emulateMedia({reducedMotion: "reduce"});
-    await page.locator("#next").evaluate(button => button.click());
-    assert.equal(await page.locator(".viewer-motion-image").count(), 0);
-    assert.deepEqual(await bindings(), {total: 3, eager: 2, detached: 0});
-    assert.deepEqual(requests, ["https://images.example.test/shared.gif", "https://images.example.test/failed.gif"]);
-
-    await page.emulateMedia({reducedMotion: "no-preference"});
-    const cleared = await page.evaluate(() => {
-      document.querySelector("#previous").click();
-      const ghostsBeforeClear = document.querySelectorAll(".viewer-motion-image").length;
-      window.__viewerReady.clearCurrentPage();
-      window.__viewerFixture.pages.length = 0;
-      window.__viewerReady.render();
-      return {ghostsBeforeClear, diagnostics: window.__viewerFixture.actualPreviewLoader.diagnostics};
-    });
-    assert.ok(cleared.ghostsBeforeClear > 0);
-    assert.deepEqual(cleared.diagnostics, {bound: 0, ready: 0, failed: 0, pending: 0});
-    await waitForTransition();
-    assert.deepEqual(await bindings(), {total: 0, eager: 0, detached: 0});
-    assert.equal(await page.locator("#image").getAttribute("src"), null);
-    assert.deepEqual(errors, []);
-  } finally {
-    await browser?.close();
-    await new Promise(resolveClose => server.close(resolveClose));
-  }
-});
-
-test("viewer drag follows zoom changes and ends at 100%, page changes, and pointercancel", async () => {
-  const {server, url} = await serve();
-  let browser;
-  try {
-    browser = await chromium.launch({channel: "chrome", headless: true});
-    const page = await browser.newPage({reducedMotion: "reduce"});
-    const errors = [];
-    page.on("pageerror", error => errors.push(error.message));
-    await page.goto(url);
-    await page.waitForFunction(() => Boolean(window.__viewerReady));
-    await page.locator("#stage").evaluate(stage => {
-      stage.style.width = "500px";
-      stage.style.height = "300px";
-      window.__wheels = 0;
-      stage.addEventListener("wheel", () => window.__wheels++);
-      stage.addEventListener("pointerdown", event => window.__pointerId = event.pointerId);
-    });
-    const box = await page.locator("#stage").boundingBox();
-    const x = box.x + box.width / 2;
-    const y = box.y + box.height / 2;
-    const state = () => page.locator("#stage").evaluate(stage => {
-      const matrix = new DOMMatrix(document.querySelector("#image").style.transform);
-      return {x: matrix.e, y: matrix.f, zoom: matrix.a,
-        captured: stage.hasPointerCapture(window.__pointerId), panning: stage.dataset.panning ?? null};
-    });
-    const wheel = async delta => {
-      const count = await page.evaluate(() => window.__wheels);
-      await page.mouse.wheel(0, delta);
-      await page.waitForFunction(previous => window.__wheels > previous, count);
-    };
-    await page.locator("#zoom-in").click();
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    await page.mouse.move(x + 30, y + 20);
-    assert.deepEqual(await state(), {x: 30, y: 20, zoom: 1.25, captured: true, panning: "true"});
-    await wheel(2000);
-    assert.deepEqual(await state(), {x: 0, y: 0, zoom: 1, captured: false, panning: null}, "100% ends the captured drag immediately");
-    await page.mouse.move(x + 80, y + 40);
-    assert.deepEqual(await state(), {x: 0, y: 0, zoom: 1, captured: false, panning: null});
-    await wheel(-300);
-    const enlarged = await state();
-    assert.ok(enlarged.zoom > 1);
-    await page.mouse.move(x + 90, y + 50);
-    assert.deepEqual(await state(), enlarged, "zooming back in while held does not revive the old drag");
-    await page.mouse.up();
-
-    await page.locator("#zoom-reset").click();
-    await page.locator("#zoom-in").click();
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    await page.mouse.move(x + 30, y + 20);
-    for (const delta of [-300, 100]) {
-      await wheel(delta);
-      const afterZoom = await state();
-      assert.ok(afterZoom.zoom > 1);
-      assert.equal(afterZoom.captured, true);
-      await page.mouse.move(x + 40, y + 25);
-      const afterMove = await state();
-      assert.ok(Math.abs(afterMove.x - afterZoom.x - 10) < 1e-8);
-      assert.ok(Math.abs(afterMove.y - afterZoom.y - 5) < 1e-8);
-      assert.equal(afterMove.zoom, afterZoom.zoom);
-      await page.mouse.move(x + 30, y + 20);
-    }
-    await page.mouse.up();
-    const released = await state();
-    assert.equal(released.captured, false);
-    assert.equal(released.panning, null);
-    await page.mouse.move(x + 50, y + 30);
-    assert.deepEqual(await state(), released, "pointerup preserves the final position and ends dragging");
-
-    await page.mouse.down();
-    await page.mouse.move(x + 60, y + 35);
-    await page.locator("#stage").evaluate(stage => stage.dispatchEvent(new PointerEvent("pointercancel", {pointerId: window.__pointerId})));
-    const canceled = await state();
-    assert.equal(canceled.captured, false);
-    assert.equal(canceled.panning, null);
-    await page.mouse.move(x + 70, y + 40);
-    assert.deepEqual(await state(), canceled);
-    await page.mouse.up();
-
-    await page.mouse.down();
-    await page.mouse.move(x + 80, y + 45);
-    await page.locator("#next").evaluate(button => button.click());
-    assert.equal(await page.locator("#position").textContent(), "2 / 2");
-    assert.deepEqual(await state(), {x: 0, y: 0, zoom: 1, captured: false, panning: null});
-    await page.mouse.move(x + 90, y + 50);
-    assert.deepEqual(await state(), {x: 0, y: 0, zoom: 1, captured: false, panning: null});
-    await page.mouse.up();
-    assert.deepEqual(errors, []);
-  } finally {
-    await browser?.close();
-    await new Promise(resolveClose => server.close(resolveClose));
-  }
-});
-
-test("viewer waits for the next preview before its directional transition and honors reduced motion", async () => {
-  const {server, url} = await serve();
-  let browser;
-  try {
-    browser = await chromium.launch({channel: "chrome", headless: true});
-    const page = await browser.newPage();
-    await page.goto(url);
-    await page.waitForFunction(() => Boolean(window.__viewerReady));
-    const modeTransition = await page.locator("#viewer").evaluate(element => getComputedStyle(element).transitionProperty);
-    assert.match(modeTransition, /opacity/);
-    assert.match(modeTransition, /display/);
-    await page.waitForFunction(() => document.querySelector("#image").complete && document.querySelector("#image").naturalWidth > 0);
-    await page.locator("#next").click();
-    assert.equal(await page.locator(".viewer-motion-image[data-motion='holding']").count(), 1, "the previous image stays visible while the next preview loads");
-    await page.waitForFunction(() => document.querySelector("#image").dataset.motion === "incoming");
-    assert.equal(await page.locator("#image").getAttribute("data-direction"), "next");
-    assert.equal(await page.locator(".viewer-motion-image[data-motion='outgoing']").count(), 1);
-    await page.waitForFunction(() => !document.querySelector(".viewer-motion-image"));
-
-    const retargeted = await page.evaluate(() => {
-      const viewer = document.querySelector("#viewer");
-      window.__viewerReady.setOpen(false);
-      window.__viewerReady.render();
-      getComputedStyle(viewer).opacity;
-      const outgoing = viewer.getAnimations();
-      outgoing.forEach(a => {
-        a.pause();
-        a.currentTime = 80;
-      });
-      const mid = Number(getComputedStyle(viewer).opacity);
-      window.__viewerReady.setOpen(true);
-      window.__viewerReady.render();
-      getComputedStyle(viewer).opacity;
-      return {mid, active: viewer.getAnimations().length};
-    });
-    assert.ok(retargeted.mid > 0 && retargeted.mid < 1, JSON.stringify(retargeted));
-    assert.ok(retargeted.active > 0, "rapid mode changes retarget the current CSS transition");
-    await page.emulateMedia({reducedMotion: "reduce"});
-    await page.locator("#previous").click();
-    assert.equal(await page.locator(".viewer-motion-image").count(), 0, "reduced motion skips the image transition");
-  } finally {
-    await browser?.close();
-    await new Promise(resolveClose => server.close(resolveClose));
-  }
-});
-
-test("viewer retargeting, failed previews and clearing release obsolete image bindings", async () => {
-  const {server, url} = await serve();
-  let browser;
-  try {
-    browser = await chromium.launch({channel: "chrome", headless: true});
-    const page = await browser.newPage();
-    const errors = [];
-    page.on("pageerror", error => errors.push(error.message));
-    await page.goto(url);
-    await page.waitForFunction(() => window.__viewerReady && document.querySelector("#image").naturalWidth > 0);
-    await page.evaluate(() => {
-      document.querySelector("#next").click();
-      document.querySelector("#previous").click();
-    });
-    await page.waitForFunction(() => document.querySelector("#image").dataset.direction === "previous");
-    const retargeted = await page.evaluate(async () => {
+  });
+  await page.goto(url);
+  await page.waitForFunction(() => window.__viewerReady && document.querySelector("#image").naturalWidth > 0);
+  const originalSrc = await page.locator("#image").getAttribute("src");
+  await page.locator("#image").evaluate(image => {
+    window.__posterLoads = 0;
+    image.addEventListener("load", () => window.__posterLoads++);
+  });
+  const bindings = () => page.evaluate(() => ({
+    total: window.__viewerFixture.bindings.size,
+    eager: [...window.__viewerFixture.eagerBindings.values()].filter(Boolean).length,
+    detached: [...window.__viewerFixture.bindings.keys()].filter(image => !image.isConnected).length,
+  }));
+  const waitForTransition = () => page.waitForFunction(() => !document.querySelector(".viewer-motion-image"), null, {timeout: 3000});
+  for (const direction of ["next", "previous", "next", "previous", "next", "previous"]) {
+    const motion = await page.evaluate(direction => {
+      document.querySelector("#" + direction).click();
       const image = document.querySelector("#image");
-      for (const element of [image, ...document.querySelectorAll(".viewer-motion-image")]) {
-        for (const animation of element.getAnimations()) {
-          animation.pause();
-          animation.currentTime = 80;
-        }
-      }
-      document.querySelector("#next").click();
-      await Promise.resolve();
-      await Promise.resolve();
-      const ghosts = [...document.querySelectorAll(".viewer-motion-image")];
-      return {
-        ghosts: ghosts.length,
-        holding: ghosts.every(ghost => ghost.dataset.motion === "holding"),
-        detached: [...window.__viewerFixture.bindings.keys()].filter(element => !element.isConnected).length
-      };
-    });
-    assert.ok(retargeted.ghosts > 0 && retargeted.ghosts <= 4, JSON.stringify(retargeted));
-    assert.equal(retargeted.holding, true, "interrupted animation completion does not remove the new holding images");
-    assert.equal(retargeted.detached, 0, "superseded visual layers release their preview bindings");
-
-    await page.evaluate(() => { document.querySelector("#image").dataset.previewFailed = "true"; });
-    await page.waitForFunction(() => !document.querySelector(".viewer-motion-image"));
-    assert.equal(await page.evaluate(() => window.__viewerFixture.bindings.size), 3,
-      "failure releases outgoing images while keeping the active image and two thumbnails");
-
-    const cleared = await page.evaluate(() => {
-      document.querySelector("#previous").click();
-      document.querySelector("#next").click();
-      const pendingGhosts = document.querySelectorAll(".viewer-motion-image").length;
-      window.__viewerReady.clearCurrentPage();
-      const clearedPage = {
-        ghosts: document.querySelectorAll(".viewer-motion-image").length,
-        bindings: window.__viewerFixture.bindings.size,
-        src: document.querySelector("#image").getAttribute("src")
-      };
-      window.__viewerFixture.pages.length = 0;
-      window.__viewerReady.render();
-      return {pendingGhosts, clearedPage, bindings: window.__viewerFixture.bindings.size};
-    });
-    assert.ok(cleared.pendingGhosts > 0, "the collection is cleared while an image transition is pending");
-    assert.deepEqual(cleared.clearedPage, {ghosts: 0, bindings: 2, src: null},
-      "clearing the current page releases its active and outgoing bindings before another render");
-    assert.equal(cleared.bindings, 0);
-    await page.waitForFunction(() => window.__viewerFixture.pendingLoads === 0);
-    assert.equal(await page.locator(".viewer-motion-image").count(), 0);
-    assert.equal(await page.locator("#image").getAttribute("src"), null, "late preview loads cannot restore cleared content");
+      return {motion: image.dataset.motion, direction: image.dataset.direction};
+    }, direction);
+    assert.deepEqual(motion, {motion: "incoming", direction}, "a ready shared poster uses the normal directional transition");
+    await waitForTransition();
+    assert.deepEqual(await bindings(), {total: 3, eager: 2, detached: 0});
     assert.equal(await page.locator("#image").getAttribute("data-motion"), null);
-    assert.deepEqual(errors, []);
-  } finally {
-    await browser?.close();
-    await new Promise(resolveClose => server.close(resolveClose));
+    assert.equal(await page.locator("#image").getAttribute("src"), originalSrc);
   }
+  assert.equal(await page.evaluate(() => window.__posterLoads), 0);
+  assert.deepEqual(requests, ["https://images.example.test/shared.gif"], "switching does not fetch posters again or request video data");
+
+  await page.evaluate(() => {
+    document.querySelector("#next").click();
+    document.querySelector("#previous").click();
+    document.querySelector("#next").click();
+    document.querySelector("#previous").click();
+  });
+  await waitForTransition();
+  assert.deepEqual(await bindings(), {total: 3, eager: 2, detached: 0}, "rapid switching releases superseded and completed layers");
+
+  await page.evaluate(() => {
+    window.__viewerFixture.pages[1].previewUrl = "https://images.example.test/failed.gif";
+    document.querySelector("#next").click();
+  });
+  await page.waitForFunction(() => document.querySelector("#image").dataset.previewFailed === "true");
+  await waitForTransition();
+  assert.deepEqual(await bindings(), {total: 3, eager: 2, detached: 0}, "fetch failure releases every outgoing binding");
+  await page.evaluate(() => {
+    window.__viewerFixture.pages[1].previewUrl = "https://images.example.test/shared.gif";
+    document.querySelector("#previous").click();
+  });
+  await page.waitForFunction(() => document.querySelector("#image").naturalWidth > 0);
+  await waitForTransition();
+  await page.emulateMedia({reducedMotion: "reduce"});
+  await page.locator("#next").evaluate(button => button.click());
+  assert.equal(await page.locator(".viewer-motion-image").count(), 0);
+  assert.deepEqual(await bindings(), {total: 3, eager: 2, detached: 0});
+  assert.deepEqual(requests, ["https://images.example.test/shared.gif", "https://images.example.test/failed.gif"]);
+
+  await page.emulateMedia({reducedMotion: "no-preference"});
+  const cleared = await page.evaluate(() => {
+    document.querySelector("#previous").click();
+    const ghostsBeforeClear = document.querySelectorAll(".viewer-motion-image").length;
+    window.__viewerReady.clearCurrentPage();
+    window.__viewerFixture.pages.length = 0;
+    window.__viewerReady.render();
+    return {ghostsBeforeClear, diagnostics: window.__viewerFixture.actualPreviewLoader.diagnostics};
+  });
+  assert.ok(cleared.ghostsBeforeClear > 0);
+  assert.deepEqual(cleared.diagnostics, {bound: 0, ready: 0, failed: 0, pending: 0});
+  await waitForTransition();
+  assert.deepEqual(await bindings(), {total: 0, eager: 0, detached: 0});
+  assert.equal(await page.locator("#image").getAttribute("src"), null);
+  assert.deepEqual(errors, []);
+});
+
+test("viewer drag follows zoom changes and ends at 100%, page changes, and pointercancel", async (t) => {
+  const {server, url} = await serve(t);
+  const browser = await launchBrowser(t);
+  const page = await browser.newPage({reducedMotion: "reduce"});
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto(url);
+  await page.waitForFunction(() => Boolean(window.__viewerReady));
+  await page.locator("#stage").evaluate(stage => {
+    stage.style.width = "500px";
+    stage.style.height = "300px";
+    window.__wheels = 0;
+    stage.addEventListener("wheel", () => window.__wheels++);
+    stage.addEventListener("pointerdown", event => window.__pointerId = event.pointerId);
+  });
+  const box = await page.locator("#stage").boundingBox();
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  const state = () => page.locator("#stage").evaluate(stage => {
+    const matrix = new DOMMatrix(document.querySelector("#image").style.transform);
+    return {x: matrix.e, y: matrix.f, zoom: matrix.a,
+      captured: stage.hasPointerCapture(window.__pointerId), panning: stage.dataset.panning ?? null};
+  });
+  const wheel = async delta => {
+    const count = await page.evaluate(() => window.__wheels);
+    await page.mouse.wheel(0, delta);
+    await page.waitForFunction(previous => window.__wheels > previous, count);
+  };
+  await page.locator("#zoom-in").click();
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 30, y + 20);
+  assert.deepEqual(await state(), {x: 30, y: 20, zoom: 1.25, captured: true, panning: "true"});
+  await wheel(2000);
+  assert.deepEqual(await state(), {x: 0, y: 0, zoom: 1, captured: false, panning: null}, "100% ends the captured drag immediately");
+  await page.mouse.move(x + 80, y + 40);
+  assert.deepEqual(await state(), {x: 0, y: 0, zoom: 1, captured: false, panning: null});
+  await wheel(-300);
+  const enlarged = await state();
+  assert.ok(enlarged.zoom > 1);
+  await page.mouse.move(x + 90, y + 50);
+  assert.deepEqual(await state(), enlarged, "zooming back in while held does not revive the old drag");
+  await page.mouse.up();
+
+  await page.locator("#zoom-reset").click();
+  await page.locator("#zoom-in").click();
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 30, y + 20);
+  for (const delta of [-300, 100]) {
+    await wheel(delta);
+    const afterZoom = await state();
+    assert.ok(afterZoom.zoom > 1);
+    assert.equal(afterZoom.captured, true);
+    await page.mouse.move(x + 40, y + 25);
+    const afterMove = await state();
+    assert.ok(Math.abs(afterMove.x - afterZoom.x - 10) < 1e-8);
+    assert.ok(Math.abs(afterMove.y - afterZoom.y - 5) < 1e-8);
+    assert.equal(afterMove.zoom, afterZoom.zoom);
+    await page.mouse.move(x + 30, y + 20);
+  }
+  await page.mouse.up();
+  const released = await state();
+  assert.equal(released.captured, false);
+  assert.equal(released.panning, null);
+  await page.mouse.move(x + 50, y + 30);
+  assert.deepEqual(await state(), released, "pointerup preserves the final position and ends dragging");
+
+  await page.mouse.down();
+  await page.mouse.move(x + 60, y + 35);
+  await page.locator("#stage").evaluate(stage => stage.dispatchEvent(new PointerEvent("pointercancel", {pointerId: window.__pointerId})));
+  const canceled = await state();
+  assert.equal(canceled.captured, false);
+  assert.equal(canceled.panning, null);
+  await page.mouse.move(x + 70, y + 40);
+  assert.deepEqual(await state(), canceled);
+  await page.mouse.up();
+
+  await page.mouse.down();
+  await page.mouse.move(x + 80, y + 45);
+  await page.locator("#next").evaluate(button => button.click());
+  assert.equal(await page.locator("#position").textContent(), "2 / 2");
+  assert.deepEqual(await state(), {x: 0, y: 0, zoom: 1, captured: false, panning: null});
+  await page.mouse.move(x + 90, y + 50);
+  assert.deepEqual(await state(), {x: 0, y: 0, zoom: 1, captured: false, panning: null});
+  await page.mouse.up();
+  assert.deepEqual(errors, []);
+});
+
+test("viewer waits for the next preview before its directional transition and honors reduced motion", async (t) => {
+  const {server, url} = await serve(t);
+  const browser = await launchBrowser(t);
+  const page = await browser.newPage();
+  await page.goto(url);
+  await page.waitForFunction(() => Boolean(window.__viewerReady));
+  const modeTransition = await page.locator("#viewer").evaluate(element => getComputedStyle(element).transitionProperty);
+  assert.match(modeTransition, /opacity/);
+  assert.match(modeTransition, /display/);
+  await page.waitForFunction(() => document.querySelector("#image").complete && document.querySelector("#image").naturalWidth > 0);
+  await page.locator("#next").click();
+  assert.equal(await page.locator(".viewer-motion-image[data-motion='holding']").count(), 1, "the previous image stays visible while the next preview loads");
+  await page.waitForFunction(() => document.querySelector("#image").dataset.motion === "incoming");
+  assert.equal(await page.locator("#image").getAttribute("data-direction"), "next");
+  assert.equal(await page.locator(".viewer-motion-image[data-motion='outgoing']").count(), 1);
+  await page.waitForFunction(() => !document.querySelector(".viewer-motion-image"));
+
+  const retargeted = await page.evaluate(() => {
+    const viewer = document.querySelector("#viewer");
+    window.__viewerReady.setOpen(false);
+    window.__viewerReady.render();
+    getComputedStyle(viewer).opacity;
+    const outgoing = viewer.getAnimations();
+    outgoing.forEach(a => {
+      a.pause();
+      a.currentTime = 80;
+    });
+    const mid = Number(getComputedStyle(viewer).opacity);
+    window.__viewerReady.setOpen(true);
+    window.__viewerReady.render();
+    getComputedStyle(viewer).opacity;
+    return {mid, active: viewer.getAnimations().length};
+  });
+  assert.ok(retargeted.mid > 0 && retargeted.mid < 1, JSON.stringify(retargeted));
+  assert.ok(retargeted.active > 0, "rapid mode changes retarget the current CSS transition");
+  await page.emulateMedia({reducedMotion: "reduce"});
+  await page.locator("#previous").click();
+  assert.equal(await page.locator(".viewer-motion-image").count(), 0, "reduced motion skips the image transition");
+});
+
+test("viewer retargeting, failed previews and clearing release obsolete image bindings", async (t) => {
+  const {server, url} = await serve(t);
+  const browser = await launchBrowser(t);
+  const page = await browser.newPage();
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto(url);
+  await page.waitForFunction(() => window.__viewerReady && document.querySelector("#image").naturalWidth > 0);
+  await page.evaluate(() => {
+    document.querySelector("#next").click();
+    document.querySelector("#previous").click();
+  });
+  await page.waitForFunction(() => document.querySelector("#image").dataset.direction === "previous");
+  const retargeted = await page.evaluate(async () => {
+    const image = document.querySelector("#image");
+    for (const element of [image, ...document.querySelectorAll(".viewer-motion-image")]) {
+      for (const animation of element.getAnimations()) {
+        animation.pause();
+        animation.currentTime = 80;
+      }
+    }
+    document.querySelector("#next").click();
+    await Promise.resolve();
+    await Promise.resolve();
+    const ghosts = [...document.querySelectorAll(".viewer-motion-image")];
+    return {
+      ghosts: ghosts.length,
+      holding: ghosts.every(ghost => ghost.dataset.motion === "holding"),
+      detached: [...window.__viewerFixture.bindings.keys()].filter(element => !element.isConnected).length
+    };
+  });
+  assert.ok(retargeted.ghosts > 0 && retargeted.ghosts <= 4, JSON.stringify(retargeted));
+  assert.equal(retargeted.holding, true, "interrupted animation completion does not remove the new holding images");
+  assert.equal(retargeted.detached, 0, "superseded visual layers release their preview bindings");
+
+  await page.evaluate(() => { document.querySelector("#image").dataset.previewFailed = "true"; });
+  await page.waitForFunction(() => !document.querySelector(".viewer-motion-image"));
+  assert.equal(await page.evaluate(() => window.__viewerFixture.bindings.size), 3,
+    "failure releases outgoing images while keeping the active image and two thumbnails");
+
+  const cleared = await page.evaluate(() => {
+    document.querySelector("#previous").click();
+    document.querySelector("#next").click();
+    const pendingGhosts = document.querySelectorAll(".viewer-motion-image").length;
+    window.__viewerReady.clearCurrentPage();
+    const clearedPage = {
+      ghosts: document.querySelectorAll(".viewer-motion-image").length,
+      bindings: window.__viewerFixture.bindings.size,
+      src: document.querySelector("#image").getAttribute("src")
+    };
+    window.__viewerFixture.pages.length = 0;
+    window.__viewerReady.render();
+    return {pendingGhosts, clearedPage, bindings: window.__viewerFixture.bindings.size};
+  });
+  assert.ok(cleared.pendingGhosts > 0, "the collection is cleared while an image transition is pending");
+  assert.deepEqual(cleared.clearedPage, {ghosts: 0, bindings: 2, src: null},
+    "clearing the current page releases its active and outgoing bindings before another render");
+  assert.equal(cleared.bindings, 0);
+  await page.waitForFunction(() => window.__viewerFixture.pendingLoads === 0);
+  assert.equal(await page.locator(".viewer-motion-image").count(), 0);
+  assert.equal(await page.locator("#image").getAttribute("src"), null, "late preview loads cannot restore cleared content");
+  assert.equal(await page.locator("#image").getAttribute("data-motion"), null);
+  assert.deepEqual(errors, []);
 });

@@ -571,7 +571,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   // Visual ordering is resolved only after all candidate evidence is current.
   const orderedImages = (): string[] => {
     const documentOrder = new Map<Element, number>();
-    for (const [index, element] of pageElements(root, false).entries()) {
+    for (const [index, element] of observation.elements(root, false).entries()) {
       checkDeadline();
       documentOrder.set(element, index);
     }
@@ -584,7 +584,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
         positionCache.set(element, result);
         return result;
       }
-      for (let current: Element | null = element; current; current = composedParent(current)) {
+      for (let current: Element | null = element; current; current = observation.parent(current)) {
         checkDeadline();
         let style: CSSStyleDeclaration | undefined;
         try {
@@ -806,201 +806,223 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
 
   const root = document.documentElement;
   const chunkSize = 250;
-  const observedShadowRoots = new Set<ShadowRoot>();
-  const pendingElements = new Set<Element>();
-  const pendingTextElements = new Set<Element>();
-  const pendingRemovedElements = new Set<Element>();
-  let pendingFlushPromise: Promise<void> | undefined;
-  let observer: MutationObserver | undefined;
-  let resolveWait: (() => void) | undefined;
-  let quietTimer: ReturnType<typeof setTimeout> | undefined;
-  let maxTimer: ReturnType<typeof setTimeout> | undefined;
-  let settled = false;
-  let quietStarted = false;
-  const maxWaitMs = 800;
-  const quietWaitMs = 250;
+  // The observer, root registrations, queues, timers and pending flush share
+  // one owner. Callers can advance the scan phases without mutating that state.
+  const observation = (() => {
+    const observedShadowRoots = new Set<ShadowRoot>();
+    const pendingElements = new Set<Element>();
+    const pendingTextElements = new Set<Element>();
+    const pendingRemovedElements = new Set<Element>();
+    let pendingFlushPromise: Promise<void> | undefined;
+    let observer: MutationObserver | undefined;
+    let resolveWait: (() => void) | undefined;
+    let quietTimer: ReturnType<typeof setTimeout> | undefined;
+    let maxTimer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+    let quietStarted = false;
+    const maxWaitMs = 800;
+    const quietWaitMs = 250;
 
-  const finish = (): void => {
-    if (settled) return;
-    settled = true;
-    if (quietTimer !== undefined) clearTimeout(quietTimer);
-    if (maxTimer !== undefined) clearTimeout(maxTimer);
-    observer?.disconnect();
-    resolveWait?.();
-  };
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      if (quietTimer !== undefined) clearTimeout(quietTimer);
+      if (maxTimer !== undefined) clearTimeout(maxTimer);
+      observer?.disconnect();
+      resolveWait?.();
+    };
 
-  const waitForQuiet = (): void => {
-    if (!quietStarted || settled) return;
-    if (quietTimer !== undefined) clearTimeout(quietTimer);
-    quietTimer = setTimeout(finish, quietWaitMs);
-  };
+    const scheduleQuiet = (): void => {
+      if (!quietStarted || settled) return;
+      if (quietTimer !== undefined) clearTimeout(quietTimer);
+      quietTimer = setTimeout(finish, quietWaitMs);
+    };
 
-  const flushPending = (): Promise<void> => {
-    if (pendingFlushPromise) return pendingFlushPromise;
-    const run = async (): Promise<void> => {
-      while (pendingElements.size > 0 || pendingTextElements.size > 0 || pendingRemovedElements.size > 0) {
-        const removed = [...pendingRemovedElements];
-        pendingRemovedElements.clear();
-        for (const element of removed) {
-          const tree = pageElements(element, false);
-          for (const node of tree) {
+    const flushPending = (): Promise<void> => {
+      if (pendingFlushPromise) return pendingFlushPromise;
+      const run = async (): Promise<void> => {
+        while (pendingElements.size > 0 || pendingTextElements.size > 0 || pendingRemovedElements.size > 0) {
+          const removed = [...pendingRemovedElements];
+          pendingRemovedElements.clear();
+          for (const element of removed) {
+            const tree = pageElements(element, false);
+            for (const node of tree) {
+              checkDeadline();
+              if (isInPageTree(node)) continue;
+              registry.removeElement(node);
+            }
+          }
+          const textBatch = [...pendingTextElements];
+          pendingTextElements.clear();
+          for (let index = 0; index < textBatch.length; index += 1) {
+            const element = textBatch[index]!;
+            if (isInPageTree(element)) collectElement(element);
+            if ((index + 1) % chunkSize === 0) await yieldToPage();
+          }
+          const batch = [...pendingElements];
+          pendingElements.clear();
+          for (const element of batch) {
+            if (!isInPageTree(element)) continue;
+            const tree = pageElements(element, true);
             checkDeadline();
-            if (isInPageTree(node)) continue;
-            registry.removeElement(node);
+            for (let start = 0; start < tree.length; start += chunkSize) {
+              for (const node of tree.slice(start, start + chunkSize)) collectElement(node);
+              if (start + chunkSize < tree.length) await yieldToPage();
+            }
           }
         }
-        const textBatch = [...pendingTextElements];
-        pendingTextElements.clear();
-        for (let index = 0; index < textBatch.length; index += 1) {
-          const element = textBatch[index]!;
-          if (isInPageTree(element)) collectElement(element);
-          if ((index + 1) % chunkSize === 0) await yieldToPage();
-        }
-        const batch = [...pendingElements];
-        pendingElements.clear();
-        for (const element of batch) {
-          if (!isInPageTree(element)) continue;
-          const tree = pageElements(element, true);
-          checkDeadline();
-          for (let start = 0; start < tree.length; start += chunkSize) {
-            for (const node of tree.slice(start, start + chunkSize)) collectElement(node);
-            if (start + chunkSize < tree.length) await yieldToPage();
-          }
-        }
-      }
-    };
-    pendingFlushPromise = run().finally(() => { pendingFlushPromise = undefined; });
-    return pendingFlushPromise;
-  };
-
-  const queueMutationElements = (mutations: readonly MutationRecord[]): boolean => {
-    for (const mutation of mutations) {
-      if (performance.now() >= deadline) return false;
-      const queueTextOwner = (node: Node): void => {
-        const owner = node.nodeType === 1 ? node as Element
-          : node.nodeType === 11 && "host" in node ? (node as ShadowRoot).host
-          : node.parentElement ?? (node.parentNode && "host" in node.parentNode ? (node.parentNode as ShadowRoot).host : null);
-        if (owner) pendingTextElements.add(owner);
       };
-      if (mutation.type === "characterData") {
-        queueTextOwner(mutation.target);
-        continue;
-      }
-      if (mutation.type === "attributes") {
-        if (mutation.target.nodeType === 1) {
-          const element = mutation.target as Element;
-          const parent = element.parentElement;
-          pendingElements.add(element.tagName.toLowerCase() === "source" && parent?.tagName.toLowerCase() === "video" ? parent : element);
-        }
-        continue;
-      }
-      // Child source additions/removals also invalidate the video's own evidence.
-      if (mutation.target?.nodeType === 1 && (mutation.target as Element).tagName.toLowerCase() === "video") {
-        pendingElements.add(mutation.target as Element);
-      }
-      for (const node of Array.from(mutation.addedNodes)) {
-        if (performance.now() >= deadline) return false;
-        if (node.nodeType === 1) pendingElements.add(node as Element);
-        else if (node.nodeType === 3) queueTextOwner(mutation.target);
-      }
-      for (const node of Array.from(mutation.removedNodes ?? [])) {
-        if (performance.now() >= deadline) return false;
-        if (node.nodeType === 1) pendingRemovedElements.add(node as Element);
-        else if (node.nodeType === 3) queueTextOwner(mutation.target);
-      }
-    }
-    return true;
-  };
-
-  let waitPromise: Promise<void> | undefined;
-  if (root && typeof MutationObserver !== "undefined") {
-    waitPromise = new Promise<void>(resolve => { resolveWait = resolve; });
-    observer = new MutationObserver(mutations => {
-      if (performance.now() >= deadline) {
-        finish();
-        return;
-      }
-      if (!queueMutationElements(mutations)) {
-        finish();
-        return;
-      }
-      if (performance.now() >= deadline) {
-        finish();
-        return;
-      }
-      if (mutations.length > 0) waitForQuiet();
-
-    });
-    observer.observe(root, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      characterData: true,
-    });
-  }
-
-  // Traverse the composed tree, including open shadow roots.
-  const composedParent = (element: Element): Element | null => {
-    if (element.parentElement) return element.parentElement;
-    const treeRoot = element.getRootNode?.();
-    return treeRoot && "host" in treeRoot ? (treeRoot as ShadowRoot).host : null;
-  };
-
-  const isInPageTree = (element: Element): boolean => {
-    for (let current: Element | null = element; current; current = composedParent(current)) {
-      checkDeadline();
-      if (current === root) return true;
-    }
-    return false;
-  };
-
-  const pageElements = (start: Element, observeRoots: boolean): Element[] => {
-    const elements: Element[] = [];
-    const pending: Element[] = [start];
-    const pushChildren = (parent: ParentNode): void => {
-      const children = Array.from(parent.children);
-      for (let index = children.length - 1; index >= 0; index -= 1) {
-        const child = children[index];
-        if (child) pending.push(child);
-      }
+      pendingFlushPromise = run().finally(() => { pendingFlushPromise = undefined; });
+      return pendingFlushPromise;
     };
 
-    while (pending.length > 0) {
-      checkDeadline();
-      const element = pending.pop();
-      if (!element) continue;
-      elements.push(element);
-      const shadowRoot = element.shadowRoot;
-      if (shadowRoot) {
-        if (observeRoots && !observedShadowRoots.has(shadowRoot)) {
-          observedShadowRoots.add(shadowRoot);
-          if (!settled) observer?.observe(shadowRoot, {childList: true, subtree: true, attributes: true, characterData: true});
+    const queueMutationElements = (mutations: readonly MutationRecord[]): boolean => {
+      for (const mutation of mutations) {
+        if (performance.now() >= deadline) return false;
+        const queueTextOwner = (node: Node): void => {
+          const owner = node.nodeType === 1 ? node as Element
+            : node.nodeType === 11 && "host" in node ? (node as ShadowRoot).host
+            : node.parentElement ?? (node.parentNode && "host" in node.parentNode ? (node.parentNode as ShadowRoot).host : null);
+          if (owner) pendingTextElements.add(owner);
+        };
+        if (mutation.type === "characterData") {
+          queueTextOwner(mutation.target);
+          continue;
         }
-        // Visit ordinary children first to preserve their existing document
-        // order, then include the host's open shadow tree.
-        pushChildren(shadowRoot);
+        if (mutation.type === "attributes") {
+          if (mutation.target.nodeType === 1) {
+            const element = mutation.target as Element;
+            const parent = element.parentElement;
+            pendingElements.add(element.tagName.toLowerCase() === "source" && parent?.tagName.toLowerCase() === "video" ? parent : element);
+          }
+          continue;
+        }
+        // Child source additions/removals also invalidate the video's own evidence.
+        if (mutation.target?.nodeType === 1 && (mutation.target as Element).tagName.toLowerCase() === "video") {
+          pendingElements.add(mutation.target as Element);
+        }
+        for (const node of Array.from(mutation.addedNodes)) {
+          if (performance.now() >= deadline) return false;
+          if (node.nodeType === 1) pendingElements.add(node as Element);
+          else if (node.nodeType === 3) queueTextOwner(mutation.target);
+        }
+        for (const node of Array.from(mutation.removedNodes ?? [])) {
+          if (performance.now() >= deadline) return false;
+          if (node.nodeType === 1) pendingRemovedElements.add(node as Element);
+          else if (node.nodeType === 3) queueTextOwner(mutation.target);
+        }
       }
-      pushChildren(element);
-    }
-    return elements;
-  };
+      return true;
+    };
 
-  const discoverShadowRoots = async (): Promise<void> => {
-    let discovered: boolean;
-    do {
-      discovered = false;
-      for (const element of pageElements(root, false)) {
-        const shadow = element.shadowRoot;
-        if (!shadow || observedShadowRoots.has(shadow)) continue;
-        // Register the whole new subtree once, including nested roots. A root
-        // attached to an existing host does not emit a light-DOM mutation.
-        pageElements(element, true);
-        pendingElements.add(element);
-        discovered = true;
+    let waitPromise: Promise<void> | undefined;
+    if (root && typeof MutationObserver !== "undefined") {
+      waitPromise = new Promise<void>(resolve => { resolveWait = resolve; });
+      observer = new MutationObserver(mutations => {
+        if (performance.now() >= deadline) {
+          finish();
+          return;
+        }
+        if (!queueMutationElements(mutations)) {
+          finish();
+          return;
+        }
+        if (performance.now() >= deadline) {
+          finish();
+          return;
+        }
+        if (mutations.length > 0) scheduleQuiet();
+
+      });
+      observer.observe(root, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        characterData: true,
+      });
+    }
+
+    // Traverse the composed tree, including open shadow roots.
+    const composedParent = (element: Element): Element | null => {
+      if (element.parentElement) return element.parentElement;
+      const treeRoot = element.getRootNode?.();
+      return treeRoot && "host" in treeRoot ? (treeRoot as ShadowRoot).host : null;
+    };
+
+    const isInPageTree = (element: Element): boolean => {
+      for (let current: Element | null = element; current; current = composedParent(current)) {
+        checkDeadline();
+        if (current === root) return true;
       }
-      if (discovered) await flushPending();
-    } while (discovered);
-  };
+      return false;
+    };
+
+    const pageElements = (start: Element, observeRoots: boolean): Element[] => {
+      const elements: Element[] = [];
+      const pending: Element[] = [start];
+      const pushChildren = (parent: ParentNode): void => {
+        const children = Array.from(parent.children);
+        for (let index = children.length - 1; index >= 0; index -= 1) {
+          const child = children[index];
+          if (child) pending.push(child);
+        }
+      };
+
+      while (pending.length > 0) {
+        checkDeadline();
+        const element = pending.pop();
+        if (!element) continue;
+        elements.push(element);
+        const shadowRoot = element.shadowRoot;
+        if (shadowRoot) {
+          if (observeRoots && !observedShadowRoots.has(shadowRoot)) {
+            observedShadowRoots.add(shadowRoot);
+            if (!settled) observer?.observe(shadowRoot, {childList: true, subtree: true, attributes: true, characterData: true});
+          }
+          // Visit ordinary children first to preserve their existing document
+          // order, then include the host's open shadow tree.
+          pushChildren(shadowRoot);
+        }
+        pushChildren(element);
+      }
+      return elements;
+    };
+
+    const discoverShadowRoots = async (): Promise<void> => {
+      let discovered: boolean;
+      do {
+        discovered = false;
+        for (const element of pageElements(root, false)) {
+          const shadow = element.shadowRoot;
+          if (!shadow || observedShadowRoots.has(shadow)) continue;
+          // Register the whole new subtree once, including nested roots. A root
+          // attached to an existing host does not emit a light-DOM mutation.
+          pageElements(element, true);
+          pendingElements.add(element);
+          discovered = true;
+        }
+        if (discovered) await flushPending();
+      } while (discovered);
+    };
+
+    return {
+      elements: pageElements,
+      contains: isInPageTree,
+      parent: composedParent,
+      flush: flushPending,
+      discoverShadowRoots,
+      close: finish,
+      waitForQuiet(): Promise<void> | undefined {
+        checkDeadline();
+        if (waitPromise && !settled) {
+          quietStarted = true;
+          maxTimer = setTimeout(finish, maxWaitMs);
+          scheduleQuiet();
+        }
+        return waitPromise;
+      },
+    };
+  })();
 
   const refreshElementProperties = async (): Promise<void> => {
     // Stylesheet edits can change another element without mutating that element.
@@ -1013,7 +1035,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
       checkDeadline();
       // currentSrc can change asynchronously after source mutation/load() without
       // another DOM record. Reconcile connected videos at the observation boundary.
-      if (isInPageTree(element) && (element.tagName.toLowerCase() === "video" || backgroundFor(element) !== previous)) collectElement(element);
+      if (observation.contains(element) && (element.tagName.toLowerCase() === "video" || backgroundFor(element) !== previous)) collectElement(element);
       if ((index + 1) % chunkSize === 0 && index + 1 < snapshots.length) await yieldToPage();
     }
   };
@@ -1021,28 +1043,22 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   // Initial scan, quiet observation window, and final reconciliation.
   try {
     checkDeadline();
-    const elements = pageElements(root, true);
+    const elements = observation.elements(root, true);
     for (let start = 0; start < elements.length; start += chunkSize) {
       for (const element of elements.slice(start, start + chunkSize)) collectElement(element);
       if (start + chunkSize < elements.length) await yieldToPage();
     }
-    await flushPending();
-    await discoverShadowRoots();
+    await observation.flush();
+    await observation.discoverShadowRoots();
+    await observation.waitForQuiet();
     checkDeadline();
-    if (waitPromise && !settled) {
-      quietStarted = true;
-      maxTimer = setTimeout(finish, maxWaitMs);
-      waitForQuiet();
-    }
-    await waitPromise;
-    checkDeadline();
-    await flushPending();
-    await discoverShadowRoots();
+    await observation.flush();
+    await observation.discoverShadowRoots();
     await refreshElementProperties();
-    registry.retainElements(isInPageTree);
+    registry.retainElements(observation.contains);
     checkDeadline();
   } finally {
-    finish();
+    observation.close();
   }
 
   checkDeadline();

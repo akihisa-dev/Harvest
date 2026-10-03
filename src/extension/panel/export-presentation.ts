@@ -3,6 +3,7 @@ import { createSourcePageLayout } from "../../core/pdf.js";
 import type { ExportFormat, ImageArchiveFormat } from "../../core/export-formats.js";
 import { selectionsMatch } from "./export-lifecycle.js";
 import { replaceLoneSurrogates } from "../../core/source-text.js";
+import { individualFilename, saveFilesIndividually } from "../../core/export-files.js";
 
 /** The display only needs failures and selection, never prepared image data. */
 export interface PendingExportView {
@@ -63,6 +64,42 @@ export function createSourcePreview(
   }).join("");
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${layout.width}" height="${layout.height}"><rect width="${layout.width}" height="${layout.height}" fill="white"/><g fill="black" font-family="monospace">${text}</g></svg>`;
   return {url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, sourcePage: first.sourcePage, selected: true};
+}
+
+interface ExportPresentationOptions {
+  readonly getTitle: () => string;
+  readonly getSelection: () => CompletedExport;
+  readonly fallbackTitle: string;
+  readonly sourceHeading: string;
+}
+
+/** Keeps output labels and both preview surfaces tied to the same export selection rules. */
+export function createExportPresentation(options: ExportPresentationOptions) {
+  function filename(extension: "pdf" | "zip"): string {
+    return `${exportFileBaseName(options.getTitle(), options.fallbackTitle)}.${extension}`;
+  }
+
+  function preview(selection: CompletedExport): ImageItem | null {
+    return createSourcePreview(selection.selected, selection.format, selection.includeSourcePage, options.sourceHeading, filename("pdf"));
+  }
+
+  return {
+    get pdfFilename() { return filename("pdf"); },
+    get zipFilename() { return filename("zip"); },
+    get resultFilename(): string {
+      const {format, selected} = options.getSelection();
+      if (format === "pdf") return filename("pdf");
+      if (!saveFilesIndividually(format, selected.length)) return filename("zip");
+      const first = `${"1".padStart(Math.max(3, String(selected.length).length), "0")}.${format}`;
+      return individualFilename(filename("zip"), first, selected.length);
+    },
+    get sourcePreview() { return preview(options.getSelection()); },
+    get viewerPages(): readonly ImageItem[] {
+      const selection = options.getSelection();
+      const source = preview(selection);
+      return source ? [...selection.selected, source] : selection.selected;
+    },
+  };
 }
 
 export function deriveExportViewState(options: {

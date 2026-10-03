@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 const {loadExportPreferences, saveExportFormat, saveSourcePagePreference} = await import("../dist/extension/app/browser/export-preferences.js");
-const {deriveExportViewState, exportFileBaseName, imageFilename, createSourcePreview} = await import("../dist/extension/app/panel/export-presentation.js");
+const {deriveExportViewState, exportFileBaseName, imageFilename, createSourcePreview, createExportPresentation} = await import("../dist/extension/app/panel/export-presentation.js");
 const {createExportLifecycle} = await import("../dist/extension/app/panel/export-lifecycle.js");
 
 function memoryStorage(entries = []) {
@@ -115,6 +115,39 @@ test("file labels and source preview safely represent URLs and XML text", () => 
   assert.equal(createSourcePreview([image], "jpg", true, "Source", "file.jpg"), null);
   assert.equal(createSourcePreview([image], "pdf", false, "Source", "file.pdf"), null);
   assert.equal(createSourcePreview([], "pdf", true, "Source", "file.pdf"), null);
+});
+
+test("出力名・画像一覧の出典・閲覧ページが同じ選択順序と形式を反映する", () => {
+  let title = "Title / test";
+  let selection = {format: "pdf", includeSourcePage: true, selected: [image, {...image, url: "https://example.test/second.png"}]};
+  const presentation = createExportPresentation({
+    getTitle: () => title,
+    getSelection: () => selection,
+    fallbackTitle: "Images",
+    sourceHeading: "Source",
+  });
+  assert.equal(presentation.resultFilename, "Title _ test.pdf");
+  assert.equal(presentation.pdfFilename, "Title _ test.pdf");
+  assert.equal(presentation.zipFilename, "Title _ test.zip");
+  assert.deepEqual(presentation.viewerPages.slice(0, 2), selection.selected);
+  assert.equal(presentation.viewerPages.at(-1).url, presentation.sourcePreview.url);
+  selection = {...selection, selected: [...selection.selected].reverse()};
+  assert.equal(presentation.viewerPages[0], selection.selected[0]);
+  assert.equal(presentation.viewerPages.at(-1).sourcePage, selection.selected[0].sourcePage);
+  for (const format of ["jpg", "png", "jxl", "gif", "mp4"]) {
+    selection = {...selection, format};
+    assert.equal(presentation.sourcePreview, null, format);
+    assert.deepEqual(presentation.viewerPages, selection.selected, format);
+    assert.equal(presentation.resultFilename, format === "mp4" ? "Title _ test_001.mp4" : "Title _ test.zip", format);
+    selection = {...selection, selected: [image]};
+    assert.equal(presentation.resultFilename, `Title _ test.${format}`, format);
+    selection = {...selection, selected: [image, {...image}]};
+  }
+  title = "...";
+  selection = {...selection, format: "pdf", selected: []};
+  assert.equal(presentation.resultFilename, "Images.pdf");
+  assert.equal(presentation.sourcePreview, null);
+  assert.deepEqual(presentation.viewerPages, []);
 });
 
 test("shared export lifecycle discards changed selections and cleans up aborted work", async () => {

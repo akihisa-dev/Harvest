@@ -13,6 +13,11 @@ export interface XPageState {
   status: "ready" | "restricted" | "unavailable" | "timeout";
 }
 
+export interface BookmarkPageResult {
+  status: "advanced" | "end" | "unavailable" | "stalled" | "failed" | "changed";
+  cursor?: string;
+}
+
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -47,6 +52,13 @@ export function isPageScan(value: unknown): value is PageScan {
 export function isXPageState(value: unknown): value is XPageState {
   return record(value) && typeof value["status"] === "string"
     && ["ready", "restricted", "unavailable", "timeout"].includes(value["status"]);
+}
+
+export function isBookmarkPageResult(value: unknown): value is BookmarkPageResult {
+  return record(value) && typeof value["status"] === "string"
+    && ["advanced", "end", "unavailable", "stalled", "failed", "changed"].includes(value["status"])
+    && optionalString(value["cursor"])
+    && (value["status"] !== "advanced" || Boolean(value["cursor"]));
 }
 
 function postSnapshot(value: unknown): value is XPostSnapshot {

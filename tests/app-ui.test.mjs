@@ -179,9 +179,15 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   globalThis.document = document;
   const {createImageListView} = await import("../dist/extension/app/panel/image-list-view.js");
   const inertPreviewLoader = {set() {}, clearImage() {}, clear() {} };
+  const windowListeners = new Map();
   globalThis.window = {
     setTimeout: (callback, delay) => setTimeout(callback, delay === 60000 ? 0 : delay),
     clearTimeout,
+    addEventListener(name, listener) {
+      if (!windowListeners.has(name)) windowListeners.set(name, new Set());
+      windowListeners.get(name).add(listener);
+    },
+    removeEventListener(name, listener) { windowListeners.get(name)?.delete(listener); },
     matchMedia: () => ({matches: false})
   };
   globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {} });
@@ -901,6 +907,20 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(urlDropOverlay.hidden, true, "ドロップ後は画面全体の案内を消す");
     await waitUntil(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
     assert.deepEqual(createdUrls, ["https://example.com/dropped"], "URL入力済みでも右の操作欄へのドロップで解析する");
+
+    let completeTabQuery;
+    chrome.tabs.query = () => new Promise(resolve => { completeTabQuery = resolve; });
+    sourceUrl.value = "";
+    const priorExecutionCount = executionCount;
+    document.querySelector("#scan").dispatch("click");
+    const statusAtClose = document.querySelector("#status").textContent;
+    assert.equal(document.querySelector("#scan").dataset.scanning, "true");
+    for (const listener of windowListeners.get("pagehide") ?? []) listener();
+    completeTabQuery([{id: 7, url: scanResultUrl}]);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(executionCount, priorExecutionCount, "パネルを閉じた後に返るタブから解析を始めない");
+    assert.equal(document.querySelector("#images").children.length, 0, "破棄後に旧結果を変更しない");
+    assert.equal(document.querySelector("#status").textContent, statusAtClose, "破棄後に進捗を描画しない");
   } finally {
     globalThis.fetch = previousFetch;
     globalThis.createImageBitmap = previousCreateImageBitmap;
@@ -909,4 +929,75 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     globalThis.chrome = previousChrome;
     globalThis.window = previousWindow;
   }
+});
+
+test("解析結果の公開とリセットで出典・形式・表示資源の寿命をそろえる", async () => {
+  const {createResultSession} = await import("../dist/extension/app/panel/result-session.js");
+  const {createExportSession} = await import("../dist/extension/app/panel/export-session.js");
+  const collection = new ImageCollection();
+  const session = createExportSession({
+    format: "pdf", includeSourcePage: true,
+    getSelectedItems: () => collection.selectedItems,
+    getPdfController: () => null,
+    getImageController: () => null,
+    isBusy: () => false,
+  });
+  let committedSource = null;
+  let visibleGroup = "old";
+  let viewerOpen = true;
+  let viewerPage = "old";
+  let previewsCleared = 0;
+  let videoSizesCleared = 0;
+  let analyzedUrl = "old";
+  let scanState = "results";
+  let preferredFormat = "jxl";
+  const results = createResultSession({
+    collection,
+    exportSession: session,
+    sourceInput: {
+      commitResult(url) {
+        assert.equal(results.title, "New title", "出典表示時には公開したタイトルが使える");
+        committedSource = url;
+      },
+      reset() { committedSource = null; },
+    },
+    imageList: {
+      clearVideoSizes() { videoSizesCleared++; },
+      showInitialGroup(key) { visibleGroup = key; },
+      clearVisibleGroups() { visibleGroup = undefined; },
+    },
+    viewer: {
+      setOpen(value) { viewerOpen = value; },
+      clearCurrentPage() { viewerPage = null; },
+    },
+    previews: {clear() { previewsCleared++; }},
+    getPreferredFormat: () => preferredFormat,
+    clearAnalyzedUrl() { analyzedUrl = null; },
+    resetScan() { scanState = "initial"; },
+    fallbackTitle: "Images",
+  });
+  const url = "https://example.test/clip.mp4";
+  collection.replace([url], "https://example.test/page", [{url, kind: "video"}]);
+  results.commit("New title", null, "https://example.test/page");
+  assert.equal(session.format, "mp4", "結果内の動画形式を初期選択する");
+  assert.equal(committedSource, "https://example.test/page");
+  assert.equal(visibleGroup, null);
+  assert.equal(viewerOpen, false);
+  assert.equal(viewerPage, null);
+  assert.equal(previewsCleared, 1);
+  assert.equal(videoSizesCleared, 1);
+  results.reset();
+  assert.equal(results.title, "Images");
+  assert.deepEqual(collection.items, []);
+  assert.equal(committedSource, null);
+  assert.equal(visibleGroup, undefined);
+  assert.equal(analyzedUrl, null);
+  assert.equal(scanState, "initial");
+  assert.equal(session.includeSourcePage, true, "結果のリセットでは保存設定を変更しない");
+  assert.equal(session.format, "mp4");
+  preferredFormat = "png";
+  collection.replace(["https://example.test/image.png"], "https://example.test/new");
+  results.commit("New title", "group", "https://example.test/new");
+  assert.equal(session.format, "png", "次の結果で読み直した保存形式を適用する");
+  assert.equal(committedSource, "https://example.test/new");
 });

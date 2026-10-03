@@ -1,4 +1,5 @@
-import { checkCancelled, fetchedImageDimensions, imageDimensionsError } from "../contracts/image-data-contract.js";
+import { checkCancelled } from "../contracts/image-data-contract.js";
+import { validateFetchedDimensions, withDecodedImage } from "./decoded-image.js";
 import { encodeJxl } from "./jxl-encoder.js";
 import { isMediaArchiveFormat } from "../../core/export-formats.js";
 export class ImageFormatError extends Error {
@@ -16,47 +17,18 @@ async function isPng(blob, signal) {
     checkCancelled(signal);
     return pngSignature.every((value, index) => bytes[index] === value);
 }
-/** Keep cancellation ahead of dimension errors for every preserved image. */
-function validateDecodedDimensions(bitmap, signal) {
-    checkCancelled(signal);
-    const dimensionsError = imageDimensionsError(bitmap.width, bitmap.height);
-    if (dimensionsError)
-        throw new ImageFormatError(dimensionsError);
+function withFormatImage(blob, signal, consume) {
+    return withDecodedImage(blob, {
+        signal,
+        invalidDimensions: message => new ImageFormatError(message),
+        decodeFailure() {
+            checkCancelled(signal);
+            return new ImageFormatError("画像を読み込めませんでした。形式が対応していないか、データが壊れています。");
+        },
+    }, consume);
 }
 async function isDecodablePng(blob, signal) {
-    if (!await isPng(blob, signal))
-        return false;
-    let bitmap;
-    try {
-        bitmap = await createImageBitmap(blob);
-    }
-    catch {
-        checkCancelled(signal);
-        throw new ImageFormatError("画像を読み込めませんでした。形式が対応していないか、データが壊れています。");
-    }
-    try {
-        validateDecodedDimensions(bitmap, signal);
-        return true;
-    }
-    finally {
-        bitmap.close();
-    }
-}
-async function validateOriginalJpeg(blob, signal) {
-    let bitmap;
-    try {
-        bitmap = await createImageBitmap(blob);
-    }
-    catch {
-        checkCancelled(signal);
-        throw new ImageFormatError("画像を読み込めませんでした。形式が対応していないか、データが壊れています。");
-    }
-    try {
-        validateDecodedDimensions(bitmap, signal);
-    }
-    finally {
-        bitmap.close();
-    }
+    return await isPng(blob, signal) && await withFormatImage(blob, signal, () => true);
 }
 function fetchedBlob(fetched) {
     return fetched.kind === "original"
@@ -73,51 +45,23 @@ export async function convertImage(fetched, format, signal) {
     checkCancelled(signal);
     if (isMediaArchiveFormat(format))
         return fetchedBlob(fetched);
-    const headerDimensions = await fetchedImageDimensions(fetched);
-    checkCancelled(signal);
-    if (headerDimensions) {
-        const dimensionsError = imageDimensionsError(headerDimensions.width, headerDimensions.height);
-        if (dimensionsError)
-            throw new ImageFormatError(dimensionsError);
-    }
+    await validateFetchedDimensions(fetched, signal, message => new ImageFormatError(message));
     if (fetched.kind === "original" && format === "jpg")
         return fetchedBlob(fetched);
     if (format === "jpg" && fetched.kind === "bitmap" && fetched.originalJpeg) {
-        await validateOriginalJpeg(fetched.blob, signal);
+        await withFormatImage(fetched.blob, signal, () => { });
         return fetched.blob;
     }
     if (format === "png" && fetched.kind === "bitmap" && await isDecodablePng(fetched.blob, signal))
         return fetched.blob;
-    const source = fetchedBlob(fetched);
-    let bitmap;
-    try {
-        bitmap = await createImageBitmap(source);
-    }
-    catch {
-        checkCancelled(signal);
-        throw new ImageFormatError("画像を読み込めませんでした。形式が対応していないか、データが壊れています。");
-    }
-    let canvas;
-    try {
-        checkCancelled(signal);
-        const { width, height } = bitmap;
-        const dimensionsError = imageDimensionsError(width, height);
-        if (dimensionsError)
-            throw new ImageFormatError(dimensionsError);
-        canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        if (canvas.width !== width || canvas.height !== height) {
-            throw new ImageFormatError("画像が大きすぎて変換できませんでした。");
-        }
-        const context = canvas.getContext("2d", { alpha: format !== "jpg", willReadFrequently: format === "jxl" });
-        if (!context)
-            throw new ImageFormatError("画像を変換できませんでした。");
-        if (format === "jpg") {
-            context.fillStyle = "#ffffff";
-            context.fillRect(0, 0, width, height);
-        }
-        context.drawImage(bitmap, 0, 0);
+    return withFormatImage(fetchedBlob(fetched), signal, async (image) => {
+        const { width, height } = image;
+        const { canvas, context } = image.canvas({
+            context: { alpha: format !== "jpg", willReadFrequently: format === "jxl" },
+            opaque: format === "jpg",
+            invalidSize: () => new ImageFormatError("画像が大きすぎて変換できませんでした。"),
+            unavailable: () => new ImageFormatError("画像を変換できませんでした。"),
+        });
         checkCancelled(signal);
         if (format === "jpg")
             return await toBlob(canvas, "image/jpeg", 1);
@@ -134,12 +78,5 @@ export async function convertImage(fetched, format, signal) {
             checkCancelled(signal);
             throw new ImageFormatError("JXLに変換できませんでした。");
         }
-    }
-    finally {
-        bitmap.close();
-        if (canvas) {
-            canvas.width = 0;
-            canvas.height = 0;
-        }
-    }
+    });
 }

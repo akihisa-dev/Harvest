@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {isPageScan, isXPageState, isXMediaSnapshot} from "../dist/extension/app/contracts/page-contracts.js";
+import {isBookmarkPageResult, isPageScan, isXPageState, isXMediaSnapshot} from "../dist/extension/app/contracts/page-contracts.js";
 import {PageReadSession} from "../dist/extension/app/browser/page-read-session.js";
 
 const page = {url: "https://example.test/", title: "", images: ["data:image/png;base64,AAAA"]};
@@ -30,6 +30,18 @@ test("ページ契約は配列の中の不正値や不正な状態を拒否す�
     [{key: "a", observed: [{kind: "audio"}], roots: []}],
     [{key: "a", observed: [], roots: [{player: true, requireIdentity: "yes"}]}]]) {
     assert.equal(isXMediaSnapshot({...snapshot, posts}), false);
+  }
+});
+
+test("続き取得の契約は進んだcursorを必須にし、終端と取得失敗を区別する", () => {
+  assert.equal(isBookmarkPageResult({status: "advanced", cursor: "next"}), true);
+  for (const status of ["end", "unavailable", "stalled", "failed", "changed"]) {
+    assert.equal(isBookmarkPageResult({status}), true);
+    assert.equal(isBookmarkPageResult({status, cursor: ""}), true);
+  }
+  for (const result of [null, [], {}, {status: "advanced"}, {status: "advanced", cursor: ""},
+    {status: "advanced", cursor: 1}, {status: "ready"}, {status: "end", cursor: null}]) {
+    assert.equal(isBookmarkPageResult(result), false);
   }
 });
 

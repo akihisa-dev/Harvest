@@ -1,6 +1,7 @@
 import { resolve, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import {moduleReferences as readReferences} from "./lib/module-references.mjs";
 
 const allowedLayers = {
   contracts: new Set(["core", "contracts"]),
@@ -18,19 +19,7 @@ function layer(path) {
 
 // Source references include type-only dependencies for layer checks.
 function moduleReferences(sourceFile) {
-  const references = [];
-  function visit(node) {
-    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteralLike(node.moduleSpecifier)) {
-      references.push(node.moduleSpecifier.text);
-    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-      references.push(node.arguments[0] && ts.isStringLiteralLike(node.arguments[0]) ? node.arguments[0].text : null);
-    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteralLike(node.argument.literal)) {
-      references.push(node.argument.literal.text);
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(sourceFile);
-  return references;
+  return readReferences(sourceFile).filter(reference => reference.kind !== "resource").map(reference => reference.specifier);
 }
 
 export function checkArchitecture(root = process.cwd()) {

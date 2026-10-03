@@ -30,6 +30,12 @@ export function isXPageState(value) {
     return record(value) && typeof value["status"] === "string"
         && ["ready", "restricted", "unavailable", "timeout"].includes(value["status"]);
 }
+export function isBookmarkPageResult(value) {
+    return record(value) && typeof value["status"] === "string"
+        && ["advanced", "end", "unavailable", "stalled", "failed", "changed"].includes(value["status"])
+        && optionalString(value["cursor"])
+        && (value["status"] !== "advanced" || Boolean(value["cursor"]));
+}
 function postSnapshot(value) {
     if (!record(value) || typeof value["key"] !== "string" || !optionalString(value["postId"]))
         return false;

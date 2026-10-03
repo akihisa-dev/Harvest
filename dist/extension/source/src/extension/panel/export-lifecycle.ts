@@ -3,14 +3,14 @@ import type { MutablePendingExport } from "../contracts/export-contracts.js";
 
 export type ExportStatusState = "info" | "busy" | "success" | "error";
 
-export interface ExportLifecycleOptions {
+export interface ExportLifecycleOptions<TWork = MutablePendingExport<unknown>> {
   readonly cancelledMessage: string;
   readonly isBusy: () => boolean;
   readonly isDisposed: () => boolean;
   readonly onBusyChange: (busy: boolean) => void;
   readonly onStatus: (message: string, state: ExportStatusState, progress?: string) => void;
   readonly onScrollToFailures: () => void;
-  readonly retainAbortedWork?: (work: MutablePendingExport<unknown>) => boolean;
+  readonly retainAbortedWork?: (work: TWork) => boolean;
 }
 
 export interface ExportRun<TWork> {
@@ -21,13 +21,16 @@ export interface ExportRun<TWork> {
   reportStatus(message: string, state: ExportStatusState, progress?: string): void;
 }
 
-export interface ExportLifecycle<TPrepared, TWork extends MutablePendingExport<TPrepared>> {
-  readonly pending: TWork | null;
+export interface ExportControllerState<TPending> {
+  readonly pending: TPending | null;
   readonly isRunning: boolean;
   readonly progress: string;
   clear(): void;
   abort(): void;
   discardIfSelectionChanged(selected: readonly ImageItem[]): boolean;
+}
+
+export interface ExportLifecycle<TPrepared, TWork extends MutablePendingExport<TPrepared>> extends ExportControllerState<TWork> {
   resolveWork(
     selected: readonly ImageItem[],
     create: () => TWork,
@@ -54,7 +57,7 @@ export function downloadBlob(blob: Blob, filename: string): void {
 
 /** Owns the retry work, cancellation, progress, and cleanup shared by every export format. */
 export function createExportLifecycle<TPrepared, TWork extends MutablePendingExport<TPrepared>>(
-  options: ExportLifecycleOptions,
+  options: ExportLifecycleOptions<TWork>,
 ): ExportLifecycle<TPrepared, TWork> {
   let pending: TWork | null = null;
   let activeController: AbortController | null = null;
