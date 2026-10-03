@@ -40,7 +40,7 @@ export interface XMediaAnalysis {
 /** Match image URL spellings without ever merging two unrelated paths. */
 export function xMediaUrlKey(value: string): string {
   try {
-    const url = new URL(value);
+    const url = new URL(xOriginalPhotoUrl(value));
     if (url.hostname !== "pbs.twimg.com") return value;
     const ext = /\.(jpg|jpeg|png|webp|avif|gif)$/i.exec(url.pathname);
     const format = url.searchParams.get("format") ?? ext?.[1];
@@ -53,6 +53,24 @@ export function xMediaUrlKey(value: string): string {
     return url.href;
   } catch { return value; }
 }
+/** Request the original CDN rendition only for X post photographs. */
+export function xOriginalPhotoUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    if (!/^https?:$/.test(url.protocol) || url.hostname !== "pbs.twimg.com") return value;
+    const match = /^\/media\/([A-Za-z0-9_-]+)(?:\.(jpg|jpeg|png|webp|avif|gif))?(?::(?:orig|large|medium|small|thumb|\d+x\d+))?$/i.exec(url.pathname);
+    if (!match) return value;
+    const format = (url.searchParams.get("format") ?? match[2])?.toLowerCase();
+    if (!format || !/^(?:jpg|jpeg|png|webp|avif|gif)$/.test(format)) return value;
+    url.pathname = `/media/${match[1]}`;
+    url.searchParams.set("format", format === "jpeg" ? "jpg" : format);
+    url.searchParams.set("name", "orig");
+    url.searchParams.sort();
+    url.hash = "";
+    return url.href;
+  } catch { return value; }
+}
+
 export function isXVideoPreview(value: string): boolean {
   try {
     const url = new URL(value);
@@ -218,7 +236,8 @@ export function parseXMedia(snapshot: XMediaSnapshot, targetPostId?: string): XM
   });
   // Posters are previews of resolved videos, not additional still photographs.
   const posters = new Set(media.filter(m => m.kind === "video" && m.previewUrl).map(m => xMediaUrlKey(m.previewUrl!)));
-  const resolved = media.filter(m => m.kind !== "image" || !posters.has(xMediaUrlKey(m.url)));
+  const resolved = media.filter(m => m.kind !== "image" || !posters.has(xMediaUrlKey(m.url)))
+    .map(item => item.kind === "image" ? {...item, url: xOriginalPhotoUrl(item.url)} : item);
   return {media: resolved, missingPosts: [...missing], diagnostics: {
     posts: snapshot.posts.length, observed: snapshot.posts.reduce((n, post) => n + post.observed.length, 0),
     extracted: records.filter(r => r.source === "data").length, merged: resolved.length,

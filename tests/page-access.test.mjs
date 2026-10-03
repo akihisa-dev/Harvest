@@ -40,8 +40,8 @@ for (const path of ["/i/history", "/i/bookmarks"]) {
     };
     const result = await scanTab(8, undefined, url);
     assert.deepEqual(calls, ["scanDocument", "waitForXPage", "scanDocument", "scanXMedia"]);
-    assert.deepEqual(result.images, [photo, extraPhoto]);
-    assert.deepEqual(result.media, [{url: photo, kind: "image"}, {url: extraPhoto, kind: "image"}, video]);
+    assert.deepEqual(result.images, ["https://pbs.twimg.com/media/first?format=jpg&name=orig", "https://pbs.twimg.com/media/second?format=jpg&name=orig"]);
+    assert.deepEqual(result.media, [{url: "https://pbs.twimg.com/media/first?format=jpg&name=orig", kind: "image"}, {url: "https://pbs.twimg.com/media/second?format=jpg&name=orig", kind: "image"}, video]);
   });
 }
 
@@ -215,7 +215,7 @@ test("X動画ページは投稿の読み込みを待って再解析し、MAINで
     calls.push({name: injection.func.name, world: injection.world, args: injection.args});
     if (injection.func.name === "waitForXPage") return [{result: {status: "ready"}}];
     if (injection.func.name === "scanXMedia")
-      return [{result: mediaSnapshot(url, [{url: "https://video.twimg.com/example.mp4", kind: "video"}], [{url: "https://pbs.twimg.com/media/photo.jpg", kind: "image"}])}];
+      return [{result: mediaSnapshot(url, [{url: "https://video.twimg.com/example.mp4", kind: "video"}], [{url: "https://pbs.twimg.com/media/photo?format=jpg&name=orig", kind: "image"}])}];
     pageScans++;
     return [{
       result: {
@@ -229,8 +229,8 @@ test("X動画ページは投稿の読み込みを待って再解析し、MAINで
   };
   const result = await scanTab(8, undefined, url);
   assert.equal(pageScans, 2);
-  assert.deepEqual(result.images, ["https://pbs.twimg.com/media/photo.jpg"]);
-  assert.deepEqual(result.media, [{url: "https://video.twimg.com/example.mp4", kind: "video"}, {url: "https://pbs.twimg.com/media/photo.jpg", kind: "image"}]);
+  assert.deepEqual(result.images, ["https://pbs.twimg.com/media/photo?format=jpg&name=orig"]);
+  assert.deepEqual(result.media, [{url: "https://video.twimg.com/example.mp4", kind: "video"}, {url: "https://pbs.twimg.com/media/photo?format=jpg&name=orig", kind: "image"}]);
   assert.deepEqual(calls.map(call => call.name), ["scanDocument", "waitForXPage", "scanDocument", "scanXMedia"]);
   assert.deepEqual(calls[1].args, [true, 10_000, "123"]);
   assert.deepEqual(calls[2].args, ["123"]);

@@ -22,7 +22,7 @@
 
 ## Xの投稿メディア
 
-[x-media.ts](x-media.ts) は、ページから読み取った限定的なデータとDOMのメディア候補を投稿IDごとに照合します。`quoted_status_result.result`、`legacy.retweeted_status_result.result`、`TweetWithVisibilityResults.tweet` を展開し、`extended_entities.media` を優先します。一覧では引用・再投稿を含み、指定投稿の解析では別投稿を除きます。最高ビットレートのMP4とプレビューを分け、メディアID・同一URL・明示的な画質候補の関係だけで統合します。
+[x-media.ts](x-media.ts) は、ページから読み取った限定的なデータとDOMのメディア候補を投稿IDごとに照合します。`quoted_status_result.result`、`legacy.retweeted_status_result.result`、`TweetWithVisibilityResults.tweet` を展開し、`extended_entities.media` を優先します。一覧では引用・再投稿を含み、指定投稿の解析では別投稿を除きます。最高ビットレートのMP4とプレビューを分け、メディアID・同一URL・明示的な画質候補の関係だけで統合します。投稿写真の保存URLは `xOriginalPhotoUrl()` で `pbs.twimg.com/media/` の既知形式だけを `name=orig` へ統一します。旧式の拡張子・サイズ表記も同じ写真として照合します。プロフィール画像、動画のポスター、他サイトのURLはこの変換の対象外です。プレビューと保存はこの保存URLから取得し、配信元に原寸がない場合の縮小版への暗黙の代用は行いません。
 
 画面の動画プレビューに対応する動画がない場合や、既知のメディア構造から保存URLを解決できない場合は、不足投稿を返します。探索上限は完全な解析と区別します。DOMに存在せず、投稿データにもない未読み込みメディアの存在は判定できません。
 

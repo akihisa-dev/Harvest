@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {parseXMedia, xMediaUrlKey} from '../dist/extension/core/x-media.js';
+import {parseXMedia, xMediaUrlKey, xOriginalPhotoUrl} from '../dist/extension/core/x-media.js';
 const image = name => `https://pbs.twimg.com/media/${name}.jpg`;
+const original = name => `https://pbs.twimg.com/media/${name}?format=jpg&name=orig`;
 const poster = name => `https://pbs.twimg.com/ext_tw_video_thumb/${name}/img/frame.jpg`;
 const clip = name => `https://video.twimg.com/${name}.mp4`;
 const photo = name => ({type: 'photo', media_url_https: image(name)});
@@ -17,11 +18,11 @@ test('引用・再投稿・可視性ラッパーを一覧で展開し、単独�
   own.quoted_status_result = {result: {__typename: 'TweetWithVisibilityResults', tweet: tweet('456', [photo('quoted'), video('quoted')])}};
   const snapshot = scan([post('123', {tweet: own})]);
   assert.equal(parseXMedia(snapshot).media.length, 3);
-  assert.deepEqual(parseXMedia(snapshot, '123').media.map(m => m.url), [image('own')]);
+  assert.deepEqual(parseXMedia(snapshot, '123').media.map(m => m.url), [original('own')]);
   const repost = {rest_id: '789', legacy: {entities: {media: [photo('duplicate-outer')]},
     retweeted_status_result: {result: own}}};
   assert.deepEqual(parseXMedia(scan([post('789', {tweet: repost})])).media.map(m => m.url),
-    [image('own'), image('quoted'), clip('quoted')]);
+    [original('own'), original('quoted'), clip('quoted')]);
 });
 
 test('完全なメディア一覧を優先し、別投稿と未確認の祖先データを取り込まない', () => {
@@ -29,7 +30,7 @@ test('完全なメディア一覧を優先し、別投稿と未確認の祖先�
   own.legacy.entities = {media: [photo('stale')]};
   const p = post('123', {tweet: own, tweetResults: [tweet('456', [photo('other')])]});
   p.roots.push({value: {media: [photo('unowned')]}, requireIdentity: true, player: false});
-  assert.deepEqual(parseXMedia(scan([p])).media.map(m => m.url), [image('first'), image('second')]);
+  assert.deepEqual(parseXMedia(scan([p])).media.map(m => m.url), [original('first'), original('second')]);
 });
 
 test('動画プレビューは写真にせず、別投稿の動画で不足を埋めない', () => {
@@ -75,4 +76,36 @@ test('探索上限を完全な解析と区別する', () => {
   const snapshot = scan([post('123', {tweet: tweet('123', [photo('first')])})]);
   snapshot.limited = true;
   assert.equal(parseXMedia(snapshot).diagnostics.limited, true);
+});
+
+test('一覧の縮小写真と個別投稿の写真を同じオリジナルURLで保存する', () => {
+  const small = 'https://pbs.twimg.com/media/photo?format=jpg&name=small';
+  const large = 'https://pbs.twimg.com/media/photo?format=jpg&name=large';
+  const original = 'https://pbs.twimg.com/media/photo?format=jpg&name=orig';
+  const timeline = parseXMedia(scan([post('123', {tweet: tweet('123', [photo('photo')])}, [{kind: 'image', url: small}])]));
+  const single = parseXMedia(scan([post('123', {}, [{kind: 'image', url: large}])]), '123');
+  assert.equal(timeline.media.length, 1);
+  assert.equal(timeline.media[0].url, original);
+  assert.equal(single.media[0].url, original);
+});
+
+for (const [input, expected] of [
+  ['https://pbs.twimg.com/media/a.jpg:small', 'https://pbs.twimg.com/media/a?format=jpg&name=orig'],
+  ['https://pbs.twimg.com/media/a.png', 'https://pbs.twimg.com/media/a?format=png&name=orig'],
+  ['https://pbs.twimg.com/media/a?format=png&name=900x900', 'https://pbs.twimg.com/media/a?format=png&name=orig'],
+  ['https://pbs.twimg.com/media/a?format=gif&name=small', 'https://pbs.twimg.com/media/a?format=gif&name=orig'],
+  ['https://pbs.twimg.com/profile_images/a.jpg?name=small', 'https://pbs.twimg.com/profile_images/a.jpg?name=small'],
+  ['https://pbs.twimg.com/ext_tw_video_thumb/a.jpg?name=small', 'https://pbs.twimg.com/ext_tw_video_thumb/a.jpg?name=small'],
+  ['https://other.test/media/a.jpg?name=small', 'https://other.test/media/a.jpg?name=small'],
+  ['https://pbs.twimg.com/media/a?format=unknown&name=small', 'https://pbs.twimg.com/media/a?format=unknown&name=small'],
+]) test(`オリジナルサイズ変換の対象と形式を限定する: ${input}`, () => {
+  assert.equal(xOriginalPhotoUrl(input), expected);
+});
+
+test('旧式サイズ表記とクエリ表記の同じ写真を重複させない', () => {
+  const result = parseXMedia(scan([post('123', {}, [
+    {kind: 'image', url: 'https://pbs.twimg.com/media/a.jpg:small'},
+    {kind: 'image', url: 'https://pbs.twimg.com/media/a?format=jpg&name=large'},
+  ])]));
+  assert.deepEqual(result.media, [{kind: 'image', url: 'https://pbs.twimg.com/media/a?format=jpg&name=orig'}]);
 });

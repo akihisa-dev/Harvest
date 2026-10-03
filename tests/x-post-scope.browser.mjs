@@ -52,8 +52,8 @@ test("履歴画面で遅れて表示される投稿と引用の複数写真・�
     assert.equal(result.state.status, "ready");
     assert.ok(result.after.images.includes("https://pbs.twimg.com/media/first?format=jpg&name=small"));
     assert.deepEqual(new Set(result.media.map(item => item.url)), new Set([
-      "https://pbs.twimg.com/media/first?format=jpg&name=small", "https://pbs.twimg.com/media/second.jpg",
-      "https://pbs.twimg.com/media/quoted.jpg", "https://video.twimg.com/clip.mp4",
+      "https://pbs.twimg.com/media/first?format=jpg&name=orig", "https://pbs.twimg.com/media/second?format=jpg&name=orig",
+      "https://pbs.twimg.com/media/quoted?format=jpg&name=orig", "https://video.twimg.com/clip.mp4",
     ]));
     assert.equal(result.media.find(item => item.kind === "video").previewUrl, "https://pbs.twimg.com/media/poster.jpg");
     assert.equal(result.scoped.some(item => item.url.includes("quoted")), false);
@@ -138,7 +138,7 @@ test("Xの対象投稿IDを待機・DOM・再生情報の全経路で照合し�
     assert.deepEqual(new Set(normal.scan.media.map(item => item.url)), new Set(["https://pbs.twimg.com/media/target.jpg", "https://video.twimg.com/target.mp4"]));
     assert.deepEqual(normal.extra, [
       {url: "https://video.twimg.com/target-state.mp4", kind: "video"},
-      {url: "https://pbs.twimg.com/media/target.jpg", kind: "image"},
+      {url: "https://pbs.twimg.com/media/target?format=jpg&name=orig", kind: "image"},
       {url: "https://video.twimg.com/target.mp4", kind: "video"},
     ]);
 

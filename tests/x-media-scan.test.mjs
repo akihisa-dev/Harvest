@@ -15,7 +15,7 @@ test("ブックマークの投稿データから未描画の複数写真と動�
   ]}}}, cache: {media: [{type: "photo", media_url_https: "https://pbs.twimg.com/media/unrelated.jpg"}]}}};
   const result = await runOnPage("x.com", [article], scanXMedia, [], "/i/bookmarks");
   assert.deepEqual(result, [
-    ...photos.map(photo => ({url: photo.media_url_https, kind: "image"})),
+    ...photos.map(photo => ({url: photo.media_url_https.replace(".jpg", "?format=jpg&name=orig"), kind: "image"})),
     {url: "https://video.twimg.com/clip.mp4", kind: "video", previewUrl: "https://pbs.twimg.com/media/poster.jpg"},
   ]);
 });
@@ -27,7 +27,7 @@ test("写真と直接srcが同じプレイヤーにあっても両方を取得�
   }};
   assert.deepEqual(await runOnPage("x.com", [], scanXMedia,
     [{element: player, selectors: ['[data-testid="videoPlayer"]']}]), [
-    {url: "https://pbs.twimg.com/media/photo.jpg", kind: "image"},
+    {url: "https://pbs.twimg.com/media/photo?format=jpg&name=orig", kind: "image"},
     {url: "https://video.twimg.com/direct.mp4", kind: "video"},
   ]);
 });
@@ -46,7 +46,7 @@ test("同じpropsの直接動画を検出しても残りの投稿メディアを
   assert.deepEqual(result, [
     {url: "https://video.twimg.com/first.mp4", kind: "video"},
     {url: "https://video.twimg.com/second.mp4", kind: "video", previewUrl: "https://pbs.twimg.com/media/second.jpg"},
-    {url: "https://pbs.twimg.com/media/photo.jpg", kind: "image"},
+    {url: "https://pbs.twimg.com/media/photo?format=jpg&name=orig", kind: "image"},
   ]);
 });
 
@@ -355,8 +355,8 @@ test('投稿データの補完が予算を使い切っても全投稿のDOM写�
   assert.equal(snapshot.limited, true);
   assert.equal(snapshot.posts.length, 2);
   const urls = parseXMedia(snapshot).media.map(item => item.url);
-  assert.ok(urls.includes('https://pbs.twimg.com/media/visible-0.jpg'));
-  assert.ok(urls.includes('https://pbs.twimg.com/media/visible-1.jpg'));
+  assert.ok(urls.includes('https://pbs.twimg.com/media/visible-0?format=jpg&name=orig'));
+  assert.ok(urls.includes('https://pbs.twimg.com/media/visible-1?format=jpg&name=orig'));
 });
 
 test('読み込み済みの投稿を60件で打ち切らず、全投稿のDOM写真を取得する', async () => {

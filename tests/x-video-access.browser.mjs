@@ -95,10 +95,60 @@ test('実拡張機能で深い画面部品・補完中断があってもブッ�
         return scanTab(tab.id, undefined, url);
       }, url);
       assert.equal(result.xDiagnostics.limited, truncated);
-      assert.ok(result.images.includes('https://pbs.twimg.com/media/visible-0.jpg'));
-      assert.ok(result.images.includes('https://pbs.twimg.com/media/visible-1.jpg'));
+      assert.ok(result.images.includes('https://pbs.twimg.com/media/visible-0?format=jpg&name=orig'));
+      assert.ok(result.images.includes('https://pbs.twimg.com/media/visible-1?format=jpg&name=orig'));
       assert.equal(result.images.some(image => image.includes('profile_images')), false);
     }
+  } finally {
+    await cdp?.detach();
+    await context?.close();
+    await rm(temporary, {recursive: true, force: true});
+  }
+});
+
+test('一覧で縮小表示された写真も保存用取得では元の画素数を保持する', {timeout: 30000}, async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'harvest-x-original-'));
+  let context, cdp;
+  try {
+    context = await chromium.launchPersistentContext(join(temporary, 'profile'), {
+      channel: 'chrome', headless: true, ignoreDefaultArgs: ['--disable-extensions'],
+      args: ['--enable-unsafe-extension-debugging', '--disable-background-networking', '--no-first-run', '--no-default-browser-check'],
+    });
+    cdp = await context.browser().newBrowserCDPSession();
+    const {id} = await cdp.send('Extensions.loadUnpacked', {path: resolve(process.env.HARVEST_TEST_EXTENSION_DIR ?? 'dist/extension')});
+    const page = await context.newPage();
+    const png = await page.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 832; canvas.height = 1216;
+      const original = canvas.toDataURL('image/png').split(',')[1];
+      canvas.width = 208; canvas.height = 304;
+      return {original, small: canvas.toDataURL('image/png').split(',')[1]};
+    });
+    const requests = [];
+    await context.route('https://pbs.twimg.com/media/photo**', route => {
+      const size = new URL(route.request().url()).searchParams.get('name');
+      requests.push(size);
+      return route.fulfill({contentType: 'image/png', body: Buffer.from(size === 'orig' ? png.original : png.small, 'base64')});
+    });
+    await context.route('https://x.com/**', route => route.fulfill({contentType: 'text/html', body: '<!doctype html><title>Bookmarks</title><article data-testid="tweet"><a href="/example/status/123"><time>Today</time></a><div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/photo?format=png&amp;name=small"></div></article>'}));
+    const url = 'https://x.com/i/history';
+    await page.goto(url);
+    assert.deepEqual(await page.locator('img').evaluate(img => [img.naturalWidth, img.naturalHeight]), [208, 304]);
+    const panel = await context.newPage();
+    await panel.goto(`chrome-extension://${id}/app/index.html`);
+    const result = await panel.evaluate(async url => {
+      const {scanTab} = await import(chrome.runtime.getURL('app/browser/page-access.js'));
+      const {fetchImage} = await import(chrome.runtime.getURL('app/media/image-fetch.js'));
+      const {getImageDimensions} = await import(chrome.runtime.getURL('core/image-dimensions.js'));
+      const [tab] = await chrome.tabs.query({url});
+      const scan = await scanTab(tab.id, undefined, url);
+      const fetched = await fetchImage(scan.images[0], {sourcePage: url});
+      const dimensions = getImageDimensions(new Uint8Array(await fetched.blob.arrayBuffer()));
+      return {images: scan.images, dimensions};
+    }, url);
+    assert.deepEqual(result.images, ['https://pbs.twimg.com/media/photo?format=png&name=orig']);
+    assert.deepEqual(result.dimensions, {width: 832, height: 1216});
+    assert.ok(requests.includes('orig'));
   } finally {
     await cdp?.detach();
     await context?.close();
