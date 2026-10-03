@@ -119,3 +119,11 @@ test("寸法情報のないデータや途中で切れたヘッダーは画像�
   assert.equal(getImageDimensions(new Uint8Array([1, 2, 3])), null);
   assert.equal(getImageDimensions(pngHeader(1, 1).subarray(0, 20)), null);
 });
+
+test("SVGの明示寸法を外部資源の解決なしで確認する", () => {
+  const read = text => getImageDimensions(new TextEncoder().encode(text));
+  assert.deepEqual(read('<svg width="16385" height="1"/>'), {width: 16385, height: 1});
+  assert.deepEqual(read('<?xml version="1.0"?><!-- <svg width="99999" height="99999"/> --><svg width="8001px" height="8000"/>'), {width: 8001, height: 8000});
+  assert.deepEqual(read('<svg xmlns="http://www.w3.org/2000/svg" width="2.5" height="2"/>'), {width: 3, height: 2});
+  for (const text of ['<svg width="100%" height="2"/>', '<svg viewBox="0 0 16385 1"/>', '<svg width="2cm" height="2"/>', '<!DOCTYPE svg SYSTEM "https://example.test/a"><svg width="2" height="2"/>', '<svg width="2" width="16385" height="2"/>', '<!-- <svg width="16385" height="1"/> -->']) assert.equal(read(text), null);
+});

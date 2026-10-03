@@ -303,9 +303,38 @@ function avifPrimaryDimensions(
   return null;
 }
 
+/** Inspect only a bounded XML prefix; never resolve entities or external resources. */
+function svgDimensions(bytes: Uint8Array): ImageDimensions | null {
+  const text = new TextDecoder().decode(bytes.subarray(0, 65_536)).replace(/^\uFEFF/, "");
+  let remaining = text.trimStart();
+  while (remaining.startsWith("<?") || remaining.startsWith("<!--")) {
+    const ending = remaining.startsWith("<?") ? "?>" : "-->";
+    const end = remaining.indexOf(ending);
+    if (end < 0) return null;
+    remaining = remaining.slice(end + ending.length).trimStart();
+  }
+  const root = /^<svg(?=\s|\/?>)((?:[^"'<>]|"[^"]*"|'[^']*')*)\/?>/.exec(remaining);
+  if (!root) return null;
+  const attributes = new Map<string, string>();
+  let rest = root[1]!.replace(/\/\s*$/, "");
+  while (rest.trim()) {
+    const attribute = /^\s+([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(rest);
+    if (!attribute || attributes.has(attribute[1]!)) return null;
+    attributes.set(attribute[1]!, attribute[2] ?? attribute[3] ?? "");
+    rest = rest.slice(attribute[0].length);
+  }
+  const dimension = (name: string): number | null => {
+    const value = attributes.get(name)?.trim();
+    if (!value || !/^[+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?:px)?$/.test(value)) return null;
+    return Math.ceil(Number(value.replace(/px$/, "")));
+  };
+  const width = dimension("width"), height = dimension("height");
+  return width === null || height === null ? null : {width, height};
+}
+
 /** Read dimensions from image headers without asking a browser decoder to expand pixels. */
 export function getImageDimensions(bytes: Uint8Array): ImageDimensions | null {
   if (!(bytes instanceof Uint8Array)) return null;
   return pngDimensions(bytes) ?? jpegDimensions(bytes) ?? gifDimensions(bytes) ??
-    webpDimensions(bytes) ?? bmpDimensions(bytes) ?? avifDimensions(bytes);
+    webpDimensions(bytes) ?? bmpDimensions(bytes) ?? avifDimensions(bytes) ?? svgDimensions(bytes);
 }
