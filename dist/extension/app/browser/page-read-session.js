@@ -150,7 +150,7 @@ export class PageReadSession {
         if (url.split("#")[0] !== this.sourceUrl.split("#")[0])
             throw new Error(pageMovedMessage);
     }
-    async verifyCurrentPage() {
+    async verifyCurrentPage(checkBookmarkList = false) {
         await bounded((resolve, reject) => {
             void chrome.tabs.get(this.tabId).then(tab => {
                 try {
@@ -166,6 +166,21 @@ export class PageReadSession {
             }, () => reject(new Error(closedMessage)));
         }, this.signal);
         if (this.documentId) {
+            if (checkBookmarkList) {
+                await this.read({
+                    func: scanXMedia, args: [null, [], true], world: "MAIN",
+                    watchRemoval: true,
+                    failureMessage: pageMovedMessage,
+                    accept: snapshot => {
+                        if (!isXMediaSnapshot(snapshot))
+                            throw new Error(pageMovedMessage);
+                        this.assertSourceUrl(snapshot.url);
+                        if (snapshot.bookmarkList === "other")
+                            throw new Error(pageMovedMessage);
+                    },
+                });
+                return;
+            }
             await this.read({
                 func: () => location.href,
                 watchRemoval: true,

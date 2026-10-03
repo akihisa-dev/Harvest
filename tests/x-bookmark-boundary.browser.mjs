@@ -48,7 +48,7 @@ try{
    const {parseXMedia}=await import(chrome.runtime.getURL('core/x-media.js'));
    const execute=chrome.scripting.executeScript.bind(chrome.scripting);window.trace=[];let reads=0;
    chrome.scripting.executeScript=async request=>{
-    const name=request.func.name;window.trace.push({event:'request',name});
+    const name=request.args?.[2]===true?'finalBookmarkIdentity':request.func.name;window.trace.push({event:'request',name});
     if(name==='scanXMedia'&&++reads===2&&['after','after-empty','disabled'].includes(switchAt)){
      window.waiting=true;await new Promise(resolve=>window.release=resolve);
     }

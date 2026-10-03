@@ -1,5 +1,5 @@
 /** Injected into MAIN. All executable helpers must stay inside this function. */
-export function scanXMedia(targetPostId, onlyPostKeys) {
+export function scanXMedia(targetPostId, onlyPostKeys, identityOnly = false) {
     const url = location.href;
     const snapshot = { url, posts: [], limited: false };
     if (!/^(?:www\.)?(?:x\.com|twitter\.com)$/i.test(location.hostname))
@@ -110,6 +110,8 @@ export function scanXMedia(targetPostId, onlyPostKeys) {
     const supplementalReads = [];
     let count = 0;
     for (const root of roots) {
+        if (identityOnly)
+            break;
         if (exhausted())
             break;
         if (root.closest('aside, [data-testid="sidebarColumn"]') || root.parentElement?.closest('article, dialog, [role="dialog"]'))
@@ -287,12 +289,16 @@ export function scanXMedia(targetPostId, onlyPostKeys) {
     }
     // Identify the active history list even if its store has no usable posts or
     // continuation action. Losing fetchBottom does not mean switching to Likes.
-    if (!targetPostId && !onlyPostKeys && /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname)
+    if (!targetPostId && (!onlyPostKeys || identityOnly) && /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname)
         && timelineModules.size === 1) {
         const module = [...timelineModules][0];
         snapshot.bookmarkList = value(module, "timelineId") === "bookmarks" && !value(module, "scopeId")
             ? "bookmarks" : "other";
     }
+    // Final verification reuses the same identity discovery without reading
+    // tweet entities, captured responses, or media evidence again.
+    if (identityOnly)
+        return snapshot;
     let storedTimelineRecovered = false;
     for (const store of stores) {
         try {

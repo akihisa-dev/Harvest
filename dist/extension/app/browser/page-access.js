@@ -4,6 +4,7 @@ import { PageReadSession, withTemporaryPage } from "./page-read-session.js";
 const isXUrl = (url) => /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(url);
 export async function scanTab(tabId, signal, requestedUrl, options = {}) {
     const session = new PageReadSession(tabId, signal);
+    let checkBookmarkList = false;
     let result = await session.scanInitialPage();
     if (isXUrl(result.url)) {
         const targetUrl = requestedUrl && isXUrl(requestedUrl)
@@ -25,6 +26,7 @@ export async function scanTab(tabId, signal, requestedUrl, options = {}) {
         }
         session.assertSourceUrl(result.url);
         snapshot ??= await session.scanPostMedia(targetPostId);
+        checkBookmarkList = isBookmarkPage && !targetPostId && snapshot.bookmarkList !== "other";
         let bookmarkIncomplete = false, bookmarkStopped = false;
         if (isBookmarkPage && !targetPostId) {
             bookmarkIncomplete = true;
@@ -127,7 +129,7 @@ export async function scanTab(tabId, signal, requestedUrl, options = {}) {
             throw new Error("動画は表示されていますが、保存できるMP4のURLを取得できませんでした。");
         }
     }
-    await session.verifyCurrentPage();
+    await session.verifyCurrentPage(checkBookmarkList);
     return result;
 }
 export function scanUrl(url, signal, options) {

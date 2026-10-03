@@ -232,3 +232,34 @@ for (const ending of ["advanced", "end", "failed"]) for (const list of ["other",
     }
   });
 }
+
+for (const changed of [false, true]) {
+  test(`最終一覧照合後の公開と旧選択・順序を保護する: changed=${changed}`, async t => {
+    const f = setup(t), url = "https://x.com/i/history";
+    f.collection.replace(["https://example.test/A1.png", "https://example.test/A2.png"], f.source);
+    f.collection.setSelected(f.collection.items[0].url, false);
+    f.collection.applyVisibleOrder(f.collection.items, [...f.collection.items].reverse());
+    const previous = f.collection.items, selection = previous.map(item => item.selected);
+    f.query = async () => [{id: 7, url}]; chrome.tabs.get = async () => ({url});
+    f.read = async ({func, args}) => {
+      const identity = args?.[2] === true;
+      const result = func.name === "scanXMedia" ? {url, limited: false, bookmarkList: identity && changed ? "other" : "bookmarks",
+        bookmarkContinuation: !identity, posts: identity ? [] : [{key: "post:1", postId: "1", observed: [],
+          roots: [{requireIdentity: false, player: false, value: {rest_id: "1", extended_entities: {
+            media: [{type: "photo", media_url_https: "https://pbs.twimg.com/media/B.jpg"}]}}}]}]}
+        : func.name === "fetchXBookmarkPage" ? {status: "end"} : {url, title: "Bookmarks", images: []};
+      return [{result, documentId: "same"}];
+    };
+    await f.controller.start();
+    if (changed) {
+      assert.equal(f.collection.items, previous);
+      assert.deepEqual(previous.map(item => item.selected), selection);
+      assert.deepEqual(f.results, []);
+      assert.match(f.statuses.at(-1)[0], /ページが移動/);
+    } else {
+      assert.deepEqual(f.collection.items.map(item => item.url), ["https://pbs.twimg.com/media/B?format=jpg&name=orig"]);
+      assert.equal(f.results.length, 1);
+      assert.equal(f.controller.diagnostics.scan.bookmarkIncomplete, undefined);
+    }
+  });
+}

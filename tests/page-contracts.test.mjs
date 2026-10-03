@@ -58,3 +58,31 @@ test("ページ読み取りは不正な受信値を公開せず、初回失敗�
   result = snapshot;
   assert.equal(await session.scanPostMedia(), snapshot);
 });
+
+for (const change of ["none", "list", "unknown", "url", "document", "loading"]) {
+  test(`Bookmark最終確認は一覧とURL/documentを照合する: ${change}`, async t => {
+    const previous = globalThis.chrome, listeners = new Set(), calls = [];
+    const url = "https://x.com/i/history";
+    globalThis.chrome = {
+      tabs: {get: async () => ({url, status: change === "loading" ? "loading" : "complete"}),
+        onRemoved: {addListener: fn => listeners.add(fn), removeListener: fn => listeners.delete(fn)}},
+      scripting: {executeScript: async request => {
+        calls.push(request);
+        if (request.func.name === "scanDocument") return [{result: {url, title: "Bookmarks", images: []}, documentId: "original"}];
+        return [{result: {url: change === "url" ? `${url}?changed` : url, limited: false, posts: [],
+          ...(change === "unknown" ? {} : {bookmarkList: change === "list" ? "other" : "bookmarks"})},
+        documentId: change === "document" ? "replacement" : "original"}];
+      }},
+    };
+    t.after(() => { globalThis.chrome = previous; });
+    const session = new PageReadSession(1);
+    await session.scanInitialPage();
+    if (["none", "unknown"].includes(change)) await session.verifyCurrentPage(true);
+    else await assert.rejects(session.verifyCurrentPage(true), /ページが移動/);
+    if (change !== "loading") {
+      assert.equal(calls.at(-1).world, "MAIN");
+      assert.deepEqual(calls.at(-1).args, [null, [], true]);
+    } else assert.equal(calls.length, 1);
+    assert.equal(listeners.size, 0);
+  });
+}
