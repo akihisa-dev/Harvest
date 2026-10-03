@@ -8,12 +8,16 @@ export function createSourceInputController(options) {
     function render() {
         const draft = input.value.trim();
         const url = displayCleared && !draft ? "" : resultSourceUrl ?? draft;
-        display.textContent = url || options.placeholder;
+        display.textContent = url
+            ? resultSourceUrl ? options.getResultFilename() : url
+            : options.placeholder;
         display.dataset["hasUrl"] = String(Boolean(url));
     }
     function show() {
         if (options.isBusy())
             return;
+        if (!input.value && resultSourceUrl && !displayCleared)
+            input.value = resultSourceUrl;
         display.hidden = true;
         input.hidden = false;
         input.focus();

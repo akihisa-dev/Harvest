@@ -3,6 +3,7 @@ interface SourceInputOptions {
   readonly display: HTMLButtonElement;
   readonly dropOverlay: HTMLElement;
   readonly placeholder: string;
+  readonly getResultFilename: () => string;
   readonly isBusy: () => boolean;
   readonly isReordering: () => boolean;
   readonly onScan: () => void;
@@ -20,12 +21,15 @@ export function createSourceInputController(options: SourceInputOptions) {
   function render(): void {
     const draft = input.value.trim();
     const url = displayCleared && !draft ? "" : resultSourceUrl ?? draft;
-    display.textContent = url || options.placeholder;
+    display.textContent = url
+      ? resultSourceUrl ? options.getResultFilename() : url
+      : options.placeholder;
     display.dataset["hasUrl"] = String(Boolean(url));
   }
 
   function show(): void {
     if (options.isBusy()) return;
+    if (!input.value && resultSourceUrl && !displayCleared) input.value = resultSourceUrl;
     display.hidden = true;
     input.hidden = false;
     input.focus();

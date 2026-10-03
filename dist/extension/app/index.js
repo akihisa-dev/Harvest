@@ -79,6 +79,7 @@ const sourceInput = createSourceInputController({
     display: sourceDrop,
     dropOverlay: urlDropOverlay,
     placeholder: t("sourceDrop"),
+    getResultFilename: () => exportSession.format === "pdf" ? pdfFilename() : zipFilename(),
     isBusy: () => busy,
     isReordering: () => imageListView.isDragging,
     onScan: () => startScan(),
@@ -120,6 +121,7 @@ function previewName(item) {
     return item.url.startsWith("data:image/svg+xml;") ? "Source" : imageFilename(item.url);
 }
 function render() {
+    sourceInput.render();
     const exportState = exportSession.state;
     appView.render({
         export: exportState,
@@ -236,9 +238,9 @@ scanSessionController = createScanSessionController({
     onStatus: setStatus,
     onResults(nextPageTitle, initialGroup, sourcePage) {
         exportSession.setFormat(initialExportFormat(imageCollection.items, loadExportPreferences().format));
+        pageTitle = nextPageTitle;
         sourceInput.commitResult(sourcePage);
         imagePreviewLoader.clear();
-        pageTitle = nextPageTitle;
         exportSession.clear();
         imageListView.showInitialGroup(initialGroup);
         viewerController.setOpen(false);

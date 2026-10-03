@@ -98,6 +98,17 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     const animation = 'https://files.example.test/animation.gif';
     const movie = 'https://files.example.test/movie.mp4';
     await scan([photo]);
+    assert.equal(await page.locator('#source-drop').textContent(), 'media.pdf');
+    await page.locator('#source-drop').click();
+    assert.equal(await page.locator('#source-url').inputValue(), 'https://source.example.test/gallery');
+    await page.locator('#source-url').fill('https://source.example.test/next');
+    await page.locator('#export-format-png').check();
+    assert.equal(await page.locator('#source-drop').textContent(), 'media.zip');
+    await page.locator('#source-drop').click();
+    assert.equal(await page.locator('#source-url').inputValue(), 'https://source.example.test/next');
+    await page.locator('#source-url').fill('');
+    await page.locator('#export-format-pdf').check();
+    assert.equal(await page.locator('#source-drop').textContent(), 'media.pdf');
     await page.waitForFunction(() => document.querySelector('#images .item-resolution')?.textContent === '640 × 960');
     assert.equal(await page.locator('#images .item-resolution').isVisible(), true);
     const captionPosition = await page.locator('#images > li').first().evaluate(row => {
