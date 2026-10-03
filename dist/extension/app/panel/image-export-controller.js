@@ -29,7 +29,7 @@ export function createImageExportController(options) {
         },
     });
     async function exportImages(format) {
-        if (options.isBusy())
+        if (lifecycle.isRunning || options.isBusy() || options.isDisposed())
             return;
         const selected = [...options.getSelectedItems()];
         if (!selected.length)

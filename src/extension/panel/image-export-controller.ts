@@ -62,7 +62,7 @@ export function createImageExportController(options: ImageExportControllerOption
   });
 
   async function exportImages(format: ImageArchiveFormat): Promise<void> {
-    if (options.isBusy()) return;
+    if (lifecycle.isRunning || options.isBusy() || options.isDisposed()) return;
     const selected = [...options.getSelectedItems()];
     if (!selected.length) return;
     const work = lifecycle.resolveWork(selected, () => ({

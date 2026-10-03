@@ -45,7 +45,7 @@ export function createPdfExportController(options: PdfExportControllerOptions): 
   const lifecycle = createExportLifecycle<PdfImagePage, MutablePendingPdfExport>({...options, cancelledMessage: t("exportCancelled")});
 
   async function exportPdf(): Promise<void> {
-    if (options.isBusy()) return;
+    if (lifecycle.isRunning || options.isBusy() || options.isDisposed()) return;
     const selected = [...options.getSelectedItems()];
     if (!selected.length) return;
     const work = lifecycle.resolveWork(selected, () => ({

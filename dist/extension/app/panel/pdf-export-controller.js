@@ -8,7 +8,7 @@ import { createExportLifecycle, downloadBlob } from "./export-lifecycle.js";
 export function createPdfExportController(options) {
     const lifecycle = createExportLifecycle({ ...options, cancelledMessage: t("exportCancelled") });
     async function exportPdf() {
-        if (options.isBusy())
+        if (lifecycle.isRunning || options.isBusy() || options.isDisposed())
             return;
         const selected = [...options.getSelectedItems()];
         if (!selected.length)
