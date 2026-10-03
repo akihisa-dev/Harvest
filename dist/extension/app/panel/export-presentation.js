@@ -1,5 +1,6 @@
 import { createSourcePageLayout } from "../../core/pdf.js";
 import { selectionsMatch } from "./export-lifecycle.js";
+import { replaceLoneSurrogates } from "../../core/source-text.js";
 export function imageFilename(url) {
     try {
         return decodeURIComponent(new URL(url).pathname.split("/").pop() || url);
@@ -8,8 +9,17 @@ export function imageFilename(url) {
         return url;
     }
 }
+/** Keep the existing length budget without splitting Unicode or creating hidden filenames. */
 export function exportFileBaseName(pageTitle, fallback) {
-    return pageTitle.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) || fallback;
+    function normalize(value) {
+        const truncated = replaceLoneSurrogates(value)
+            .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, "_")
+            .replace(/^[.\s]+|[.\s]+$/g, "")
+            .slice(0, 100);
+        // The title may end with the first half of a surrogate pair after truncation.
+        return truncated.replace(/[\ud800-\udbff]$/, "").replace(/[.\s]+$/g, "");
+    }
+    return normalize(pageTitle) || normalize(fallback) || "Harvest";
 }
 export function createSourcePreview(selected, format, includeSourcePage, heading, filename) {
     const first = selected[0];

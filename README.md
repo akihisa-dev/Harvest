@@ -46,6 +46,8 @@ Drag a zoomed image to pan. Group labels show counts, and image labels show posi
 
 The all-images eye and checkbox control visibility and save selection for the whole collection; group controls affect only their own group. A crossed-out eye indicates hidden images. When there are many controls, the right column scrolls independently of the image list or viewer.
 
+Saved filenames use the page title. Unsupported filename symbols and control characters are replaced, and leading or trailing dots and whitespace are removed. Long titles are shortened without splitting an emoji; an empty result uses the default image name. The same name appears in the save label and PDF source page. Multiple MP4 files keep their sequence numbers.
+
 #### PDF source page
 
 **Add a source page at the end** applies only to PDF. When enabled, it appends one page containing the **Source** heading, saved PDF filename, and source page URL. Text, including Japanese and emoji, can be displayed, selected, and copied. The source page also appears at the end of the image list and viewer thumbnails and can be previewed in the viewer. Other formats hide this setting and omit the source page. Returning to PDF restores the saved setting. This setting and the export format are stored in the browser and retained the next time the panel opens. Page URLs and collected results are not stored as preferences.
@@ -179,6 +181,8 @@ Harvestは、Chromeで開いているページの画像・GIF・動画を集め�
 拡大中は画像をドラッグして表示位置を動かせます。グループ名には枚数、各画像には収集結果全体での順番を表示します。保存ボタンには選択した形式、保存中には進捗、失敗時には再試行の操作、保存完了時には保存件数を表示します。保存中に同じボタンをもう一度押すと、進捗表示を保ったまま保存を中止できます。通信と変換の終了後に準備済みの画像を破棄し、通常の保存可能状態へ戻ります。不完全なPDF・ZIPは保存せず、同じ対象を再度保存できます。
 
 全画像の目とチェックボックスで、収集結果全体の表示・保存対象を切り替えます。各グループの目とチェックボックスでは、そのグループだけを切り替えられます。斜線の付いた目は非表示を示します。操作項目が多いときは右側の操作欄をスクロールでき、画像一覧やビュアーとは別に動かせます。
+
+保存名にはページタイトルを使います。ファイル名に使えない記号と制御文字を置き換え、先頭・末尾のドットと空白を取り除きます。長いタイトルは絵文字を途中で切らずに短くし、名前が空になる場合は既定の画像名を使います。保存欄とPDF出典ページにも同じ名前を表示します。複数MP4の連番は維持します。
 
 #### PDFの出典ページ
 
