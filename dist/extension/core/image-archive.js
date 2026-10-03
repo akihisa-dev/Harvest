@@ -1,4 +1,4 @@
-import { exportFormatMediaKind } from "./export-formats.js";
+import { exportFormatMediaKind, itemArchiveFormat } from "./export-formats.js";
 import { mediaTypeMatchesKind, originalMediaType } from "./media-types.js";
 import { storedZipDataLimit } from "./stored-zip.js";
 export class ImageArchiveLimitError extends RangeError {
@@ -16,6 +16,14 @@ function preparedMediaType(blob) {
     return mediaType;
 }
 function validatePreparedMedia(item, blob, format) {
+    if (format === "recommend") {
+        const expected = itemArchiveFormat(format, item);
+        const mediaType = preparedMediaType(blob);
+        if (mediaType.extension !== expected || !mediaTypeMatchesKind(item.kind ?? "image", mediaType.kind)) {
+            throw new RangeError("選択項目と保存データの形式が一致しません。");
+        }
+        return;
+    }
     if (format !== "mp4" && format !== "gif")
         return;
     const mediaType = preparedMediaType(blob);
@@ -38,7 +46,7 @@ export function createImageZipEntries(selected, prepared, format) {
             extension = mediaType.extension;
         }
         else {
-            extension = format;
+            extension = itemArchiveFormat(format, item);
             validatePreparedMedia(item, blob, format);
         }
         return { filename: archiveFilename(index, selected.length, extension), blob };
@@ -56,8 +64,7 @@ export class ImageArchivePlan {
         this.prepared = prepared;
         this.format = format;
         // .jpg is the shortest recognized original suffix. Check exact names once all are known.
-        const extension = format === "original" ? "jpg" : format;
-        const filenames = selected.map((_, index) => archiveFilename(index, selected.length, extension));
+        const filenames = selected.map((item, index) => archiveFilename(index, selected.length, format === "original" ? "jpg" : itemArchiveFormat(format, item)));
         this.dataLimit = storedZipDataLimit(filenames);
         this.preparedSize = [...prepared.values()].reduce((size, blob) => size + blob.size, 0);
         if (this.preparedSize > this.dataLimit)

@@ -20,20 +20,25 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   const browser = await launchBrowser(t);
   const context = await browser.newContext({locale: 'ja-JP', reducedMotion: 'reduce', acceptDownloads: true});
   await context.addInitScript(() => {
+    localStorage.setItem("harvest.exportFormat", "pdf");
     // This Web fixture mocks only the downloads API; real-extension coverage is separate.
     const listeners = new Set(), downloads = new Map();
     let nextDownload = 1;
+    window.completeFixtureDownload = filename => {
+      for (const [id, item] of downloads) {
+        if (item.filename !== filename || item.state !== 'in_progress') continue;
+        downloads.set(id, {...item, state: 'complete'});
+        for (const listener of listeners) listener({id, state: {current: 'complete'}});
+        break;
+      }
+    };
     window.chrome = {
       downloads: {
         async download({url, filename}) {
           const id = nextDownload++;
+          downloads.set(id, {id, filename, state: 'in_progress'});
           const link = document.createElement('a');
           link.href = url; link.download = filename; document.body.append(link); link.click(); link.remove();
-          downloads.set(id, {id, state: 'in_progress'});
-          setTimeout(() => {
-            downloads.set(id, {id, state: 'complete'});
-            for (const listener of listeners) listener({id, state: {current: 'complete'}});
-          }, 0);
           return id;
         },
         async search({id}) { return downloads.has(id) ? [downloads.get(id)] : []; },
@@ -59,6 +64,11 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
     return route.fulfill({status: 200, contentType, body, headers: {'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-length', 'content-length': String(body.length)}});
   });
   const page = await context.newPage();
+  // Match Chrome's completion contract before the app releases its Blob URL.
+  page.on('download', async download => {
+    await download.path();
+    await page.evaluate(filename => window.completeFixtureDownload(filename), download.suggestedFilename());
+  });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.setViewportSize({width: 768, height: 600});
@@ -128,7 +138,8 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   assert.equal(await page.locator('#export-format-jxl').isVisible(), true);
   assert.equal(await page.locator('#export-format-mp4').isVisible(), false);
   assert.equal(await page.locator('#export-format-gif').isVisible(), false);
-  assert.equal(await page.locator('#export-format-original').count(), 0);
+  assert.equal(await page.locator('#export-format-original').isVisible(), true);
+  assert.equal(await page.locator('#export-format-recommend').isVisible(), true);
   await scan([photo, animation], [{url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
   assert.equal(await page.locator('#export-format-mp4').isChecked(), true);
   const groups = page.locator('#groups .group-label');
@@ -143,9 +154,9 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   assert.match(await page.locator('#export-media-hint').textContent(), /選択中の2件は対象外/);
   assert.equal(await page.locator('#export').isDisabled(), false);
   await page.locator('#export-format-mp4').check();
-  const save = async (format, count = 1) => {
+  const save = async (format, count = 1, outputFormat = format) => {
     await page.locator(`#export-format-${format}`).check();
-    const individual = format === 'mp4' || count === 1;
+    const individual = outputFormat === 'mp4' || count === 1;
     const received = [];
     let collect, timer;
     const downloadPromise = new Promise(resolve => {
@@ -159,16 +170,18 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
     try {
       completed = await Promise.race([
         Promise.all([downloadPromise, page.locator('#export').click()]).then(([downloads]) => downloads),
-        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('missing downloads')), 10000); }),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`missing downloads: ${format}`)), 10000); }),
       ]);
+    } catch (error) {
+      throw new Error(`${error.message} (${received.map(download => download.suggestedFilename()).join(', ')}): ${await page.locator('#export').textContent()} ${await page.locator('#status').textContent()} ${await page.locator('#failures').textContent()}`);
     } finally {
       clearTimeout(timer);
       page.off('download', collect);
     }
     if (individual) {
       const entries = await Promise.all(completed.map(async (download, index) => {
-        const name = `${String(index + 1).padStart(3, '0')}.${format}`;
-        assert.equal(download.suggestedFilename(), count === 1 ? `media.${format}` : `media_${name}`);
+        const name = `${String(index + 1).padStart(3, '0')}.${outputFormat}`;
+        assert.equal(download.suggestedFilename(), count === 1 ? `media.${outputFormat}` : `media_${name}`);
         return {name, data: await readFile(await download.path())};
       }));
       await page.waitForFunction(() => document.querySelector('#export').dataset.saving === 'false');
@@ -322,6 +335,15 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
     assert.ok(info.red > 200);
     assert.ok(info.audioFrames > 0);
   }
+  await scan([], [{url: webmUrl, kind: 'video'}]);
+  await page.locator('#export-format-recommend').check();
+  assert.equal(await page.locator('#export-original-extension').textContent(), '(WEBM)');
+  assert.equal(await page.locator('#export-recommend-extension').textContent(), '(MP4)');
+  const recommendedVideo = await save('recommend', 1, 'mp4');
+  const recommendedInfo = await inspectMp4(recommendedVideo[0].data);
+  assert.equal(recommendedInfo.video, 'avc');
+  assert.equal(recommendedInfo.audio, 'aac');
+  await page.locator('#export-format-mp4').check();
   await scan([animation], [{url: animation, kind: 'gif'}]);
   assert.equal(await page.locator('#export-format-gif').isChecked(), true);
   assert.equal(await page.locator('#export-format-mp4').isVisible(), false);

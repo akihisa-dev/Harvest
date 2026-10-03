@@ -15,7 +15,7 @@ function memoryStorage(entries = []) {
 }
 
 test("export preferences use safe defaults and persist only supported choices", () => {
-  assert.deepEqual(loadExportPreferences(memoryStorage()), {format: "pdf", includeSourcePage: false});
+  assert.deepEqual(loadExportPreferences(memoryStorage()), {format: "recommend", includeSourcePage: false});
   assert.deepEqual(loadExportPreferences(memoryStorage([
     ["harvest.exportFormat", "jxl"],
     ["harvest.includeSourcePage", "true"],
@@ -23,7 +23,7 @@ test("export preferences use safe defaults and persist only supported choices", 
   assert.deepEqual(loadExportPreferences(memoryStorage([
     ["harvest.exportFormat", "unsupported"],
     ["harvest.includeSourcePage", "yes"],
-  ])), {format: "pdf", includeSourcePage: false});
+  ])), {format: "recommend", includeSourcePage: false});
 
   const storage = memoryStorage();
   assert.equal(saveExportFormat("png", storage), true);
@@ -34,19 +34,19 @@ test("export preferences use safe defaults and persist only supported choices", 
 });
 
 test("MP4・GIFの保存設定を読み取り、旧設定の内容は書き換えない", () => {
-  for (const format of ["mp4", "gif"]) {
+  for (const format of ["original", "recommend", "mp4", "gif"]) {
     const storage = memoryStorage();
     assert.equal(saveExportFormat(format, storage), true);
     assert.equal(loadExportPreferences(storage).format, format);
   }
   const legacy = memoryStorage([["harvest.exportFormat", "original"]]);
-  assert.equal(loadExportPreferences(legacy).format, "pdf");
+  assert.equal(loadExportPreferences(legacy).format, "original");
   assert.equal(legacy.values.get("harvest.exportFormat"), "original");
 });
 
 test("unavailable preference storage falls back cleanly and reports writes that fail", () => {
   const unreadable = {getItem() { throw new Error("storage unavailable"); }, setItem() { throw new Error("storage unavailable"); } };
-  assert.deepEqual(loadExportPreferences(unreadable), {format: "pdf", includeSourcePage: false});
+  assert.deepEqual(loadExportPreferences(unreadable), {format: "recommend", includeSourcePage: false});
   assert.equal(saveExportFormat("jxl", unreadable), false);
   assert.equal(saveSourcePagePreference(true, unreadable), false);
 });

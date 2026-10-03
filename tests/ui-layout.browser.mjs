@@ -186,6 +186,7 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
   for (const locale of ["ja-JP", "en-US"]) {
     const context = await browser.newContext({locale, reducedMotion: "reduce"});
     await context.addInitScript(() => {
+      localStorage.setItem("harvest.exportFormat", "pdf");
       window.chrome = {
         runtime: {onConnect: {addListener() {} }},
         i18n: {getUILanguage: () => navigator.language},

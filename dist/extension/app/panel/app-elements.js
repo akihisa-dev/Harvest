@@ -15,6 +15,8 @@ export function queryAppElements() {
         scanButton: required("#scan"),
         exportButton: required("#export"),
         exportMediaHint: required("#export-media-hint"),
+        exportOriginalExtension: required("#export-original-extension"),
+        exportRecommendExtension: required("#export-recommend-extension"),
         exportFormatInputs: exportFormats.map(format => ({ format, input: required(`#export-format-${format}`) })),
         sourcePageOption: required(".source-page-option"),
         includeSourcePage: required("#include-source-page"),

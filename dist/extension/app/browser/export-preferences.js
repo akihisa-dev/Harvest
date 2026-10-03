@@ -5,12 +5,12 @@ export function loadExportPreferences(storage = localStorage) {
     try {
         const storedFormat = storage.getItem(exportFormatPreferenceKey);
         return {
-            format: storedFormat && isExportFormat(storedFormat) ? storedFormat : "pdf",
+            format: storedFormat && isExportFormat(storedFormat) ? storedFormat : "recommend",
             includeSourcePage: storage.getItem(sourcePagePreferenceKey) === "true",
         };
     }
     catch {
-        return { format: "pdf", includeSourcePage: false };
+        return { format: "recommend", includeSourcePage: false };
     }
 }
 export function saveExportFormat(format, storage = localStorage) {

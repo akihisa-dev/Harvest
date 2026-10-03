@@ -60,7 +60,7 @@ export function groupMediaImages(urls: readonly string[], metadata: readonly Med
   return groups;
 }
 
-function mediaFormat(value: string): {extension: string} {
+export function mediaFormat(value: string): {extension: string} {
   try {
     if (value.startsWith("data:")) {
       const mime = value.slice(5, value.indexOf(",")).split(";")[0]?.toLowerCase() ?? "";

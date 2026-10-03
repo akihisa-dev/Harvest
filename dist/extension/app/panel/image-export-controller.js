@@ -1,5 +1,5 @@
 import { individualFilename, saveFilesIndividually } from "../../core/export-files.js";
-import { isMediaArchiveFormat } from "../../core/export-formats.js";
+import { isMediaArchiveFormat, itemArchiveFormat } from "../../core/export-formats.js";
 import { createStoredZipInWorker } from "../media/stored-zip-worker.js";
 import { prepareImageArchive } from "../media/image-archive-preparation.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
@@ -63,7 +63,7 @@ export function createImageExportController(options) {
                     }
                     if (!entries)
                         return;
-                    if (saveFilesIndividually(format, entries.length)) {
+                    if (saveFilesIndividually(format, entries.length, work.selected)) {
                         for (const [index, entry] of entries.entries()) {
                             if (run.stopped)
                                 return;
@@ -71,7 +71,7 @@ export function createImageExportController(options) {
                             if (work.saved?.has(item))
                                 continue;
                             const filename = individualFilename(options.getZipFilename(), entry.filename, entries.length);
-                            if (format === "mp4") {
+                            if (itemArchiveFormat(format, item) === "mp4") {
                                 work.savingStarted = true;
                                 run.reportStatus(t("saveFiles", { completed: work.saved?.size ?? 0, total: entries.length }), "busy", `${work.saved?.size ?? 0} / ${entries.length}`);
                                 await downloadManagedBlob(entry.blob, filename, run.signal);

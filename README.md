@@ -72,7 +72,7 @@ MP4 files are saved one at a time through Chrome's download manager. Success is 
 
 Original MP4 and GIF data is preserved without conversion. WebM is converted to MP4 inside the browser. An item labeled “GIF” on X is saved as MP4 when its actual data is MP4; it is not converted to GIF. MP4 and GIF choices appear when their media types are found. Without still images, PDF, JPG, PNG, and JXL are hidden. Incompatible selected items are excluded from saving, with their count displayed.
 
-For mixed collections, only the selected format's media type is saved, and the number of excluded selected items is shown. Video rows use the retrieved thumbnail or, if none is available, a video indicator.
+When an explicit format in the second row is selected for a mixed collection, only that format's media type is saved, and the number of excluded selected items is shown. Video rows use the retrieved thumbnail or, if none is available, a video indicator.
 
 Harvest reads MP4 and WebM URLs from video elements, and MP4 URLs from playback information in the page or data used to display X posts. WebM is still saved as MP4, with a conversion notice before saving. Conversion uses H.264 video and AAC audio while preserving resolution, frame timing, channel count, and sample rate. Recompression may change quality and file size. Unsupported video or audio stops saving with an explanation; tracks are not silently removed.
 
@@ -83,6 +83,10 @@ The bookmarks area of history (`/i/history`) and the older bookmarks page (`/i/b
 Media cannot be saved if the page exposes no playback information or provides only segmented or live streams. Videos and GIFs are fetched one at a time, with a 64 MiB file limit and 120-second fetch timeout. WebM conversion also runs one at a time, with a 64 MiB output limit and 120-second timeout. Downloads do not start if any file cannot be prepared; failed items can be retried or saving cancelled. Fetched and converted data exists only in panel and worker memory and is discarded on completion, cancellation during preparation, or panel closure. If MP4 saving fails or is cancelled after downloads begin, prepared data and completed item numbers remain in memory for retrying. They are discarded on completion, changes to results/selection/format, Clear, or panel closure.
 
 Conversion workers terminate on success, failure, cancellation, or timeout. Conversion does not send data externally or persist it.
+
+#### Saving original or recommended formats
+
+The first format row offers `original(extension)` and `recommend(extension)`; explicit formats remain on the second row. Labels follow the selection, showing “mixed” or “unknown” when needed, with the full list in a tooltip. Original extensions are URL hints; downloads use the validated response type. `original` preserves source bytes. `recommend` saves still images as PNG, GIFs as GIF, and videos as MP4, including every selected item in mixed selections. One file downloads directly; multiple files use ZIP, except video-only recommended exports, which use the existing managed individual MP4 downloads. Both choices persist in the existing format preference and survive rescanning; the first-use default is recommend; an explicitly saved format remains unchanged.
 
 #### Saving JPG, PNG, and JXL
 
@@ -212,7 +216,7 @@ MP4はChromeのダウンロード管理機能で1件ずつ保存し、全件の�
 
 元がMP4またはGIFなら再変換せず、元のバイト列を保ちます。WebM動画はブラウザー内でMP4へ変換します。Xで「GIF」と表示されるものも、実体がMP4ならMP4として保存し、GIFへ変換しません。GIFまたは動画が見つかった解析結果では、該当するMP4・GIFの形式を選択肢に表示します。静止画像がない場合はPDF・JPG・PNG・JXLを表示せず、異なる種類のファイルは保存対象から除き、その件数を表示します。
 
-静止画像とGIF・動画が混在する場合も、選択形式の種類だけを保存し、対象外となる選択中の項目数を表示します。動画一覧には取得できたサムネイル、なければ動画を示す印を表示します。
+2行目で形式を指定した場合は、静止画像とGIF・動画が混在していても選択形式の種類だけを保存し、対象外となる選択中の項目数を表示します。動画一覧には取得できたサムネイル、なければ動画を示す印を表示します。
 
 動画はページの動画要素からMP4・WebMのURLを、ページ内の再生情報やXの投稿表示に使われている情報からMP4のURLを取得します。WebMを含む場合も保存形式はMP4で、保存前に変換することを表示します。WebMは映像をH.264、音声をAACに変換し、解像度・フレーム間隔・音声のチャンネル数とサンプルレートを維持します。再圧縮による画質・音質の変化や容量の増減はあり得ます。変換できない映像・音声がある場合は、勝手に取り除かず理由を表示して保存を止めます。
 
@@ -223,6 +227,14 @@ Xは取得できるMP4候補の中から最も高いビットレートを選び�
 ページが再生情報を公開していない場合や、分割配信・ライブ配信だけの場合は保存できません。動画・GIFの取得は1件ずつ行い、1ファイル64 MiB、取得120秒を上限にします。WebMの変換も1件ずつ行い、変換後64 MiB、変換120秒を上限とします。取得できないファイルがある場合はダウンロードを開始せず、失敗分の再試行または中止ができます。取得済みファイルと変換結果はパネルと変換用Workerのメモリだけに保持し、保存完了・準備中の中止・パネル終了で破棄します。MP4の保存開始後に失敗・中止した場合は再試行のために準備済みデータと完了済み番号をメモリに保持し、保存完了、解析結果・選択・形式の変更、クリア、パネル終了で破棄します。
 
 変換完了・失敗・中止・時間切れのいずれでもWorkerを終了します。変換用の外部送信や永続保存は行いません。
+
+#### original・recommendの保存
+
+保存形式の1行目に`original（拡張子）`と`recommend（拡張子）`、2行目に従来の形式を表示します。括弧内は選択中の項目に合わせて更新します。元の拡張子はURLから分かる範囲の目安で、判別できない場合は「不明」、複数形式なら「混在」と表示し、ポインターを重ねると形式一覧を確認できます。保存時は取得したデータの種類を検証して拡張子を決めます。
+
+`original`は選択した項目を変換せず保存します。`recommend`は各項目の種類を判定し、静止画像はPNG、GIFはGIF、動画はMP4として保存します。混在時も全選択項目を保存します。1件なら直接保存、複数ならZIPにまとめます。ただし`recommend`で動画だけを選んだ場合は、従来のMP4と同じく個別に保存し、完了を確認します。変換や取得に失敗した項目は再試行でき、失敗が残る間は保存を開始しません。
+
+初回や有効な保存設定がない場合の選択は`recommend`です。利用者が明示的に保存した形式は維持します。`original`・`recommend`も従来と同じ設定場所に記録し、次回の解析でも維持します。新しい保存情報や外部送信先は追加しません。
 
 #### JPG・PNG・JXLの保存
 

@@ -1,4 +1,4 @@
-import { isMediaArchiveFormat } from "../../core/export-formats.js";
+import { isMediaArchiveFormat, itemArchiveFormat } from "../../core/export-formats.js";
 import { ImageArchiveLimitError, ImageArchivePlan } from "../../core/image-archive.js";
 import { createPreparationWorkers, waitForPreparation } from "../../core/preparation-workers.js";
 import { fetchImage } from "./image-fetch.js";
@@ -17,14 +17,15 @@ export async function prepareImageArchive(work, options) {
     const remaining = work.selected.filter(item => !work.prepared.has(item));
     const plan = new ImageArchivePlan(work.selected, work.prepared, format);
     work.failed.clear();
-    const isOriginalMedia = isMediaArchiveFormat(format);
+    const hasMedia = remaining.some(item => isMediaArchiveFormat(itemArchiveFormat(format, item)));
     // Allow the save button's immediate cancellation before starting any prefetch.
     await Promise.resolve();
     if (options.isStopped())
         return null;
     const fetchedResults = remaining.map(() => createDeferred());
-    const workers = createPreparationWorkers(remaining.length, isOriginalMedia ? 1 : IMAGE_FETCH_CONCURRENCY, options.signal, async (index, signal, release) => {
+    const workers = createPreparationWorkers(remaining.length, hasMedia ? 1 : IMAGE_FETCH_CONCURRENCY, options.signal, async (index, signal, release) => {
         const item = remaining[index];
+        const isOriginalMedia = isMediaArchiveFormat(itemArchiveFormat(format, item));
         let outcome;
         try {
             outcome = {
@@ -49,13 +50,14 @@ export async function prepareImageArchive(work, options) {
             if (options.isStopped())
                 return null;
             const item = remaining[index];
+            const itemFormat = itemArchiveFormat(format, item);
             try {
                 if (!outcome.ok)
                     throw outcome.error;
-                let blob = isOriginalMedia
+                let blob = isMediaArchiveFormat(itemFormat)
                     ? outcome.fetched
-                    : await convertImage(outcome.fetched, format, options.signal);
-                if (format === "mp4")
+                    : await convertImage(outcome.fetched, itemFormat, options.signal);
+                if (itemFormat === "mp4")
                     blob = await prepareMp4(blob, options.signal, plan.remainingBytes);
                 if (options.isStopped())
                     return null;

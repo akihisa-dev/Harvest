@@ -1,4 +1,4 @@
-import { availableExportFormats, isMediaArchiveFormat } from "../../core/export-formats.js";
+import { availableExportFormats, isMediaArchiveFormat, originalItemExtension, recommendedItemFormat } from "../../core/export-formats.js";
 import { setButtonLabel } from "./button-state.js";
 import { createEmptyStateView } from "./empty-state.js";
 import { imageFilename } from "./export-presentation.js";
@@ -16,7 +16,19 @@ function exportButtonLabel(state) {
             plural: formatPlural(selected.length),
         });
     }
-    return selected.length ? t("exportAction", { format: format.toUpperCase() }) : t("save");
+    if (!selected.length)
+        return t("save");
+    if (format === "original")
+        return t("exportOriginalAction");
+    if (format === "recommend")
+        return t("exportRecommendAction");
+    return t("exportAction", { format: format.toUpperCase() });
+}
+function renderExtensions(element, extensions) {
+    const values = [...new Set(extensions.map(value => value ?? t("exportUnknownFormat")))];
+    const label = values.length > 1 ? t("exportMixedFormats") : values[0] ?? "—";
+    element.textContent = `(${label})`;
+    element.title = values.join(" / ");
 }
 /** Displays snapshots; changing export work and notifying the page belong to application events. */
 export function createAppView(elements, positionOf) {
@@ -62,10 +74,13 @@ export function createAppView(elements, positionOf) {
         const { busy, items, selectedCount, scanState, scanRunning } = snapshot;
         const { format, selected, includeSourcePage: sourceIncluded, view } = snapshot.export;
         const formats = availableExportFormats(items);
+        const selectedItems = items.filter(item => item.selected);
+        renderExtensions(elements.exportOriginalExtension, selectedItems.map(originalItemExtension));
+        renderExtensions(elements.exportRecommendExtension, selectedItems.map(item => recommendedItemFormat(item).toUpperCase()));
         const hasVideo = formats.includes("mp4");
         const excludedCount = selectedCount - selected.length;
         exportMediaHint.textContent = [
-            format === "mp4" && hasVideo ? t("videoConversionHint") : "",
+            (format === "mp4" && hasVideo) || (format === "recommend" && selected.some(item => item.kind === "video")) ? t("videoConversionHint") : "",
             excludedCount ? t("mediaExcludedHint", { count: excludedCount, plural: formatPlural(excludedCount), format: format.toUpperCase() }) : "",
         ].filter(Boolean).join(" ");
         exportMediaHint.hidden = !exportMediaHint.textContent;

@@ -161,7 +161,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   const previousFetch = globalThis.fetch;
   const previousCreateImageBitmap = globalThis.createImageBitmap;
   const previousLocalStorage = globalThis.localStorage;
-  const savedPreferences = new Map([["harvest.includeSourcePage", "true"]]);
+  const savedPreferences = new Map([["harvest.includeSourcePage", "true"], ["harvest.exportFormat", "pdf"]]);
   globalThis.localStorage = {
     getItem: key => savedPreferences.get(key) ?? null,
     setItem: (key, value) => { savedPreferences.set(key, value); },

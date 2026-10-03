@@ -1,4 +1,5 @@
 import { createSourcePageLayout } from "../../core/pdf.js";
+import { itemArchiveFormat, originalItemExtension } from "../../core/export-formats.js";
 import { selectionsMatch } from "./export-lifecycle.js";
 import { replaceLoneSurrogates } from "../../core/source-text.js";
 import { individualFilename, saveFilesIndividually } from "../../core/export-files.js";
@@ -50,9 +51,14 @@ export function createExportPresentation(options) {
             const { format, selected } = options.getSelection();
             if (format === "pdf")
                 return filename("pdf");
-            if (!saveFilesIndividually(format, selected.length))
+            if (!saveFilesIndividually(format, selected.length, selected))
                 return filename("zip");
-            const first = `${"1".padStart(Math.max(3, String(selected.length).length), "0")}.${format}`;
+            const extension = selected[0]
+                ? format === "original" ? originalItemExtension(selected[0])?.toLowerCase() : itemArchiveFormat(format, selected[0])
+                : null;
+            if (!extension)
+                return exportFileBaseName(options.getTitle(), options.fallbackTitle);
+            const first = `${"1".padStart(Math.max(3, String(selected.length).length), "0")}.${extension}`;
             return individualFilename(filename("zip"), first, selected.length);
         },
         get sourcePreview() { return preview(options.getSelection()); },

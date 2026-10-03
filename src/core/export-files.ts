@@ -1,7 +1,8 @@
 import type {ImageArchiveFormat} from "./export-formats.js";
+import type {ImageItem} from "./images.js";
 
-export function saveFilesIndividually(format: ImageArchiveFormat, count: number): boolean {
-  return format === "mp4" || count === 1;
+export function saveFilesIndividually(format: ImageArchiveFormat, count: number, items: readonly ImageItem[] = []): boolean {
+  return format === "mp4" || count === 1 || (format === "recommend" && items.length > 0 && items.every(item => item.kind === "video"));
 }
 
 /** Use the page title for one file and a stable sequence for multiple videos. */

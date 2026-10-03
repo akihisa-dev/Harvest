@@ -222,9 +222,9 @@ section, aside {
 }
 
 .export-formats {
+  container-type: inline-size;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -241,14 +241,45 @@ section, aside {
   cursor: pointer;
 }
 
-.export-media-formats {
-  grid-column: 1 / -1;
-  display: flex;
-  gap: 12px;
+.export-auto-formats {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 4px;
 }
 
-.export-media-formats:not(:has(label:not([hidden]))) {
-  display: none;
+.export-auto-formats label {
+  font-size: 10px;
+}
+
+.export-auto-formats label > span {
+  text-align: center;
+}
+
+@container (max-width: 210px) {
+  .export-auto-formats label > span > span {
+    display: block;
+  }
+}
+
+@container (max-width: 140px) {
+  .export-auto-formats {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    gap: 2px;
+  }
+  .export-auto-formats label {
+    font-size: 9px;
+  }
+}
+
+.export-explicit-formats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-around;
+  gap: 4px;
+}
+
+.export-explicit-formats label {
+  flex: 1 0 auto;
 }
 
 .export-formats input {
@@ -1247,9 +1278,6 @@ main:has(#viewer:not([hidden])) {
   }
   .workspace-sidebar {
     max-height: none;
-  }
-  .export-formats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .export-control #export {
     padding-inline: 4px;

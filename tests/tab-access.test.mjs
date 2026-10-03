@@ -161,7 +161,7 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(element("#url-drop-overlay").hidden, true);
-    assert.equal(element("#source-drop").textContent, "ページ.pdf");
+    assert.equal(element("#source-drop").textContent, "ページ.zip");
     assert.equal(element("#source-url").hidden, true);
     assert.equal(queries.length, 1);
     assert.deepEqual(createdUrls, ["https://example.com/ignored", "https://example.com/other"]);
@@ -183,7 +183,7 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     listeners.get("#source-url:keydown")({key: "Enter"});
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(element("#source-url").hidden, true);
-    assert.equal(element("#source-drop").textContent, "ページ.pdf");
+    assert.equal(element("#source-drop").textContent, "ページ.zip");
     assert.deepEqual(createdUrls, ["https://example.com/ignored", "https://example.com/other", "https://example.com/manual"]);
     assert.deepEqual(scannedTabs, [7, 8, 8, 8]);
 

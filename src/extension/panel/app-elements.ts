@@ -16,6 +16,8 @@ export function queryAppElements() {
     scanButton: required<HTMLButtonElement>("#scan"),
     exportButton: required<HTMLButtonElement>("#export"),
     exportMediaHint: required<HTMLParagraphElement>("#export-media-hint"),
+    exportOriginalExtension: required<HTMLSpanElement>("#export-original-extension"),
+    exportRecommendExtension: required<HTMLSpanElement>("#export-recommend-extension"),
     exportFormatInputs: exportFormats.map(format => ({format, input: required<HTMLInputElement>(`#export-format-${format}`)})),
     sourcePageOption: required<HTMLLabelElement>(".source-page-option"),
     includeSourcePage: required<HTMLInputElement>("#include-source-page"),

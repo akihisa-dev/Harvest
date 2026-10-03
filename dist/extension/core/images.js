@@ -39,7 +39,7 @@ export function groupMediaImages(urls, metadata = []) {
     }
     return groups;
 }
-function mediaFormat(value) {
+export function mediaFormat(value) {
     try {
         if (value.startsWith("data:")) {
             const mime = value.slice(5, value.indexOf(",")).split(";")[0]?.toLowerCase() ?? "";
