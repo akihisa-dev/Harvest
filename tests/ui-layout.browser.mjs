@@ -386,6 +386,15 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
             assert.equal(await page.locator("#viewer-toggle").getAttribute("aria-pressed"), "false", `${caseName}: viewer toggle starts unpressed`);
             await page.locator("#viewer-toggle").click();
             assert.equal(await page.locator("#viewer").isVisible(), true, `${caseName}: viewer toggle opens viewer`);
+            const thumbnailScroll = await page.locator(".viewer-thumbnails").evaluate(element => {
+              const horizontal = getComputedStyle(element).overflowY === "hidden";
+              return {
+                overflow: horizontal ? element.scrollWidth > element.clientWidth : element.scrollHeight > element.clientHeight,
+                scrollbarSpace: horizontal ? element.offsetHeight - element.clientHeight : element.offsetWidth - element.clientWidth,
+              };
+            });
+            assert.equal(thumbnailScroll.overflow, true, `${caseName}: thumbnails should overflow in the scrolling direction`);
+            assert.ok(thumbnailScroll.scrollbarSpace >= 10, `${caseName}: thumbnail scrollbar must occupy visible space`);
             const stage = await page.locator("#viewer-stage").boundingBox();
             assert.ok(stage.width > 100 && stage.height > height * 0.45, `${caseName}: large image must use available space`);
             const exportOverlayState = await page.locator("#export-overlay").evaluate(overlay => {
