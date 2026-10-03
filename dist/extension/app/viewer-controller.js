@@ -33,15 +33,18 @@ export function createViewerController(options) {
         elements.zoomReset.disabled = zoom === 1;
         elements.stage.dataset["pannable"] = String(zoom > 1);
     }
-    function resetTransform() {
+    function stopPan() {
         if (pointer && elements.stage.hasPointerCapture(pointer.id)) {
             elements.stage.releasePointerCapture(pointer.id);
         }
+        pointer = null;
+        delete elements.stage.dataset["panning"];
+    }
+    function resetTransform() {
+        stopPan();
         zoom = 1;
         panX = 0;
         panY = 0;
-        pointer = null;
-        delete elements.stage.dataset["panning"];
         updateTransform();
     }
     function zoomBy(factor, clientX, clientY) {
@@ -58,6 +61,7 @@ export function createViewerController(options) {
         panY = y - (y - panY) * ratio;
         zoom = nextZoom;
         if (zoom === 1) {
+            stopPan();
             panX = 0;
             panY = 0;
         }
@@ -133,10 +137,7 @@ export function createViewerController(options) {
         elements.page.hidden = !open || !current;
         // Keep the current page visible through the viewer exit without retaining pointer capture.
         if (!open && current) {
-            if (pointer && elements.stage.hasPointerCapture(pointer.id))
-                elements.stage.releasePointerCapture(pointer.id);
-            pointer = null;
-            delete elements.stage.dataset["panning"];
+            stopPan();
             return;
         }
         if (!current) {
@@ -216,24 +217,24 @@ export function createViewerController(options) {
         if (!open || zoom <= 1 || (event.button !== undefined && event.button !== 0))
             return;
         event.preventDefault();
-        pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, panX, panY };
+        pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
         elements.stage.setPointerCapture(event.pointerId);
         elements.stage.dataset["panning"] = "true";
     });
     elements.stage.addEventListener("pointermove", event => {
         if (!pointer || pointer.id !== event.pointerId)
             return;
-        panX = pointer.panX + event.clientX - pointer.x;
-        panY = pointer.panY + event.clientY - pointer.y;
+        // Apply movement to the current pan, including any zoom since the last move.
+        panX += event.clientX - pointer.x;
+        panY += event.clientY - pointer.y;
+        pointer.x = event.clientX;
+        pointer.y = event.clientY;
         updateTransform();
     });
     const endPan = (event) => {
         if (!pointer || pointer.id !== event.pointerId)
             return;
-        pointer = null;
-        if (elements.stage.hasPointerCapture(event.pointerId))
-            elements.stage.releasePointerCapture(event.pointerId);
-        delete elements.stage.dataset["panning"];
+        stopPan();
     };
     elements.stage.addEventListener("pointerup", endPan);
     elements.stage.addEventListener("pointercancel", endPan);

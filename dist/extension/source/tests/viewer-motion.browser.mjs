@@ -80,6 +80,101 @@ async function serve() {
   return {server, url: `${baseUrl}/test.html`};
 }
 
+test("viewer drag follows zoom changes and ends at 100%, page changes, and pointercancel", async () => {
+  const {server, url} = await serve();
+  let browser;
+  try {
+    browser = await chromium.launch({channel: "chrome", headless: true});
+    const page = await browser.newPage({reducedMotion: "reduce"});
+    const errors = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.goto(url);
+    await page.waitForFunction(() => Boolean(window.__viewerReady));
+    await page.locator("#stage").evaluate(stage => {
+      stage.style.width = "500px";
+      stage.style.height = "300px";
+      window.__wheels = 0;
+      stage.addEventListener("wheel", () => window.__wheels++);
+      stage.addEventListener("pointerdown", event => window.__pointerId = event.pointerId);
+    });
+    const box = await page.locator("#stage").boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    const state = () => page.locator("#stage").evaluate(stage => {
+      const matrix = new DOMMatrix(document.querySelector("#image").style.transform);
+      return {x: matrix.e, y: matrix.f, zoom: matrix.a,
+        captured: stage.hasPointerCapture(window.__pointerId), panning: stage.dataset.panning ?? null};
+    });
+    const wheel = async delta => {
+      const count = await page.evaluate(() => window.__wheels);
+      await page.mouse.wheel(0, delta);
+      await page.waitForFunction(previous => window.__wheels > previous, count);
+    };
+    await page.locator("#zoom-in").click();
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 30, y + 20);
+    assert.deepEqual(await state(), {x: 30, y: 20, zoom: 1.25, captured: true, panning: "true"});
+    await wheel(2000);
+    assert.deepEqual(await state(), {x: 0, y: 0, zoom: 1, captured: false, panning: null}, "100% ends the captured drag immediately");
+    await page.mouse.move(x + 80, y + 40);
+    assert.deepEqual(await state(), {x: 0, y: 0, zoom: 1, captured: false, panning: null});
+    await wheel(-300);
+    const enlarged = await state();
+    assert.ok(enlarged.zoom > 1);
+    await page.mouse.move(x + 90, y + 50);
+    assert.deepEqual(await state(), enlarged, "zooming back in while held does not revive the old drag");
+    await page.mouse.up();
+
+    await page.locator("#zoom-reset").click();
+    await page.locator("#zoom-in").click();
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 30, y + 20);
+    for (const delta of [-300, 100]) {
+      await wheel(delta);
+      const afterZoom = await state();
+      assert.ok(afterZoom.zoom > 1);
+      assert.equal(afterZoom.captured, true);
+      await page.mouse.move(x + 40, y + 25);
+      const afterMove = await state();
+      assert.ok(Math.abs(afterMove.x - afterZoom.x - 10) < 1e-8);
+      assert.ok(Math.abs(afterMove.y - afterZoom.y - 5) < 1e-8);
+      assert.equal(afterMove.zoom, afterZoom.zoom);
+      await page.mouse.move(x + 30, y + 20);
+    }
+    await page.mouse.up();
+    const released = await state();
+    assert.equal(released.captured, false);
+    assert.equal(released.panning, null);
+    await page.mouse.move(x + 50, y + 30);
+    assert.deepEqual(await state(), released, "pointerup preserves the final position and ends dragging");
+
+    await page.mouse.down();
+    await page.mouse.move(x + 60, y + 35);
+    await page.locator("#stage").evaluate(stage => stage.dispatchEvent(new PointerEvent("pointercancel", {pointerId: window.__pointerId})));
+    const canceled = await state();
+    assert.equal(canceled.captured, false);
+    assert.equal(canceled.panning, null);
+    await page.mouse.move(x + 70, y + 40);
+    assert.deepEqual(await state(), canceled);
+    await page.mouse.up();
+
+    await page.mouse.down();
+    await page.mouse.move(x + 80, y + 45);
+    await page.locator("#next").evaluate(button => button.click());
+    assert.equal(await page.locator("#position").textContent(), "2 / 2");
+    assert.deepEqual(await state(), {x: 0, y: 0, zoom: 1, captured: false, panning: null});
+    await page.mouse.move(x + 90, y + 50);
+    assert.deepEqual(await state(), {x: 0, y: 0, zoom: 1, captured: false, panning: null});
+    await page.mouse.up();
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    await new Promise(resolveClose => server.close(resolveClose));
+  }
+});
+
 test("viewer waits for the next preview before its directional transition and honors reduced motion", async () => {
   const {server, url} = await serve();
   let browser;
