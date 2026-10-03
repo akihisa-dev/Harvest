@@ -287,6 +287,7 @@ scanSessionController = createScanSessionController({
     pageTitle = nextPageTitle;
     sourceInput.commitResult(sourcePage);
     imagePreviewLoader.clear();
+    imageListView.clearVideoSizes();
     exportSession.clear();
     imageListView.showInitialGroup(initialGroup);
     viewerController.setOpen(false);

@@ -43,6 +43,7 @@ export interface ImageListView {
   readonly isDragging: boolean;
   showInitialGroup(key: string | null): void;
   clearVisibleGroups(): void;
+  clearVideoSizes(): void;
   render(failedItems?: ReadonlySet<ImageItem>, sourcePreview?: ImageItem | null): void;
 }
 
@@ -366,6 +367,7 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
       visibleGroupKeys = new Set(key === null ? Object.keys(collection.groups) : [key]);
     },
     clearVisibleGroups() { visibleGroupKeys.clear(); },
+    clearVideoSizes() { videoSizes.clear(); },
     render,
   };
 }

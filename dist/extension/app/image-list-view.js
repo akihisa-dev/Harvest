@@ -345,6 +345,7 @@ export function createImageListView(options) {
             visibleGroupKeys = new Set(key === null ? Object.keys(collection.groups) : [key]);
         },
         clearVisibleGroups() { visibleGroupKeys.clear(); },
+        clearVideoSizes() { videoSizes.clear(); },
         render,
     };
 }

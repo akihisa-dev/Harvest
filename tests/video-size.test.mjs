@@ -27,6 +27,27 @@ test("動画サイズは本文を読まずHEADで確認し、取得先と認証�
   assert.equal(requests.length, before);
 });
 
+test("解析結果の切り替えで古い取得を中止し、遅い旧応答で新しいサイズを上書きしない", async t => {
+  const requests = [];
+  t.mock.method(globalThis, "fetch", (url, options) => new Promise(resolve => requests.push({options, resolve})));
+  const loader = createVideoSizeLoader({loading: "loading", unknown: "unknown"});
+  const element = {textContent: "", hidden: true};
+  loader.set(element, item);
+  loader.clear();
+  assert.equal(requests[0].options.signal.aborted, true);
+  loader.set(element, item);
+  assert.equal(requests.length, 2);
+  requests[1].resolve(new Response(null, {headers: {"content-length": "2000"}}));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(element.textContent, "2.0 KB");
+  requests[0].resolve(new Response(null, {headers: {"content-length": "1000"}}));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(element.textContent, "2.0 KB");
+  loader.set(element, item);
+  assert.equal(requests.length, 2, "通常の描画では再取得しない");
+  loader.clear();
+});
+
 test("サイズ取得は同時3件までとし、削除後の結果を表示せず失敗時は不明にする", async t => {
   const pending = [];
   t.mock.method(globalThis, "fetch", (url, options) => new Promise(resolve => pending.push({resolve, options})));
