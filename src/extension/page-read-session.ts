@@ -140,8 +140,8 @@ export class PageReadSession {
     if (url.split("#")[0] !== this.sourceUrl.split("#")[0]) throw new Error(pageMovedMessage);
   }
 
-  verifyCurrentPage(): Promise<void> {
-    return bounded<void>((resolve, reject) => {
+  async verifyCurrentPage(): Promise<void> {
+    await bounded<void>((resolve, reject) => {
       void chrome.tabs.get(this.tabId).then(tab => {
         try {
           if (tab.status === "loading") throw new Error(pageMovedMessage);
@@ -150,6 +150,17 @@ export class PageReadSession {
         } catch (error) { reject(error as Error); }
       }, () => reject(new Error(closedMessage)));
     }, this.signal);
+    if (this.documentId) {
+      await this.read({
+        func: () => location.href,
+        watchRemoval: true,
+        failureMessage: pageMovedMessage,
+        accept: url => {
+          if (!url) throw new Error(pageMovedMessage);
+          this.assertSourceUrl(url);
+        },
+      });
+    }
   }
 }
 

@@ -453,3 +453,22 @@ test('Xの画像と動画を全グループ表示で公開し、件数だけの�
   controller.reset();
   assert.equal(controller.diagnostics, null);
 });
+
+for (const isX of [false, true]) {
+  for (const changed of [false, true]) {
+    test(`最終応答後の同一URL再読み込みをdocumentで確認する X=${isX} changed=${changed}`, async t => {
+      const url = isX ? "https://x.com/example/status/123" : "https://example.com/page";
+      let finalCheck = false;
+      fixture(t, {get: async () => { finalCheck = true; return {url: `${url}#fragment`, status: "complete"}; }});
+      chrome.scripting.executeScript = async ({func}) => {
+        if (finalCheck) return [{result: `${url}#fragment`, documentId: changed ? "replacement" : "original"}];
+        const result = func.name === "waitForXPage" ? {status: "ready"}
+          : func.name === "scanXMedia" ? mediaSnapshot(url, [{kind: "image", url: "https://pbs.twimg.com/media/photo.jpg"}])
+          : {url, title: "old", images: ["https://example.com/photo.jpg"]};
+        return [{result, documentId: "original"}];
+      };
+      if (changed) await assert.rejects(scanTab(8, undefined, url), /ページが移動/);
+      else assert.equal((await scanTab(8, undefined, url)).title, "old");
+    });
+  }
+}

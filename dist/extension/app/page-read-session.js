@@ -136,8 +136,8 @@ export class PageReadSession {
         if (url.split("#")[0] !== this.sourceUrl.split("#")[0])
             throw new Error(pageMovedMessage);
     }
-    verifyCurrentPage() {
-        return bounded((resolve, reject) => {
+    async verifyCurrentPage() {
+        await bounded((resolve, reject) => {
             void chrome.tabs.get(this.tabId).then(tab => {
                 try {
                     if (tab.status === "loading")
@@ -151,6 +151,18 @@ export class PageReadSession {
                 }
             }, () => reject(new Error(closedMessage)));
         }, this.signal);
+        if (this.documentId) {
+            await this.read({
+                func: () => location.href,
+                watchRemoval: true,
+                failureMessage: pageMovedMessage,
+                accept: url => {
+                    if (!url)
+                        throw new Error(pageMovedMessage);
+                    this.assertSourceUrl(url);
+                },
+            });
+        }
     }
 }
 /** Keeps a temporary window alive until its reader settles, including cancellation. */
