@@ -2,6 +2,7 @@ import {spawnSync} from "node:child_process";
 import {copyFile, mkdir, readFile, readdir, realpath, writeFile} from "node:fs/promises";
 import {dirname, join, sep} from "node:path";
 import {copyJxlVendor, rewriteJxlAdapter} from "../jxl-build.mjs";
+import {adaptMediabunnyVideoTiming} from "../mediabunny-build.mjs";
 
 async function trimVendorJavaScript(directory) {
   for (const entry of await readdir(directory, {withFileTypes: true})) {
@@ -67,7 +68,8 @@ export async function copyVendorLibraries(root, stage) {
   await copyJxlVendor({jxlPackage, jxlVendor, wasmDetectPackage, wasmDetectVendor});
   const mediaVendor = join(stage, "app", "vendor", "mediabunny");
   await mkdir(mediaVendor, {recursive: true});
-  await copyFile(join(root, "node_modules", "mediabunny", "dist", "bundles", "mediabunny.min.mjs"), join(mediaVendor, "index.js"));
+  const mediaBundle = await readFile(join(root, "node_modules", "mediabunny", "dist", "bundles", "mediabunny.min.mjs"), "utf8");
+  await writeFile(join(mediaVendor, "index.js"), adaptMediabunnyVideoTiming(mediaBundle));
   await copyFile(join(root, "node_modules", "mediabunny", "LICENSE"), join(mediaVendor, "LICENSE"));
   await trimVendorJavaScript(join(stage, "app", "vendor"));
 }
