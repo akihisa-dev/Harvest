@@ -5,12 +5,12 @@ function installXBookmarkCapture() {
     if (Object.getOwnPropertyDescriptor(window, bridge))
         return;
     const posts = new Map();
-    let generation = 0, failed = false, received = false;
+    let generation = 0, memoryEpoch = 0, failed = false, received = false;
     let scope = 0;
     let pendingMetadata = Promise.resolve();
     let pageUrl = location.href.split("#")[0];
     const bookmarkPage = () => /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname);
-    const reset = () => { posts.clear(); generation++; failed = false; received = false; };
+    const reset = () => { posts.clear(); generation++; memoryEpoch++; delete window["__harvestBookmarkScanMemoryV1"]; failed = false; received = false; };
     const resetScope = () => { reset(); scope++; pendingMetadata = Promise.resolve(); };
     const syncPage = () => {
         const current = location.href.split("#")[0];
@@ -71,8 +71,11 @@ function installXBookmarkCapture() {
         };
         for (const instruction of instructions) {
             const row = record(instruction);
-            if (row?.["type"] === "TimelineClearCache")
+            if (row?.["type"] === "TimelineClearCache") {
                 posts.clear();
+                memoryEpoch++;
+                delete window["__harvestBookmarkScanMemoryV1"];
+            }
             const entries = Array.isArray(row?.["entries"]) ? row["entries"] : row?.["entry"] ? [row["entry"]] : [];
             for (const entry of entries) {
                 const content = record(record(entry)?.["content"]);
@@ -139,7 +142,7 @@ function installXBookmarkCapture() {
     };
     Object.defineProperty(window, bridge, { value: () => {
             syncPage();
-            return bookmarkPage() ? { posts: [...posts.values()], limited: failed, received } : { posts: [], limited: false, received: false };
+            return bookmarkPage() ? { posts: [...posts.values()], limited: failed, received, epoch: memoryEpoch } : { posts: [], limited: false, received: false, epoch: memoryEpoch };
         } });
     const observe = (token, response) => {
         void Promise.all([token, response]).then(async ([generationToken, result]) => {

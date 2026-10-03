@@ -294,6 +294,7 @@ export function scanXMedia(targetPostId, onlyPostKeys) {
             ? "bookmarks" : "other";
     }
     let storedTimelineRecovered = false;
+    let bookmarkIdentity;
     for (const store of stores) {
         try {
             const state = value(store, "getState").call(store);
@@ -339,6 +340,11 @@ export function scanXMedia(targetPostId, onlyPostKeys) {
                 const module = [...timelineModules][0];
                 snapshot.bookmarkContinuation = value(module, "timelineId") === "bookmarks" && !value(module, "scopeId")
                     && typeof value(module, "fetchBottom") === "function" && typeof value(store, "dispatch") === "function";
+            }
+            if (!targetPostId && moduleCandidates.length === 1 && timelineModules.size === 1) {
+                const module = [...timelineModules][0];
+                if (value(module, "timelineId") === "bookmarks" && !value(module, "scopeId"))
+                    bookmarkIdentity = module;
             }
             const recovered = [];
             let complete = true;
@@ -392,15 +398,18 @@ export function scanXMedia(targetPostId, onlyPostKeys) {
         }
         catch { /* Store/schema changes must not discard DOM or received media. */ }
     }
+    let captureEpoch;
     // Received bookmark pages survive X removing offscreen article elements.
-    if (!targetPostId && /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname) && typeof window !== "undefined") {
+    if (!targetPostId && snapshot.bookmarkList !== "other" && /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname) && typeof window !== "undefined") {
         snapshot.bookmarkCaptureMissing = !storedTimelineRecovered;
         try {
             const read = value(window, "__harvestBookmarkMediaV1");
-            if (!storedTimelineRecovered && typeof read === "function") {
+            if (typeof read === "function") {
                 const captured = read();
+                captureEpoch = Number.isSafeInteger(captured.epoch) ? captured.epoch : undefined;
+                const sameCollection = !storedTimelineRecovered || (bookmarkIdentity && captureEpoch !== undefined);
                 snapshot.bookmarkCaptureMissing = !storedTimelineRecovered && captured.received !== true;
-                if (Array.isArray(captured.posts)) {
+                if (sameCollection && Array.isArray(captured.posts)) {
                     const mounted = new Map(snapshot.posts.map(post => [post.key, post]));
                     const combined = [];
                     for (const post of captured.posts) {
@@ -417,6 +426,28 @@ export function scanXMedia(targetPostId, onlyPostKeys) {
         }
         catch {
             snapshot.limited = true;
+        }
+    }
+    // Keep evidence across separate Analyze operations, not just fetches in one scan.
+    // This lives in the X document, never in persistent extension storage.
+    if (typeof window !== "undefined") {
+        const key = "__harvestBookmarkScanMemoryV1";
+        const previous = value(window, key);
+        if (bookmarkIdentity && !onlyPostKeys && /^\/i\/(?:history|bookmarks)\/?$/.test(location.pathname)) {
+            const same = previous?.url === url && previous.identity === bookmarkIdentity && previous.epoch === captureEpoch;
+            const combined = new Map((same ? previous.posts : []).map(post => [post.key, post]));
+            for (const post of snapshot.posts) {
+                const old = combined.get(post.key);
+                combined.set(post.key, old ? { ...post,
+                    observed: [...new Map([...old.observed, ...post.observed].map(item => [JSON.stringify(item), item])).values()],
+                    roots: [...new Map([...old.roots, ...post.roots].map(item => [JSON.stringify(item), item])).values()],
+                } : post);
+            }
+            snapshot.posts = [...combined.values()];
+            Object.defineProperty(window, key, { configurable: true, value: { url, identity: bookmarkIdentity, epoch: captureEpoch, posts: snapshot.posts } });
+        }
+        else if (!onlyPostKeys && previous) {
+            delete window[key];
         }
     }
     if (location.href.split("#")[0] !== url.split("#")[0])

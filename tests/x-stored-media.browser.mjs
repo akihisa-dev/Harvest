@@ -70,3 +70,65 @@ for (const selector of [false,true]) test(`Xの配信コードのURT構造で現
     assert.equal(parseXMedia(target,'2').media.length,1,'個別投稿の保存に引用先を混ぜない');
   } finally {await browser.close();}
 });
+
+test('別々の解析の間にDOMとXの投稿表から先頭が消えても、同じ一覧の前後を保持する',async()=>{
+  const browser=await chromium.launch({channel:'chrome',headless:true});
+  try{
+    const page=await browser.newPage();
+    await page.route('https://x.com/**',r=>r.fulfill({contentType:'text/html',body:'<!doctype html><main></main>'}));
+    await page.goto('https://x.com/i/history');
+    await page.evaluate(()=>{
+      const state={entities:{tweets:{entities:{}}},urt:{bookmarks:{entries:[]}}};
+      const module={timelineId:'bookmarks',selectEntries:s=>s.urt.bookmarks.entries};
+      const store={getState:()=>state};
+      const article=document.createElement('article');
+      article.__reactFiber$fixture={memoizedProps:{module},return:{memoizedProps:{store}}};
+      document.querySelector('main').append(article);
+      window.changePosts=ids=>{
+        state.entities.tweets.entities=Object.fromEntries(ids.map(id=>[id,{id_str:id,extended_entities:{media:[{type:'photo',media_url_https:`https://pbs.twimg.com/media/image${id}.jpg`}]}}]));
+        state.urt.bookmarks.entries=ids.map(id=>({type:'tweet',content:{id}}));
+        article.innerHTML=`<a href="/user/status/${ids[0]}"><time>Today</time></a>`;
+      };
+      window.epoch=1;
+      window.__harvestBookmarkMediaV1=()=>({received:true,epoch:window.epoch,posts:[],limited:false});
+      window.changePosts(['1','2']);
+    });
+    assert.deepEqual((await page.evaluate(scanXMedia)).posts.map(p=>p.postId),['1','2']);
+    await page.evaluate(()=>window.changePosts(['3','4']));
+    let snapshot=await page.evaluate(scanXMedia);
+    assert.deepEqual(snapshot.posts.map(p=>p.postId),['1','2','3','4']);
+    assert.equal(parseXMedia(snapshot).media.length,4);
+    await page.evaluate(()=>window.changePosts(['1','2']));
+    assert.equal(parseXMedia(await page.evaluate(scanXMedia)).media.length,4,'上へ戻っても後方の画像を失わない');
+    await page.evaluate(()=>{window.epoch++;window.changePosts(['5']);});
+    assert.deepEqual((await page.evaluate(scanXMedia)).posts.map(p=>p.postId),['5'],'一覧再取得では旧世代を混ぜない');
+    await page.evaluate(()=>{document.querySelector('article').__reactFiber$fixture.memoizedProps.module.timelineId='favorites-other';window.changePosts(['9']);});
+    assert.deepEqual((await page.evaluate(scanXMedia)).posts.map(p=>p.postId),['9'],'いいねにはブックマークの履歴を混ぜない');
+  }finally{await browser.close();}
+});
+
+test('現在の一覧が読めても同じ世代の受信済みページを捨てない',async()=>{
+  const browser=await chromium.launch({channel:'chrome',headless:true});
+  try{
+    const page=await browser.newPage();
+    await page.route('https://x.com/**',r=>r.fulfill({contentType:'text/html',body:'<!doctype html><main></main>'}));
+    await page.goto('https://x.com/i/history');
+    await page.evaluate(()=>{
+      const photo=id=>({id_str:id,extended_entities:{media:[{type:'photo',media_url_https:`https://pbs.twimg.com/media/image${id}.jpg`}]}});
+      const state={entities:{tweets:{entities:{'2':photo('2')}}}};
+      const article=document.createElement('article');article.innerHTML='<a href="/user/status/2"><time>Today</time></a>';
+      article.__reactFiber$fixture={memoizedProps:{module:{timelineId:'bookmarks',selectEntries:()=>[{type:'tweet',content:{id:'2'}}]}},return:{memoizedProps:{store:{getState:()=>state}}}};
+      document.querySelector('main').append(article);
+      window.__harvestBookmarkMediaV1=()=>({received:true,epoch:1,posts:[{key:'post:1',postId:'1',observed:[],roots:[{value:photo('1'),requireIdentity:true,player:false}]}]});
+    });
+    const snapshot=await page.evaluate(scanXMedia);
+    assert.deepEqual(snapshot.posts.map(p=>p.postId),['1','2']);
+    assert.equal(parseXMedia(snapshot).media.length,2);
+    await page.evaluate(()=>{
+      const fiber=document.querySelector('article').__reactFiber$fixture;
+      fiber.memoizedProps.module.timelineId='favorites-other';
+      fiber.return.memoizedProps.store.getState=()=>({});
+    });
+    assert.deepEqual((await page.evaluate(scanXMedia)).posts.map(p=>p.postId),['2'],'同じURLでもいいねへ受信済みブックマークを混ぜない');
+  }finally{await browser.close();}
+});
