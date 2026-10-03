@@ -1,3 +1,4 @@
+import {createVideoSizeLoader} from "./video-size.js";
 import type { ImageCollection } from "../core/image-collection.js";
 import type { ImageItem } from "../core/images.js";
 import { reconcileKeyedChildren } from "./motion.js";
@@ -7,6 +8,7 @@ import type { ImagePreviewLoader } from "./image-preview.js";
 
 interface ImageRowParts {
   preview: HTMLImageElement;
+  resolution: HTMLSpanElement;
   order: HTMLSpanElement;
   name: HTMLSpanElement;
   updateResolution: () => void;
@@ -46,6 +48,8 @@ export interface ImageListView {
 
 /** Owns group visibility and the image-list DOM interactions for one collection. */
 export function createImageListView(options: ImageListViewOptions): ImageListView {
+  const videoSizes = createVideoSizeLoader({loading: t("videoSizeLoading"), unknown: t("videoSizeUnknown")});
+  window.addEventListener?.("pagehide", () => videoSizes.clear());
   const {collection, allVisibilityButton, groupsElement, imagesElement} = options;
   let visibleGroupKeys = new Set<string>();
   let focusTarget: FocusTarget | null = null;
@@ -204,14 +208,17 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     resolution.hidden = true;
     const updateResolution = (): void => {
       const item = currentItem();
+      if (item?.kind === "video") { videoSizes.set(resolution, item); return; }
+      videoSizes.release(resolution);
       // A video's poster or placeholder is not the video's resolution.
-      const ready = item && item.kind !== "video" && preview.dataset["previewUrl"] === item.url
+      const ready = item && preview.dataset["previewUrl"] === item.url
         && preview.complete && preview.naturalWidth > 0 && preview.naturalHeight > 0;
       resolution.hidden = !ready;
       resolution.textContent = ready ? `${preview.naturalWidth} × ${preview.naturalHeight}` : "";
     };
     preview.addEventListener("load", updateResolution);
     preview.addEventListener("error", () => {
+      if (currentItem()?.kind === "video") { updateResolution(); return; }
       resolution.hidden = true;
       resolution.textContent = "";
     });
@@ -224,7 +231,7 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     failedMark.textContent = t("imageFailed");
     body.append(order, resolution, name, selectedMark, failedMark);
     row.append(preview, body);
-    imageRowParts.set(row, {preview, order, name, updateResolution, selectedMark, failedMark});
+    imageRowParts.set(row, {preview, resolution, order, name, updateResolution, selectedMark, failedMark});
     drag.bindRow(row, preview, currentItem);
     row.addEventListener("click", () => {
       if (drag.suppressClick || drag.draggedImage || options.isBusy()) return;
@@ -330,7 +337,10 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     for (const [url, row] of previousRows) {
       if (nextRows.has(url)) continue;
       const parts = imageRowParts.get(row);
-      if (parts) options.previewLoader.clearImage(parts.preview);
+      if (parts) {
+        options.previewLoader.clearImage(parts.preview);
+        videoSizes.release(parts.resolution);
+      }
     }
     rows = nextRows;
     drag.setRows(visibleImages, rows);

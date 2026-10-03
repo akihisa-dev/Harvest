@@ -50,7 +50,7 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
       const broken = Object.entries(brokenMedia).find(([name]) => url.includes(`/broken-${name}.`))?.[1];
       const body = broken && !repairBroken ? broken.bytes : isGif ? gif : url.endsWith('.mp4') ? mp4 : url.endsWith('.webm') ? webm : png;
       const contentType = isGif ? 'image/gif' : url.endsWith('.mp4') ? 'video/mp4' : url.endsWith('.webm') ? 'video/webm' : 'image/png';
-      return route.fulfill({status: 200, contentType, body, headers: {'access-control-allow-origin': '*'}});
+      return route.fulfill({status: 200, contentType, body, headers: {'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-length', 'content-length': String(body.length)}});
     });
     const page = await context.newPage();
     const errors = [];
@@ -214,7 +214,8 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
       assert.equal(await page.locator(`#export-format-${format}`).isVisible(), false);
     assert.equal(await page.locator('#export').isDisabled(), false);
     assert.equal(await page.locator('#export-format-gif').isVisible(), false);
-    assert.equal(await page.locator('#images .item-resolution').isVisible(), false, '動画の代替画像を動画の解像度として表示しない');
+    await page.waitForFunction(() => / B$| KB$| MB$/.test(document.querySelector('#images .item-resolution')?.textContent ?? ''));
+    assert.equal(await page.locator('#images .item-resolution').isVisible(), true, '動画には代替画像の解像度ではなく元ファイルのサイズを表示する');
     assert.match(await page.locator('#export').textContent(), /MP4/);
     const webmUrl = 'https://files.example.test/movie.webm';
     const failures = await page.evaluate(async bytes => {
@@ -328,7 +329,9 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     await page.locator('#all-selection').check();
     await page.locator('#all-visibility').click();
     await page.waitForFunction(() => [...document.querySelectorAll('#images > li img')].slice(0, 2).every(image => image.complete && image.naturalWidth > 0));
-    assert.deepEqual(await page.locator('#images .item-resolution').allTextContents(), ['640 × 960', '1 × 1', '']);
+    const {formatFileSize} = await import('../dist/extension/core/file-size.js');
+    await page.waitForFunction(expected => [...document.querySelectorAll('#images .item-resolution')].at(-1)?.textContent === expected, formatFileSize(mp4.length));
+    assert.deepEqual(await page.locator('#images .item-resolution').allTextContents(), ['640 × 960', '1 × 1', formatFileSize(mp4.length)]);
     await page.screenshot({path: '/private/tmp/harvest-media-ui.png'});
     assert.deepEqual(errors, []);
   } finally {

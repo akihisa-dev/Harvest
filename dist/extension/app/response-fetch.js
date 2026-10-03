@@ -42,6 +42,7 @@ export async function fetchResponse(url, options, errors, consume) {
         try {
             const request = {
                 credentials,
+                ...(options.method ? { method: options.method } : {}),
                 // Page credentials may never follow a redirect to an unrelated origin.
                 redirect: credentials === "include" ? "error" : "follow",
                 signal: controller.signal,
