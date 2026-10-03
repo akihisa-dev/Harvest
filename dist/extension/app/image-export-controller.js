@@ -1,3 +1,4 @@
+import { individualFilename, saveFilesIndividually } from "../core/export-files.js";
 import { isMediaArchiveFormat } from "../core/export-formats.js";
 import { createStoredZipInWorker } from "./stored-zip-worker.js";
 import { prepareImageArchive } from "./image-archive-preparation.js";
@@ -8,7 +9,7 @@ export { createImageZipEntries } from "../core/image-archive.js";
 function mediaProgressKind(format) {
     return isMediaArchiveFormat(format) ? "files" : "images";
 }
-/** Prepares selected image files in order, retries only failures, and writes one ZIP. */
+/** Prepares selected image files in order, retries only failures, and saves individual files or one ZIP. */
 export function createImageExportController(options) {
     const lifecycle = createExportLifecycle({ ...options, cancelledMessage: t("exportCancelled") });
     async function exportImages(format) {
@@ -52,18 +53,27 @@ export function createImageExportController(options) {
                 }
                 if (!entries)
                     return;
-                run.reportStatus(t("zipCreating"), "busy", t("zipCreatingShort"));
-                const archive = await createStoredZipInWorker(entries, {
-                    signal: run.signal,
-                    onProgress(completed, total) {
-                        if (options.isDisposed())
+                if (saveFilesIndividually(format, entries.length)) {
+                    for (const entry of entries) {
+                        if (run.stopped)
                             return;
-                        run.reportStatus(t("zipCreatingProgress", { completed, total }), "busy", `${completed} / ${total}`);
-                    },
-                });
-                if (run.stopped)
-                    return;
-                downloadBlob(archive, options.getZipFilename());
+                        downloadBlob(entry.blob, individualFilename(options.getZipFilename(), entry.filename, entries.length));
+                    }
+                }
+                else {
+                    run.reportStatus(t("zipCreating"), "busy", t("zipCreatingShort"));
+                    const archive = await createStoredZipInWorker(entries, {
+                        signal: run.signal,
+                        onProgress(completed, total) {
+                            if (options.isDisposed())
+                                return;
+                            run.reportStatus(t("zipCreatingProgress", { completed, total }), "busy", `${completed} / ${total}`);
+                        },
+                    });
+                    if (run.stopped)
+                        return;
+                    downloadBlob(archive, options.getZipFilename());
+                }
                 options.onClearSourceUrl();
                 lifecycle.clear();
                 options.onCompleted?.();
@@ -77,7 +87,7 @@ export function createImageExportController(options) {
                     work.failed.clear();
                     lifecycle.clear();
                 }
-                run.reportStatus(error instanceof Error ? localizeErrorMessage(error.message, "errorZipCreate", true) : t("errorZipCreate"), "error");
+                run.reportStatus(error instanceof Error ? localizeErrorMessage(error.message, "errorFileSave", true) : t("errorFileSave"), "error");
             }
         });
     }

@@ -628,8 +628,8 @@ test("取消した画像形式の保存は進捗を保ち、作業を捨てて�
 
       await controller.export(format);
       assert.equal(fetchRound, 2, `${format}: re-save starts a fresh fetch`);
-      assert.ok(downloads.includes("application/zip"), `${format}: the complete retry creates a ZIP archive`);
-      assert.ok(downloads.includes(`Artwork-${format}.zip`), `${format}: the complete retry downloads the expected filename`);
+      assert.ok(!downloads.includes("application/zip"), `${format}: a single image is saved without a ZIP archive`);
+      assert.ok(downloads.includes(`Artwork-${format}.${format === "original" ? "png" : format}`), `${format}: the complete retry downloads the expected filename`);
       assert.equal(controller.pending, null, `${format}: successful re-save clears pending work`);
       assert.equal(busy, false);
     }

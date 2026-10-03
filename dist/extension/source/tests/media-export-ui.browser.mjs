@@ -12,7 +12,7 @@ const mp4 = mp4Bytes;
 let webm;
 let repairBroken = false;
 
-test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存する', async () => {
+test('動画と単体画像を直接保存し、複数画像はZIPへ保存する', async () => {
   const root = resolve('dist/extension');
   const server = createServer(async (req, res) => {
     try {
@@ -103,7 +103,7 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     assert.equal(await page.locator('#source-url').inputValue(), 'https://source.example.test/gallery');
     await page.locator('#source-url').fill('https://source.example.test/next');
     await page.locator('#export-format-png').check();
-    assert.equal(await page.locator('#source-drop').textContent(), 'media.zip');
+    assert.equal(await page.locator('#source-drop').textContent(), 'media.png');
     await page.locator('#source-drop').click();
     assert.equal(await page.locator('#source-url').inputValue(), 'https://source.example.test/next');
     await page.locator('#source-url').fill('');
@@ -137,11 +137,27 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     assert.match(await page.locator('#export-media-hint').textContent(), /選択中の2件は対象外/);
     assert.equal(await page.locator('#export').isDisabled(), false);
     await page.locator('#export-format-mp4').check();
-    const save = async format => {
+    const save = async (format, count = 1) => {
       await page.locator(`#export-format-${format}`).check();
-      const downloadPromise = page.waitForEvent('download');
+      const individual = format === 'mp4' || count === 1;
+      const received = [];
+      const downloadPromise = new Promise(resolve => {
+        const collect = download => {
+          received.push(download);
+          if (received.length === (individual ? count : 1)) { page.off('download', collect); resolve(received); }
+        };
+        page.on('download', collect);
+      });
       await page.locator('#export').click();
-      const download = await downloadPromise;
+      const completed = await Promise.race([downloadPromise, new Promise((_, reject) => setTimeout(() => reject(new Error('missing downloads')), 10000))]);
+      if (individual) {
+        return Promise.all(completed.map(async (download, index) => {
+          const name = `${String(index + 1).padStart(3, '0')}.${format}`;
+          assert.equal(download.suggestedFilename(), count === 1 ? `media.${format}` : `media_${name}`);
+          return {name, data: await readFile(await download.path())};
+        }));
+      }
+      const download = completed[0];
       assert.equal(download.suggestedFilename(), 'media.zip');
       const bytes = await readFile(await download.path());
       const entries = [];
@@ -167,7 +183,7 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     await page.evaluate(() => { Blob.prototype.arrayBuffer = window.originalBlobRead; });
     assert.deepEqual(videos.map(e => e.name), ['001.mp4']);
     assert.deepEqual(videos[0].data, mp4);
-    // The same merge used by scanTab must produce one archive entry per video.
+    // The same merge used by scanTab must produce one download per video.
     const preferredMovie = 'https://files.example.test/high/movie.mp4';
     const separateMovie = 'https://files.example.test/other/movie.mp4';
     const merged = await page.evaluate(async ({movie, preferredMovie, separateMovie}) => {
@@ -177,7 +193,7 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     }, {movie, preferredMovie, separateMovie});
     await scan([], merged);
     assert.deepEqual(await groups.allTextContents(), ['MP4\n(2件)']);
-    const uniqueVideos = await save('mp4');
+    const uniqueVideos = await save('mp4', 2);
     assert.deepEqual(uniqueVideos.map(entry => entry.name), ['001.mp4', '002.mp4']);
     await scan([photo, animation], [{url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
     await page.locator('#all-selection').check();
@@ -199,9 +215,9 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
       assert.match(await page.locator('#status').textContent(), /再試行/);
       assert.match(await page.locator('#failures').textContent(), /不完全|破損/);
       repairBroken = true;
-      const retried = await save(format);
+      const retried = await save(format, 2);
       assert.deepEqual(retried.map(entry => entry.data), [format === 'gif' ? gif : mp4, format === 'gif' ? gif : mp4]);
-      assert.equal(downloads, before + 1);
+      assert.equal(downloads, before + (format === 'mp4' ? 2 : 1));
     }
     await scan([photo, animation], [{url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
     await page.locator('#all-selection').check();
@@ -276,7 +292,7 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
       await page.locator('#all-selection').check();
       assert.equal(await page.locator('#export-format-mp4').isChecked(), true);
       assert.match(await page.locator('#export-media-hint').textContent(), /WebMは変換/);
-      const entries = await save('mp4');
+      const entries = await save('mp4', urls.length);
       assert.deepEqual(entries.map(entry => entry.name), urls.map((_, i) => `${String(i + 1).padStart(3, '0')}.mp4`));
       if (urls.includes(movie)) assert.deepEqual(entries[0].data, mp4);
       const info = await inspectMp4(entries.at(-1).data);

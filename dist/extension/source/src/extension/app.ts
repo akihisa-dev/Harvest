@@ -1,3 +1,4 @@
+import {individualFilename, saveFilesIndividually} from "../core/export-files.js";
 import { initialExportFormat, restoredExportFormat } from "../core/export-formats.js";
 import type { ImageItem } from "../core/images.js";
 import { ImageCollection } from "../core/image-collection.js";
@@ -96,7 +97,7 @@ const sourceInput = createSourceInputController({
   display: sourceDrop,
   dropOverlay: urlDropOverlay,
   placeholder: t("sourceDrop"),
-  getResultFilename: () => exportSession.format === "pdf" ? pdfFilename() : zipFilename(),
+  getResultFilename: resultFilename,
   isBusy: () => busy,
   isReordering: () => imageListView.isDragging,
   onScan: () => startScan(),
@@ -127,6 +128,15 @@ function pdfFilename(): string {
 
 function zipFilename(): string {
   return `${fileBaseName()}.zip`;
+}
+
+function resultFilename(): string {
+  const format = exportSession.format;
+  if (format === "pdf") return pdfFilename();
+  const count = exportSelectedItems().length;
+  if (!saveFilesIndividually(format, count)) return zipFilename();
+  const first = `${"1".padStart(Math.max(3, String(count).length), "0")}.${format}`;
+  return individualFilename(zipFilename(), first, count);
 }
 
 /** A local preview only; the PDF itself continues to contain selectable text. */
