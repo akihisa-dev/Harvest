@@ -10,7 +10,7 @@ const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const extension = resolve(root, "dist/extension");
 const mime = {".css": "text/css", ".js": "text/javascript"};
 
-async function serve() {
+async function serve({sharedPoster = false} = {}) {
   const server = createServer(async (request, response) => {
     try {
       const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
@@ -22,12 +22,33 @@ async function serve() {
           </main><button id="toggle"></button>
           <script type="module">
             import {createViewerController} from "/app/viewer-controller.js";
+            import {createImagePreviewLoader} from "/app/image-preview.js";
             const png = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
             const pages = [1, 2].map(index => ({url: "https://images.example.test/" + index + ".jpg", sourcePage: "https://source.example.test"}));
+            if (${sharedPoster}) {
+              pages.forEach((item, index) => {
+                item.url = "https://images.example.test/" + (index + 1) + ".mp4";
+                item.kind = "video";
+                item.previewUrl = "https://images.example.test/shared.gif";
+              });
+            }
             const get = selector => document.querySelector(selector);
             const bindings = new Map();
             let pendingLoads = 0;
-            const previewLoader = {
+            const eagerBindings = new Map();
+            const actualPreviewLoader = ${sharedPoster} ? createImagePreviewLoader() : null;
+            const previewLoader = actualPreviewLoader ? {
+              set(image, item, eager = false) {
+                actualPreviewLoader.set(image, item, eager);
+                bindings.set(image, item.url);
+                eagerBindings.set(image, eager);
+              },
+              clearImage(image) {
+                actualPreviewLoader.clearImage(image);
+                bindings.delete(image);
+                eagerBindings.delete(image);
+              },
+            } : {
               set(image, item) {
                 bindings.set(image, item.url);
                 delete image.dataset.previewFailed;
@@ -56,7 +77,7 @@ async function serve() {
               getImageCount: () => pages.length, previewLoader, onChange: () => controller.render(),
             });
             window.__viewerReady = controller;
-            window.__viewerFixture = {pages, bindings, get pendingLoads() { return pendingLoads; }};
+            window.__viewerFixture = {pages, bindings, eagerBindings, actualPreviewLoader, get pendingLoads() { return pendingLoads; }};
             controller.setOpen(true);
             controller.render();
           </script>
@@ -79,6 +100,101 @@ async function serve() {
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
   return {server, url: `${baseUrl}/test.html`};
 }
+
+test("shared video posters finish transitions without another load or retained bindings", async () => {
+  const {server, url} = await serve({sharedPoster: true});
+  let browser;
+  try {
+    browser = await chromium.launch({channel: "chrome", headless: true});
+    const page = await browser.newPage({reducedMotion: "no-preference"});
+    const errors = [], requests = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.route("https://images.example.test/**", async route => {
+      requests.push(route.request().url());
+      if (route.request().url().endsWith("shared.gif")) {
+        await route.fulfill({status: 200, contentType: "image/gif",
+          body: Buffer.from("R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=", "base64"),
+          headers: {"access-control-allow-origin": "*"}});
+      } else {
+        await route.fulfill({status: 404, headers: {"access-control-allow-origin": "*"}});
+      }
+    });
+    await page.goto(url);
+    await page.waitForFunction(() => window.__viewerReady && document.querySelector("#image").naturalWidth > 0);
+    const originalSrc = await page.locator("#image").getAttribute("src");
+    await page.locator("#image").evaluate(image => {
+      window.__posterLoads = 0;
+      image.addEventListener("load", () => window.__posterLoads++);
+    });
+    const bindings = () => page.evaluate(() => ({
+      total: window.__viewerFixture.bindings.size,
+      eager: [...window.__viewerFixture.eagerBindings.values()].filter(Boolean).length,
+      detached: [...window.__viewerFixture.bindings.keys()].filter(image => !image.isConnected).length,
+    }));
+    const waitForTransition = () => page.waitForFunction(() => !document.querySelector(".viewer-motion-image"), null, {timeout: 3000});
+    for (const direction of ["next", "previous", "next", "previous", "next", "previous"]) {
+      const motion = await page.evaluate(direction => {
+        document.querySelector("#" + direction).click();
+        const image = document.querySelector("#image");
+        return {motion: image.dataset.motion, direction: image.dataset.direction};
+      }, direction);
+      assert.deepEqual(motion, {motion: "incoming", direction}, "a ready shared poster uses the normal directional transition");
+      await waitForTransition();
+      assert.deepEqual(await bindings(), {total: 3, eager: 2, detached: 0});
+      assert.equal(await page.locator("#image").getAttribute("data-motion"), null);
+      assert.equal(await page.locator("#image").getAttribute("src"), originalSrc);
+    }
+    assert.equal(await page.evaluate(() => window.__posterLoads), 0);
+    assert.deepEqual(requests, ["https://images.example.test/shared.gif"], "switching does not fetch posters again or request video data");
+
+    await page.evaluate(() => {
+      document.querySelector("#next").click();
+      document.querySelector("#previous").click();
+      document.querySelector("#next").click();
+      document.querySelector("#previous").click();
+    });
+    await waitForTransition();
+    assert.deepEqual(await bindings(), {total: 3, eager: 2, detached: 0}, "rapid switching releases superseded and completed layers");
+
+    await page.evaluate(() => {
+      window.__viewerFixture.pages[1].previewUrl = "https://images.example.test/failed.gif";
+      document.querySelector("#next").click();
+    });
+    await page.waitForFunction(() => document.querySelector("#image").dataset.previewFailed === "true");
+    await waitForTransition();
+    assert.deepEqual(await bindings(), {total: 3, eager: 2, detached: 0}, "fetch failure releases every outgoing binding");
+    await page.evaluate(() => {
+      window.__viewerFixture.pages[1].previewUrl = "https://images.example.test/shared.gif";
+      document.querySelector("#previous").click();
+    });
+    await page.waitForFunction(() => document.querySelector("#image").naturalWidth > 0);
+    await waitForTransition();
+    await page.emulateMedia({reducedMotion: "reduce"});
+    await page.locator("#next").evaluate(button => button.click());
+    assert.equal(await page.locator(".viewer-motion-image").count(), 0);
+    assert.deepEqual(await bindings(), {total: 3, eager: 2, detached: 0});
+    assert.deepEqual(requests, ["https://images.example.test/shared.gif", "https://images.example.test/failed.gif"]);
+
+    await page.emulateMedia({reducedMotion: "no-preference"});
+    const cleared = await page.evaluate(() => {
+      document.querySelector("#previous").click();
+      const ghostsBeforeClear = document.querySelectorAll(".viewer-motion-image").length;
+      window.__viewerReady.clearCurrentPage();
+      window.__viewerFixture.pages.length = 0;
+      window.__viewerReady.render();
+      return {ghostsBeforeClear, diagnostics: window.__viewerFixture.actualPreviewLoader.diagnostics};
+    });
+    assert.ok(cleared.ghostsBeforeClear > 0);
+    assert.deepEqual(cleared.diagnostics, {bound: 0, ready: 0, failed: 0, pending: 0});
+    await waitForTransition();
+    assert.deepEqual(await bindings(), {total: 0, eager: 0, detached: 0});
+    assert.equal(await page.locator("#image").getAttribute("src"), null);
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    await new Promise(resolveClose => server.close(resolveClose));
+  }
+});
 
 test("viewer drag follows zoom changes and ends at 100%, page changes, and pointercancel", async () => {
   const {server, url} = await serve();

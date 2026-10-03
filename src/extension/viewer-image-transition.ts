@@ -44,6 +44,9 @@ export function createViewerImageTransition(options: ViewerImageTransitionOption
 
   function show(current: ImageItem, pages: readonly ImageItem[], priorImageTransform: string): void {
     const previousUrl = renderedItem?.url ?? null;
+    const reusesPreview = renderedItem !== null
+      && (renderedItem.previewUrl ?? renderedItem.url) === (current.previewUrl ?? current.url)
+      && renderedItem.sourcePage === current.sourcePage;
     const currentIndex = pages.findIndex(item => item.url === current.url);
     cancelPendingLoad();
     const existingOutgoing = motionImages();
@@ -52,6 +55,7 @@ export function createViewerImageTransition(options: ViewerImageTransitionOption
       && (existingOutgoing.length > 0 || hasActiveImage)
       && !current.url.startsWith("data:") && !prefersReducedMotion());
     const transitionId = ++imageTransitionId;
+    let settleSharedPreview: (() => void) | null = null;
     if (canAnimateImage) {
       const previousIndex = pages.findIndex(item => item.url === previousUrl);
       const direction = currentIndex < previousIndex ? "previous" : "next";
@@ -143,11 +147,17 @@ export function createViewerImageTransition(options: ViewerImageTransitionOption
       });
       failureObserver.observe(image, {attributes: true, attributeFilter: ["data-preview-failed"]});
       imageTransitionCleanup = cleanupListeners;
+      settleSharedPreview = () => {
+        if (image.dataset["previewFailed"] === "true") onFailed();
+        else if (image.complete && image.naturalWidth > 0 && image.currentSrc) onLoaded();
+      };
     } else {
       clearOutgoing();
     }
     previewLoader.set(image, current, true);
     renderedItem = current;
+    // The loader keeps src unchanged for the same preview resource, so no new load event follows.
+    if (reusesPreview) settleSharedPreview?.();
   }
 
   return {

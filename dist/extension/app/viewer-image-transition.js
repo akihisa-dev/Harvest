@@ -24,6 +24,9 @@ export function createViewerImageTransition(options) {
     }
     function show(current, pages, priorImageTransform) {
         const previousUrl = renderedItem?.url ?? null;
+        const reusesPreview = renderedItem !== null
+            && (renderedItem.previewUrl ?? renderedItem.url) === (current.previewUrl ?? current.url)
+            && renderedItem.sourcePage === current.sourcePage;
         const currentIndex = pages.findIndex(item => item.url === current.url);
         cancelPendingLoad();
         const existingOutgoing = motionImages();
@@ -32,6 +35,7 @@ export function createViewerImageTransition(options) {
             && (existingOutgoing.length > 0 || hasActiveImage)
             && !current.url.startsWith("data:") && !prefersReducedMotion());
         const transitionId = ++imageTransitionId;
+        let settleSharedPreview = null;
         if (canAnimateImage) {
             const previousIndex = pages.findIndex(item => item.url === previousUrl);
             const direction = currentIndex < previousIndex ? "previous" : "next";
@@ -131,12 +135,21 @@ export function createViewerImageTransition(options) {
             });
             failureObserver.observe(image, { attributes: true, attributeFilter: ["data-preview-failed"] });
             imageTransitionCleanup = cleanupListeners;
+            settleSharedPreview = () => {
+                if (image.dataset["previewFailed"] === "true")
+                    onFailed();
+                else if (image.complete && image.naturalWidth > 0 && image.currentSrc)
+                    onLoaded();
+            };
         }
         else {
             clearOutgoing();
         }
         previewLoader.set(image, current, true);
         renderedItem = current;
+        // The loader keeps src unchanged for the same preview resource, so no new load event follows.
+        if (reusesPreview)
+            settleSharedPreview?.();
     }
     return {
         get renderedUrl() { return renderedItem?.url ?? null; },
