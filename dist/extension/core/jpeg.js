@@ -3,14 +3,14 @@ export function inspectJpegStructure(bytes) {
     if (!(bytes instanceof Uint8Array) || bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8)
         return null;
     const byte = (index) => bytes[index] ?? -1;
-    const frameMarkers = [0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf];
-    const quantization = new Set();
-    const huffman = new Set();
-    const components = new Map();
+    const startOfFrameMarkers = [0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf];
+    const quantizationTables = new Set();
+    const huffmanTables = new Set();
+    const componentQuantizationTables = new Map();
     let frame;
     let hasJfif = false;
     let hasMetadata = false;
-    let scans = 0;
+    let scanCount = 0;
     let offset = 2;
     while (offset < bytes.length) {
         if (byte(offset++) !== 0xff)
@@ -19,11 +19,11 @@ export function inspectJpegStructure(bytes) {
             offset += 1;
         const marker = byte(offset++);
         if (marker === 0xd9) {
-            return frame && scans > 0 ? {
+            return frame && scanCount > 0 ? {
                 width: frame.width,
                 height: frame.height,
                 canEmbed: hasJfif && !hasMetadata && (frame.marker === 0xc0 || frame.marker === 0xc2) &&
-                    frame.precision === 8 && components.size === 3,
+                    frame.precision === 8 && componentQuantizationTables.size === 3,
             } : null;
         }
         if (marker === 0x01)
@@ -42,7 +42,8 @@ export function inspectJpegStructure(bytes) {
         }
         if (marker === 0xe1 || marker === 0xe2 || marker === 0xee)
             hasMetadata = true;
-        if (frameMarkers.includes(marker)) {
+        // Frame dimensions and the quantization table assigned to each component.
+        if (startOfFrameMarkers.includes(marker)) {
             const count = byte(start + 5);
             if (frame || count < 1 || length !== 8 + 3 * count)
                 return null;
@@ -55,12 +56,13 @@ export function inspectJpegStructure(bytes) {
                 const id = byte(component);
                 const sampling = byte(component + 1);
                 const table = byte(component + 2);
-                if (components.has(id) || (sampling >> 4) < 1 || (sampling & 15) < 1 || table > 3)
+                if (componentQuantizationTables.has(id) || (sampling >> 4) < 1 || (sampling & 15) < 1 || table > 3)
                     return null;
-                components.set(id, table);
+                componentQuantizationTables.set(id, table);
             }
             frame = { width, height, marker, precision: byte(start) };
         }
+        // Quantization tables (DQT).
         if (marker === 0xdb) {
             let cursor = start;
             if (cursor === end)
@@ -72,9 +74,10 @@ export function inspectJpegStructure(bytes) {
                 cursor += (table >> 4) === 0 ? 64 : 128;
                 if (cursor > end)
                     return null;
-                quantization.add(table & 15);
+                quantizationTables.add(table & 15);
             }
         }
+        // Huffman tables (DHT).
         if (marker === 0xc4) {
             let cursor = start;
             if (cursor === end)
@@ -89,14 +92,15 @@ export function inspectJpegStructure(bytes) {
                 if (symbols < 1 || symbols > 256 || cursor + symbols > end)
                     return null;
                 cursor += symbols;
-                huffman.add(table);
+                huffmanTables.add(table);
             }
         }
         offset = end;
         if (marker !== 0xda)
             continue;
+        // Scan header (SOS): every referenced component and required table must exist.
         const count = byte(start);
-        if (!frame || count < 1 || count > components.size || length !== 6 + 2 * count)
+        if (!frame || count < 1 || count > componentQuantizationTables.size || length !== 6 + 2 * count)
             return null;
         const scanComponents = new Set();
         const spectralStart = byte(start + 1 + count * 2);
@@ -104,22 +108,23 @@ export function inspectJpegStructure(bytes) {
         for (let index = 0; index < count; index += 1) {
             const id = byte(start + 1 + index * 2);
             const table = byte(start + 2 + index * 2);
-            if (!components.has(id) || scanComponents.has(id))
+            if (!componentQuantizationTables.has(id) || scanComponents.has(id))
                 return null;
             scanComponents.add(id);
             if (frame.marker === 0xc0 || frame.marker === 0xc2) {
-                if (!quantization.has(components.get(id)))
+                if (!quantizationTables.has(componentQuantizationTables.get(id)))
                     return null;
-                if (spectralStart === 0 && (approximation >> 4) === 0 && !huffman.has(table >> 4))
+                if (spectralStart === 0 && (approximation >> 4) === 0 && !huffmanTables.has(table >> 4))
                     return null;
-                if ((frame.marker === 0xc0 || spectralStart > 0) && !huffman.has(0x10 | (table & 15)))
+                if ((frame.marker === 0xc0 || spectralStart > 0) && !huffmanTables.has(0x10 | (table & 15)))
                     return null;
             }
         }
-        let dataBytes = 0;
+        // Scan data ends at the next marker, except escaped bytes and restart markers.
+        let scanDataBytes = 0;
         while (offset < bytes.length) {
             if (byte(offset) !== 0xff) {
-                dataBytes += 1;
+                scanDataBytes += 1;
                 offset += 1;
                 continue;
             }
@@ -128,7 +133,7 @@ export function inspectJpegStructure(bytes) {
                 offset += 1;
             const next = byte(offset);
             if (next === 0) {
-                dataBytes += 1;
+                scanDataBytes += 1;
                 offset += 1;
                 continue;
             }
@@ -139,9 +144,9 @@ export function inspectJpegStructure(bytes) {
             offset = markerStart;
             break;
         }
-        if (dataBytes === 0)
+        if (scanDataBytes === 0)
             return null;
-        scans += 1;
+        scanCount += 1;
     }
     return null;
 }

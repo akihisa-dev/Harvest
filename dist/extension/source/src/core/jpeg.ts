@@ -10,25 +10,25 @@ export interface JpegStructure {
 export function inspectJpegStructure(bytes: Uint8Array): JpegStructure | null {
   if (!(bytes instanceof Uint8Array) || bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
   const byte = (index: number): number => bytes[index] ?? -1;
-  const frameMarkers = [0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf];
-  const quantization = new Set<number>();
-  const huffman = new Set<number>();
-  const components = new Map<number, number>();
+  const startOfFrameMarkers = [0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf];
+  const quantizationTables = new Set<number>();
+  const huffmanTables = new Set<number>();
+  const componentQuantizationTables = new Map<number, number>();
   let frame: {width: number; height: number; marker: number; precision: number} | undefined;
   let hasJfif = false;
   let hasMetadata = false;
-  let scans = 0;
+  let scanCount = 0;
   let offset = 2;
   while (offset < bytes.length) {
     if (byte(offset++) !== 0xff) return null;
     while (byte(offset) === 0xff) offset += 1;
     const marker = byte(offset++);
     if (marker === 0xd9) {
-      return frame && scans > 0 ? {
+      return frame && scanCount > 0 ? {
         width: frame.width,
         height: frame.height,
         canEmbed: hasJfif && !hasMetadata && (frame.marker === 0xc0 || frame.marker === 0xc2) &&
-          frame.precision === 8 && components.size === 3,
+          frame.precision === 8 && componentQuantizationTables.size === 3,
       } : null;
     }
     if (marker === 0x01) continue;
@@ -42,7 +42,8 @@ export function inspectJpegStructure(bytes: Uint8Array): JpegStructure | null {
       hasJfif = true;
     }
     if (marker === 0xe1 || marker === 0xe2 || marker === 0xee) hasMetadata = true;
-    if (frameMarkers.includes(marker)) {
+    // Frame dimensions and the quantization table assigned to each component.
+    if (startOfFrameMarkers.includes(marker)) {
       const count = byte(start + 5);
       if (frame || count < 1 || length !== 8 + 3 * count) return null;
       const height = (byte(start + 1) << 8) | byte(start + 2);
@@ -53,11 +54,12 @@ export function inspectJpegStructure(bytes: Uint8Array): JpegStructure | null {
         const id = byte(component);
         const sampling = byte(component + 1);
         const table = byte(component + 2);
-        if (components.has(id) || (sampling >> 4) < 1 || (sampling & 15) < 1 || table > 3) return null;
-        components.set(id, table);
+        if (componentQuantizationTables.has(id) || (sampling >> 4) < 1 || (sampling & 15) < 1 || table > 3) return null;
+        componentQuantizationTables.set(id, table);
       }
       frame = {width, height, marker, precision: byte(start)};
     }
+    // Quantization tables (DQT).
     if (marker === 0xdb) {
       let cursor = start;
       if (cursor === end) return null;
@@ -66,9 +68,10 @@ export function inspectJpegStructure(bytes: Uint8Array): JpegStructure | null {
         if ((table >> 4) > 1 || (table & 15) > 3) return null;
         cursor += (table >> 4) === 0 ? 64 : 128;
         if (cursor > end) return null;
-        quantization.add(table & 15);
+        quantizationTables.add(table & 15);
       }
     }
+    // Huffman tables (DHT).
     if (marker === 0xc4) {
       let cursor = start;
       if (cursor === end) return null;
@@ -79,40 +82,55 @@ export function inspectJpegStructure(bytes: Uint8Array): JpegStructure | null {
         for (let index = 0; index < 16; index += 1) symbols += byte(cursor++);
         if (symbols < 1 || symbols > 256 || cursor + symbols > end) return null;
         cursor += symbols;
-        huffman.add(table);
+        huffmanTables.add(table);
       }
     }
     offset = end;
     if (marker !== 0xda) continue;
+
+    // Scan header (SOS): every referenced component and required table must exist.
     const count = byte(start);
-    if (!frame || count < 1 || count > components.size || length !== 6 + 2 * count) return null;
+    if (!frame || count < 1 || count > componentQuantizationTables.size || length !== 6 + 2 * count) return null;
     const scanComponents = new Set<number>();
     const spectralStart = byte(start + 1 + count * 2);
     const approximation = byte(end - 1);
     for (let index = 0; index < count; index += 1) {
       const id = byte(start + 1 + index * 2);
       const table = byte(start + 2 + index * 2);
-      if (!components.has(id) || scanComponents.has(id)) return null;
+      if (!componentQuantizationTables.has(id) || scanComponents.has(id)) return null;
       scanComponents.add(id);
       if (frame.marker === 0xc0 || frame.marker === 0xc2) {
-        if (!quantization.has(components.get(id)!)) return null;
-        if (spectralStart === 0 && (approximation >> 4) === 0 && !huffman.has(table >> 4)) return null;
-        if ((frame.marker === 0xc0 || spectralStart > 0) && !huffman.has(0x10 | (table & 15))) return null;
+        if (!quantizationTables.has(componentQuantizationTables.get(id)!)) return null;
+        if (spectralStart === 0 && (approximation >> 4) === 0 && !huffmanTables.has(table >> 4)) return null;
+        if ((frame.marker === 0xc0 || spectralStart > 0) && !huffmanTables.has(0x10 | (table & 15))) return null;
       }
     }
-    let dataBytes = 0;
+
+    // Scan data ends at the next marker, except escaped bytes and restart markers.
+    let scanDataBytes = 0;
     while (offset < bytes.length) {
-      if (byte(offset) !== 0xff) { dataBytes += 1; offset += 1; continue; }
+      if (byte(offset) !== 0xff) {
+        scanDataBytes += 1;
+        offset += 1;
+        continue;
+      }
       const markerStart = offset++;
       while (byte(offset) === 0xff) offset += 1;
       const next = byte(offset);
-      if (next === 0) { dataBytes += 1; offset += 1; continue; }
-      if (next >= 0xd0 && next <= 0xd7) { offset += 1; continue; }
+      if (next === 0) {
+        scanDataBytes += 1;
+        offset += 1;
+        continue;
+      }
+      if (next >= 0xd0 && next <= 0xd7) {
+        offset += 1;
+        continue;
+      }
       offset = markerStart;
       break;
     }
-    if (dataBytes === 0) return null;
-    scans += 1;
+    if (scanDataBytes === 0) return null;
+    scanCount += 1;
   }
   return null;
 }
