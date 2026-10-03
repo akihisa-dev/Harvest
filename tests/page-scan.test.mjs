@@ -1180,3 +1180,15 @@ test("本文・script・汎用属性の画像URLは最終拡張子と完全な�
     assert.equal(result.media.find(item => item.url.includes("photo.gif.webp")).kind, "image");
   }
 });
+
+test("有効なJSON画像文字列のエスケープを復元し、生文字列の誤候補を残さない", async () => {
+  const url = "https://cdn.example.test/photo.jpg?token=abc#preview";
+  const plain = JSON.stringify({nested: [{image: url}]});
+  const scripts = [plain, plain.replaceAll("/", "\\/"), plain.replaceAll("/", "\\u002f"), plain.replace(".jpg", ".\\u006apg"), plain.replace("token", "\\u0074oken")];
+  for (const textContent of scripts) {
+    assert.equal(JSON.parse(textContent).nested[0].image, url);
+    const script = new FixtureElement("script", {type: "application/json"}, [], {textContent});
+    const result = await runWithFixture(new FixtureDocument(new FixtureElement("html", {}, [script])), undefined, scanDocument);
+    assert.deepEqual(result.images, [url]);
+  }
+});

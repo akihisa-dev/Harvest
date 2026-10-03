@@ -696,7 +696,23 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     if (tagName === "style") {
       scanCss(element.textContent, undefined, element);
     } else if (tagName === "script") {
-      scanText(element.textContent, undefined, element);
+      let json: unknown;
+      let parsed = false;
+      try { json = JSON.parse(element.textContent ?? ""); parsed = true; } catch { /* Ordinary scripts remain text candidates. */ }
+      if (parsed) {
+        const pending: unknown[] = [json];
+        while (pending.length > 0) {
+          checkDeadline();
+          const value = pending.pop();
+          if (typeof value === "string") scanText(value, undefined, element);
+          else if (value && typeof value === "object") {
+            for (const key of Object.keys(value)) {
+              checkDeadline();
+              pending.push((value as Record<string, unknown>)[key]);
+            }
+          }
+        }
+      } else scanText(element.textContent, undefined, element);
       scanEmbeddedVideoJson(element);
     } else {
       // Rebuild all evidence owned by this element together. Only direct text
