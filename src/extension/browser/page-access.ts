@@ -1,4 +1,4 @@
-import {parseXMedia, xMediaUrlKey} from "../../core/x-media.js";
+import {parseXMedia, xMediaUrlKey, xOriginalPhotoUrl} from "../../core/x-media.js";
 import { mergeMediaCandidates } from "../../core/media-selection.js";
 import type { PageScan } from "../contracts/page-contracts.js";
 import { PageReadSession, withTemporaryPage } from "./page-read-session.js";
@@ -49,8 +49,17 @@ export async function scanTab(tabId: number, signal?: AbortSignal, requestedUrl?
       result.images = analysis.media.filter(item => item.kind === "image").map(item => item.url);
       result.media = mergeMediaCandidates([], analysis.media);
     } else {
+      const photos = new Map(analysis.media.filter(item => item.kind === "image").map(item => [xMediaUrlKey(item.url), item.url]));
+      const confirmedPhotoUrl = (url: string): string => {
+        const original = xOriginalPhotoUrl(url);
+        return photos.get(xMediaUrlKey(url)) === original ? original : url;
+      };
+      // Keep page-wide candidates, but replace confirmed post-photo renditions
+      // before filtering supplements so their original URL is not discarded.
+      result.images = [...new Set(result.images.map(confirmedPhotoUrl))];
       const known = new Set(result.images.map(xMediaUrlKey));
-      result.media = mergeMediaCandidates(result.media ?? [], analysis.media.filter(item =>
+      const media = (result.media ?? []).map(item => item.kind === "image" ? {...item, url: confirmedPhotoUrl(item.url)} : item);
+      result.media = mergeMediaCandidates(media, analysis.media.filter(item =>
         item.kind !== "image" || !known.has(xMediaUrlKey(item.url))));
     }
     if (expectVideo && !result.media.some(item => item.kind === "video")) {

@@ -12,6 +12,30 @@ function mediaSnapshot(url, candidates = [], observed = []) {
     }}}}}]}]};
 }
 
+for (const path of ['/home', '/user']) test(`Xの${path}は確認済み写真だけ原寸化し、他のページ候補を保持する`, async t => {
+  const url = `https://x.com${path}`;
+  fixture(t, {get: async () => ({url})});
+  const photo = 'https://pbs.twimg.com/media/photo?format=png&name=small';
+  const thumb = 'https://pbs.twimg.com/media/photo?format=png&name=thumb';
+  const second = 'https://pbs.twimg.com/media/second.png';
+  const unconfirmed = 'https://pbs.twimg.com/media/unconfirmed?format=png&name=small';
+  const unknown = 'https://pbs.twimg.com/media/unknown?format=unknownformat&name=small';
+  const unknownThumb = unknown.replace('small', 'thumb');
+  const outside = 'https://example.test/photo.png';
+  const avatar = 'https://pbs.twimg.com/profile_images/1/avatar.jpg';
+  const poster = 'https://pbs.twimg.com/media/poster?format=png&name=small';
+  const images = [photo, thumb, second, unconfirmed, unknown, unknownThumb, outside, avatar];
+  const video = {kind: 'video', url: 'https://video.twimg.com/clip.mp4', previewUrl: poster};
+  chrome.scripting.executeScript = async ({func}) => [{result: func.name === 'scanXMedia'
+    ? mediaSnapshot(url, [{kind: 'image', url: photo}, {kind: 'image', url: second}, {kind: 'image', url: unknown}, video])
+    : {url, title: 'X', images, media: [...images.map(url => ({url, kind: 'image'})), video]}}];
+  const scan = await scanTab(8, undefined, url);
+  const expected = ['https://pbs.twimg.com/media/photo?format=png&name=orig', 'https://pbs.twimg.com/media/second?format=png&name=orig',
+    unconfirmed, unknown, unknownThumb, outside, avatar];
+  assert.deepEqual(scan.images, expected);
+  assert.deepEqual(scan.media, [...expected.map(url => ({url, kind: 'image'})), video]);
+});
+
 for (const path of ["/i/history", "/i/bookmarks"]) {
   test(`${path}は投稿表示を待ち、写真の重複とプロフィールを除いて全メディアを結合する`, async t => {
     const url = `https://x.com${path}`;
