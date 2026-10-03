@@ -23,8 +23,12 @@ test("Xの対象投稿IDを待機・DOM・再生情報の全経路で照合し�
       window.scopedModules = {};
       for (const [name, source] of Object.entries(sources)) {
         const url = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));
-        try { window.scopedModules[name] = await import(url); }
-        finally { URL.revokeObjectURL(url); }
+        try {
+          window.scopedModules[name] = await import(url);
+        }
+        finally {
+          URL.revokeObjectURL(url);
+        }
       }
     }, modules);
 
@@ -37,7 +41,11 @@ test("Xの対象投稿IDを待機・DOM・再生情報の全経路で照合し�
         const {scanXMedia} = window.scopedModules["x-media-scan"];
         const state = await waitForXPage(video, 650, "123");
         let scan;
-        try { scan = await scanDocument("123"); } catch { scan = null; }
+        try {
+          scan = await scanDocument("123");
+        } catch {
+          scan = null;
+        }
         return {state, scan, extra: scanXMedia("123")};
       }, expectVideo);
     };
@@ -52,14 +60,27 @@ test("Xの対象投稿IDを待機・DOM・再生情報の全経路で照合し�
     const quoted = `<div role="link"><a href="/quoted/status/777"><time>Yesterday</time></a>${photo("quoted")}<video src="https://video.twimg.com/quoted.mp4"></video></div>`;
     const normal = await run(`<main>${post("123", `${photo("target")}<div data-testid="tweetText">This Post was deleted</div>${quoted}<video id="target-video" src="https://video.twimg.com/target.mp4"></video>`)}${post("456", photo("reply"))}<section aria-label="Recommendations">${post("999", photo("recommended"))}</section></main>`, true, () => {
       const media = url => ({video_info: {variants: [{url, content_type: "video/mp4", bitrate: 10}]}});
-      const target = {rest_id: "123", legacy: {extended_entities: {media: [media("https://video.twimg.com/target-state.mp4")]}, quoted_status: {rest_id: "777", extended_entities: {media: [media("https://video.twimg.com/quoted-state.mp4")]}}}};
+      const target = {
+        rest_id: "123",
+        legacy: {
+          extended_entities: {media: [media("https://video.twimg.com/target-state.mp4")]},
+          quoted_status: {rest_id: "777", extended_entities: {media: [media("https://video.twimg.com/quoted-state.mp4")]}}
+        }
+      };
       const unrelated = {rest_id: "999", legacy: {extended_entities: {media: [media("https://video.twimg.com/other-state.mp4")]}}};
-      document.querySelector("#post-123").__reactFiber$fixture = {memoizedProps: {role: "article"}, return: {
-        memoizedProps: {tweet: target, tweetResults: [unrelated]}, return: null,
-      }};
-      document.querySelector("#target-video").__reactFiber$fixture = {memoizedProps: {role: "video"}, return: {
-        memoizedProps: {media: {variants: [{url: "https://video.twimg.com/unowned-ancestor.mp4", content_type: "video/mp4"}]}}, return: null,
-      }};
+      document.querySelector("#post-123").__reactFiber$fixture = {
+        memoizedProps: {role: "article"},
+        return: {
+          memoizedProps: {tweet: target, tweetResults: [unrelated]}, return: null,
+        }
+      };
+      document.querySelector("#target-video").__reactFiber$fixture = {
+        memoizedProps: {role: "video"},
+        return: {
+          memoizedProps: {media: {variants: [{url: "https://video.twimg.com/unowned-ancestor.mp4", content_type: "video/mp4"}]}},
+          return: null,
+        }
+      };
       document.querySelector("#post-999").__reactProps$fixture = {tweet: unrelated};
     });
     assert.equal(normal.state.status, "ready");

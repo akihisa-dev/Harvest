@@ -7,17 +7,31 @@
 5. stageするpathを明示し、`git add .`と`git add -A`は使いません。秘密情報、無関係な変更を含めません。
 6. レビューの指摘を解決してから取り込みます。
 
+## 開発環境と依存関係
+
 pnpmは`package.json`の`packageManager`と`pnpm-lock.yaml`で12.5.1に固定します。通常設定は`pnpm-workspace.yaml`に置き、`.npmrc`はregistry/authentication設定が必要な場合だけ使います。pnpmの版を変えるときは、`package.json`、lockfile、`scripts/check-runtime.mjs`を同じ変更で揃えます。依存導入では`pnpm install --frozen-lockfile`を使います。
+
+## コミットとタグ
 
 commit件名は`<type>[!]: <version> <日本語の説明>`です。typeは`feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`、`revert`から選びます。複数ファイル、version更新、運用変更を含むcommitの本文には`scope:`、`目的:`、`内容:`、`確認:`、`影響:`を記載します。
 
 通常のcommitではGit tagを作りません。tagまたはreleaseは明示依頼がある場合だけ行い、実施前に`pnpm verify:release`を通します。tagはpackage versionと一致する未使用の`v<version>`を対象commitへ注釈付きで作成します。commit後はcommit IDと残存差分を確認します。
 
+## Gitフック
+
 Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion一致・同一commit登録を確認し、`pre-push`で`pnpm verify:full`を実行します。新しいcloneでhookを有効にするには`pnpm setup:hooks`を実行してください。`pnpm verify`などの通常確認も、hook未設定または別の場所を指している場合は`pnpm setup:hooks`の実行方法を案内して停止します。GitHub Actionsは使いません。release前は`pnpm verify:release`を実行します。
+
+## ビルド処理の構成
+
+[scripts/build.mjs](scripts/build.mjs) は、コンパイル、実行コードの配置、同梱ライブラリ、画面・画像、対応ソースの配置をそれぞれの関数で行います。最後にmanifestを確定し、一時フォルダーから配布先へ置き換えます。既存の配布物は置換前に退避し、置換に失敗した場合は元へ戻します。
+
+## 同梱ライブラリ
 
 JXL出力には`@jsquash/jxl` 1.3.0を使用し、同梱される`wasm-feature-detect` 1.9.0とともにApache-2.0で配布します。ビルドは単一スレッド用のエンコーダーとWebAssemblyだけを拡張機能へ含め、画面操作と分けたワーカー内で明示的に初期化します。実行時に外部からコードを取得しません。JXLの追加分は非圧縮で約1.4 MBです。両ライブラリのライセンスは拡張機能内の「ライセンスとソース」画面から確認できます。
 
 WebMからMP4への変換には`mediabunny` 1.61.0（MPL-2.0）を完全固定で使用します。ブラウザー標準のWebCodecsで映像・音声を変換し、コンテナー解析とMP4組み立てを同ライブラリが担当します。実行時の追加依存や外部コード取得はなく、単一のブラウザー用バンドル（約676 KiB）とライセンスを同梱します。型定義用の推移依存はlockfileに固定し、配布実行コードには含めません。Mediabunnyのグローバル型とTypeScriptのDOM型の競合を避けるため、`vendor-modules.d.ts`に使用するAPIだけの境界を置き、型検査全体は省略しません。
+
+## 権限と利用者情報
 
 Chrome権限や対象サイトを広げる場合は必要な操作を説明してください。利用者情報を扱う場合は取得内容、保存先、保持期間、削除方法を文書化します。依存追加前に必要性、保守状況、脆弱性、ライセンスを確認し、版を固定してlockfileを更新します。
 

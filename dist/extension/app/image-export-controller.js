@@ -25,7 +25,11 @@ export function createImageExportController(options) {
         }), pending => pending.format === format);
         const retry = work.failed.size > 0;
         const remaining = work.selected.filter(item => !work.prepared.has(item));
-        await lifecycle.run(work, t(mediaProgressKind(format) === "files" ? (retry ? "retryFiles" : "prepareFiles") : (retry ? "retryImages" : "prepareImages"), { completed: 0, total: remaining.length }), `0 / ${remaining.length}`, async (run) => {
+        const progressKind = mediaProgressKind(format);
+        const progressMessage = progressKind === "files"
+            ? (retry ? "retryFiles" : "prepareFiles")
+            : (retry ? "retryImages" : "prepareImages");
+        await lifecycle.run(work, t(progressMessage, { completed: 0, total: remaining.length }), `0 / ${remaining.length}`, async (run) => {
             try {
                 const entries = await prepareImageArchive(work, {
                     signal: run.signal,
@@ -34,7 +38,7 @@ export function createImageExportController(options) {
                     onProgress(completed, total) {
                         if (options.isDisposed())
                             return;
-                        run.reportStatus(t(mediaProgressKind(format) === "files" ? (retry ? "retryFiles" : "prepareFiles") : (retry ? "retryImages" : "prepareImages"), {
+                        run.reportStatus(t(progressMessage, {
                             completed, total,
                         }), "busy", `${completed} / ${total}`);
                     },
@@ -43,7 +47,7 @@ export function createImageExportController(options) {
                     return;
                 if (work.failed.size) {
                     options.onCloseViewer();
-                    run.reportStatus(t(mediaProgressKind(format) === "files" ? "fileFailedSummary" : "imageFailedSummary", { count: work.failed.size, plural: formatPlural(work.failed.size) }), "error");
+                    run.reportStatus(t(progressKind === "files" ? "fileFailedSummary" : "imageFailedSummary", { count: work.failed.size, plural: formatPlural(work.failed.size) }), "error");
                     return;
                 }
                 if (!entries)

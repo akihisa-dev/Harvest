@@ -49,7 +49,8 @@ function mediaFormat(value) {
         const url = new URL(value);
         const pathExtension = url.pathname.match(/\.([a-z0-9]{2,8})$/i)?.[1];
         const queryFormat = [...url.searchParams.entries()].find(([name]) => /^(?:format|fmt|fm)$/i.test(name))?.[1];
-        return { extension: queryFormat ? normalizeFormat(queryFormat) : pathExtension ? normalizeFormat(pathExtension) : "不明" };
+        const format = queryFormat || pathExtension;
+        return { extension: format ? normalizeFormat(format) : "不明" };
     }
     catch {
         return { extension: "不明" };
@@ -57,7 +58,23 @@ function mediaFormat(value) {
 }
 function normalizeFormat(value) {
     const format = value.toLowerCase().replace(/^x-/, "").replace(/\+xml$/, "");
-    const aliases = { jpeg: "JPG", jpg: "JPG", png: "PNG", webp: "WEBP", avif: "AVIF", gif: "GIF", mp4: "MP4", webm: "WEBM", mov: "MOV", m4v: "M4V", bmp: "BMP", tif: "TIFF", tiff: "TIFF", jxl: "JXL", svg: "SVG" };
+    const aliases = {
+        jpeg: "JPG",
+        jpg: "JPG",
+        png: "PNG",
+        webp: "WEBP",
+        avif: "AVIF",
+        gif: "GIF",
+        mp4: "MP4",
+        webm: "WEBM",
+        mov: "MOV",
+        m4v: "M4V",
+        bmp: "BMP",
+        tif: "TIFF",
+        tiff: "TIFF",
+        jxl: "JXL",
+        svg: "SVG",
+    };
     return aliases[format] ?? "不明";
 }
 export function filterImagesByGroup(images, group) {
@@ -78,11 +95,11 @@ export function normalizeImageUrls(candidates, pageUrl) {
             if (url.protocol !== "http:" && url.protocol !== "https:")
                 continue;
             url.hash = "";
-            const lower = decodeURIComponentSafe(url.pathname).toLowerCase();
+            const normalizedPath = decodeURIComponentSafe(url.pathname).toLowerCase();
             const contentPath = ["/fanzine/", "/covers/", "/pages/", "/storage/", "/uploads/", "/viewer/"]
-                .some(marker => lower.includes(marker));
-            const excluded = /(?:^|[\/_.-])(?:avatars?|logos?|icons?|buttons?|adverts?|advertisement|tracking|pixels?|analytics|banners?|loading)(?=$|[\/_.-]|\d)/.test(lower)
-                || /\/(?:themes?|plugins|wp-includes)(?:\/|$)/.test(lower)
+                .some(marker => normalizedPath.includes(marker));
+            const excluded = /(?:^|[\/_.-])(?:avatars?|logos?|icons?|buttons?|adverts?|advertisement|tracking|pixels?|analytics|banners?|loading)(?=$|[\/_.-]|\d)/.test(normalizedPath)
+                || /\/(?:themes?|plugins|wp-includes)(?:\/|$)/.test(normalizedPath)
                 || /\.(?:svg|ico)$/i.test(url.pathname);
             if (excluded && !contentPath)
                 continue;
@@ -95,12 +112,12 @@ export function normalizeImageUrls(candidates, pageUrl) {
     return [...found];
 }
 export function groupImages(images) {
-    const raw = new Map();
+    const seriesByKey = new Map();
     for (const image of images) {
         if (image.startsWith("data:")) {
-            const items = raw.get("uploaded") ?? [];
+            const items = seriesByKey.get("uploaded") ?? [];
             items.push(image);
-            raw.set("uploaded", items);
+            seriesByKey.set("uploaded", items);
             continue;
         }
         try {
@@ -114,19 +131,19 @@ export function groupImages(images) {
             queryParts.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
             const querySignature = queryParts.length ? `|${JSON.stringify(queryParts)}` : "";
             const key = `${url.origin}${parentPath}|${prefix}|${resolution}${querySignature}`;
-            const items = raw.get(key) ?? [];
+            const items = seriesByKey.get(key) ?? [];
             items.push(image);
-            raw.set(key, items);
+            seriesByKey.set(key, items);
         }
         catch {
-            const items = raw.get("unknown") ?? [];
+            const items = seriesByKey.get("unknown") ?? [];
             items.push(image);
-            raw.set("unknown", items);
+            seriesByKey.set("unknown", items);
         }
     }
     const groups = {};
     const others = [];
-    for (const [key, items] of raw) {
+    for (const [key, items] of seriesByKey) {
         if (key === "uploaded") {
             groups["0_uploaded"] = { label: `アップロード済み (${items.length}枚)`, priority: 0, items, isMangaBody: false };
             continue;
@@ -137,7 +154,8 @@ export function groupImages(images) {
         }
         const [pathPart = "", prefixPart = "numeric", resolution = ""] = key.split("|");
         const lowerPath = pathPart.toLowerCase();
-        const isMangaBody = lowerPath.includes("/fanzine") || lowerPath.includes("/pages") || lowerPath.includes("/storage") || lowerPath.includes("/viewer") || items.length >= 10;
+        const isMangaBody = lowerPath.includes("/fanzine") || lowerPath.includes("/pages") ||
+            lowerPath.includes("/storage") || lowerPath.includes("/viewer") || items.length >= 10;
         let label = prefixPart === "numeric" ? "シリーズ" : "セット";
         let priority = prefixPart === "numeric" ? 1 : 2;
         if (!isMangaBody && (lowerPath.includes("cover") || lowerPath.includes("thumb"))) {
@@ -153,12 +171,12 @@ export function groupImages(images) {
     return groups;
 }
 export function defaultDisplayedImageGroup(groups) {
-    const entries = Object.entries(groups).sort((a, b) => {
-        if (a[1].priority === 0 || b[1].priority === 0)
-            return a[1].priority - b[1].priority;
-        if (a[1].isMangaBody !== b[1].isMangaBody)
-            return a[1].isMangaBody ? -1 : 1;
-        return a[1].priority - b[1].priority || b[1].items.length - a[1].items.length;
+    const entries = Object.entries(groups).sort(([, left], [, right]) => {
+        if (left.priority === 0 || right.priority === 0)
+            return left.priority - right.priority;
+        if (left.isMangaBody !== right.isMangaBody)
+            return left.isMangaBody ? -1 : 1;
+        return left.priority - right.priority || right.items.length - left.items.length;
     });
     return entries[0]?.[0] ?? null;
 }

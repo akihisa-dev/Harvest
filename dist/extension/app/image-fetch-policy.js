@@ -33,14 +33,14 @@ function isPrivateIpv4(host) {
     const parts = host.split(".").map(Number);
     if (parts.some(part => part < 0 || part > 255))
         return false;
-    const [a = 0, b = 0] = parts;
-    return a === 0 || a === 10 || a === 127 ||
-        (a === 100 && b >= 64 && b <= 127) ||
-        (a === 169 && b === 254) ||
-        (a === 172 && b >= 16 && b <= 31) ||
-        (a === 192 && b === 168) ||
-        (a === 198 && (b === 18 || b === 19)) ||
-        a >= 224;
+    const [firstOctet = 0, secondOctet = 0] = parts;
+    return firstOctet === 0 || firstOctet === 10 || firstOctet === 127 ||
+        (firstOctet === 100 && secondOctet >= 64 && secondOctet <= 127) ||
+        (firstOctet === 169 && secondOctet === 254) ||
+        (firstOctet === 172 && secondOctet >= 16 && secondOctet <= 31) ||
+        (firstOctet === 192 && secondOctet === 168) ||
+        (firstOctet === 198 && (secondOctet === 18 || secondOctet === 19)) ||
+        firstOctet >= 224;
 }
 function ipv6Value(hostname) {
     let value = hostname.replace(/^\[|\]$/g, "").toLowerCase();

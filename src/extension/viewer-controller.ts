@@ -96,7 +96,10 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
     panX = x - (x - panX) * ratio;
     panY = y - (y - panY) * ratio;
     zoom = nextZoom;
-    if (zoom === 1) { panX = 0; panY = 0; }
+    if (zoom === 1) {
+      panX = 0;
+      panY = 0;
+    }
     updateTransform();
   }
 
@@ -207,12 +210,18 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
   elements.previous.addEventListener("click", () => {
     const pages = options.getPages();
     const index = pages.findIndex(item => item.url === currentUrl);
-    if (index > 0) { currentUrl = pages[index - 1]!.url; render(); }
+    if (index > 0) {
+      currentUrl = pages[index - 1]!.url;
+      render();
+    }
   });
   elements.next.addEventListener("click", () => {
     const pages = options.getPages();
     const index = pages.findIndex(item => item.url === currentUrl);
-    if (index >= 0 && index < pages.length - 1) { currentUrl = pages[index + 1]!.url; render(); }
+    if (index >= 0 && index < pages.length - 1) {
+      currentUrl = pages[index + 1]!.url;
+      render();
+    }
   });
   elements.thumbnails.addEventListener("wheel", event => {
     if (!open || !currentUrl || options.isBusy()) return;

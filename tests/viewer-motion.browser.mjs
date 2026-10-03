@@ -1,21 +1,21 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
-import { extname, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import {createServer} from "node:http";
+import {readFile} from "node:fs/promises";
+import {extname, resolve, sep} from "node:path";
+import {fileURLToPath} from "node:url";
 import test from "node:test";
-import { chromium } from "playwright";
+import {chromium} from "playwright";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const extension = resolve(root, "dist/extension");
-const mime = { ".css": "text/css", ".js": "text/javascript" };
+const mime = {".css": "text/css", ".js": "text/javascript"};
 
 async function serve() {
   const server = createServer(async (request, response) => {
     try {
       const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
       if (pathname === "/test.html") {
-        response.writeHead(200, { "content-type": "text/html" });
+        response.writeHead(200, {"content-type": "text/html"});
         response.end(`<!doctype html><html><head><link rel="stylesheet" href="/app/style.css"><link rel="stylesheet" href="/app/viewer-motion.css"></head><body>
           <main><section id="results" class="results"></section>
             <section id="viewer" class="viewer" hidden><p id="empty"></p><div id="page"><div id="stage" class="viewer-stage"><img id="image"></div><button id="previous"></button><button id="next"></button><span id="position"></span><p id="filename"></p><ol id="thumbnails"></ol><button id="zoom-in"></button><button id="zoom-out"></button><button id="zoom-reset"></button></div></section>
@@ -66,7 +66,7 @@ async function serve() {
       const target = resolve(extension, `.${pathname}`);
       if (target !== extension && !target.startsWith(`${extension}${sep}`)) throw new Error("outside extension");
       const body = await readFile(target);
-      response.writeHead(200, { "content-type": mime[extname(target)] ?? "application/octet-stream" });
+      response.writeHead(200, {"content-type": mime[extname(target)] ?? "application/octet-stream"});
       response.end(body);
     } catch {
       if (!response.headersSent) response.writeHead(404).end();
@@ -77,14 +77,14 @@ async function serve() {
     server.listen(0, "127.0.0.1", resolveListen);
   });
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
-  return { server, url: `${baseUrl}/test.html` };
+  return {server, url: `${baseUrl}/test.html`};
 }
 
 test("viewer waits for the next preview before its directional transition and honors reduced motion", async () => {
-  const { server, url } = await serve();
+  const {server, url} = await serve();
   let browser;
   try {
-    browser = await chromium.launch({ channel: "chrome", headless: true });
+    browser = await chromium.launch({channel: "chrome", headless: true});
     const page = await browser.newPage();
     await page.goto(url);
     await page.waitForFunction(() => Boolean(window.__viewerReady));
@@ -105,16 +105,19 @@ test("viewer waits for the next preview before its directional transition and ho
       window.__viewerReady.render();
       getComputedStyle(viewer).opacity;
       const outgoing = viewer.getAnimations();
-      outgoing.forEach(a => {a.pause(); a.currentTime = 80;});
+      outgoing.forEach(a => {
+        a.pause();
+        a.currentTime = 80;
+      });
       const mid = Number(getComputedStyle(viewer).opacity);
       window.__viewerReady.setOpen(true);
       window.__viewerReady.render();
       getComputedStyle(viewer).opacity;
-      return {mid, active:viewer.getAnimations().length};
+      return {mid, active: viewer.getAnimations().length};
     });
     assert.ok(retargeted.mid > 0 && retargeted.mid < 1, JSON.stringify(retargeted));
     assert.ok(retargeted.active > 0, "rapid mode changes retarget the current CSS transition");
-    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.emulateMedia({reducedMotion: "reduce"});
     await page.locator("#previous").click();
     assert.equal(await page.locator(".viewer-motion-image").count(), 0, "reduced motion skips the image transition");
   } finally {
@@ -141,14 +144,20 @@ test("viewer retargeting, failed previews and clearing release obsolete image bi
     const retargeted = await page.evaluate(async () => {
       const image = document.querySelector("#image");
       for (const element of [image, ...document.querySelectorAll(".viewer-motion-image")]) {
-        for (const animation of element.getAnimations()) { animation.pause(); animation.currentTime = 80; }
+        for (const animation of element.getAnimations()) {
+          animation.pause();
+          animation.currentTime = 80;
+        }
       }
       document.querySelector("#next").click();
       await Promise.resolve();
       await Promise.resolve();
       const ghosts = [...document.querySelectorAll(".viewer-motion-image")];
-      return {ghosts: ghosts.length, holding: ghosts.every(ghost => ghost.dataset.motion === "holding"),
-        detached: [...window.__viewerFixture.bindings.keys()].filter(element => !element.isConnected).length};
+      return {
+        ghosts: ghosts.length,
+        holding: ghosts.every(ghost => ghost.dataset.motion === "holding"),
+        detached: [...window.__viewerFixture.bindings.keys()].filter(element => !element.isConnected).length
+      };
     });
     assert.ok(retargeted.ghosts > 0 && retargeted.ghosts <= 4, JSON.stringify(retargeted));
     assert.equal(retargeted.holding, true, "interrupted animation completion does not remove the new holding images");
@@ -164,8 +173,11 @@ test("viewer retargeting, failed previews and clearing release obsolete image bi
       document.querySelector("#next").click();
       const pendingGhosts = document.querySelectorAll(".viewer-motion-image").length;
       window.__viewerReady.clearCurrentPage();
-      const clearedPage = {ghosts: document.querySelectorAll(".viewer-motion-image").length,
-        bindings: window.__viewerFixture.bindings.size, src: document.querySelector("#image").getAttribute("src")};
+      const clearedPage = {
+        ghosts: document.querySelectorAll(".viewer-motion-image").length,
+        bindings: window.__viewerFixture.bindings.size,
+        src: document.querySelector("#image").getAttribute("src")
+      };
       window.__viewerFixture.pages.length = 0;
       window.__viewerReady.render();
       return {pendingGhosts, clearedPage, bindings: window.__viewerFixture.bindings.size};

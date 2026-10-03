@@ -39,8 +39,8 @@ function setup() {
         this.messages.push(message);
       },
       disconnect() { this.disconnectCount += 1; },
-      onMessage: {addListener(listener) { port.onMessageListener = listener; }},
-      onDisconnect: {addListener(listener) { port.onDisconnectListener = listener; }},
+      onMessage: {addListener(listener) { port.onMessageListener = listener; } },
+      onDisconnect: {addListener(listener) { port.onDisconnectListener = listener; } },
       send(message) { this.onMessageListener?.(message); },
       disconnectFromPage() { this.onDisconnectListener?.(); },
     };
@@ -55,7 +55,7 @@ function setup() {
     return [];
   };
   globalThis.chrome = {
-    runtime: {onConnect: {addListener(listener) { onConnect = listener; }}},
+    runtime: {onConnect: {addListener(listener) { onConnect = listener; } }},
     tabs: {query: (...args) => query ? query(...args) : Promise.resolve([{id: 7, url: "https://example.test/view"}])},
     scripting: {executeScript: injection => executeScript(injection)},
   };
@@ -74,7 +74,12 @@ function setup() {
   });
 
   return {
-    controller, button, ports, injections, scans, errors,
+    controller,
+    button,
+    ports,
+    injections,
+    scans,
+    errors,
     get exports() { return exports; },
     set busy(value) { busy = value; },
     set disposed(value) { disposed = value; },
@@ -104,7 +109,8 @@ test("接続は一度だけ許可したsession名と対象tabに限り受け付�
     fixture.controller.stop();
     fixture.connectionTabId = 7;
     fixture.button.click();
-    for (let attempt = 0; attempt < 10 && fixture.ports.length < 3; attempt++) await new Promise(resolve => setImmediate(resolve));
+    for (let attempt = 0; attempt < 10 && fixture.ports.length < 3; attempt++)
+      await new Promise(resolve => setImmediate(resolve));
     const accepted = fixture.ports.at(-1);
     assert.notEqual(accepted.name, wrongTab.name);
     assert.equal(accepted.disconnectCount, 0);
@@ -113,7 +119,9 @@ test("接続は一度だけ許可したsession名と対象tabに限り受け付�
     fixture.button.click();
     assert.equal(fixture.controller.session, null);
     assert.equal(fixture.button.attributes.get("aria-pressed"), "false");
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("busy・中断・古い接続は無視し、成功した同じURLは保存操作へ進む", async () => {
@@ -151,7 +159,9 @@ test("busy・中断・古い接続は無視し、成功した同じURLは保存�
     assert.equal(fixture.controller.session, secondSession, "古い切断通知は新しい収集を止めない");
     newPort.send({url: "https://example.test/current"});
     assert.deepEqual(fixture.scans, [url, "https://example.test/current"]);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("状態通知に失敗した現在のPortだけを終了し、切断通知との二重終了を許容する", async () => {
@@ -175,7 +185,9 @@ test("状態通知に失敗した現在のPortだけを終了し、切断通知�
     assert.equal(fixture.controller.session, currentSession, "古いPortの切断通知は新しい収集を止めない");
     fixture.ports.at(-1).send({url: "https://example.test/current"});
     assert.deepEqual(fixture.scans, ["https://example.test/current"]);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("開始中に解除したsessionは遅れて返ったtabへ注入しない", async () => {
@@ -194,7 +206,9 @@ test("開始中に解除したsessionは遅れて返ったtabへ注入しない"
     assert.equal(fixture.button.attributes.get("aria-pressed"), "false");
     const latePort = fixture.connect(session, 7);
     assert.equal(latePort.disconnectCount, 0, "注入前に停止したsessionは受付対象から除かれる");
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("注入前の開始失敗ではsessionを受付対象から除く", async () => {
@@ -215,7 +229,9 @@ test("注入前の開始失敗ではsessionを受付対象から除く", async (
       const latePort = fixture.connect(session, 7);
       assert.equal(latePort.disconnectCount, 0, "注入に到達しなかったsessionは受付対象から除かれる");
     }
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("新しい収集中に届いた古いsessionの遅延portは切断し、新しい処理を保つ", async () => {
@@ -252,7 +268,9 @@ test("新しい収集中に届いた古いsessionの遅延portは切断し、新
     assert.equal(fixture.controller.session, currentSession);
     newPort.send({url: "https://example.test/current"});
     assert.deepEqual(fixture.scans, ["https://example.test/current"]);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("別のsession開始後でも注入済みsessionの遅延portを切断する", async () => {
@@ -266,7 +284,8 @@ test("別のsession開始後でも注入済みsessionの遅延portを切断す�
   });
   try {
     const oldStart = fixture.controller.toggle();
-    for (let attempt = 0; attempt < 10 && !finishOldInjection; attempt++) await new Promise(resolve => setImmediate(resolve));
+    for (let attempt = 0; attempt < 10 && !finishOldInjection; attempt++)
+      await new Promise(resolve => setImmediate(resolve));
     assert.equal(typeof finishOldInjection, "function");
     fixture.controller.stop();
 
@@ -285,7 +304,9 @@ test("別のsession開始後でも注入済みsessionの遅延portを切断す�
     assert.equal(lateOldPort.disconnectCount, 1, "別session開始後も注入済みの古いsessionを拒否する");
     assert.equal(fixture.controller.session, currentSession);
     assert.equal(fixture.controller.session, currentPort.name);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("停止した注入の遅い失敗と接続は新しい収集の解析済みURLを変えない", async () => {
@@ -319,7 +340,9 @@ test("停止した注入の遅い失敗と接続は新しい収集の解析済�
     assert.deepEqual(fixture.errors, []);
     currentPort.send({url});
     assert.equal(fixture.exports, 1);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("sessionの接続許可は一度限りで、解析済みURLは現在のsessionにだけ属する", async () => {
@@ -347,5 +370,7 @@ test("sessionの接続許可は一度限りで、解析済みURLは現在のsess
     assert.equal(fixture.controller.analyzedUrl, null);
     fixture.controller.markAnalyzedUrl(url, session);
     assert.equal(fixture.controller.analyzedUrl, null);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });

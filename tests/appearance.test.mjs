@@ -23,9 +23,13 @@ test("明暗の自動追従でも本文・補助文・選択ボタンの文字�
   const dark = {...light, ...palette(darkBlock)};
   for (const theme of [light, dark]) {
     for (const [text, background] of [
-      ["ink", "surface"], ["ink", "background"], ["muted", "surface"],
-      ["muted", "background"], ["pressed-ink", "ink"],
-      ["pressed-ink", "pressed-hover"], ["pressed-ink", "pressed-active"],
+      ["ink", "surface"],
+      ["ink", "background"],
+      ["muted", "surface"],
+      ["muted", "background"],
+      ["pressed-ink", "ink"],
+      ["pressed-ink", "pressed-hover"],
+      ["pressed-ink", "pressed-active"],
     ]) {
       const first = luminance(theme[text]);
       const second = luminance(theme[background]);

@@ -4,6 +4,8 @@ import test from "node:test";
 import {deflateSync} from "node:zlib";
 import {readImageBytes} from "../dist/extension/app/image-fetch.js";
 import {IMAGE_TOO_LARGE_MESSAGE, MAX_IMAGE_BYTES} from "../dist/extension/app/image-data-contract.js";
+import {inflateSync} from "node:zlib";
+import {PdfImageError, preparePdfImages, toPdfPage} from "../dist/extension/app/pdf-image.js";
 
 function pngChunk(type, data) {
   const chunk = new Uint8Array(12 + data.length);
@@ -48,7 +50,10 @@ test("応答が中断を無視してもキャンセルは即座に完了し、�
   const previousFetch = globalThis.fetch;
   const controller = new AbortController();
   const fetched = [];
-  globalThis.fetch = async url => { fetched.push(url); return new Promise(() => {}); };
+  globalThis.fetch = async url => {
+    fetched.push(url);
+    return new Promise(() => {});
+  };
   try {
     const urls = ["a", "b", "c", "d", "e"].map(name => `https://example.test/${name}`);
     const work = preparePdfImages(urls.map(url => ({url})), () => {}, {signal: controller.signal});
@@ -56,21 +61,26 @@ test("応答が中断を無視してもキャンセルは即座に完了し、�
     controller.abort();
     await rejected;
     assert.deepEqual(fetched, urls.slice(0, 3));
-  } finally { globalThis.fetch = previousFetch; }
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });
-import { inflateSync } from "node:zlib";
-import { PdfImageError, preparePdfImages, toPdfPage } from "../dist/extension/app/pdf-image.js";
 
 test("設定なしで元の画素と寸法を保ち、JPEGへ再圧縮しない", async () => {
-  const previous = { fetch: globalThis.fetch, document: globalThis.document, createImageBitmap: globalThis.createImageBitmap };
+  const previous = {fetch: globalThis.fetch, document: globalThis.document, createImageBitmap: globalThis.createImageBitmap};
   let closed = 0;
   let jpegConversions = 0;
   const canvas = {
-    width: 0, height: 0,
+    width: 0,
+    height: 0,
     getContext: (type, options) => {
       assert.equal(type, "2d");
       assert.deepEqual(options, {willReadFrequently: true});
-      return {fillRect() {}, drawImage() {}, getImageData: () => ({data: new Uint8ClampedArray([12, 34, 56, 255, 78, 90, 123, 255])})};
+      return {
+        fillRect() {},
+        drawImage() {},
+        getImageData: () => ({data: new Uint8ClampedArray([12, 34, 56, 255, 78, 90, 123, 255])})
+      };
     },
     toBlob(callback, type, quality) {
       jpegConversions++;
@@ -84,7 +94,7 @@ test("設定なしで元の画素と寸法を保ち、JPEGへ再圧縮しない"
   globalThis.createImageBitmap = async blob => {
     assert.equal(blob.type, "image/png");
     assert.deepEqual([...new Uint8Array(await blob.arrayBuffer())], [1]);
-    return {width: 2, height: 1, close() { closed++; }};
+    return {width: 2, height: 1, close() { closed++; } };
   };
   try {
     const page = await toPdfPage("https://example.com/image.png");
@@ -111,9 +121,11 @@ test("非JPEG画像は画素を小分けに圧縮し、画像全体のRGB配列�
   const reads = [];
   const compressedInputSizes = [];
   const canvas = {
-    width: 0, height: 0,
+    width: 0,
+    height: 0,
     getContext: () => ({
-      fillRect() {}, drawImage() {},
+      fillRect() {},
+      drawImage() {},
       getImageData(x, y, chunkWidth, rows) {
         reads.push({x, y, width: chunkWidth, height: rows});
         const data = new Uint8ClampedArray(chunkWidth * rows * 4);
@@ -131,7 +143,7 @@ test("非JPEG画像は画素を小分けに圧縮し、画像全体のRGB配列�
   };
   globalThis.fetch = async () => new Response(new Uint8Array([1]), {headers: {"Content-Type": "image/webp"}});
   globalThis.document = {createElement: () => canvas};
-  globalThis.createImageBitmap = async () => ({width, height, close() {}});
+  globalThis.createImageBitmap = async () => ({width, height, close() {} });
   globalThis.CompressionStream = class {
     constructor(format) {
       assert.equal(format, "deflate");
@@ -171,9 +183,11 @@ test("大きな画像も既定の画素上限ごとにRGBを圧縮へ渡す", as
   const reads = [];
   const compressedInputSizes = [];
   const canvas = {
-    width: 0, height: 0,
+    width: 0,
+    height: 0,
     getContext: () => ({
-      fillRect() {}, drawImage() {},
+      fillRect() {},
+      drawImage() {},
       getImageData(x, y, chunkWidth, rows) {
         reads.push({x, y, width: chunkWidth, height: rows});
         return {data: new Uint8ClampedArray(chunkWidth * rows * 4)};
@@ -182,7 +196,7 @@ test("大きな画像も既定の画素上限ごとにRGBを圧縮へ渡す", as
   };
   globalThis.fetch = async () => new Response(new Uint8Array([1]), {headers: {"Content-Type": "image/png"}});
   globalThis.document = {createElement: () => canvas};
-  globalThis.createImageBitmap = async () => ({width, height, close() {}});
+  globalThis.createImageBitmap = async () => ({width, height, close() {} });
   globalThis.CompressionStream = class {
     constructor(format) {
       assert.equal(format, "deflate");
@@ -221,7 +235,8 @@ test("画素変換後の圧縮中に中止すると、完了を待たずに画�
   const started = new Promise(resolve => { compressionStarted = resolve; });
   let closed = 0;
   const canvas = {
-    width: 0, height: 0,
+    width: 0,
+    height: 0,
     getContext: () => ({
       fillRect() {}, drawImage() {},
       getImageData: () => ({data: new Uint8ClampedArray([1, 2, 3, 255])}),
@@ -229,7 +244,7 @@ test("画素変換後の圧縮中に中止すると、完了を待たずに画�
   };
   globalThis.fetch = async () => new Response(new Uint8Array([1]), {headers: {"Content-Type": "image/png"}});
   globalThis.document = {createElement: () => canvas};
-  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() { closed++; }});
+  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() { closed++; } });
   globalThis.CompressionStream = class {
     constructor(format) {
       assert.equal(format, "deflate");
@@ -260,18 +275,20 @@ test("画素変換後の圧縮中に中止すると、完了を待たずに画�
 });
 
 test("対応するJFIF JPEGは取得したバイト列と寸法をそのまま使う", async () => {
-  const previous = { fetch: globalThis.fetch, createImageBitmap: globalThis.createImageBitmap };
+  const previous = {fetch: globalThis.fetch, createImageBitmap: globalThis.createImageBitmap};
   const jpeg = baselineJpeg;
   let decoded = 0;
   const responseBuffer = jpeg.buffer;
   globalThis.fetch = async () => ({
-    ok: true, status: 200, headers: new Headers({"Content-Type": "image/jpeg"}),
+    ok: true,
+    status: 200,
+    headers: new Headers({"Content-Type": "image/jpeg"}),
     arrayBuffer: async () => responseBuffer,
     blob() { throw new Error("JPEG must not be copied into a Blob"); },
   });
   globalThis.createImageBitmap = async () => {
     decoded += 1;
-    return {width: 3, height: 2, close() {}};
+    return {width: 3, height: 2, close() {} };
   };
   try {
     const page = await toPdfPage("https://example.com/original.jpg");
@@ -290,11 +307,14 @@ test("EXIF付きJPEGはPDF用には画素へ変換し、JPG保存用の元デー
   const jpeg = exifJpeg;
   let closed = 0;
   globalThis.fetch = async () => new Response(jpeg, {headers: {"content-type": "image/jpeg"}});
-  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() { closed += 1; }});
-  globalThis.document = {createElement: () => ({
-    width: 0, height: 0,
-    getContext: () => ({fillRect() {}, drawImage() {}, getImageData: () => ({data: new Uint8ClampedArray([12, 34, 56, 255])})}),
-  })};
+  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() { closed += 1; } });
+  globalThis.document = {
+    createElement: () => ({
+      width: 0,
+      height: 0,
+      getContext: () => ({fillRect() {}, drawImage() {}, getImageData: () => ({data: new Uint8ClampedArray([12, 34, 56, 255])})}),
+    })
+  };
   try {
     const page = await toPdfPage("https://example.test/exif.jpg");
     assert.equal(page.width, 1);
@@ -308,7 +328,7 @@ test("EXIF付きJPEGはPDF用には画素へ変換し、JPG保存用の元デー
 });
 
 test("HTTP失敗・通信失敗・画像形式不正を利用者向け理由へ変換する", async () => {
-  const previous = { fetch: globalThis.fetch };
+  const previous = {fetch: globalThis.fetch};
   try {
     globalThis.fetch = async () => new Response(null, {status: 404});
     await assert.rejects(toPdfPage("https://example.com/missing"), (error) => {
@@ -339,14 +359,17 @@ test("HTTP失敗・通信失敗・画像形式不正を利用者向け理由へ�
 });
 
 test("応答待ちの上限でAbortし、応答本文も後始末する", async () => {
-  const previous = { fetch: globalThis.fetch };
+  const previous = {fetch: globalThis.fetch};
   let signal;
   let cancelled = 0;
   globalThis.fetch = async (_url, options) => {
     signal = options.signal;
     const body = {
       bodyUsed: false,
-      async cancel() { body.bodyUsed = true; cancelled += 1; },
+      async cancel() {
+        body.bodyUsed = true;
+        cancelled += 1;
+      },
       getReader() {
         return {
           read: () => new Promise((resolve, reject) => {
@@ -363,7 +386,10 @@ test("応答待ちの上限でAbortし、応答本文も後始末する", async 
       bodyUsed: false,
       headers: new Headers({"Content-Type": "image/png"}),
     };
-    body.cancel = async () => { response.bodyUsed = true; cancelled += 1; };
+    body.cancel = async () => {
+      response.bodyUsed = true;
+      cancelled += 1;
+    };
     return response;
   };
   try {
@@ -409,7 +435,10 @@ test("Content-Lengthが上限を超える応答は本文を読む前に拒否す
   let cancelled = 0;
   const body = {
     bodyUsed: false,
-    async cancel() { body.bodyUsed = true; cancelled += 1; },
+    async cancel() {
+      body.bodyUsed = true;
+      cancelled += 1;
+    },
   };
   globalThis.fetch = async () => ({
     ok: true,
@@ -417,7 +446,10 @@ test("Content-Lengthが上限を超える応答は本文を読む前に拒否す
     headers: new Headers({"content-type": "image/png", "content-length": String(MAX_IMAGE_BYTES + 1)}),
     body,
     get bodyUsed() { return body.bodyUsed; },
-    async arrayBuffer() { reads += 1; throw new Error("本文を読んではいけません"); },
+    async arrayBuffer() {
+      reads += 1;
+      throw new Error("本文を読んではいけません");
+    },
   });
   try {
     await assert.rejects(toPdfPage("https://example.com/too-large"), error => error instanceof PdfImageError
@@ -441,11 +473,16 @@ test("大きすぎるJPEGとデコード画像をCanvasへ渡さず、画像メ�
   let decodedJpegs = 0;
   let createdCanvases = 0;
   let closedBitmaps = 0;
-  globalThis.document = {createElement() { createdCanvases += 1; throw new Error("canvas must not be created"); }};
+  globalThis.document = {
+    createElement() {
+      createdCanvases += 1;
+      throw new Error("canvas must not be created");
+    }
+  };
   globalThis.fetch = async () => new Response(jpeg, {headers: {"content-type": "image/jpeg"}});
   globalThis.createImageBitmap = async () => {
     decodedJpegs += 1;
-    return {width: 8_001, height: 8_000, close() { closedBitmaps += 1; }};
+    return {width: 8_001, height: 8_000, close() { closedBitmaps += 1; } };
   };
   try {
     await assert.rejects(toPdfPage("https://example.com/large-jpeg"), error => error instanceof PdfImageError
@@ -476,7 +513,12 @@ test("圧縮後は小さいが画素数が上限を超えるPNGをデコード�
     decodes += 1;
     throw new Error("上限判定より前にデコードしてはいけません");
   };
-  globalThis.document = {createElement() { canvases += 1; throw new Error("canvas must not be created"); }};
+  globalThis.document = {
+    createElement() {
+      canvases += 1;
+      throw new Error("canvas must not be created");
+    }
+  };
   try {
     await assert.rejects(toPdfPage("https://example.com/tiny-oversized.png"), error => error instanceof PdfImageError
       && error.kind === "invalid-image"
@@ -489,7 +531,7 @@ test("圧縮後は小さいが画素数が上限を超えるPNGをデコード�
 });
 
 test("取得は少数並列、画素変換は逐次、結果は入力順で通知する", async () => {
-  const previous = { fetch: globalThis.fetch, document: globalThis.document, createImageBitmap: globalThis.createImageBitmap };
+  const previous = {fetch: globalThis.fetch, document: globalThis.document, createImageBitmap: globalThis.createImageBitmap};
   let activeFetches = 0;
   let maxFetches = 0;
   let activeConversions = 0;
@@ -581,7 +623,7 @@ test("先頭画像が遅れても後続JPEGを並列数以上に蓄積せず、�
   };
   globalThis.createImageBitmap = async () => {
     decodes += 1;
-    return {width: 3, height: 2, close() {}};
+    return {width: 3, height: 2, close() {} };
   };
 
   let work;
@@ -614,7 +656,7 @@ test("先頭画像が遅れても後続JPEGを並列数以上に蓄積せず、�
 });
 
 test("結果通知の失敗でも待機中の取得を解放する", async () => {
-  const previous = { fetch: globalThis.fetch };
+  const previous = {fetch: globalThis.fetch};
   globalThis.fetch = async () => new Response("image", {headers: {"Content-Type": "image/png"}});
   try {
     await assert.rejects(
@@ -635,19 +677,29 @@ test("画素の読み取り失敗でもメモリを解放し、後続画像を�
   globalThis.fetch = async url => new Response(new URL(url).pathname.slice(1), {headers: {"Content-Type": "image/png"}});
   globalThis.createImageBitmap = async blob => {
     const name = await blob.text();
-    return {name, width: 1, height: 1, close() { closed.push(name); }};
+    return {name, width: 1, height: 1, close() { closed.push(name); } };
   };
-  globalThis.document = {createElement() {
-    let name;
-    const canvas = {width: 0, height: 0, getContext() {
-      return {fillRect() {}, drawImage(bitmap) { name = bitmap.name; }, getImageData() {
-        if (name === "broken") throw new Error("private decoder detail");
-        return {data: new Uint8ClampedArray([1, 2, 3, 255])};
-      }};
-    }};
-    canvases.push(canvas);
-    return canvas;
-  }};
+  globalThis.document = {
+    createElement() {
+      let name;
+      const canvas = {
+        width: 0,
+        height: 0,
+        getContext() {
+          return {
+            fillRect() {},
+            drawImage(bitmap) { name = bitmap.name; },
+            getImageData() {
+              if (name === "broken") throw new Error("private decoder detail");
+              return {data: new Uint8ClampedArray([1, 2, 3, 255])};
+            }
+          };
+        }
+      };
+      canvases.push(canvas);
+      return canvas;
+    }
+  };
   try {
     const results = [];
     const items = ["broken", "valid"].map(name => ({url: `https://example.test/${name}`}));
@@ -659,5 +711,7 @@ test("画素の読み取り失敗でもメモリを解放し、後続画像を�
     assert.deepEqual([...inflateSync(results[1][1].rgbFlate)], [1, 2, 3]);
     assert.deepEqual(closed, ["broken", "valid"]);
     assert.ok(canvases.every(canvas => canvas.width === 0 && canvas.height === 0));
-  } finally { Object.assign(globalThis, previous); }
+  } finally {
+    Object.assign(globalThis, previous);
+  }
 });

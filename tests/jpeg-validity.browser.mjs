@@ -39,7 +39,11 @@ test("破損JPEGはPDF・JPGの失敗として再試行し、正常なbaseline/p
         decoded += 1;
         activeBitmaps += 1;
         const close = bitmap.close.bind(bitmap);
-        bitmap.close = () => { activeBitmaps -= 1; released += 1; close(); };
+        bitmap.close = () => {
+          activeBitmaps -= 1;
+          released += 1;
+          close();
+        };
         return bitmap;
       };
       const rejected = [];
@@ -65,7 +69,10 @@ test("破損JPEGはPDF・JPGの失敗として再試行し、正常なbaseline/p
       // Observe the browser download boundary; CRC worker behavior is covered separately.
       window.Worker = undefined;
       const downloaded = [];
-      URL.createObjectURL = blob => { downloaded.push(blob); return "blob:fixture"; };
+      URL.createObjectURL = blob => {
+        downloaded.push(blob);
+        return "blob:fixture";
+      };
       URL.revokeObjectURL = () => {};
       HTMLAnchorElement.prototype.click = () => {};
       const retries = [];
@@ -75,9 +82,17 @@ test("破損JPEGはPDF・JPGの失敗として再試行し、正常なbaseline/p
         const failed = {url: "https://harvest.test/retry", sourcePage: "https://harvest.test/", selected: true};
         let busy = false;
         const options = {
-          getSelectedItems: () => [successful, failed], getFilename: () => "fixture.pdf", getZipFilename: () => "fixture.zip",
-          getSourcePage: () => undefined, isBusy: () => busy, isDisposed: () => false,
-          onBusyChange: value => { busy = value; }, onStatus() {}, onCloseViewer() {}, onClearSourceUrl() {}, onScrollToFailures() {},
+          getSelectedItems: () => [successful, failed],
+          getFilename: () => "fixture.pdf",
+          getZipFilename: () => "fixture.zip",
+          getSourcePage: () => undefined,
+          isBusy: () => busy,
+          isDisposed: () => false,
+          onBusyChange: value => { busy = value; },
+          onStatus() {},
+          onCloseViewer() {},
+          onClearSourceUrl() {},
+          onScrollToFailures() {},
         };
         const controller = format === "pdf" ? createPdfExportController(options) : createImageExportController(options);
         const beforeGood = calls.baseline ?? 0;
@@ -91,13 +106,25 @@ test("破損JPEGはPDF・JPGの失敗として再試行し、正常なbaseline/p
         const artifact = new Uint8Array(await downloaded.at(-1).arrayBuffer());
         const expected = bytesByName.get("baseline");
         const first = artifact.findIndex((_, index) => expected.every((byte, offset) => artifact[index + offset] === byte));
-        retries.push({format, retained, noPartialDownload, goodCalls: calls.baseline - beforeGood,
-          failedCalls: calls.retry - beforeFailed, downloads: downloaded.length - beforeDownloads,
-          completed: controller.pending === null, containsOriginalBytes: first >= 0});
+        retries.push({
+          format,
+          retained,
+          noPartialDownload,
+          goodCalls: calls.baseline - beforeGood,
+          failedCalls: calls.retry - beforeFailed,
+          downloads: downloaded.length - beforeDownloads,
+          completed: controller.pending === null,
+          containsOriginalBytes: first >= 0
+        });
       }
       return {rejected, originals, retries, activeBitmaps, decoded, released};
-    }, Object.fromEntries(Object.entries({baseline: baselineJpeg, progressive: progressiveJpeg,
-      ...brokenJpegs, "invalid-huffman-codes": undecodableJpeg, retry: brokenJpegs["issue-25-bytes"]})
+    }, Object.fromEntries(Object.entries({
+      baseline: baselineJpeg,
+      progressive: progressiveJpeg,
+      ...brokenJpegs,
+      "invalid-huffman-codes": undecodableJpeg,
+      retry: brokenJpegs["issue-25-bytes"]
+    })
       .map(([name, bytes]) => [name, [...bytes]])));
     assert.ok(results.rejected.length > 0);
     for (const result of results.rejected) assert.equal(result.failed, true, `${result.name}: ${result.format}`);
@@ -107,10 +134,17 @@ test("破損JPEGはPDF・JPGの失敗として再試行し、正常なbaseline/p
       assert.deepEqual(result.jpg, [...bytes]);
       assert.equal(result.activeBitmaps, 0, "検証用の画素は保存せず即時解放する");
     }
-    for (const result of results.retries) assert.deepEqual(result, {
-      format: result.format, retained: true, noPartialDownload: true, goodCalls: 1, failedCalls: 2,
-      downloads: 1, completed: true, containsOriginalBytes: true,
-    });
+    for (const result of results.retries)
+      assert.deepEqual(result, {
+        format: result.format,
+        retained: true,
+        noPartialDownload: true,
+        goodCalls: 1,
+        failedCalls: 2,
+        downloads: 1,
+        completed: true,
+        containsOriginalBytes: true,
+      });
     assert.ok(results.decoded > 0);
     assert.equal(results.activeBitmaps, 0);
     assert.equal(results.released, results.decoded);

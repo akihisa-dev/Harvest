@@ -8,12 +8,12 @@ function hasAscii(bytes, offset, value) {
     }
     return true;
 }
-function u16be(bytes, offset) {
+function readUint16BigEndian(bytes, offset) {
     if (offset < 0 || offset + 2 > bytes.byteLength)
         return null;
     return ((bytes[offset] ?? 0) << 8) | (bytes[offset + 1] ?? 0);
 }
-function u32be(bytes, offset) {
+function readUint32BigEndian(bytes, offset) {
     if (offset < 0 || offset + 4 > bytes.byteLength)
         return null;
     return (((bytes[offset] ?? 0) * 0x1000000) +
@@ -21,17 +21,17 @@ function u32be(bytes, offset) {
         ((bytes[offset + 2] ?? 0) << 8) +
         (bytes[offset + 3] ?? 0));
 }
-function u16le(bytes, offset) {
+function readUint16LittleEndian(bytes, offset) {
     if (offset < 0 || offset + 2 > bytes.byteLength)
         return null;
     return (bytes[offset] ?? 0) | ((bytes[offset + 1] ?? 0) << 8);
 }
-function u24le(bytes, offset) {
+function readUint24LittleEndian(bytes, offset) {
     if (offset < 0 || offset + 3 > bytes.byteLength)
         return null;
     return (bytes[offset] ?? 0) | ((bytes[offset + 1] ?? 0) << 8) | ((bytes[offset + 2] ?? 0) << 16);
 }
-function u32le(bytes, offset) {
+function readUint32LittleEndian(bytes, offset) {
     if (offset < 0 || offset + 4 > bytes.byteLength)
         return null;
     return ((bytes[offset] ?? 0) +
@@ -41,10 +41,10 @@ function u32le(bytes, offset) {
 }
 function pngDimensions(bytes) {
     if (bytes.byteLength < 24 || !pngSignature.every((value, index) => bytes[index] === value) ||
-        u32be(bytes, 8) !== 13 || !hasAscii(bytes, 12, "IHDR"))
+        readUint32BigEndian(bytes, 8) !== 13 || !hasAscii(bytes, 12, "IHDR"))
         return null;
-    const width = u32be(bytes, 16);
-    const height = u32be(bytes, 20);
+    const width = readUint32BigEndian(bytes, 16);
+    const height = readUint32BigEndian(bytes, 20);
     return width === null || height === null ? null : { width, height };
 }
 function jpegDimensions(bytes) {
@@ -64,14 +64,14 @@ function jpegDimensions(bytes) {
             return null;
         if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7))
             continue;
-        const length = u16be(bytes, offset);
+        const length = readUint16BigEndian(bytes, offset);
         if (length === null || length < 2 || offset + length > bytes.byteLength)
             return null;
         if (startOfFrameMarkers.has(marker)) {
             if (length < 8)
                 return null;
-            const height = u16be(bytes, offset + 3);
-            const width = u16be(bytes, offset + 5);
+            const height = readUint16BigEndian(bytes, offset + 3);
+            const width = readUint16BigEndian(bytes, offset + 5);
             return width === null || height === null ? null : { width, height };
         }
         offset += length;
@@ -81,8 +81,8 @@ function jpegDimensions(bytes) {
 function gifDimensions(bytes) {
     if (bytes.byteLength < 10 || (!hasAscii(bytes, 0, "GIF87a") && !hasAscii(bytes, 0, "GIF89a")))
         return null;
-    const width = u16le(bytes, 6);
-    const height = u16le(bytes, 8);
+    const width = readUint16LittleEndian(bytes, 6);
+    const height = readUint16LittleEndian(bytes, 8);
     if (width === null || height === null)
         return null;
     let maximumWidth = width;
@@ -107,10 +107,10 @@ function gifDimensions(bytes) {
         }
         if (marker !== 0x2c || offset + 9 > bytes.byteLength)
             break;
-        const left = u16le(bytes, offset) ?? 0;
-        const top = u16le(bytes, offset + 2) ?? 0;
-        const frameWidth = u16le(bytes, offset + 4) ?? 0;
-        const frameHeight = u16le(bytes, offset + 6) ?? 0;
+        const left = readUint16LittleEndian(bytes, offset) ?? 0;
+        const top = readUint16LittleEndian(bytes, offset + 2) ?? 0;
+        const frameWidth = readUint16LittleEndian(bytes, offset + 4) ?? 0;
+        const frameHeight = readUint16LittleEndian(bytes, offset + 6) ?? 0;
         maximumWidth = Math.max(maximumWidth, left + frameWidth);
         maximumHeight = Math.max(maximumHeight, top + frameHeight);
         const imageFlags = bytes[offset + 8] ?? 0;
@@ -138,7 +138,7 @@ function skipGifSubBlocks(bytes, start) {
 function webpDimensions(bytes) {
     if (bytes.byteLength < 20 || !hasAscii(bytes, 0, "RIFF") || !hasAscii(bytes, 8, "WEBP"))
         return null;
-    const riffSize = u32le(bytes, 4);
+    const riffSize = readUint32LittleEndian(bytes, 4);
     if (riffSize === null || riffSize < 12 || riffSize + 8 > bytes.byteLength)
         return null;
     const end = riffSize + 8;
@@ -146,28 +146,28 @@ function webpDimensions(bytes) {
     let extendedDimensions = null;
     let imageDimensions = null;
     while (offset + 8 <= end) {
-        const size = u32le(bytes, offset + 4);
+        const size = readUint32LittleEndian(bytes, offset + 4);
         if (size === null || size > end - offset - 8)
             return null;
-        const data = offset + 8;
+        const chunkDataOffset = offset + 8;
         if (hasAscii(bytes, offset, "VP8X") && size >= 10) {
-            const width = u24le(bytes, data + 4);
-            const height = u24le(bytes, data + 7);
+            const width = readUint24LittleEndian(bytes, chunkDataOffset + 4);
+            const height = readUint24LittleEndian(bytes, chunkDataOffset + 7);
             if (width !== null && height !== null)
                 extendedDimensions = { width: width + 1, height: height + 1 };
         }
         else if (hasAscii(bytes, offset, "VP8 ") && size >= 10 &&
-            bytes[data + 3] === 0x9d && bytes[data + 4] === 0x01 && bytes[data + 5] === 0x2a) {
-            const rawWidth = u16le(bytes, data + 6);
-            const rawHeight = u16le(bytes, data + 8);
+            bytes[chunkDataOffset + 3] === 0x9d && bytes[chunkDataOffset + 4] === 0x01 && bytes[chunkDataOffset + 5] === 0x2a) {
+            const rawWidth = readUint16LittleEndian(bytes, chunkDataOffset + 6);
+            const rawHeight = readUint16LittleEndian(bytes, chunkDataOffset + 8);
             if (rawWidth !== null && rawHeight !== null)
                 imageDimensions = { width: rawWidth & 0x3fff, height: rawHeight & 0x3fff };
         }
-        else if (hasAscii(bytes, offset, "VP8L") && size >= 5 && bytes[data] === 0x2f) {
-            const b1 = bytes[data + 1] ?? 0;
-            const b2 = bytes[data + 2] ?? 0;
-            const b3 = bytes[data + 3] ?? 0;
-            const b4 = bytes[data + 4] ?? 0;
+        else if (hasAscii(bytes, offset, "VP8L") && size >= 5 && bytes[chunkDataOffset] === 0x2f) {
+            const b1 = bytes[chunkDataOffset + 1] ?? 0;
+            const b2 = bytes[chunkDataOffset + 2] ?? 0;
+            const b3 = bytes[chunkDataOffset + 3] ?? 0;
+            const b4 = bytes[chunkDataOffset + 4] ?? 0;
             imageDimensions = {
                 width: 1 + b1 + ((b2 & 0x3f) << 8),
                 height: 1 + ((b2 >> 6) | (b3 << 2) | ((b4 & 0x0f) << 10)),
@@ -180,12 +180,12 @@ function webpDimensions(bytes) {
 function bmpDimensions(bytes) {
     if (bytes.byteLength < 26 || !hasAscii(bytes, 0, "BM"))
         return null;
-    const headerSize = u32le(bytes, 14);
+    const headerSize = readUint32LittleEndian(bytes, 14);
     if (headerSize === null)
         return null;
     if (headerSize === 12) {
-        const width = u16le(bytes, 18);
-        const height = u16le(bytes, 20);
+        const width = readUint16LittleEndian(bytes, 18);
+        const height = readUint16LittleEndian(bytes, 20);
         return width === null || height === null ? null : { width, height };
     }
     if (headerSize < 40 || bytes.byteLength < 26)
@@ -201,14 +201,14 @@ function isoBoxes(bytes, start, end) {
     while (offset < end) {
         if (offset + 8 > end)
             return null;
-        const size32 = u32be(bytes, offset);
+        const size32 = readUint32BigEndian(bytes, offset);
         if (size32 === null)
             return null;
         let headerSize = 8;
         let size = size32;
         if (size32 === 1) {
-            const high = u32be(bytes, offset + 8);
-            const low = u32be(bytes, offset + 12);
+            const high = readUint32BigEndian(bytes, offset + 8);
+            const low = readUint32BigEndian(bytes, offset + 12);
             if (high === null || low === null || high > 0x1fffff)
                 return null;
             size = high * 0x100000000 + low;
@@ -257,8 +257,8 @@ function avifDimensions(bytes) {
     if (primaryBox.dataStart + 4 + primaryIdWidth > primaryBox.end)
         return null;
     const primaryId = primaryVersion === 0
-        ? u16be(bytes, primaryBox.dataStart + 4)
-        : u32be(bytes, primaryBox.dataStart + 4);
+        ? readUint16BigEndian(bytes, primaryBox.dataStart + 4)
+        : readUint32BigEndian(bytes, primaryBox.dataStart + 4);
     if (primaryId === null)
         return null;
     const itemProperties = metaChildren.find(box => box.type === "iprp");
@@ -273,23 +273,32 @@ function avifDimensions(bytes) {
     const properties = isoBoxes(bytes, propertyContainer.dataStart, propertyContainer.end);
     if (!properties)
         return null;
+    const spatialExtents = avifSpatialExtents(bytes, properties);
+    return avifPrimaryDimensions(bytes, propertyChildren, primaryId, spatialExtents);
+}
+/** Property indexes are one-based; non-dimension properties keep their slot. */
+function avifSpatialExtents(bytes, properties) {
     const spatialExtents = [null];
     for (const property of properties) {
         if (property.type !== "ispe" || property.dataStart + 12 > property.end) {
             spatialExtents.push(null);
             continue;
         }
-        const width = u32be(bytes, property.dataStart + 4);
-        const height = u32be(bytes, property.dataStart + 8);
+        const width = readUint32BigEndian(bytes, property.dataStart + 4);
+        const height = readUint32BigEndian(bytes, property.dataStart + 8);
         spatialExtents.push(width === null || height === null ? null : { width, height });
     }
+    return spatialExtents;
+}
+/** Follow item/property associations in file order and retain the first matching dimensions. */
+function avifPrimaryDimensions(bytes, propertyChildren, primaryId, spatialExtents) {
     for (const associationBox of propertyChildren.filter(box => box.type === "ipma")) {
         if (associationBox.dataStart + 8 > associationBox.end)
             return null;
         const version = bytes[associationBox.dataStart] ?? 0;
         const flags = ((bytes[associationBox.dataStart + 1] ?? 0) << 16) |
             ((bytes[associationBox.dataStart + 2] ?? 0) << 8) | (bytes[associationBox.dataStart + 3] ?? 0);
-        const entryCount = u32be(bytes, associationBox.dataStart + 4);
+        const entryCount = readUint32BigEndian(bytes, associationBox.dataStart + 4);
         if (entryCount === null)
             return null;
         let offset = associationBox.dataStart + 8;
@@ -297,21 +306,21 @@ function avifDimensions(bytes) {
             const idWidth = version === 0 ? 2 : 4;
             if (offset + idWidth + 1 > associationBox.end)
                 return null;
-            const itemId = version === 0 ? u16be(bytes, offset) : u32be(bytes, offset);
+            const itemId = version === 0 ? readUint16BigEndian(bytes, offset) : readUint32BigEndian(bytes, offset);
             if (itemId === null)
                 return null;
             offset += idWidth;
             const associationCount = bytes[offset++] ?? 0;
             let primaryDimensions = null;
             for (let index = 0; index < associationCount; index += 1) {
-                const wide = (flags & 1) !== 0;
-                if (offset + (wide ? 2 : 1) > associationBox.end)
+                const hasWidePropertyIndex = (flags & 1) !== 0;
+                if (offset + (hasWidePropertyIndex ? 2 : 1) > associationBox.end)
                     return null;
-                const association = wide ? u16be(bytes, offset) : bytes[offset] ?? null;
+                const association = hasWidePropertyIndex ? readUint16BigEndian(bytes, offset) : bytes[offset] ?? null;
                 if (association === null)
                     return null;
-                offset += wide ? 2 : 1;
-                const propertyIndex = wide ? association & 0x7fff : association & 0x7f;
+                offset += hasWidePropertyIndex ? 2 : 1;
+                const propertyIndex = hasWidePropertyIndex ? association & 0x7fff : association & 0x7f;
                 if (itemId === primaryId)
                     primaryDimensions ??= spatialExtents[propertyIndex] ?? null;
             }

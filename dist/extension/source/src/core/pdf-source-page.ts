@@ -148,7 +148,6 @@ export function createPdfSourcePageObjects(prepared: PreparedSourcePage, pageObj
   return objects;
 }
 
-
 function validateSourcePage(source: PdfSourcePageOptions | undefined): PdfSourcePageOptions | undefined {
   if (source === undefined) return undefined;
   if (source === null || typeof source !== "object") {
@@ -192,14 +191,20 @@ function validateSourceGlyphs(source: PdfSourcePageOptions): Map<string, PdfRgbI
   return output;
 }
 
+/** PDF CMap character mappings are emitted in blocks of at most 100 entries. */
+function unicodeMappingBlocks(mappings: readonly string[]): string[] {
+  const blocks: string[] = [];
+  for (let index = 0; index < mappings.length; index += 100) {
+    const block = mappings.slice(index, index + 100);
+    blocks.push(`${block.length} beginbfchar`, ...block, "endbfchar");
+  }
+  return blocks;
+}
+
 function sourceToUnicodeCMap(text: string): Uint8Array {
   const characters = [...new Set(text)].sort((left, right) => left.codePointAt(0)! - right.codePointAt(0)!);
   const mappings = characters.map(character => `${pdfHex(character)} ${pdfHex(character)}`);
-  const mappingBlocks: string[] = [];
-  for (let index = 0; index < mappings.length; index += 100) {
-    const block = mappings.slice(index, index + 100);
-    mappingBlocks.push(`${block.length} beginbfchar`, ...block, "endbfchar");
-  }
+  const mappingBlocks = unicodeMappingBlocks(mappings);
   const cmap = [
     "/CIDInit /ProcSet findresource begin",
     "12 dict begin",
@@ -227,11 +232,7 @@ function sourceCopyToUnicodeCMap(characters: readonly string[], fontName: string
     const code = SOURCE_COPY_CODES[index]!;
     return `<${code.toString(16).padStart(2, "0")}> ${pdfHex(character)}`;
   });
-  const mappingBlocks: string[] = [];
-  for (let index = 0; index < mappings.length; index += 100) {
-    const block = mappings.slice(index, index + 100);
-    mappingBlocks.push(`${block.length} beginbfchar`, ...block, "endbfchar");
-  }
+  const mappingBlocks = unicodeMappingBlocks(mappings);
   return pdfText([
     "/CIDInit /ProcSet findresource begin",
     "12 dict begin",

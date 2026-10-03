@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createImagePreviewLoader } from "../dist/extension/app/image-preview.js";
+import {createImagePreviewLoader} from "../dist/extension/app/image-preview.js";
 
 class PreviewImage {
   constructor() {
@@ -19,28 +19,38 @@ for (const reuseQueued of [false, true]) {
   test(`画面外の待機を飛ばして${reuseQueued ? "既存" : "新規"}のビューアー対象を優先し、再表示で再開する`, async t => {
     let observer;
     t.mock.method(globalThis, "fetch", (url, options) => new Promise((resolve, reject) => {
-      requests.push({url, resolve: () => resolve(new Response(new Uint8Array([1]), {headers:{"content-type":"image/png"}}))});
-      options.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), {once:true});
+      requests.push({url, resolve: () => resolve(new Response(new Uint8Array([1]), {headers: {"content-type": "image/png"}}))});
+      options.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), {once: true});
     }));
     const previous = globalThis.IntersectionObserver;
     globalThis.IntersectionObserver = class {
-      constructor(callback) { observer = this; this.callback = callback; }
-      observe() {} unobserve() {}
-      show(image, visible) { this.callback([{target:image, isIntersecting:visible}]); }
+      constructor(callback) {
+        observer = this;
+        this.callback = callback;
+      }
+      observe() {}
+      unobserve() {}
+      show(image, visible) { this.callback([{target: image, isIntersecting: visible}]); }
     };
-    t.after(() => { if (previous === undefined) delete globalThis.IntersectionObserver; else globalThis.IntersectionObserver = previous; });
+    t.after(() => {
+      if (previous === undefined) delete globalThis.IntersectionObserver;
+      else globalThis.IntersectionObserver = previous;
+    });
     const requests = [];
     const loader = createImagePreviewLoader();
     t.after(() => loader.clear());
-    const images = Array.from({length:8}, () => new PreviewImage());
-    const items = images.map((_, i) => ({url:`https://cdn.example/queued-${i}.png`, sourcePage:"https://reader.example/book", selected:true}));
-    images.forEach((image, i) => { loader.set(image, items[i]); observer.show(image, true); });
+    const images = Array.from({length: 8}, () => new PreviewImage());
+    const items = images.map((_, i) => ({url: `https://cdn.example/queued-${i}.png`, sourcePage: "https://reader.example/book", selected: true}));
+    images.forEach((image, i) => {
+      loader.set(image, items[i]);
+      observer.show(image, true);
+    });
     assert.equal(requests.length, 3);
     images.forEach(image => observer.show(image, false));
     // One ordinary visible preview is still needed, but the viewer comes first.
     observer.show(images[3], true);
     const viewer = new PreviewImage();
-    const viewerItem = reuseQueued ? items[7] : {...items[7], url:"https://cdn.example/new-viewer.png"};
+    const viewerItem = reuseQueued ? items[7] : {...items[7], url: "https://cdn.example/new-viewer.png"};
     loader.set(viewer, viewerItem, true);
     requests[0].resolve();
     await waitFor(() => requests.length === 4);
@@ -79,7 +89,11 @@ test("一覧とビュアーは共有した認証方針でプレビューを取�
   let nextObjectUrl = 0;
   const observers = [];
   class FakeIntersectionObserver {
-    constructor(callback) { this.callback = callback; this.observed = new Set(); observers.push(this); }
+    constructor(callback) {
+      this.callback = callback;
+      this.observed = new Set();
+      observers.push(this);
+    }
     observe(image) { this.observed.add(image); }
     unobserve(image) { this.observed.delete(image); }
     intersect(image) { this.callback([{target: image, isIntersecting: true}]); }
@@ -145,7 +159,7 @@ test("プレビュー取得は最大3件まで並行し、待機中に不要に�
   const requests = [];
   let nextObjectUrl = 0;
   Object.defineProperty(URL, "createObjectURL", {configurable: true, writable: true, value: () => `blob:queue-${++nextObjectUrl}`});
-  Object.defineProperty(URL, "revokeObjectURL", {configurable: true, writable: true, value() {}});
+  Object.defineProperty(URL, "revokeObjectURL", {configurable: true, writable: true, value() {} });
   globalThis.fetch = (url, options) => new Promise((resolve, reject) => {
     const request = {url, resolve: () => resolve(new Response(new Uint8Array([1]), {headers: {"content-type": "image/png"}}))};
     requests.push(request);
@@ -190,22 +204,34 @@ test("画面外プレビューを24件まで保持し、共有中のURLを避け
   const observers = [];
   let nextObjectUrl = 0;
   class FakeIntersectionObserver {
-    constructor(callback) { this.callback = callback; this.observed = new Set(); observers.push(this); }
+    constructor(callback) {
+      this.callback = callback;
+      this.observed = new Set();
+      observers.push(this);
+    }
     observe(image) { this.observed.add(image); }
     unobserve(image) { this.observed.delete(image); }
     intersect(image, isIntersecting) { this.callback([{target: image, isIntersecting}]); }
   }
   Object.defineProperty(globalThis, "IntersectionObserver", {configurable: true, writable: true, value: FakeIntersectionObserver});
-  Object.defineProperty(URL, "createObjectURL", {configurable: true, writable: true, value: () => {
-    const objectUrl = `blob:bounded-${++nextObjectUrl}`;
-    created.push(objectUrl);
-    alive.add(objectUrl);
-    return objectUrl;
-  }});
-  Object.defineProperty(URL, "revokeObjectURL", {configurable: true, writable: true, value: objectUrl => {
-    revoked.push(objectUrl);
-    alive.delete(objectUrl);
-  }});
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    writable: true,
+    value: () => {
+      const objectUrl = `blob:bounded-${++nextObjectUrl}`;
+      created.push(objectUrl);
+      alive.add(objectUrl);
+      return objectUrl;
+    }
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    writable: true,
+    value: objectUrl => {
+      revoked.push(objectUrl);
+      alive.delete(objectUrl);
+    }
+  });
   globalThis.fetch = async (url, options) => {
     requests.push({url, options});
     return new Response(new Uint8Array([1, 2, 3]), {headers: {"content-type": "image/png"}});
@@ -294,10 +320,12 @@ test("上限超過寸法のPNGはプレビュー用Blob URLを作らない", asy
   pngHeader.set([73, 72, 68, 82], 12);
   view.setUint32(16, 8_001);
   view.setUint32(20, 8_000);
-  Object.defineProperty(URL, "createObjectURL", {configurable: true, writable: true, value() {
-    objectUrls += 1;
-    return "blob:oversized";
-  }});
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true, writable: true, value() {
+      objectUrls += 1;
+      return "blob:oversized";
+    }
+  });
   globalThis.fetch = async () => new Response(pngHeader, {headers: {"content-type": "image/png"}});
   t.after(() => {
     globalThis.fetch = previousFetch;
@@ -322,7 +350,10 @@ test("一覧とビュアーは一時失敗後に待ち時間を置いて同じ�
   const observers = [];
   let nextObjectUrl = 0;
   class FakeIntersectionObserver {
-    constructor(callback) { this.callback = callback; observers.push(this); }
+    constructor(callback) {
+      this.callback = callback;
+      observers.push(this);
+    }
     observe() {}
     unobserve() {}
     intersect(image, isIntersecting = true) { this.callback([{target: image, isIntersecting}]); }

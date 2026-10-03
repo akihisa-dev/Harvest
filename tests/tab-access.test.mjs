@@ -9,8 +9,15 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     if (!elements.has(selector)) {
       const classes = new Set();
       elements.set(selector, {
-        value: "", checked: true, disabled: false, hidden: selector === "#source-url" || selector === "#url-drop-overlay", textContent: "", dataset: {}, style: {}, children: [],
-        classList: {add(name) { classes.add(name); }, remove(name) { classes.delete(name); }, contains(name) { return classes.has(name); }},
+        value: "",
+        checked: true,
+        disabled: false,
+        hidden: selector === "#source-url" || selector === "#url-drop-overlay",
+        textContent: "",
+        dataset: {},
+        style: {},
+        children: [],
+        classList: {add(name) { classes.add(name); }, remove(name) { classes.delete(name); }, contains(name) { return classes.has(name); } },
         addEventListener(name, callback) { listeners.set(`${selector}:${name}`, callback); },
         setAttribute() {},
         removeAttribute() {},
@@ -43,27 +50,40 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
   globalThis.chrome = {
     i18n: {getUILanguage: () => "ja"},
     windows: {
-      create: async ({url}) => { createdUrls.push(url); return {id: 17, tabs: [{id: 8, url}]}; },
+      create: async ({url}) => {
+        createdUrls.push(url);
+        return {id: 17, tabs: [{id: 8, url}]};
+      },
       remove: async () => { removedTabs.push(8); },
     },
-    runtime: {onConnect: {addListener() {}}},
+    runtime: {onConnect: {addListener() {} }},
     tabs: {
-      query: async query => { queries.push(query); return [{id: 7, url: "https://example.com/page"}]; },
-      create: async ({url}) => { createdUrls.push(url); return {id: 8, url}; },
+      query: async query => {
+        queries.push(query);
+        return [{id: 7, url: "https://example.com/page"}];
+      },
+      create: async ({url}) => {
+        createdUrls.push(url);
+        return {id: 8, url};
+      },
       get: async () => ({status: "complete"}),
       remove: async id => { removedTabs.push(id); },
-      onUpdated: {addListener() {}, removeListener() {}},
-      onRemoved: {addListener() {}, removeListener() {}}
+      onUpdated: {addListener() {}, removeListener() {} },
+      onRemoved: {addListener() {}, removeListener() {} }
     },
-    scripting: {executeScript: async ({target}) => {
-      scannedTabs.push(target.tabId);
-      return [{result: {
-        url: target.tabId === 7 ? "https://example.com/page" : createdUrls.at(-1),
-        title: "ページ",
-        images: [],
-        links: [{url: "https://example.com/gallery", label: "一覧"}],
-      }}];
-    }}
+    scripting: {
+      executeScript: async ({target}) => {
+        scannedTabs.push(target.tabId);
+        return [{
+          result: {
+            url: target.tabId === 7 ? "https://example.com/page" : createdUrls.at(-1),
+            title: "ページ",
+            images: [],
+            links: [{url: "https://example.com/gallery", label: "一覧"}],
+          }
+        }];
+      }
+    }
   };
   try {
     await import(`../dist/extension/app/index.js?tab-access=${Date.now()}`);
@@ -74,7 +94,8 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     documentListeners.get("dragenter")({dataTransfer: {types: ["text/uri-list"]}});
     documentListeners.get("dragenter")({dataTransfer: {types: ["text/uri-list"]}});
     documentListeners.get("dragover")({
-      target: element("#viewer"), dataTransfer: {types: ["text/uri-list"]},
+      target: element("#viewer"),
+      dataTransfer: {types: ["text/uri-list"]},
       preventDefault() { prevented = true; },
     });
     assert.equal(prevented, true);
@@ -98,7 +119,8 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
 
     prevented = false;
     documentListeners.get("dragover")({
-      target: element("#viewer"), dataTransfer: {types: ["text/uri-list"]},
+      target: element("#viewer"),
+      dataTransfer: {types: ["text/uri-list"]},
       preventDefault() { prevented = true; },
     });
     assert.equal(prevented, true, "画像が見つからなければ画面全体で受け付ける");
@@ -107,7 +129,8 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     listeners.get("#source-url:input")();
     prevented = false;
     documentListeners.get("dragover")({
-      target: element("#viewer"), dataTransfer: {types: ["text/uri-list"]},
+      target: element("#viewer"),
+      dataTransfer: {types: ["text/uri-list"]},
       preventDefault() { prevented = true; },
     });
     assert.equal(prevented, true, "URL入力後も中央の表示領域で受け付ける");
@@ -124,7 +147,8 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
 
     prevented = false;
     documentListeners.get("dragover")({
-      target: element("#source-drop"), dataTransfer: {types: ["text/uri-list"]},
+      target: element("#source-drop"),
+      dataTransfer: {types: ["text/uri-list"]},
       preventDefault() { prevented = true; },
     });
     assert.equal(prevented, true);
@@ -147,7 +171,8 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     listeners.get("#source-drop:click")();
     prevented = false;
     documentListeners.get("dragover")({
-      target: element("#source-url"), dataTransfer: {types: ["text/uri-list"]},
+      target: element("#source-url"),
+      dataTransfer: {types: ["text/uri-list"]},
       preventDefault() { prevented = true; },
     });
     assert.equal(prevented, true);
@@ -164,7 +189,8 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
 
     prevented = false;
     documentListeners.get("dragover")({
-      target: element(".app-header"), dataTransfer: {types: ["text/uri-list"]},
+      target: element(".app-header"),
+      dataTransfer: {types: ["text/uri-list"]},
       preventDefault() { prevented = true; },
     });
     assert.equal(prevented, true, "解析後は上部の余白もドロップ先になる");
@@ -179,7 +205,12 @@ test("解析時に開いているページだけを調べ、URL指定時はそ�
     });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(prevented, true);
-    assert.deepEqual(createdUrls, ["https://example.com/ignored", "https://example.com/other", "https://example.com/manual", "https://example.com/after-clear"], "クリア後は画面下部へのドロップで解析する");
+    assert.deepEqual(createdUrls, [
+      "https://example.com/ignored",
+      "https://example.com/other",
+      "https://example.com/manual",
+      "https://example.com/after-clear"
+    ], "クリア後は画面下部へのドロップで解析する");
   } finally {
     globalThis.document = previousDocument;
     globalThis.chrome = previousChrome;

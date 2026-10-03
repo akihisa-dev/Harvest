@@ -55,6 +55,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   if (targetPostId && ![...document.querySelectorAll('article[data-testid="tweet"], dialog, [role="dialog"]')].some(inTargetPost)) {
     throw new Error("Xの投稿を読み取れませんでした。");
   }
+  // Candidate evidence and output order.
   type MediaKind = "image" | "gif" | "video";
   type CandidateEvidence = {
     image?: {position: Element | undefined};
@@ -177,11 +178,16 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
           checkDeadline();
           if (record.media) media.push({url: record.url, ...record.media});
         }
-        return media.sort((a, b) => { checkDeadline(); return a.order - b.order; })
+        return media.sort((a, b) => {
+          checkDeadline();
+          return a.order - b.order;
+        })
           .map(({url, kind}) => ({url, kind}));
       },
     };
   })();
+
+  // URL extraction from attributes, text, embedded JSON, srcset, and CSS.
   const imageAttributes = [
     "data-original",
     "data-full",
@@ -544,6 +550,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     scanCss(background, element, element, true);
   };
 
+  // Visual ordering is resolved only after all candidate evidence is current.
   const orderedImages = (): string[] => {
     const documentOrder = new Map<Element, number>();
     for (const [index, element] of pageElements(root, false).entries()) {
@@ -599,7 +606,10 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
         record,
         position: record.positions
           .map(positioned).filter((value): value is {top: number; left: number; order: number} => Boolean(value))
-          .sort((a, b) => { checkDeadline(); return a.top - b.top || a.left - b.left || a.order - b.order; })[0],
+          .sort((a, b) => {
+            checkDeadline();
+            return a.top - b.top || a.left - b.left || a.order - b.order;
+          })[0],
       }))
       .sort((a, b) => {
         checkDeadline();
@@ -618,6 +628,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     return ordered;
   };
 
+  // Rebuild one element's evidence, including the sources owned by video/picture.
   const imagePositionElement = (element: Element): Element => {
     if (element.tagName.toLowerCase() !== "source") return element;
     const parent = element.parentElement;
@@ -625,6 +636,26 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
       return parent.querySelector("img") ?? element;
     }
     return element;
+  };
+
+  const collectVideoSources = (video: HTMLVideoElement): void => {
+    // Chrome can retain old currentSrc after load() empties the media element.
+    const currentSrc = video.networkState === 0 ? "" : video.currentSrc;
+    for (const value of [currentSrc, video.src, video.getAttribute("src")]) {
+      let declaredType = video.getAttribute("type");
+      if (value) {
+        for (const source of Array.from(video.querySelectorAll("source"))) {
+          try {
+            const sourceUrl = source.getAttribute("src");
+            if (sourceUrl && new URL(sourceUrl, document.baseURI).href === new URL(value, document.baseURI).href) {
+              declaredType = source.getAttribute("type") ?? declaredType;
+              break;
+            }
+          } catch { /* Ignore malformed source URLs. */ }
+        }
+      }
+      recordDirectVideo(value, video, declaredType);
+    }
   };
 
   const collectElement = (element: Element): void => {
@@ -661,7 +692,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
       scanCss(element.textContent, undefined, element);
     } else if (tagName === "script") {
       scanText(element.textContent, undefined, element);
-      if (tagName === "script") scanEmbeddedVideoJson(element);
+      scanEmbeddedVideoJson(element);
     } else {
       // Rebuild all evidence owned by this element together. Only direct text
       // belongs here; descendants own their own text and removal lifecycle.
@@ -674,24 +705,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
       }
     }
     if (tagName === "video") {
-      const video = element as HTMLVideoElement;
-      // Chrome can retain old currentSrc after load() empties the media element.
-      const currentSrc = video.networkState === 0 ? "" : video.currentSrc;
-      for (const value of [currentSrc, video.src, element.getAttribute("src")]) {
-        let declaredType = element.getAttribute("type");
-        if (value) {
-          for (const source of Array.from(element.querySelectorAll("source"))) {
-            try {
-              const sourceUrl = source.getAttribute("src");
-              if (sourceUrl && new URL(sourceUrl, document.baseURI).href === new URL(value, document.baseURI).href) {
-                declaredType = source.getAttribute("type") ?? declaredType;
-                break;
-              }
-            } catch { /* Ignore malformed source URLs. */ }
-          }
-        }
-        recordDirectVideo(value, element, declaredType);
-      }
+      collectVideoSources(element as HTMLVideoElement);
     } else if (isVideoSource) {
       const source = element as HTMLSourceElement;
       recordDirectVideo(source.src, element, declaredSourceType);
@@ -728,7 +742,10 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     }
     for (const attribute of Array.from(element.attributes)) {
       const name = attribute.name.toLowerCase();
-      if (name === "style") { scanCss(attribute.value, positionElement, element); continue; }
+      if (name === "style") {
+        scanCss(attribute.value, positionElement, element);
+        continue;
+      }
       if (imageSrcsetAttributes.includes(name)) continue;
       if ((tagName === "img" || tagName === "source") && imageAttributes.includes(name)) continue;
       if (tagName === "a" && name === "href" && /\.(?:jpe?g|png|webp|avif|gif)(?:[?#]|$)/i.test(attribute.value)) continue;
@@ -746,6 +763,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     finishElement();
   };
 
+  // Observe and flush page mutations while yielding between bounded scan chunks.
   const yieldToPage = async (): Promise<void> => {
     checkDeadline();
     await new Promise<void>(resolve => setTimeout(resolve, 0));
@@ -887,6 +905,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     });
   }
 
+  // Traverse the composed tree, including open shadow roots.
   const composedParent = (element: Element): Element | null => {
     if (element.parentElement) return element.parentElement;
     const treeRoot = element.getRootNode?.();
@@ -952,9 +971,8 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   const refreshElementProperties = async (): Promise<void> => {
     // Stylesheet edits can change another element without mutating that element.
     // Reconcile all scanned backgrounds once, including initially empty values
-    // and CSSOM edits
-    // that never emit a MutationRecord. Rebuild changed owners through the same
-    // evidence lifecycle so shared URLs and their order remain intact.
+    // and CSSOM edits that never emit a MutationRecord. Rebuild changed owners
+    // through the same evidence lifecycle so shared URLs and their order remain intact.
     const snapshots = [...backgroundSnapshots];
     for (let index = 0; index < snapshots.length; index += 1) {
       const [element, previous] = snapshots[index]!;
@@ -966,29 +984,32 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
     }
   };
 
+  // Initial scan, quiet observation window, and final reconciliation.
   try {
-  checkDeadline();
-  const elements = pageElements(root, true);
-  for (let start = 0; start < elements.length; start += chunkSize) {
-    for (const element of elements.slice(start, start + chunkSize)) collectElement(element);
-    if (start + chunkSize < elements.length) await yieldToPage();
+    checkDeadline();
+    const elements = pageElements(root, true);
+    for (let start = 0; start < elements.length; start += chunkSize) {
+      for (const element of elements.slice(start, start + chunkSize)) collectElement(element);
+      if (start + chunkSize < elements.length) await yieldToPage();
+    }
+    await flushPending();
+    await discoverShadowRoots();
+    checkDeadline();
+    if (waitPromise && !settled) {
+      quietStarted = true;
+      maxTimer = setTimeout(finish, maxWaitMs);
+      waitForQuiet();
+    }
+    await waitPromise;
+    checkDeadline();
+    await flushPending();
+    await discoverShadowRoots();
+    await refreshElementProperties();
+    registry.retainElements(isInPageTree);
+    checkDeadline();
+  } finally {
+    finish();
   }
-  await flushPending();
-  await discoverShadowRoots();
-  checkDeadline();
-  if (waitPromise && !settled) {
-    quietStarted = true;
-    maxTimer = setTimeout(finish, maxWaitMs);
-    waitForQuiet();
-  }
-  await waitPromise;
-  checkDeadline();
-  await flushPending();
-  await discoverShadowRoots();
-  await refreshElementProperties();
-  registry.retainElements(isInPageTree);
-  checkDeadline();
-  } finally { finish(); }
 
   checkDeadline();
   if (targetPostId && ![...document.querySelectorAll('article[data-testid="tweet"], dialog, [role="dialog"]')].some(inTargetPost)) {

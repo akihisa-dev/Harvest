@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { scanDocument } from "../dist/extension/app/page-scan.js";
-import { groupMediaImages } from "../dist/extension/core/images.js";
+import {scanDocument} from "../dist/extension/app/page-scan.js";
+import {groupMediaImages} from "../dist/extension/core/images.js";
 
 class FixtureElement {
   constructor(tagName, attributes = {}, children = [], properties = {}) {
@@ -67,7 +67,8 @@ class FixtureElement {
     const visit = element => {
       for (const child of element.children) {
         const tagName = child.tagName.toLowerCase();
-        if (wanted.includes("*") || wanted.includes(tagName) || (wanted.includes("script") && tagName === "script") || (wanted.includes("style") && tagName === "style")) result.push(child);
+        if (wanted.includes("*") || wanted.includes(tagName) || (wanted.includes("script") && tagName === "script") || (wanted.includes("style") && tagName === "style"))
+          result.push(child);
         visit(child);
       }
     };
@@ -210,13 +211,21 @@ test("位置評価中の期限切れでは結果を返さず監視を解放す�
   const root = new FixtureElement("html", {}, [image]);
   let now = 0;
   let disconnected = false;
-  class TrackingObserver extends EmptyMutationObserver { disconnect() { disconnected = true; } }
+  class TrackingObserver extends EmptyMutationObserver {
+    disconnect() { disconnected = true; }
+  }
   const previousPerformance = globalThis.performance;
   try {
     await runWithFixture(new FixtureDocument(root), TrackingObserver, async () => {
       Object.defineProperty(globalThis, "performance", {configurable: true, value: {now: () => now}});
-      globalThis.setTimeout = callback => { callback(); return 0; };
-      image.getBoundingClientRect = () => { now = 20_001; return image.rect; };
+      globalThis.setTimeout = callback => {
+        callback();
+        return 0;
+      };
+      image.getBoundingClientRect = () => {
+        now = 20_001;
+        return image.rect;
+      };
       await assert.rejects(scanDocument(), /20 second deadline/);
     });
   } finally {
@@ -232,9 +241,15 @@ test("追加要素の走査期限切れをrejectし、次の走査は正常に�
   let quietTimerCount = 0;
   const added = new FixtureElement("img", {src: "https://cdn.example.test/pages/added.jpg"});
   const getAttribute = added.getAttribute.bind(added);
-  added.getAttribute = name => { now = 20_001; return getAttribute(name); };
+  added.getAttribute = name => {
+    now = 20_001;
+    return getAttribute(name);
+  };
   class TrackingObserver extends EmptyMutationObserver {
-    constructor(callback) { super(); observerCallback = callback; }
+    constructor(callback) {
+      super();
+      observerCallback = callback;
+    }
   }
   const previousPerformance = globalThis.performance;
   try {
@@ -254,7 +269,10 @@ test("追加要素の走査期限切れをrejectし、次の走査は正常に�
       await assert.rejects(scanDocument(), /20 second deadline/);
       now = 0;
       added.getAttribute = getAttribute;
-      globalThis.setTimeout = callback => { callback(); return 0; };
+      globalThis.setTimeout = callback => {
+        callback();
+        return 0;
+      };
       assert.deepEqual((await scanDocument()).images, ["https://cdn.example.test/pages/added.jpg"]);
     });
   } finally {
@@ -270,24 +288,30 @@ class EmptyMutationObserver {
 
 test("videoのcurrentSrcでもsourceの音声指定を尊重し、種別変更後の古い動画根拠を除く", async () => {
   const url = "https://cdn.example.test/audio.mp4";
-  const source = new FixtureElement("source", {src:url, type:"audio/mp4"});
-  const video = new FixtureElement("video", {}, [source], {currentSrc:url});
+  const source = new FixtureElement("source", {src: url, type: "audio/mp4"});
+  const video = new FixtureElement("video", {}, [source], {currentSrc: url});
   const root = new FixtureElement("html", {}, [video]);
   const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
   assert.deepEqual(result.images, []);
   assert.deepEqual(result.media ?? [], []);
   source.attributesMap.set("type", "video/mp4");
   let notify, changed = false;
-  class Observer extends EmptyMutationObserver { constructor(callback) { super(); notify = callback; } }
+  class Observer extends EmptyMutationObserver {
+    constructor(callback) {
+      super();
+      notify = callback;
+    }
+  }
   const updated = await runWithFixture(new FixtureDocument(root), Observer, () => {
     globalThis.setTimeout = (callback, delay) => {
       if (delay === 800) return 0;
       if (delay === 250 && !changed) {
         changed = true;
         source.attributesMap.set("type", "audio/mp4");
-        notify([{type:"attributes",target:source}]);
+        notify([{type: "attributes", target: source}]);
       }
-      callback(); return 0;
+      callback();
+      return 0;
     };
     return scanDocument();
   });
@@ -296,10 +320,10 @@ test("videoのcurrentSrcでもsourceの音声指定を尊重し、種別変更�
 
 for (const scenario of ["slow", "small", "continuous"]) {
   test(`走査と待機の時計を制御して監視寿命を確認する: ${scenario}`, async () => {
-    const before = new FixtureElement("img", {src:"https://cdn.example.test/before.jpg"});
-    const removed = new FixtureElement("img", {src:"https://cdn.example.test/removed.jpg"});
+    const before = new FixtureElement("img", {src: "https://cdn.example.test/before.jpg"});
+    const removed = new FixtureElement("img", {src: "https://cdn.example.test/removed.jpg"});
     const root = new FixtureElement("html", {}, [before, removed,
-      ...Array.from({length:scenario === "slow" ? 1000 : 0}, () => new FixtureElement("div"))]);
+      ...Array.from({length: scenario === "slow" ? 1000 : 0}, () => new FixtureElement("div"))]);
     let callback, connected = false, now = 0, nextId = 0;
     const timers = new Map();
     class Observer {
@@ -310,12 +334,16 @@ for (const scenario of ["slow", "small", "continuous"]) {
     const previousPerformance = globalThis.performance;
     try {
       await runWithFixture(new FixtureDocument(root), Observer, async () => {
-        Object.defineProperty(globalThis, "performance", {configurable:true, value:{now:() => now}});
-        globalThis.setTimeout = (fn, delay = 0) => { const id = ++nextId; timers.set(id, {fn, at:now + delay}); return id; };
+        Object.defineProperty(globalThis, "performance", {configurable: true, value: {now: () => now}});
+        globalThis.setTimeout = (fn, delay = 0) => {
+          const id = ++nextId;
+          timers.set(id, {fn, at: now + delay});
+          return id;
+        };
         globalThis.clearTimeout = id => timers.delete(id);
         const advance = async target => {
           now = target;
-          for (const [id, timer] of [...timers].sort((a,b) => a[1].at - b[1].at)) {
+          for (const [id, timer] of [...timers].sort((a, b) => a[1].at - b[1].at)) {
             if (timer.at <= now && timers.delete(id)) timer.fn();
           }
           for (let i = 0; i < 12; i++) await Promise.resolve();
@@ -329,9 +357,9 @@ for (const scenario of ["slow", "small", "continuous"]) {
           before.attributesMap.set("src", before.src);
           root.children = root.children.filter(node => node !== removed);
           removed.parentElement = removed.parentNode = null;
-          const added = new FixtureElement("img", {src:"https://cdn.example.test/added.jpg"});
+          const added = new FixtureElement("img", {src: "https://cdn.example.test/added.jpg"});
           root.appendChild(added);
-          callback([{type:"attributes",target:before}, {type:"childList",addedNodes:[added],removedNodes:[removed]}]);
+          callback([{type: "attributes", target: before}, {type: "childList", addedNodes: [added], removedNodes: [removed]}]);
         } else {
           await advance(0);
         }
@@ -341,7 +369,7 @@ for (const scenario of ["slow", "small", "continuous"]) {
             assert.equal(connected, true);
             before.src = `https://cdn.example.test/change-${time}.jpg`;
             before.attributesMap.set("src", before.src);
-            callback([{type:"attributes", target:before}]);
+            callback([{type: "attributes", target: before}]);
           }
         }
         for (let i = 0; i < 100 && !done; i++) {
@@ -350,7 +378,8 @@ for (const scenario of ["slow", "small", "continuous"]) {
         }
         assert.equal(done, true);
         const result = await scan;
-        if (scenario === "slow") assert.deepEqual(result.images.sort(), ["https://cdn.example.test/after.jpg", "https://cdn.example.test/added.jpg"].sort());
+        if (scenario === "slow")
+          assert.deepEqual(result.images.sort(), ["https://cdn.example.test/after.jpg", "https://cdn.example.test/added.jpg"].sort());
         if (scenario === "small") assert.equal(now, 250, "小さいページは静穏250msで終わる");
         if (scenario === "continuous") {
           assert.equal(now, 800, "更新が続いても待機を800msで終える");
@@ -359,7 +388,9 @@ for (const scenario of ["slow", "small", "continuous"]) {
         assert.equal(connected, false);
         assert.equal(timers.size, 0, "Observerと待機タイマーを解放する");
       });
-    } finally { Object.defineProperty(globalThis, "performance", {configurable:true, value:previousPerformance}); }
+    } finally {
+      Object.defineProperty(globalThis, "performance", {configurable: true, value: previousPerformance});
+    }
   });
 }
 
@@ -544,7 +575,10 @@ test("open Shadow DOMの短時間内の追加・変更・削除を監視する",
   let observedTargets = [];
   let changed = false;
   class ShadowMutationObserver extends EmptyMutationObserver {
-    constructor(callback) { super(); observerCallback = callback; }
+    constructor(callback) {
+      super();
+      observerCallback = callback;
+    }
     observe(target) { observedTargets.push(target); }
   }
 
@@ -659,7 +693,8 @@ test("非表示の要素を後置し、同じ画像は表示中の位置を使�
   const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
   assert.deepEqual(result.images, [
     "https://cdn.example.test/pages/same.jpg",
-    "https://cdn.example.test/pages/first.jpg", url,
+    "https://cdn.example.test/pages/first.jpg",
+    url,
     "https://cdn.example.test/pages/hidden.jpg",
     "https://cdn.example.test/pages/zero.jpg",
   ]);
@@ -738,7 +773,10 @@ test("監視中に空の独自属性へ設定された画像URLを収集する",
   let observerCallback;
   let mutated = false;
   class ArbitraryAttributeObserver extends EmptyMutationObserver {
-    constructor(callback) { super(); observerCallback = callback; }
+    constructor(callback) {
+      super();
+      observerCallback = callback;
+    }
   }
 
   const result = await runWithFixture(new FixtureDocument(root), ArbitraryAttributeObserver, () => {
@@ -774,7 +812,10 @@ test("属性の差し替え後は古い候補だけを除き、別の検出元�
   let observerCallback;
   let mutated = false;
   class ChangingObserver extends EmptyMutationObserver {
-    constructor(callback) { super(); observerCallback = callback; }
+    constructor(callback) {
+      super();
+      observerCallback = callback;
+    }
   }
 
   const result = await runWithFixture(new FixtureDocument(root), ChangingObserver, () => {
@@ -824,7 +865,10 @@ test("削除された要素と子孫の候補を除き、現存する検出元�
   let observerCallback;
   let mutated = false;
   class RemovingObserver extends EmptyMutationObserver {
-    constructor(callback) { super(); observerCallback = callback; }
+    constructor(callback) {
+      super();
+      observerCallback = callback;
+    }
   }
 
   const result = await runWithFixture(new FixtureDocument(root), RemovingObserver, () => {
@@ -846,7 +890,8 @@ test("削除された要素と子孫の候補を除き、現存する検出元�
     return scanDocument();
   });
 
-  for (const name of ["removed", "child", "removed-script", "removed-style"]) assert.equal(result.images.includes(`${base}${name}.jpg`), false, name);
+  for (const name of ["removed", "child", "removed-script", "removed-style"])
+    assert.equal(result.images.includes(`${base}${name}.jpg`), false, name);
   for (const name of ["shared", "text-shared", "moved", "late"]) {
     assert.ok(result.images.includes(`${base}${name}.jpg`), name);
   }
@@ -885,17 +930,21 @@ test("公開script JSONのvideo_infoから各動画の最高bitrate MP4だけを
       media: [
         {
           type: "video",
-          video_info: {variants: [
-            {content_type: "application/x-mpegURL", bitrate: 2_000_000, url: "https://video.example.test/playlist.m3u8"},
-            {content_type: "video/mp4", bitrate: 256_000, url: "https://video.example.test/low.mp4"},
-            {content_type: "video/mp4; codecs=avc1", bitrate: 832_000, url: "https://video.example.test/high.mp4"},
-          ]},
+          video_info: {
+            variants: [
+              {content_type: "application/x-mpegURL", bitrate: 2_000_000, url: "https://video.example.test/playlist.m3u8"},
+              {content_type: "video/mp4", bitrate: 256_000, url: "https://video.example.test/low.mp4"},
+              {content_type: "video/mp4; codecs=avc1", bitrate: 832_000, url: "https://video.example.test/high.mp4"},
+            ]
+          },
         },
         {
           type: "animated_gif",
-          video_info: {variants: [
-            {content_type: "video/mp4", bitrate: 0, url: "https://video.example.test/animated-gif.mp4"},
-          ]},
+          video_info: {
+            variants: [
+              {content_type: "video/mp4", bitrate: 0, url: "https://video.example.test/animated-gif.mp4"},
+            ]
+          },
         },
       ],
     },
@@ -931,14 +980,24 @@ test("GIF拡張子とformat=gifはscript・本文からもGIF候補として収�
 
 test("GIFの種類判定はグループ表示と同じ形式指定・大文字小文字・優先順位を使う", async () => {
   const cases = [
-    ["animation.gif", "gif"], ["animation.GIF", "gif"],
-    ["image?format=gif", "gif"], ["image?fmt=gif", "gif"], ["image?fm=gif", "gif"],
-    ["image?FORMAT=GIF", "gif"], ["image?Fmt=GiF", "gif"], ["image?FM=GIF", "gif"],
-    ["animation.jpg?fm=gif", "gif"], ["image?fm=x-gif", "gif"],
-    ["animation.gif?fmt=png", "image"], ["image?fm=png&format=gif", "image"],
-    ["image?format=&fmt=gif", "image"], ["image?format=gif&fm=png", "gif"],
-    ["image?filename=gif", "image"], ["image?formatHint=gif", "image"],
-    ["image?fmt=gif-preview", "image"], ["image?fm=image/gif", "image"],
+    ["animation.gif", "gif"],
+    ["animation.GIF", "gif"],
+    ["image?format=gif", "gif"],
+    ["image?fmt=gif", "gif"],
+    ["image?fm=gif", "gif"],
+    ["image?FORMAT=GIF", "gif"],
+    ["image?Fmt=GiF", "gif"],
+    ["image?FM=GIF", "gif"],
+    ["animation.jpg?fm=gif", "gif"],
+    ["image?fm=x-gif", "gif"],
+    ["animation.gif?fmt=png", "image"],
+    ["image?fm=png&format=gif", "image"],
+    ["image?format=&fmt=gif", "image"],
+    ["image?format=gif&fm=png", "gif"],
+    ["image?filename=gif", "image"],
+    ["image?formatHint=gif", "image"],
+    ["image?fmt=gif-preview", "image"],
+    ["image?fm=image/gif", "image"],
   ].map(([path, kind]) => [`https://cdn.example.test/media/${path}`, kind]);
   const root = new FixtureElement("html", {}, cases.map(([src]) => new FixtureElement("img", {src})));
   const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
@@ -966,7 +1025,10 @@ async function scanWithMutation(root, mutate) {
   let observerCallback;
   let mutated = false;
   class ChangingObserver extends EmptyMutationObserver {
-    constructor(callback) { super(); observerCallback = callback; }
+    constructor(callback) {
+      super();
+      observerCallback = callback;
+    }
   }
   return runWithFixture(new FixtureDocument(root), ChangingObserver, () => {
     globalThis.setTimeout = (callback, delay) => {
@@ -995,8 +1057,10 @@ test("同じ候補から画像は表示位置順、メディアは検出順で�
   const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
   assert.deepEqual(result.images, [`${base}top.jpg`, `${base}bottom.jpg`, `${base}animation.gif`, "mailto:unfetchable"]);
   assert.deepEqual(result.media, [
-    {url: `${base}bottom.jpg`, kind: "image"}, {url: `${base}movie.mp4`, kind: "video"},
-    {url: `${base}top.jpg`, kind: "image"}, {url: `${base}animation.gif`, kind: "gif"},
+    {url: `${base}bottom.jpg`, kind: "image"},
+    {url: `${base}movie.mp4`, kind: "video"},
+    {url: `${base}top.jpg`, kind: "image"},
+    {url: `${base}animation.gif`, kind: "gif"},
   ]);
 });
 
@@ -1016,7 +1080,8 @@ test("画像の根拠を差し替えても同じURLの動画を残し、最後�
   });
   assert.deepEqual(result.images, [`${base}keep.gif`, `${base}replacement.jpg`]);
   assert.deepEqual(result.media, [
-    {url: `${base}shared.mp4`, kind: "video"}, {url: `${base}keep.gif`, kind: "gif"},
+    {url: `${base}shared.mp4`, kind: "video"},
+    {url: `${base}keep.gif`, kind: "gif"},
     {url: `${base}replacement.jpg`, kind: "image"},
   ]);
 });
@@ -1059,11 +1124,18 @@ test("背景の最終照合は未変更要素の本文・属性を再収集し�
   const root = new FixtureElement("html", {}, [image]);
   let attributeReads = 0;
   const getAttributes = Object.getOwnPropertyDescriptor(FixtureElement.prototype, "attributes").get;
-  Object.defineProperty(image, "attributes", {get() { attributeReads += 1; return getAttributes.call(this); }});
+  Object.defineProperty(image, "attributes", {
+    get() {
+      attributeReads += 1;
+      return getAttributes.call(this);
+    }
+  });
   const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
   assert.equal(attributeReads, 1);
   assert.deepEqual(new Set(result.images), new Set([
-    "https://cdn.example.test/stable.gif", "https://cdn.example.test/text.jpg", "https://cdn.example.test/attribute.jpg",
+    "https://cdn.example.test/stable.gif",
+    "https://cdn.example.test/text.jpg",
+    "https://cdn.example.test/attribute.jpg",
   ]));
 });
 
@@ -1073,7 +1145,9 @@ test("背景の最終照合中も20秒期限を確認し、部分結果を返さ
   let now = 0;
   let backgroundReads = 0;
   let disconnected = false;
-  class TrackingObserver extends EmptyMutationObserver { disconnect() { disconnected = true; } }
+  class TrackingObserver extends EmptyMutationObserver {
+    disconnect() { disconnected = true; }
+  }
   const previousPerformance = globalThis.performance;
   try {
     await runWithFixture(new FixtureDocument(root), TrackingObserver, async () => {

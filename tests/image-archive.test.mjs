@@ -12,10 +12,18 @@ const fakeSizedBlob = (size, type = "image/png") => ({size, type});
 
 test("取得とZIP命名は同じMIME分類を使い、種類未指定画像のGIF互換を保つ", () => {
   for (const [mime, extension, kind] of [
-    ["image/jpeg", "jpg", "image"], ["image/png", "png", "image"], ["image/gif", "gif", "gif"],
-    ["image/webp", "webp", "image"], ["image/jxl", "jxl", "image"], ["image/avif", "avif", "image"],
-    ["image/heic", "heic", "image"], ["image/heif", "heif", "image"], ["image/bmp", "bmp", "image"],
-    ["image/tiff", "tif", "image"], ["video/mp4", "mp4", "video"], ["video/webm", "webm", "video"],
+    ["image/jpeg", "jpg", "image"],
+    ["image/png", "png", "image"],
+    ["image/gif", "gif", "gif"],
+    ["image/webp", "webp", "image"],
+    ["image/jxl", "jxl", "image"],
+    ["image/avif", "avif", "image"],
+    ["image/heic", "heic", "image"],
+    ["image/heif", "heif", "image"],
+    ["image/bmp", "bmp", "image"],
+    ["image/tiff", "tif", "image"],
+    ["video/mp4", "mp4", "video"],
+    ["video/webm", "webm", "video"],
   ]) {
     const type = originalMediaType(` ${mime.toUpperCase()}; charset=binary `);
     assert.equal(type.extension, extension);
@@ -84,8 +92,12 @@ test("画面から独立した準備は成功結果を保持し、失敗分だ�
   const progress = [];
   let failing = true;
   const controller = new AbortController();
-  const options = {signal: controller.signal, isStopped: () => controller.signal.aborted, fallbackFailure: "fallback",
-    onProgress: (...value) => progress.push(value)};
+  const options = {
+    signal: controller.signal,
+    isStopped: () => controller.signal.aborted,
+    fallbackFailure: "fallback",
+    onProgress: (...value) => progress.push(value)
+  };
   globalThis.fetch = async url => {
     requests.push(url);
     return url === selected[1].url && failing
@@ -107,18 +119,25 @@ test("画面から独立した準備は成功結果を保持し、失敗分だ�
     assert.equal(work.prepared.get(selected[0]), retained);
     assert.deepEqual(entries.map(entry => entry.filename), ["001.gif", "002.gif", "003.gif"]);
     assert.equal(entries[0].blob, retained);
-  } finally { globalThis.fetch = previousFetch; }
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });
 
 test("準備開始直後の中止では通信も進捗通知も開始しない", async () => {
   const previousFetch = globalThis.fetch;
   const controller = new AbortController();
   let requested = 0;
-  globalThis.fetch = async () => { requested += 1; throw new Error("must not fetch"); };
+  globalThis.fetch = async () => {
+    requested += 1;
+    throw new Error("must not fetch");
+  };
   try {
     const work = {format: "gif", selected: [item("first", "gif")], prepared: new Map(), failed: new Map()};
     const execution = prepareImageArchive(work, {
-      signal: controller.signal, isStopped: () => controller.signal.aborted, fallbackFailure: "fallback",
+      signal: controller.signal,
+      isStopped: () => controller.signal.aborted,
+      fallbackFailure: "fallback",
       onProgress() { assert.fail("中止した作業は進捗を進めない"); },
     });
     controller.abort();
@@ -126,5 +145,7 @@ test("準備開始直後の中止では通信も進捗通知も開始しない",
     assert.equal(requested, 0);
     assert.equal(work.prepared.size, 0);
     assert.equal(work.failed.size, 0);
-  } finally { globalThis.fetch = previousFetch; }
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });

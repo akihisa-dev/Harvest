@@ -4,7 +4,9 @@ import {mediaTypeMatchesKind, originalMediaType, type MediaType} from "./media-t
 import {storedZipDataLimit, type StoredZipEntry} from "./stored-zip.js";
 
 export class ImageArchiveLimitError extends RangeError {
-  constructor() { super("ZIP全体がZIP形式の上限を超えています。"); }
+  constructor() {
+    super("ZIP全体がZIP形式の上限を超えています。");
+  }
 }
 
 function archiveFilename(index: number, count: number, extension: string): string {
@@ -61,7 +63,8 @@ export class ImageArchivePlan {
   ) {
     // .jpg is the shortest recognized original suffix. Check exact names once all are known.
     const extension = format === "original" ? "jpg" : format;
-    this.dataLimit = storedZipDataLimit(selected.map((_, index) => archiveFilename(index, selected.length, extension)));
+    const filenames = selected.map((_, index) => archiveFilename(index, selected.length, extension));
+    this.dataLimit = storedZipDataLimit(filenames);
     this.preparedSize = [...prepared.values()].reduce((size, blob) => size + blob.size, 0);
     if (this.preparedSize > this.dataLimit) throw new ImageArchiveLimitError();
   }
@@ -77,7 +80,8 @@ export class ImageArchivePlan {
 
   entries(): StoredZipEntry[] {
     const entries = createImageZipEntries(this.selected, this.prepared, this.format);
-    if (this.preparedSize > storedZipDataLimit(entries.map(entry => entry.filename))) throw new ImageArchiveLimitError();
+    const dataLimit = storedZipDataLimit(entries.map(entry => entry.filename));
+    if (this.preparedSize > dataLimit) throw new ImageArchiveLimitError();
     return entries;
   }
 }

@@ -89,9 +89,12 @@ export class ImageCollection {
             return false;
         const visibleSet = new Set(visibleItems);
         const reorderedSet = new Set(reorderedItems);
-        if (visibleSet.size !== visibleItems.length || reorderedSet.size !== reorderedItems.length ||
-            visibleSet.size !== reorderedSet.size || [...visibleSet].some(item => !reorderedSet.has(item)) ||
-            [...visibleSet].some(item => !this.positionByItem.has(item)))
+        const hasDuplicates = visibleSet.size !== visibleItems.length || reorderedSet.size !== reorderedItems.length;
+        if (hasDuplicates || visibleSet.size !== reorderedSet.size)
+            return false;
+        if ([...visibleSet].some(item => !reorderedSet.has(item)))
+            return false;
+        if ([...visibleSet].some(item => !this.positionByItem.has(item)))
             return false;
         let index = 0;
         this.orderedItems = this.orderedItems.map(item => visibleSet.has(item) ? reorderedItems[index++] : item);
@@ -116,7 +119,12 @@ export class ImageCollection {
         return this.orderedItems.length === this.initialItems.length &&
             this.orderedItems.every((item, index) => item === this.initialItems[index]);
     }
-    reindex(groups = groupMediaImages(this.orderedItems.map(item => item.url), this.orderedItems.flatMap(item => item.kind ? [{ url: item.url, kind: item.kind }] : []))) {
+    currentGroups() {
+        const urls = this.orderedItems.map(item => item.url);
+        const media = this.orderedItems.flatMap(item => item.kind ? [{ url: item.url, kind: item.kind }] : []);
+        return groupMediaImages(urls, media);
+    }
+    reindex(groups = this.currentGroups()) {
         this.groupedItems = groups;
         this.itemByUrl = new Map(this.orderedItems.map(item => [item.url, item]));
         this.positionByItem = new Map(this.orderedItems.map((item, index) => [item, index]));

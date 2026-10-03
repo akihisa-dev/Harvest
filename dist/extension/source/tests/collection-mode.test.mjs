@@ -3,7 +3,13 @@ import test from "node:test";
 import {captureCollectionLinks} from "../dist/extension/app/collection-mode.js";
 
 class Anchor {
-  constructor(href, style = makeStyle()) { this.href = href; this.nodeType = 1; this.tagName = "A"; this.style = style; this.isConnected = true; }
+  constructor(href, style = makeStyle()) {
+    this.href = href;
+    this.nodeType = 1;
+    this.tagName = "A";
+    this.style = style;
+    this.isConnected = true;
+  }
   getBoundingClientRect() { return this.rect ?? {left: 10, top: 20, width: 100, height: 80}; }
   hasAttribute(name) { return name === "href"; }
   getAttribute(name) { return name === "href" ? this.href : null; }
@@ -14,16 +20,26 @@ function makeStyle(initial = "", initialPriority = "") {
   const values = new Map(initial ? [["box-shadow", initial]] : []);
   const priorities = new Map(initial ? [["box-shadow", initialPriority]] : []);
   return {
-    setProperty(name, value, priority = "") { values.set(name, value); priorities.set(name, priority); this[name.replaceAll("-", "")] = value; },
+    setProperty(name, value, priority = "") {
+      values.set(name, value);
+      priorities.set(name, priority);
+      this[name.replaceAll("-", "")] = value;
+    },
     getPropertyValue(name) { return values.get(name) ?? ""; },
     getPropertyPriority(name) { return priorities.get(name) ?? ""; },
-    removeProperty(name) { const old = values.get(name) ?? ""; values.delete(name); priorities.delete(name); delete this[name.replaceAll("-", "")]; return old; },
+    removeProperty(name) {
+      const old = values.get(name) ?? "";
+      values.delete(name);
+      priorities.delete(name);
+      delete this[name.replaceAll("-", "")];
+      return old;
+    },
   };
 }
 
 function setup() {
   const listeners = new Map();
-  const glow = {style: makeStyle(), setAttribute() {}, remove() { this.removed = true; }};
+  const glow = {style: makeStyle(), setAttribute() {}, remove() { this.removed = true; } };
   const overlays = [];
   let created = 0;
   const removed = [];
@@ -37,20 +53,44 @@ function setup() {
   const timers = new Map();
   const port = {
     postMessage(message) { messages.push(message); },
-    onMessage: {addListener(listener) { port.messageListener = listener; }},
-    onDisconnect: {addListener(listener) { disconnected = listener; }},
+    onMessage: {addListener(listener) { port.messageListener = listener; } },
+    onDisconnect: {addListener(listener) { disconnected = listener; } },
     messageListener: undefined,
   };
-  const previous = {chrome: globalThis.chrome, document: globalThis.document, location: globalThis.location, window: globalThis.window, Element: globalThis.Element, MutationObserver: globalThis.MutationObserver, ResizeObserver: globalThis.ResizeObserver};
-  globalThis.chrome = {runtime: {connect(options) { assert.deepEqual(options, {name: "test-session"}); return port; }}};
+  const previous = {
+    chrome: globalThis.chrome,
+    document: globalThis.document,
+    location: globalThis.location,
+    window: globalThis.window,
+    Element: globalThis.Element,
+    MutationObserver: globalThis.MutationObserver,
+    ResizeObserver: globalThis.ResizeObserver
+  };
+  globalThis.chrome = {
+    runtime: {
+      connect(options) {
+        assert.deepEqual(options, {name: "test-session"});
+        return port;
+      }
+    }
+  };
   globalThis.Element = Anchor;
   globalThis.MutationObserver = class {
-    constructor(callback) { this.callback = callback; mutationObserver = this; }
-    observe(target, options) { this.target = target; this.options = options; }
+    constructor(callback) {
+      this.callback = callback;
+      mutationObserver = this;
+    }
+    observe(target, options) {
+      this.target = target;
+      this.options = options;
+    }
     disconnect() { this.disconnected = true; }
   };
   globalThis.ResizeObserver = class {
-    constructor(callback) { this.callback = callback; resizeObserver = this; }
+    constructor(callback) {
+      this.callback = callback;
+      resizeObserver = this;
+    }
     observe(target) { this.target = target; }
     disconnect() { this.disconnected = true; }
   };
@@ -58,26 +98,44 @@ function setup() {
   globalThis.window = {
     addEventListener(type, listener) { windowListeners.set(type, listener); },
     removeEventListener() {},
-    requestAnimationFrame(callback) { const id = ++frameSequence; frames.set(id, callback); return id; },
+    requestAnimationFrame(callback) {
+      const id = ++frameSequence;
+      frames.set(id, callback);
+      return id;
+    },
     cancelAnimationFrame(id) { frames.delete(id); },
-    setTimeout(callback) { const id = ++timerSequence; timers.set(id, callback); return id; },
+    setTimeout(callback) {
+      const id = ++timerSequence;
+      timers.set(id, callback);
+      return id;
+    },
     clearTimeout(id) { timers.delete(id); },
   };
   globalThis.location = {href: "https://example.test/current"};
   globalThis.document = {
     createElement() {
       if (created++ === 0) return glow;
-      const overlay = {style: makeStyle(), setAttribute() {}, remove() { this.removed = true; }};
+      const overlay = {style: makeStyle(), setAttribute() {}, remove() { this.removed = true; } };
       overlays.push(overlay);
       return overlay;
     },
-    documentElement: {append(node) { node.appended = true; }},
+    documentElement: {append(node) { node.appended = true; } },
     baseURI: "https://example.test/current",
-    addEventListener(type, listener, capture) { assert.equal(capture, true); listeners.set(type, listener); },
-    removeEventListener(type, listener, capture) { removed.push({type, listener, capture}); listeners.delete(type); },
+    addEventListener(type, listener, capture) {
+      assert.equal(capture, true);
+      listeners.set(type, listener);
+    },
+    removeEventListener(type, listener, capture) {
+      removed.push({type, listener, capture});
+      listeners.delete(type);
+    },
   };
   return {
-    port, messages, removed, glow, overlays,
+    port,
+    messages,
+    removed,
+    glow,
+    overlays,
     removeFromPage(anchor) {
       anchor.isConnected = false;
       mutationObserver.callback([{type: "childList", target: document.documentElement, addedNodes: [], removedNodes: [anchor]}]);
@@ -92,7 +150,7 @@ function setup() {
     get observer() { return mutationObserver; },
     get resizeObserver() { return resizeObserver; },
     hover(anchor) {
-      const event = {path: [anchor], composedPath() { return this.path; }};
+      const event = {path: [anchor], composedPath() { return this.path; } };
       listeners.get("pointermove")?.(event);
       return event;
     },
@@ -115,7 +173,13 @@ function setup() {
       let prevented = 0;
       let stopped = 0;
       const event = {
-        button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, isTrusted: true, ...options,
+        button: 0,
+        metaKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        isTrusted: true,
+        ...options,
         composedPath: () => [options.child ?? anchor, anchor],
         preventDefault() { prevented += 1; },
         stopImmediatePropagation() { stopped += 1; },
@@ -134,7 +198,9 @@ test("通常の左クリックは遷移を止めて絶対URLを送る", async ()
     captureCollectionLinks("test-session");
     assert.deepEqual(fixture.click(new Anchor("/picked")), {prevented: 1, stopped: 1});
     assert.deepEqual(fixture.messages, [{url: "https://example.test/picked"}]);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("ページスクリプトが作った疑似クリックは止めずHarvestへ送らない", () => {
@@ -143,7 +209,9 @@ test("ページスクリプトが作った疑似クリックは止めずHarvest�
     captureCollectionLinks("test-session");
     assert.deepEqual(fixture.click(new Anchor("/script"), {isTrusted: false}), {prevented: 0, stopped: 0});
     assert.deepEqual(fixture.messages, []);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("修飾クリック・HTTP以外・hrefなしはそのまま通す", () => {
@@ -154,7 +222,9 @@ test("修飾クリック・HTTP以外・hrefなしはそのまま通す", () => 
     assert.deepEqual(fixture.click(new Anchor("mailto:user@example.test")), {prevented: 0, stopped: 0});
     assert.deepEqual(fixture.click(new Anchor("")), {prevented: 0, stopped: 0});
     assert.deepEqual(fixture.messages, []);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("busy中も遷移を止めるが送信しない", () => {
@@ -167,7 +237,9 @@ test("busy中も遷移を止めるが送信しない", () => {
     fixture.port.messageListener({busy: false});
     fixture.click(new Anchor("https://example.test/ready"));
     assert.deepEqual(fixture.messages, [{url: "https://example.test/ready"}]);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("切断後はリスナーを除去して遷移を復元する", () => {
@@ -183,7 +255,9 @@ test("切断後はリスナーを除去して遷移を復元する", () => {
     assert.equal(fixture.removed[0].capture, true);
     assert.deepEqual(fixture.click(new Anchor("https://example.test/after")), {prevented: 0, stopped: 0});
     assert.deepEqual(fixture.messages, []);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("収集できるリンクだけ文字なしで発光し、離脱・解析中・解除で消える", () => {
@@ -208,7 +282,9 @@ test("収集できるリンクだけ文字なしで発光し、離脱・解析�
     assert.equal(fixture.glow.style.display, "none");
     fixture.disconnect();
     assert.equal(fixture.glow.removed, true);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("解析リンクは水色、PDF保存リンクだけ強い金色になり状態変更はその場で反映する", () => {
@@ -236,7 +312,9 @@ test("解析リンクは水色、PDF保存リンクだけ強い金色になり�
     assert.equal(fixture.glow.style.boxShadow, scanGlow);
     fixture.port.messageListener({pdfUrl: null, canExport: true});
     assert.equal(fixture.glow.style.boxShadow, scanGlow);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("成功したクリック対象だけが離脱・スクロール・サイズ変更後も発光し切断時に復元される", () => {
@@ -272,7 +350,9 @@ test("成功したクリック対象だけが離脱・スクロール・サイ�
     assert.equal(otherOriginal.getPropertyValue("box-shadow"), "other-shadow");
     assert.equal(fixture.overlays[0].removed, true);
     assert.equal(fixture.overlays[1].removed, true);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("DOMから消えた対象のマーカーと参照を片付け、残る対象の追従を保つ", () => {
@@ -313,7 +393,9 @@ test("DOMから消えた対象のマーカーと参照を片付け、残る対�
     fixture.click(removed);
     fixture.port.messageListener({pdfUrl: "https://example.test/removed"});
     assert.equal(fixture.overlays.length, 3, "再接続後の新しい操作はマークできる");
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("ページ内レイアウト変化を1フレームにまとめて保存表示とホバー表示へ反映する", () => {
@@ -348,7 +430,9 @@ test("ページ内レイアウト変化を1フレームにまとめて保存表�
     assert.equal(fixture.glow.style.top, "180px");
     fixture.disconnect();
     assert.equal(fixture.resizeObserver.disconnected, true);
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("href変更は古い解析表示と解析待ちを外し、同じURLのままなら表示を保つ", () => {
@@ -375,7 +459,9 @@ test("href変更は古い解析表示と解析待ちを外し、同じURLのま�
     fixture.click(analyzed);
     fixture.port.messageListener({pdfUrl: "https://example.test/race-replacement"});
     assert.equal(fixture.overlays.length, 2, "変更後のURLをクリックした結果はマークできる");
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("メッセージ受信時は保存済みの対象を再描画する", () => {
@@ -388,7 +474,9 @@ test("メッセージ受信時は保存済みの対象を再描画する", () =>
     event.path = [];
     fixture.port.messageListener({busy: false, pdfUrl: "https://example.test/picked", canExport: true});
     assert.equal(fixture.glow.style.display, "block");
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });
 
 test("ブラウザーが影の色表記を正規化しても停止時に元へ戻す", () => {
@@ -405,5 +493,7 @@ test("ブラウザーが影の色表記を正規化しても停止時に元へ�
     fixture.disconnect();
     assert.equal(style.getPropertyValue("box-shadow"), "0 1px 2px black");
     assert.equal(style.getPropertyPriority("box-shadow"), "important");
-  } finally { fixture.restore(); }
+  } finally {
+    fixture.restore();
+  }
 });

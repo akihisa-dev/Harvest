@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defaultDisplayedImageGroup, defaultSelectedImageGroups, filterImagesByGroup, groupImages, imageGroupLabel, normalizeImageUrls } from "../dist/extension/core/images.js";
+import {
+  defaultDisplayedImageGroup,
+  defaultSelectedImageGroups,
+  filterImagesByGroup,
+  groupImages,
+  imageGroupLabel,
+  normalizeImageUrls
+} from "../dist/extension/core/images.js";
 
 test("画像候補を元ページから解決し、重複と実行できないURLを除く", () => {
   assert.deepEqual(normalizeImageUrls([
@@ -159,9 +166,13 @@ test("同じ画像パスのクエリ連番は系列ごとにまとめ、パス�
 
 test("解析後の表示とPDF選択は本文を優先し、本文がなければ従来の順位で選ぶ", () => {
   const groups = groupImages([
-    "https://example.com/pages/body-001.jpg", "https://example.com/pages/body-002.jpg",
-    "https://example.com/gallery/001.jpg", "https://example.com/gallery/002.jpg",
-    "https://example.com/larger/001.jpg", "https://example.com/larger/002.jpg", "https://example.com/larger/003.jpg",
+    "https://example.com/pages/body-001.jpg",
+    "https://example.com/pages/body-002.jpg",
+    "https://example.com/gallery/001.jpg",
+    "https://example.com/gallery/002.jpg",
+    "https://example.com/larger/001.jpg",
+    "https://example.com/larger/002.jpg",
+    "https://example.com/larger/003.jpg",
     "https://example.com/one.jpg",
   ]);
   const key = defaultDisplayedImageGroup(groups);

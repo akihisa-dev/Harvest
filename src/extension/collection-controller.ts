@@ -73,7 +73,10 @@ export function createCollectionController(options: CollectionControllerOptions)
   }
 
   async function toggle(): Promise<void> {
-    if (activeSession) { stop(); return; }
+    if (activeSession) {
+      stop();
+      return;
+    }
     const session: CollectionSession = {
       name: `harvest-collection:${crypto.randomUUID()}`,
       phase: "preparing", tabId: null, port: null, analyzedUrl: null,
@@ -103,14 +106,20 @@ export function createCollectionController(options: CollectionControllerOptions)
     if (!session) return;
     pendingConnections.delete(port.name);
     session.phase = "connected";
-    if (session !== activeSession || port.sender?.tab?.id !== session.tabId) { port.disconnect(); return; }
+    if (session !== activeSession || port.sender?.tab?.id !== session.tabId) {
+      port.disconnect();
+      return;
+    }
     session.port?.disconnect();
     session.port = port;
     publishState();
     port.onMessage.addListener(message => {
       if (activeSession !== session || session.port !== port || options.isBusy() || options.isDisposed() ||
           typeof message.url !== "string" || !isWebUrl(message.url)) return;
-      if (session.analyzedUrl === message.url) { options.onExport(); return; }
+      if (session.analyzedUrl === message.url) {
+        options.onExport();
+        return;
+      }
       options.onScanUrl(message.url);
     });
     port.onDisconnect.addListener(() => {

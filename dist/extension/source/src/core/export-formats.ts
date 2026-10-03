@@ -7,7 +7,12 @@ export type ImageArchiveFormat = Exclude<ExportFormat, "pdf"> | "original";
 type MediaKind = NonNullable<ImageItem["kind"]>;
 
 const formatKinds: Readonly<Record<ExportFormat, MediaKind>> = {
-  mp4: "video", gif: "gif", pdf: "image", jpg: "image", png: "image", jxl: "image",
+  mp4: "video",
+  gif: "gif",
+  pdf: "image",
+  jpg: "image",
+  png: "image",
+  jxl: "image",
 };
 
 export function isExportFormat(value: unknown): value is ExportFormat {
@@ -16,7 +21,8 @@ export function isExportFormat(value: unknown): value is ExportFormat {
 
 /** Unknown legacy callers retain the still-image selection used by the old API. */
 export function exportFormatMediaKind(format: string): MediaKind | "all" {
-  return format === "original" ? "all" : isExportFormat(format) ? formatKinds[format] : "image";
+  if (format === "original") return "all";
+  return isExportFormat(format) ? formatKinds[format] : "image";
 }
 
 export function isMediaArchiveFormat(format: string): boolean {

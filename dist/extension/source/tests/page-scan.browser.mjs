@@ -7,40 +7,61 @@ import {ImageCollection} from "../dist/extension/core/image-collection.js";
 
 test("audioのsourceを収集せず、画像の初期選択とpicture・videoのsourceを保つ", async () => {
   const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
-  const browser = await chromium.launch({channel:"chrome", headless:true});
+  const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();
     await page.route("**/*", route => route.abort());
     for (const mode of ["audio", "mixed", "video", "picture"]) {
       await page.setContent('<base href="https://example.test/"><main></main>');
       const result = await page.evaluate(async ({source, mode}) => {
-        const moduleUrl = URL.createObjectURL(new Blob([source], {type:"text/javascript"}));
+        const moduleUrl = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));
         const {scanDocument} = await import(moduleUrl);
         URL.revokeObjectURL(moduleUrl);
         const main = document.querySelector("main");
-        for (const [filename, type] of [["music.mp3","audio/mpeg"], ["music.ogg","audio/ogg"], ["music.mp4","audio/mp4"], ["unknown.mp4", ""], ["misleading.gif", "video/mp4"]]) {
-          const audio = document.createElement("audio"); audio.preload = "none";
-          const entry = document.createElement("source"); entry.src = `https://cdn.example.test/${filename}`; entry.type = type;
-          audio.append(entry); main.append(audio);
+        for (const [filename, type] of [
+          ["music.mp3", "audio/mpeg"],
+          ["music.ogg", "audio/ogg"],
+          ["music.mp4", "audio/mp4"],
+          ["unknown.mp4", ""],
+          ["misleading.gif", "video/mp4"]
+        ]) {
+          const audio = document.createElement("audio");
+          audio.preload = "none";
+          const entry = document.createElement("source");
+          entry.src = `https://cdn.example.test/${filename}`;
+          entry.type = type;
+          audio.append(entry);
+          main.append(audio);
         }
-        const audioSource = document.createElement("source"); audioSource.src = "https://cdn.example.test/declared.mp4"; audioSource.type = " AUDIO/mp4 ";
+        const audioSource = document.createElement("source");
+        audioSource.src = "https://cdn.example.test/declared.mp4";
+        audioSource.type = " AUDIO/mp4 ";
         main.append(audioSource);
         if (mode === "mixed") {
-          const image = document.createElement("img"); image.dataset.src = "https://cdn.example.test/image?id=1"; main.append(image);
+          const image = document.createElement("img");
+          image.dataset.src = "https://cdn.example.test/image?id=1";
+          main.append(image);
         }
         if (mode === "video") {
-          const video = document.createElement("video"); video.preload = "none";
-          const entry = document.createElement("source"); entry.src = "https://cdn.example.test/movie"; entry.type = "video/mp4";
-          video.append(entry); main.append(video);
+          const video = document.createElement("video");
+          video.preload = "none";
+          const entry = document.createElement("source");
+          entry.src = "https://cdn.example.test/movie";
+          entry.type = "video/mp4";
+          video.append(entry);
+          main.append(video);
         }
         if (mode === "picture") {
           const picture = document.createElement("picture");
-          const entry = document.createElement("source"); entry.srcset = "https://cdn.example.test/small 1x, https://cdn.example.test/large 2x"; entry.type = "image/webp";
-          picture.append(entry); main.append(picture);
+          const entry = document.createElement("source");
+          entry.srcset = "https://cdn.example.test/small 1x, https://cdn.example.test/large 2x";
+          entry.type = "image/webp";
+          picture.append(entry);
+          main.append(picture);
         }
         return scanDocument();
       }, {source, mode});
-      const expected = mode === "audio" ? [] : [`https://cdn.example.test/${{mixed:"image?id=1",video:"movie",picture:"large"}[mode]}`];
+      const expected = mode === "audio" ? [] : [`https://cdn.example.test/${{mixed: "image?id=1", video: "movie", picture: "large"}[mode]}`];
       assert.deepEqual(result.images, mode === "video" ? [] : expected, mode);
       assert.deepEqual((result.media ?? []).map(item => item.url), expected, mode);
       const collection = new ImageCollection();
@@ -48,23 +69,27 @@ test("audioのsourceを収集せず、画像の初期選択とpicture・videoの
       assert.deepEqual(collection.items.map(item => item.url), expected);
       assert.deepEqual(collection.selectedItems.map(item => item.url), expected);
     }
-  } finally { await browser.close(); }
+  } finally {
+    await browser.close();
+  }
 });
 
 test("CSSのurl境界を読み、クエリ・括弧・エスケープを保って保存候補を重複させない", async () => {
   const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
-  const browser = await chromium.launch({channel:"chrome", headless:true});
+  const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();
     await page.route("**/*", route => route.abort());
     for (const single of [true, false]) {
       await page.setContent('<base href="https://example.test/"><div class="page"></div>');
       const result = await page.evaluate(async ({source, single}) => {
-        const moduleUrl = URL.createObjectURL(new Blob([source], {type:"text/javascript"}));
+        const moduleUrl = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));
         const {scanDocument} = await import(moduleUrl);
         URL.revokeObjectURL(moduleUrl);
         const style = document.createElement("style");
-        style.textContent = single ? '.page{width:100px;height:100px;background-image:url(https://cdn.example.test/single.jpg?v=1)}' : String.raw`
+        style.textContent = single
+          ? '.page{width:100px;height:100px;background-image:url(https://cdn.example.test/single.jpg?v=1)}'
+          : String.raw`
           .page {background-image:url(https://cdn.example.test/brace.jpg?v=1)}
           .absent {background:url(https://cdn.example.test/semicolon.jpg?v=1);}
           .multiple {background:url(https://cdn.example.test/first.jpg?v=1),url(https://cdn.example.test/second.jpg?v=2)}
@@ -80,7 +105,9 @@ test("CSSのurl境界を読み、クエリ・括弧・エスケープを保っ�
         document.head.append(style);
         if (!single) {
           for (const name of ["multiple", "quoted", "escaped", "hex", "plain", "encoded"]) {
-            const element = document.createElement("div"); element.className = name; document.body.append(element);
+            const element = document.createElement("div");
+            element.className = name;
+            document.body.append(element);
           }
           const inline = document.createElement("div");
           inline.setAttribute("style", "background:url(https://cdn.example.test/inline.jpg?v=1);width:10px;height:10px");
@@ -88,26 +115,41 @@ test("CSSのurl境界を読み、クエリ・括弧・エスケープを保っ�
         }
         return scanDocument();
       }, {source, single});
-      const names = single ? ["single.jpg?v=1"] : ["brace.jpg?v=1", "semicolon.jpg?v=1", "first.jpg?v=1", "second.jpg?v=2", "quoted(1).jpg?q=(keep)", "escaped(1).jpg?v=1", "hex(1).jpg?v=1", "plain.jpg", "encoded.jpg?q=%29%7D", "inline.jpg?v=1"];
+      const names = single
+        ? ["single.jpg?v=1"]
+        : [
+          "brace.jpg?v=1",
+          "semicolon.jpg?v=1",
+          "first.jpg?v=1",
+          "second.jpg?v=2",
+          "quoted(1).jpg?q=(keep)",
+          "escaped(1).jpg?v=1",
+          "hex(1).jpg?v=1",
+          "plain.jpg",
+          "encoded.jpg?q=%29%7D",
+          "inline.jpg?v=1"
+        ];
       const expected = names.map(name => `https://cdn.example.test/${name}`).sort();
       assert.deepEqual([...result.images].sort(), expected);
       assert.deepEqual(result.media.map(item => item.url).sort(), expected);
       assert.deepEqual(normalizeImageUrls([...result.images, ...result.media.map(item => item.url)], "https://example.test/").sort(), expected);
     }
-  } finally { await browser.close(); }
+  } finally {
+    await browser.close();
+  }
 });
 
 test("初回走査中・待機中に既存ホストへ追加されたRootを発見し、削除・closedを除く", async () => {
   const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
-  const browser = await chromium.launch({channel:"chrome", headless:true});
+  const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();
     await page.setContent('<div id="before"></div><div id="during"></div><div id="waiting"></div><div id="removed"></div><div id="closed"></div>');
     const result = await page.evaluate(async source => {
-      const moduleUrl = URL.createObjectURL(new Blob([source], {type:"text/javascript"}));
+      const moduleUrl = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));
       const {scanDocument} = await import(moduleUrl);
       URL.revokeObjectURL(moduleUrl);
-      document.body.append(...Array.from({length:300}, () => document.createElement("div")));
+      document.body.append(...Array.from({length: 300}, () => document.createElement("div")));
       const observations = new Map();
       const OriginalObserver = window.MutationObserver;
       window.MutationObserver = class extends OriginalObserver {
@@ -123,22 +165,26 @@ test("初回走査中・待機中に既存ホストへ追加されたRootを発�
         shadow.append(image);
         return shadow;
       };
-      attach("before"); attach("removed"); attach("closed", "closed");
+      attach("before");
+      attach("removed");
+      attach("closed", "closed");
       setTimeout(() => attach("during"), 0);
       const scan = scanDocument();
       setTimeout(() => {
         const shadow = attach("waiting");
         const nestedHost = document.createElement("div");
         shadow.append(nestedHost);
-        nestedHost.attachShadow({mode:"open"}).append(document.createTextNode("https://cdn.example.test/nested.gif"));
+        nestedHost.attachShadow({mode: "open"}).append(document.createTextNode("https://cdn.example.test/nested.gif"));
         document.getElementById("removed").remove();
       }, 20);
       const result = await scan;
-      return {result, counts:[...observations.values()]};
+      return {result, counts: [...observations.values()]};
     }, source);
     assert.deepEqual([...result.result.images].sort(), ["before.jpg", "during.jpg", "waiting.jpg", "nested.gif"].map(name => `https://cdn.example.test/${name}`).sort());
     assert.ok(result.counts.every(count => count === 1), "同じRootの監視登録を重ねない");
-  } finally { await browser.close(); }
+  } finally {
+    await browser.close();
+  }
 });
 
 test("本文・script・styleとShadow DOMのText更新を所有要素へ反映する", async () => {
@@ -180,10 +226,20 @@ test("本文・script・styleとShadow DOMのText更新を所有要素へ反映�
       setTimeout(() => changes.forEach(change => change()), 20);
       return scan;
     }, source);
-    const expected = [0, 1].flatMap(index => ["p-data-new.gif", "p-data-old.gif", "p-nodeValue-new.gif", "script-textContent-new.gif", "style-data-new.gif", "p-append-new.gif", "root-new.jpg"].map(name => `https://cdn.example.test/${index}/${name}`));
+    const expected = [0, 1].flatMap(index => [
+      "p-data-new.gif",
+      "p-data-old.gif",
+      "p-nodeValue-new.gif",
+      "script-textContent-new.gif",
+      "style-data-new.gif",
+      "p-append-new.gif",
+      "root-new.jpg"
+    ].map(name => `https://cdn.example.test/${index}/${name}`));
     assert.deepEqual([...result.images].sort(), [...expected].sort());
     assert.deepEqual(result.media.map(({url}) => url).sort(), [...expected].sort());
-  } finally { await browser.close(); }
+  } finally {
+    await browser.close();
+  }
 });
 
 test("本文候補は属性更新で失われず、追加・削除と共有する根拠を反映する", async () => {
@@ -211,7 +267,10 @@ test("本文候補は属性更新で失われず、追加・削除と共有す�
       setTimeout(() => {
         paragraphs.forEach(p => {
           if (/removed|shared/.test(p.textContent)) p.remove();
-          else { p.className = "ready"; p.setAttribute("aria-label", "ready"); }
+          else {
+            p.className = "ready";
+            p.setAttribute("aria-label", "ready");
+          }
         });
         document.querySelector("main").className = "ready";
         roots.forEach((root, index) => {
@@ -226,7 +285,9 @@ test("本文候補は属性更新で失われず、追加・削除と共有す�
     assert.deepEqual([...result.images].sort(), [...expected].sort());
     assert.deepEqual(result.media.map(({url}) => url).sort(), [...expected].sort());
     assert.ok(result.media.filter(({url}) => url.endsWith(".gif")).every(({kind}) => kind === "gif"));
-  } finally { await browser.close(); }
+  } finally {
+    await browser.close();
+  }
 });
 
 test("実ブラウザーでopen Shadow DOMを再帰走査し、短時間の変更を反映する", async () => {
@@ -312,7 +373,8 @@ test("初回noneの背景をCSSOMで追加すると通常DOMとopen Shadow DOM�
         const backgrounds = [];
         const changes = [];
         roots.forEach((root, index) => {
-          const background = document.createElement("div"); background.className = "page";
+          const background = document.createElement("div");
+          background.className = "page";
           root.append(background);
           backgrounds.push(background);
           const sheet = new CSSStyleSheet();
@@ -339,7 +401,9 @@ test("初回noneの背景をCSSOMで追加すると通常DOMとopen Shadow DOM�
       assert.deepEqual(result.media?.map(({url}) => url).sort(), expected, mode);
       assert.ok(result.media.every(({kind}) => kind === "gif"), mode);
     }
-  } finally { await browser.close(); }
+  } finally {
+    await browser.close();
+  }
 });
 
 test("結果確定前にCSS変更で消えた背景の根拠を更新し、共有URLと未適用CSSを保つ", async () => {
@@ -361,14 +425,15 @@ test("結果確定前にCSS変更で消えた背景の根拠を更新し、共�
           const newUrl = `https://cdn.example.test/${index}/new?format=gif`;
           const rule = url => `.page {background-image:url("${url}");width:10px;height:10px}`;
           const style = document.createElement("style");
-          const background = document.createElement("div"); background.className = "page";
+          const background = document.createElement("div");
+          background.className = "page";
           root.append(style, background);
           if (mode.startsWith("cssom")) {
             const sheet = new CSSStyleSheet();
             sheet.replaceSync(rule(oldUrl));
             const scope = index === 0 ? document : root;
             scope.adoptedStyleSheets = [sheet];
-            changes.push(() => {sheet.cssRules[0].style.backgroundImage = mode === "cssom-none" ? "none" : `url("${newUrl}")`;});
+            changes.push(() => { sheet.cssRules[0].style.backgroundImage = mode === "cssom-none" ? "none" : `url("${newUrl}")`; });
           } else {
             style.textContent = rule(oldUrl);
             changes.push(() => {
@@ -380,7 +445,8 @@ test("結果確定前にCSS変更で消えた背景の根拠を更新し、共�
           unused.textContent = `.absent {background:url("https://cdn.example.test/${index}/unused.jpg")}`;
           root.append(unused);
           if (mode === "shared") {
-            const image = document.createElement("img"); image.dataset.src = oldUrl;
+            const image = document.createElement("img");
+            image.dataset.src = oldUrl;
             root.append(image, document.createTextNode(oldUrl));
           }
         });
@@ -397,5 +463,7 @@ test("結果確定前にCSS変更で消えた背景の根拠を更新し、共�
       assert.deepEqual(result.media.map(({url}) => url).sort(), expected, mode);
       assert.ok(result.media.filter(({url}) => /old.gif|format=gif/.test(url)).every(({kind}) => kind === "gif"));
     }
-  } finally { await browser.close(); }
+  } finally {
+    await browser.close();
+  }
 });

@@ -16,11 +16,15 @@
 
 [pdf.ts](pdf.ts) は既存の公開関数と型を保つ窓口で、PDF全体のページ順を組み立てます。画像ページの検証と配置は [pdf-image-page.ts](pdf-image-page.ts)、出典ページの文字配置・字形・文字検索用対応表は [pdf-source-page.ts](pdf-source-page.ts)、PDF部品の組み立てとオブジェクト位置表の作成は [pdf-objects.ts](pdf-objects.ts) が担当します。PDF 1.3/1.5の画像ページでは、幅または高さが14,400を超える場合に画像の画素寸法を保ち、MediaBoxと配置行列を同じ倍率で縮小します。Blob出力では画像のバイト列をBlobの部品として渡し、オブジェクト位置表をその長さから計算します。`createPdfFromJpegs()`は従来どおりPDF全体を1つのUint8Arrayとして返します。通信側はPDFの組み立てを経由せず、JPEGの判定を直接利用します。
 
+[source-page-layout.ts](source-page-layout.ts) は出典ページの折り返し、文字幅、行位置を計算し、プレビューとPDFで共用します。
+
 [source-text.ts](source-text.ts) は不正なUTF-16を置換する規則を所有し、出典プレビューの配置・PDFの字形検索・コピー文字列で共用します。
 
-## メディアの種類と完全性検査
+## メディアの種類・寸法・完全性検査
 
 [media-types.ts](media-types.ts) は取得したデータのMIME、先頭バイトによる形式判定、画像・GIF・動画の対応、拡張子を一元管理します。
+
+[image-dimensions.ts](image-dimensions.ts) は画像を画素へ展開せず、形式ごとのヘッダーから寸法を読み取ります。AVIFでは寸法を持つ属性と画像から属性への参照を分けて読み、主画像に対応する寸法を選びます。
 
 [original-media-structure.ts](original-media-structure.ts) はGIFのブロック終端・画像フレームとMP4の既知コンテナの境界・必須トップレベル構造を確認します。識別子だけのデータや途中切断を保存前に拒否し、デコードや元バイトの書き換えは行いません。
 

@@ -268,7 +268,10 @@ export function captureCollectionLinks(session: string): void {
   };
 
   const drawHover = (state: HoverState): void => {
-    if (busy || state.modifier) { hideGlow(); return; }
+    if (busy || state.modifier) {
+      hideGlow();
+      return;
+    }
     const {target, url} = state;
     if (hovered === target || (visualTarget === target && glow.style.display !== "none")) {
       if (hideTimer !== null) {
@@ -279,13 +282,8 @@ export function captureCollectionLinks(session: string): void {
       glow.style.transition = prefersReducedMotion()
         ? "none"
         : "opacity 160ms cubic-bezier(.2,.75,.25,1),transform 160ms cubic-bezier(.2,.75,.25,1),box-shadow 160ms ease";
-      if (prefersReducedMotion()) {
-        glow.style.opacity = "1";
-        glow.style.transform = "scale(1)";
-      } else {
-        glow.style.opacity = "1";
-        glow.style.transform = "scale(1)";
-      }
+      glow.style.opacity = "1";
+      glow.style.transform = "scale(1)";
       glow.style.boxShadow = desiredGlow(url.href);
       positionGlow(target, glow);
       return;
@@ -331,11 +329,7 @@ export function captureCollectionLinks(session: string): void {
     hovered = target;
     visualTarget = target;
     glow.style.boxShadow = desiredGlow(url.href);
-    const rect = target.getBoundingClientRect();
-    glow.style.left = `${rect.left}px`;
-    glow.style.top = `${rect.top}px`;
-    glow.style.width = `${rect.width}px`;
-    glow.style.height = `${rect.height}px`;
+    positionGlow(target, glow);
     glow.style.display = "block";
     if (prefersReducedMotion()) {
       glow.style.transition = "none";
@@ -383,9 +377,20 @@ export function captureCollectionLinks(session: string): void {
   document.addEventListener("animationend", scheduleRedraw, true);
   document.fonts?.addEventListener("loadingdone", scheduleRedraw);
 
-  const onLeave = (): void => { lastHover = null; hideGlow(); };
-  const onScroll = (): void => { onLeave(); pruneDetachedTargets(); scheduleRedraw(); };
-  const onResize = (): void => { onLeave(); pruneDetachedTargets(); scheduleRedraw(); };
+  const onLeave = (): void => {
+    lastHover = null;
+    hideGlow();
+  };
+  const onScroll = (): void => {
+    onLeave();
+    pruneDetachedTargets();
+    scheduleRedraw();
+  };
+  const onResize = (): void => {
+    onLeave();
+    pruneDetachedTargets();
+    scheduleRedraw();
+  };
 
   const onClick = (event: MouseEvent): void => {
     if (!event.isTrusted) return;

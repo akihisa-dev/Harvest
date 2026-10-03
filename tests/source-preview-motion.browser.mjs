@@ -98,10 +98,15 @@ test("Source row entry and removal animate while selection updates reuse layout"
       const afterStableRender = fixture.rowMeasurements;
       const sourceEntryAnimated = fixture.animations.some(animation => animation.className === "source-preview");
       fixture.view.render(new Set(), null);
-      return {afterSelection, afterSourceEntry, afterStableRender, afterSourceRemoved: fixture.imagesElement.children.length,
+      return {
+        afterSelection,
+        afterSourceEntry,
+        afterStableRender,
+        afterSourceRemoved: fixture.imagesElement.children.length,
         imagesRetained: fixture.images.every((row, index) => fixture.imagesElement.children[index] === row),
         sourceEntryAnimated,
-        sourceGhostAnimated: fixture.animations.some(animation => animation.className.includes("motion-ghost"))};
+        sourceGhostAnimated: fixture.animations.some(animation => animation.className.includes("motion-ghost"))
+      };
     });
     assert.equal(baseline.afterSelection, 0, "selection-only updates do not measure list layout");
     assert.ok(baseline.afterSourceEntry > 0, "Source entry measures the list layout for motion");

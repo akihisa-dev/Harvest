@@ -23,7 +23,10 @@ function bounded<T>(start: (resolve: (value: T) => void, reject: (error: Error) 
     };
     const onAbort = (): void => finish(new Error(abortedMessage));
     const timer = setTimeout(() => finish(new Error("ページの読み取りが時間切れになりました。もう一度お試しください。")), 20_000);
-    if (signal?.aborted) { onAbort(); return; }
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
     signal?.addEventListener("abort", onAbort, {once: true});
     try {
       cleanup = start(value => finish(undefined, value), error => finish(error));

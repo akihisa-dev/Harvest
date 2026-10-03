@@ -183,7 +183,10 @@ export function createImageDragController(options: ImageDragOptions): ImageDragC
     bindRow(row, preview, getItem) {
       row.addEventListener("pointerdown", () => { suppressClick = false; });
       row.addEventListener("dragstart", event => {
-        if (options.isBusy()) { event.preventDefault(); return; }
+        if (options.isBusy()) {
+          event.preventDefault();
+          return;
+        }
         suppressClick = true;
         start(getItem());
         if (event.dataTransfer) {

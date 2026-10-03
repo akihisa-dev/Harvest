@@ -13,8 +13,8 @@ test("removed collection links lose their marker in a real DOM", async () => {
       window.collectionMessages = [];
       window.syntheticClickResults = [];
       const port = {
-        onMessage: {addListener(listener) { window.sendCollectionMessage = listener; }},
-        onDisconnect: {addListener() {}},
+        onMessage: {addListener(listener) { window.sendCollectionMessage = listener; } },
+        onDisconnect: {addListener() {} },
         postMessage(message) { window.collectionMessages.push(message); },
       };
       Object.defineProperty(window, "chrome", {configurable: true, value: {runtime: {connect: () => port}}});
@@ -50,7 +50,10 @@ test("removed collection links lose their marker in a real DOM", async () => {
     await page.evaluate(() => window.sendCollectionMessage({busy: false, pdfUrl: "https://example.test/target", canExport: true}));
     assert.equal(await page.locator('div[aria-hidden="true"]').count(), 2);
 
-    await page.evaluate(() => { window.removedCollectionLink = document.querySelector("#target"); window.removedCollectionLink.remove(); });
+    await page.evaluate(() => {
+      window.removedCollectionLink = document.querySelector("#target");
+      window.removedCollectionLink.remove();
+    });
     await page.waitForFunction(() => document.querySelectorAll('div[aria-hidden="true"]').length === 1);
     await page.evaluate(() => {
       document.body.append(window.removedCollectionLink);
@@ -74,8 +77,8 @@ test("href changes clear old collection markers and reject stale results in a re
     await page.setContent('<a id="target" href="https://example.test/a">Target</a>');
     await page.evaluate(async source => {
       const port = {
-        onMessage: {addListener(listener) { window.sendCollectionMessage = listener; }},
-        onDisconnect: {addListener() {}},
+        onMessage: {addListener(listener) { window.sendCollectionMessage = listener; } },
+        onDisconnect: {addListener() {} },
         postMessage() {},
       };
       Object.defineProperty(window, "chrome", {configurable: true, value: {runtime: {connect: () => port}}});
@@ -123,8 +126,8 @@ test("page layout shifts reposition persistent and hovered collection glows", as
     await page.setContent('<a id="target" href="https://example.test/layout">Target</a>');
     await page.evaluate(async source => {
       const port = {
-        onMessage: {addListener(listener) { window.sendCollectionMessage = listener; }},
-        onDisconnect: {addListener() {}},
+        onMessage: {addListener(listener) { window.sendCollectionMessage = listener; } },
+        onDisconnect: {addListener() {} },
         postMessage() {},
       };
       Object.defineProperty(window, "chrome", {configurable: true, value: {runtime: {connect: () => port}}});

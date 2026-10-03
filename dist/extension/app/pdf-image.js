@@ -141,7 +141,10 @@ export async function preparePdfImages(items, onResult, options = {}) {
     workers.signal.addEventListener("abort", closeQueue, { once: true });
     if (workers.signal.aborted)
         closeQueue();
-    const fetchCompletion = workers.finished.then(() => queue.close(), error => { queue.close(error); throw error; });
+    const fetchCompletion = workers.finished.then(() => queue.close(), error => {
+        queue.close(error);
+        throw error;
+    });
     const converter = (async () => {
         while (true) {
             const queued = await queue.pop();

@@ -30,7 +30,10 @@ export function prepareMp4(blob: Blob, signal?: AbortSignal, maxBytes = MAX_IMAG
     };
     worker.onerror = worker.onmessageerror = () => finish(new Error("動画をMP4へ変換できませんでした。"));
     signal?.addEventListener("abort", abort, {once: true});
-    if (signal?.aborted) { abort(); return; }
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
     try { worker.postMessage({blob, maxBytes: Math.min(maxBytes, MAX_IMAGE_BYTES)} satisfies Mp4ConversionRequest); }
     catch { finish(new Error("動画をMP4へ変換できませんでした。")); }
   });

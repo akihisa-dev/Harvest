@@ -5,7 +5,7 @@ import test from "node:test";
 function installLocalizationEnvironment(language) {
   const previous = {document: globalThis.document, chrome: globalThis.chrome};
   globalThis.document = {
-    documentElement: {setAttribute() {}},
+    documentElement: {setAttribute() {} },
     body: {dataset: {}},
     querySelectorAll() { return []; },
   };
@@ -68,16 +68,23 @@ class StubElement {
     this.listeners = new Map();
     this.className = "";
     this.style = {order: ""};
-    this.classList = {add: name => { this.className += this.className ? ` ${name}` : name; }, remove: name => { this.className = this.className.split(" ").filter(value => value !== name).join(" "); }};
+    this.classList = {
+      add: name => { this.className += this.className ? ` ${name}` : name; },
+      remove: name => { this.className = this.className.split(" ").filter(value => value !== name).join(" "); }
+    };
   }
   addEventListener(name, callback) { this.listeners.set(name, callback); }
   append(...children) { this.children.push(...children.filter(Boolean)); }
   replaceChildren(...children) { this.children = children.filter(Boolean); }
   remove() {}
   click() { if (this.tagName === "a") this.owner.downloads.push(this.download); }
-  getContext() { return this.tagName === "canvas" ? {
-    fillRect() {}, drawImage() {}, getImageData: () => ({data: new Uint8ClampedArray([12, 34, 56, 255])}),
-  } : null; }
+  getContext() {
+    return this.tagName === "canvas"
+      ? {
+        fillRect() {}, drawImage() {}, getImageData: () => ({data: new Uint8ClampedArray([12, 34, 56, 255])}),
+      }
+      : null;
+  }
   setAttribute(name, value) { this.attributes.set(name, String(value)); }
   removeAttribute(name) { this.attributes.delete(name); }
   getAttribute(name) { return this.attributes.get(name) ?? null; }
@@ -91,7 +98,7 @@ class StubElement {
   }
   animate(keyframes, options) {
     this.owner.animations.push({element: this, keyframes, options});
-    return {finished: Promise.resolve(), cancel() {}};
+    return {finished: Promise.resolve(), cancel() {} };
   }
   getAnimations() { return []; }
   dispatch(name, event = {}) {
@@ -109,7 +116,10 @@ function descendants(element) {
 test("英語画面で解析・分類・選択・エラー表示が翻訳され、取得元の名前は保つ", async () => {
   const previous = {document: globalThis.document, chrome: globalThis.chrome, window: globalThis.window};
   const root = {
-    activeElement: null, animations: [], downloads: [], elements: new Map(),
+    activeElement: null,
+    animations: [],
+    downloads: [],
+    elements: new Map(),
     createElement(tag) { return new StubElement(tag, root); },
     createElementNS(_namespace, tag) { return new StubElement(tag, root); },
     createTextNode(textContent) { return {textContent}; },
@@ -139,19 +149,27 @@ test("英語画面で解析・分類・選択・エラー表示が翻訳され�
   globalThis.window = {setTimeout, clearTimeout, matchMedia: () => ({matches: true})};
   globalThis.chrome = {
     i18n: {getUILanguage: () => "en-US"},
-    runtime: {onConnect: {addListener() {}}},
+    runtime: {onConnect: {addListener() {} }},
     tabs: {
       query: async () => [{id: 7, url: "https://example.com/view"}],
       get: async () => ({status: "complete"}),
-      onUpdated: {addListener() {}, removeListener() {}},
-      onRemoved: {addListener() {}, removeListener() {}},
+      onUpdated: {addListener() {}, removeListener() {} },
+      onRemoved: {addListener() {}, removeListener() {} },
     },
-    scripting: {executeScript: async () => {
-      if (fail) throw new Error("ページを読み取れませんでした。");
-      return [{result: {url: "https://example.com/view", title: "元のページ名", images: [
-        "https://example.com/pages/001.jpg", "https://example.com/pages/002.jpg",
-      ]}}];
-    }},
+    scripting: {
+      executeScript: async () => {
+        if (fail) throw new Error("ページを読み取れませんでした。");
+        return [{
+          result: {
+            url: "https://example.com/view",
+            title: "元のページ名",
+            images: [
+              "https://example.com/pages/001.jpg", "https://example.com/pages/002.jpg",
+            ]
+          }
+        }];
+      }
+    },
   };
   const waitForScan = async () => {
     for (let attempt = 0; attempt < 100 && root.querySelector("#scan").disabled; attempt++) {

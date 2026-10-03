@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { scanXMedia } from "../dist/extension/app/x-media-scan.js";
+import {scanXMedia} from "../dist/extension/app/x-media-scan.js";
 
 async function runOnPage(hostname, articles, callback = scanXMedia, mediaElements = [], pathname = "/home") {
   const previous = {
@@ -34,12 +34,14 @@ test("X記事のページ内Reactデータから各video_infoの最高bitrate MP
             media: [{
               type: "animated_gif",
               media_url_https: "https://pbs.twimg.com/media/preview.jpg?format=jpg&name=small",
-              video_info: {variants: [
-                {content_type: "video/mp4", bitrate: 832_000, url: "https://video.twimg.com/low.mp4"},
-                {content_type: "application/x-mpegURL", bitrate: 8_000_000, url: "https://video.twimg.com/playlist.m3u8"},
-                {content_type: "video/mp4; codecs=avc1", bitrate: 2_176_000, url: "https://video.twimg.com/high.mp4"},
-                {content_type: "video/mp4", bitrate: 12_000_000, url: "blob:https://x.com/local"},
-              ]},
+              video_info: {
+                variants: [
+                  {content_type: "video/mp4", bitrate: 832_000, url: "https://video.twimg.com/low.mp4"},
+                  {content_type: "application/x-mpegURL", bitrate: 8_000_000, url: "https://video.twimg.com/playlist.m3u8"},
+                  {content_type: "video/mp4; codecs=avc1", bitrate: 2_176_000, url: "https://video.twimg.com/high.mp4"},
+                  {content_type: "video/mp4", bitrate: 12_000_000, url: "blob:https://x.com/local"},
+                ]
+              },
             }],
           },
         },
@@ -61,16 +63,25 @@ test("article自身のfiberから親のmemoizedPropsをたどり、getterを呼�
   let getterCalls = 0;
   const lazyVariant = {};
   Object.defineProperties(lazyVariant, {
-    url: {get() { getterCalls += 1; return "https://video.twimg.com/should-not-read.mp4"; }},
+    url: {
+      get() {
+        getterCalls += 1;
+        return "https://video.twimg.com/should-not-read.mp4";
+      }
+    },
     content_type: {value: "video/mp4"},
     bitrate: {value: 50_000},
   });
   const parentFiber = {
     memoizedProps: {
-      mediaDetails: [{video_info: {variants: [
-        {content_type: "video/mp4", bitrate: 90_000, url: "https://video.twimg.com/parent.mp4"},
-        lazyVariant,
-      ]}}],
+      mediaDetails: [{
+        video_info: {
+          variants: [
+            {content_type: "video/mp4", bitrate: 90_000, url: "https://video.twimg.com/parent.mp4"},
+            lazyVariant,
+          ]
+        }
+      }],
     },
     return: null,
   };
@@ -114,9 +125,19 @@ test("video/1のdialog player props.source.srcを記事の候補より先に返�
   const article = {};
   Object.defineProperty(article, "__reactProps$article", {
     value: {
-      tweet: {legacy: {extended_entities: {media: [{video_info: {variants: [
-        {content_type: "video/mp4", bitrate: 800_000, url: "https://video.twimg.com/background.mp4"},
-      ]}}]}}},
+      tweet: {
+        legacy: {
+          extended_entities: {
+            media: [{
+              video_info: {
+                variants: [
+                  {content_type: "video/mp4", bitrate: 800_000, url: "https://video.twimg.com/background.mp4"},
+                ]
+              }
+            }]
+          }
+        }
+      },
     },
   });
   const video = {};
@@ -134,9 +155,13 @@ test("video/1のdialog player props.source.srcを記事の候補より先に返�
 });
 
 test("投稿動画を見つけたら祖先探索を止め、store・cache・clientの投稿外動画を拾わない", async () => {
-  const video = url => ({video_info: {variants: [
-    {content_type: "video/mp4", bitrate: 256_000, url},
-  ]}});
+  const video = url => ({
+    video_info: {
+      variants: [
+        {content_type: "video/mp4", bitrate: 256_000, url},
+      ]
+    }
+  });
   const postFiber = {
     memoizedProps: {
       tweet: {legacy: {extended_entities: {media: [video("https://video.twimg.com/post.mp4")]}}},
@@ -162,7 +187,12 @@ test("X以外のページではReactデータを読まない", () => {
   let queryCalls = 0;
   const previousDocument = globalThis.document;
   const previousLocation = globalThis.location;
-  globalThis.document = {querySelectorAll() { queryCalls += 1; return []; }};
+  globalThis.document = {
+    querySelectorAll() {
+      queryCalls += 1;
+      return [];
+    }
+  };
   globalThis.location = {hostname: "example.com", href: "https://example.com/"};
   try {
     assert.deepEqual(scanXMedia(), []);
@@ -187,23 +217,33 @@ test("深く入れ子になった配列は深さ上限で打ち切る", async ()
 test("同じプレイヤーのsrcとvariantは最高画質へ統合し、別動画と直接srcの代用を保つ", async () => {
   const low = "https://video.twimg.com/one/low/clip.mp4", high = "https://video.twimg.com/one/high/clip.mp4";
   const other = "https://video.twimg.com/two/high/clip.mp4";
-  const player = {__reactProps$player: {src:low, video_info:{variants:[
-    {url:low, content_type:"video/mp4", bitrate:1}, {url:high, content_type:"video/mp4", bitrate:10},
-  ]}}};
-  const direct = {__reactProps$direct:{src:low}};
-  const second = {__reactProps$second:{src:other}};
-  const candidates = await runOnPage("x.com", [], scanXMedia, [direct, player, second].map(element => ({element, selectors:['[data-testid="videoPlayer"]']})));
-  assert.deepEqual(candidates, [{url:high, kind:"video", variantUrls:[low]}, {url:other, kind:"video"}]);
-  assert.deepEqual(await runOnPage("x.com", [], scanXMedia, [{element:direct, selectors:['[data-testid="videoPlayer"]']}]), [{url:low, kind:"video"}]);
+  const player = {
+    __reactProps$player: {
+      src: low,
+      video_info: {
+        variants: [
+          {url: low, content_type: "video/mp4", bitrate: 1}, {url: high, content_type: "video/mp4", bitrate: 10},
+        ]
+      }
+    }
+  };
+  const direct = {__reactProps$direct: {src: low}};
+  const second = {__reactProps$second: {src: other}};
+  const candidates = await runOnPage("x.com", [], scanXMedia, [direct, player, second].map(element => ({element, selectors: ['[data-testid="videoPlayer"]']})));
+  assert.deepEqual(candidates, [{url: high, kind: "video", variantUrls: [low]}, {url: other, kind: "video"}]);
+  assert.deepEqual(await runOnPage("x.com", [], scanXMedia, [{element: direct, selectors: ['[data-testid="videoPlayer"]']}]), [{url: low, kind: "video"}]);
 });
 
 
 test("複数の再生情報にまたがる同一動画の画質関係を保持し、サムネイル追加で失わない", async () => {
   const low = "https://video.twimg.com/low.mp4", medium = "https://video.twimg.com/medium.mp4", high = "https://video.twimg.com/high.mp4";
-  const player = variants => ({__reactProps$player:{video_info:{variants:variants.map(([url,bitrate]) => ({url,bitrate,content_type:"video/mp4"}))}}});
-  const elements = [player([[low,1],[medium,2]]), player([[medium,2],[high,3]]),
-    {__reactProps$source:{source:{src:high},poster:"https://pbs.twimg.com/preview.jpg"}}];
-  const candidates = await runOnPage("x.com", [], scanXMedia, elements.map(element => ({element,selectors:['[data-testid="videoPlayer"]']})));
+  const player = variants => ({__reactProps$player: {video_info: {variants: variants.map(([url, bitrate]) => ({url, bitrate, content_type: "video/mp4"}))}}});
+  const elements = [
+    player([[low, 1], [medium, 2]]),
+    player([[medium, 2], [high, 3]]),
+    {__reactProps$source: {source: {src: high}, poster: "https://pbs.twimg.com/preview.jpg"}}
+  ];
+  const candidates = await runOnPage("x.com", [], scanXMedia, elements.map(element => ({element, selectors: ['[data-testid="videoPlayer"]']})));
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0].url, high);
   assert.deepEqual(candidates[0].variantUrls.sort(), [low, medium].sort());

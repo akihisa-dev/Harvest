@@ -6,37 +6,37 @@ export const baselineJpeg = new Uint8Array(Buffer.from(baselineBase64, "base64")
 export const progressiveJpeg = new Uint8Array(Buffer.from(progressiveBase64, "base64"));
 export const exifJpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe1, 0, 8, 0x45, 0x78, 0x69, 0x66, 0, 0, ...baselineJpeg.slice(2)]);
 
-function withoutSegments(bytes, removed) {
+function withoutSegments(bytes, removedMarkers) {
   const result = [...bytes.slice(0, 2)];
   let offset = 2;
   while (bytes[offset + 1] !== 0xda) {
-    const end = offset + 2 + bytes[offset + 2] * 256 + bytes[offset + 3];
-    if (!removed.includes(bytes[offset + 1])) result.push(...bytes.slice(offset, end));
-    offset = end;
+    const segmentEnd = offset + 2 + bytes[offset + 2] * 256 + bytes[offset + 3];
+    if (!removedMarkers.includes(bytes[offset + 1])) result.push(...bytes.slice(offset, segmentEnd));
+    offset = segmentEnd;
   }
   return new Uint8Array([...result, ...bytes.slice(offset)]);
 }
 
-const sos = baselineJpeg.findIndex((byte, index) => byte === 0xff && baselineJpeg[index + 1] === 0xda);
-const sof = baselineJpeg.findIndex((byte, index) => byte === 0xff && baselineJpeg[index + 1] === 0xc0);
-const scanStart = sos + 2 + baselineJpeg[sos + 2] * 256 + baselineJpeg[sos + 3];
+const scanHeaderOffset = baselineJpeg.findIndex((byte, index) => byte === 0xff && baselineJpeg[index + 1] === 0xda);
+const frameHeaderOffset = baselineJpeg.findIndex((byte, index) => byte === 0xff && baselineJpeg[index + 1] === 0xc0);
+const scanDataOffset = scanHeaderOffset + 2 + baselineJpeg[scanHeaderOffset + 2] * 256 + baselineJpeg[scanHeaderOffset + 3];
 const incompleteComponents = baselineJpeg.slice();
-incompleteComponents[sof + 3] = 8;
+incompleteComponents[frameHeaderOffset + 3] = 8;
 
 export const brokenJpegs = {
   "issue-25-bytes": new Uint8Array([255, 216, 255, 224, 0, 7, 74, 70, 73, 70, 0, 255, 192, 0, 8, 8, 0, 1, 0, 1, 3, 255, 218, 255, 217]),
-  "missing-scan-header": new Uint8Array([...baselineJpeg.slice(0, sos + 2), 255, 217]),
+  "missing-scan-header": new Uint8Array([...baselineJpeg.slice(0, scanHeaderOffset + 2), 255, 217]),
   "missing-components": incompleteComponents,
   "missing-quantization": withoutSegments(baselineJpeg, [0xdb]),
   "missing-huffman": withoutSegments(baselineJpeg, [0xc4]),
-  "missing-scan-data": new Uint8Array([...baselineJpeg.slice(0, scanStart), 255, 217]),
-  "truncated-scan": baselineJpeg.slice(0, scanStart + 1),
+  "missing-scan-data": new Uint8Array([...baselineJpeg.slice(0, scanDataOffset), 255, 217]),
+  "truncated-scan": baselineJpeg.slice(0, scanDataOffset + 1),
   "missing-end": baselineJpeg.slice(0, -2),
 };
 
 // This retains complete segments but defines an impossible Huffman code tree.
 // It must reach and fail the browser decoder, rather than only the structure check.
 export const undecodableJpeg = baselineJpeg.slice();
-const dht = undecodableJpeg.findIndex((byte, index) => byte === 0xff && undecodableJpeg[index + 1] === 0xc4);
-undecodableJpeg.fill(0, dht + 5, dht + 21);
-undecodableJpeg[dht + 5] = 12;
+const huffmanTableOffset = undecodableJpeg.findIndex((byte, index) => byte === 0xff && undecodableJpeg[index + 1] === 0xc4);
+undecodableJpeg.fill(0, huffmanTableOffset + 5, huffmanTableOffset + 21);
+undecodableJpeg[huffmanTableOffset + 5] = 12;

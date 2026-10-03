@@ -312,6 +312,28 @@ export function scanXMedia(targetPostId) {
             foundVideo = true;
         return foundVideo;
     };
+    const inspectReactAncestors = (element, ownKeys, inspectProps) => {
+        for (const key of ownKeys) {
+            if (timedOut())
+                break;
+            if (!key.startsWith("__reactFiber$") && !key.startsWith("__reactInternalInstance$"))
+                continue;
+            let fiber = dataValue(element, key);
+            for (let ancestor = 0; typeof fiber === "object" && fiber !== null && ancestor < 40 && !timedOut(); ancestor += 1) {
+                const memoizedProps = dataValue(fiber, "memoizedProps");
+                let foundInProps = typeof memoizedProps === "object" && memoizedProps !== null
+                    ? inspectProps(memoizedProps, Boolean(targetPostId && ancestor > 0))
+                    : false;
+                const pendingProps = dataValue(fiber, "pendingProps");
+                if (!foundInProps && typeof pendingProps === "object" && pendingProps !== null && pendingProps !== memoizedProps) {
+                    foundInProps = inspectProps(pendingProps, Boolean(targetPostId && ancestor > 0));
+                }
+                if (foundInProps)
+                    break;
+                fiber = dataValue(fiber, "return");
+            }
+        }
+    };
     // On X's expanded-video route, the target player may exist without an
     // article. Inspect the dialog/player elements first so their media stays
     // ahead of background posts in the returned candidates.
@@ -349,26 +371,7 @@ export function scanXMedia(targetPostId) {
                 if (typeof directProps === "object" && directProps !== null)
                     inspectPlayerProps(directProps);
             }
-            for (const key of ownKeys) {
-                if (timedOut())
-                    break;
-                if (!key.startsWith("__reactFiber$") && !key.startsWith("__reactInternalInstance$"))
-                    continue;
-                let fiber = dataValue(mediaElement, key);
-                for (let ancestor = 0; typeof fiber === "object" && fiber !== null && ancestor < 40 && !timedOut(); ancestor += 1) {
-                    const memoizedProps = dataValue(fiber, "memoizedProps");
-                    let foundInProps = typeof memoizedProps === "object" && memoizedProps !== null
-                        ? inspectPlayerProps(memoizedProps, Boolean(targetPostId && ancestor > 0))
-                        : false;
-                    const pendingProps = dataValue(fiber, "pendingProps");
-                    if (!foundInProps && typeof pendingProps === "object" && pendingProps !== null && pendingProps !== memoizedProps) {
-                        foundInProps = inspectPlayerProps(pendingProps, Boolean(targetPostId && ancestor > 0));
-                    }
-                    if (foundInProps)
-                        break;
-                    fiber = dataValue(fiber, "return");
-                }
-            }
+            inspectReactAncestors(mediaElement, ownKeys, inspectPlayerProps);
         }
     }
     const articles = document.querySelectorAll("article");
@@ -397,26 +400,7 @@ export function scanXMedia(targetPostId) {
         }
         if (articleHasPostVideo)
             continue;
-        for (const key of ownKeys) {
-            if (timedOut())
-                break;
-            if (!key.startsWith("__reactFiber$") && !key.startsWith("__reactInternalInstance$"))
-                continue;
-            let fiber = dataValue(article, key);
-            for (let ancestor = 0; typeof fiber === "object" && fiber !== null && ancestor < 40 && !timedOut(); ancestor += 1) {
-                const memoizedProps = dataValue(fiber, "memoizedProps");
-                let foundInProps = typeof memoizedProps === "object" && memoizedProps !== null
-                    ? inspectTweetProps(memoizedProps, Boolean(targetPostId && ancestor > 0))
-                    : false;
-                const pendingProps = dataValue(fiber, "pendingProps");
-                if (!foundInProps && typeof pendingProps === "object" && pendingProps !== null && pendingProps !== memoizedProps) {
-                    foundInProps = inspectTweetProps(pendingProps, Boolean(targetPostId && ancestor > 0));
-                }
-                if (foundInProps)
-                    break;
-                fiber = dataValue(fiber, "return");
-            }
-        }
+        inspectReactAncestors(article, ownKeys, inspectTweetProps);
     }
     // Reconcile overlapping variant sets seen on different DOM/React owners.
     // Only explicit playback relationships join groups, never URL filenames.

@@ -20,24 +20,29 @@ globalThis.Blob = class extends nativeBlob {
   }
 };
 globalThis.document = {
-  documentElement: {setAttribute() {}}, querySelectorAll() { return []; }, body: {append() {}},
+  documentElement: {setAttribute() {} },
+  querySelectorAll() { return []; },
+  body: {append() {} },
   createElement(tag) {
-    if (tag === "a") return {href: "", download: "", click() { downloads.push(this.download); }, remove() {}};
+    if (tag === "a") return {href: "", download: "", click() { downloads.push(this.download); }, remove() {} };
     return {
-      width: 0, height: 0,
-      getContext() { return {fillRect() {}, drawImage() {}, getImageData() { return {data: new Uint8ClampedArray(4), width: 1, height: 1}; }}; },
+      width: 0,
+      height: 0,
+      getContext() {
+        return {fillRect() {}, drawImage() {}, getImageData() { return {data: new Uint8ClampedArray(4), width: 1, height: 1}; } };
+      },
       toBlob(done, type) { done(new Blob([new Uint8Array([1])], {type})); },
     };
   },
 };
-globalThis.window = {setTimeout() {}};
-globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {}});
+globalThis.window = {setTimeout() {} };
+globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {} });
 globalThis.Worker = class extends EventTarget {
   postMessage(message) {
-      if (message.blob) {
-        void storedZipChecksum(message.blob).then(checksum => this.dispatchEvent(new MessageEvent("message", {data: {id: message.id, checksum}})));
-      } else queueMicrotask(() => this.onmessage({data: {id: message.id, buffer: new ArrayBuffer(1)}}));
-    }
+    if (message.blob) {
+      void storedZipChecksum(message.blob).then(checksum => this.dispatchEvent(new MessageEvent("message", {data: {id: message.id, checksum}})));
+    } else queueMicrotask(() => this.onmessage({data: {id: message.id, buffer: new ArrayBuffer(1)}}));
+  }
   terminate() {}
 };
 // Do not leave the successful JXL fixture's idle timer running after this test.
@@ -67,10 +72,15 @@ for (const format of ["jpg", "png", "jxl"]) {
     downloads.length = statuses.length = 0;
     let busy = false;
     const controller = createImageExportController({
-      getSelectedItems: () => selected, getZipFilename: () => "images.zip",
-      isBusy: () => busy, isDisposed: () => false,
-      onBusyChange(value) { busy = value; }, onStatus(...args) { statuses.push(args); },
-      onCloseViewer() {}, onClearSourceUrl() {}, onScrollToFailures() {},
+      getSelectedItems: () => selected,
+      getZipFilename: () => "images.zip",
+      isBusy: () => busy,
+      isDisposed: () => false,
+      onBusyChange(value) { busy = value; },
+      onStatus(...args) { statuses.push(args); },
+      onCloseViewer() {},
+      onClearSourceUrl() {},
+      onScrollToFailures() {},
     });
     await controller.export(format);
     assert.ok(started < 140, "stop before fetching every image");
@@ -96,10 +106,15 @@ test("retry counts successful images already held toward the cumulative limit", 
     ? new Response("failed", {status: 404}) : normalFetch(url, options);
   let busy = false;
   const controller = createImageExportController({
-    getSelectedItems: () => selected, getZipFilename: () => "images.zip",
-    isBusy: () => busy, isDisposed: () => false,
-    onBusyChange(value) { busy = value; }, onStatus() {},
-    onCloseViewer() {}, onClearSourceUrl() {}, onScrollToFailures() {},
+    getSelectedItems: () => selected,
+    getZipFilename: () => "images.zip",
+    isBusy: () => busy,
+    isDisposed: () => false,
+    onBusyChange(value) { busy = value; },
+    onStatus() {},
+    onCloseViewer() {},
+    onClearSourceUrl() {},
+    onScrollToFailures() {},
   });
   try {
     await controller.export("png");
@@ -112,16 +127,24 @@ test("retry counts successful images already held toward the cumulative limit", 
     assert.equal(previousWork.prepared.size, 0);
     assert.equal(previousWork.failed.size, 0);
     assert.equal(busy, false);
-  } finally { globalThis.fetch = normalFetch; }
+  } finally {
+    globalThis.fetch = normalFetch;
+  }
 });
 
 test("too many ZIP entries are rejected before any image fetch", async () => {
   selected = Array.from({length: 65_536}, (_, index) => ({url: `https://example.test/${index}`}));
   started = 0;
   const controller = createImageExportController({
-    getSelectedItems: () => selected, getZipFilename: () => "images.zip",
-    isBusy: () => false, isDisposed: () => false, onBusyChange() {}, onStatus() {},
-    onCloseViewer() {}, onClearSourceUrl() {}, onScrollToFailures() {},
+    getSelectedItems: () => selected,
+    getZipFilename: () => "images.zip",
+    isBusy: () => false,
+    isDisposed: () => false,
+    onBusyChange() {},
+    onStatus() {},
+    onCloseViewer() {},
+    onClearSourceUrl() {},
+    onScrollToFailures() {},
   });
   await controller.export("png");
   assert.equal(started, 0);

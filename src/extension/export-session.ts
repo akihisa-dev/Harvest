@@ -68,12 +68,19 @@ export function createExportSession(options: ExportSessionOptions) {
       const selected = selectedItems();
       const pdf = options.getPdfController();
       const image = options.getImageController();
-      return {format, includeSourcePage, selected, view: deriveExportViewState({
-        format, includeSourcePage, selected, completed,
-        pdfPending: pdf?.pending ?? null, imagePending: image?.pending ?? null,
-        pdfRunning: pdf?.isRunning ?? false, imageRunning: image?.isRunning ?? false,
-        pdfProgress: pdf?.progress ?? "", imageProgress: image?.progress ?? "",
-      })};
+      const view = deriveExportViewState({
+        format,
+        includeSourcePage,
+        selected,
+        completed,
+        pdfPending: pdf?.pending ?? null,
+        imagePending: image?.pending ?? null,
+        pdfRunning: pdf?.isRunning ?? false,
+        imageRunning: image?.isRunning ?? false,
+        pdfProgress: pdf?.progress ?? "",
+        imageProgress: image?.progress ?? "",
+      });
+      return {format, includeSourcePage, selected, view};
     },
     setFormat(value: ExportFormat): void {
       format = value;

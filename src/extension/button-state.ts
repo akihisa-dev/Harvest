@@ -11,7 +11,10 @@ const labels = new WeakMap<HTMLButtonElement, ButtonLabel>();
 /** Keep the current label and its outgoing visual layer inside the same button. */
 export function setButtonLabel(button: HTMLButtonElement, text: string): void {
   // Non-browser consumers still receive the current accessible text immediately.
-  if (!button.ownerDocument) { button.textContent = text; return; }
+  if (!button.ownerDocument) {
+    button.textContent = text;
+    return;
+  }
   let label = labels.get(button);
   if (!label) {
     const current = button.ownerDocument.createElement("span");

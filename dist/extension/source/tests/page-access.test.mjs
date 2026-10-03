@@ -1,18 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { scanTab, scanUrl } from "../dist/extension/app/page-access.js";
+import {scanTab, scanUrl} from "../dist/extension/app/page-access.js";
 
 for (const change of ["url", "document"]) {
   test(`Xの追加解析中に${change}が変わった場合は結果を結合しない`, async t => {
     const url = "https://x.com/example/status/123";
-    fixture(t, {get:async () => ({url})});
+    fixture(t, {get: async () => ({url})});
     let scans = 0;
     chrome.scripting.executeScript = async ({func}) => {
-      if (func.name === "waitForXPage") return [{result:{status:"ready"}, documentId:"first"}];
+      if (func.name === "waitForXPage") return [{result: {status: "ready"}, documentId: "first"}];
       if (func.name === "scanXMedia") throw new Error("changed page must not be read");
       scans++;
-      return [{result:{url:scans > 1 && change === "url" ? `${url}?page=2` : url, title:"post",images:[]},
-        documentId:scans > 1 && change === "document" ? "second" : "first"}];
+      return [{
+        result: {url: scans > 1 && change === "url" ? `${url}?page=2` : url, title: "post", images: []},
+        documentId: scans > 1 && change === "document" ? "second" : "first"
+      }];
     };
     await assert.rejects(scanTab(8, undefined, url), /ページが移動/);
   });
@@ -41,7 +43,10 @@ function fixture(t, overrides = {}) {
       ...tabOverrides,
     },
     windows: {
-      create: async options => { createdWindows.push(options); return {id: 17, tabs: [{id: 8}]}; },
+      create: async options => {
+        createdWindows.push(options);
+        return {id: 17, tabs: [{id: 8}]};
+      },
       remove: async id => { closedWindowIds.push(id); },
       ...windowOverrides,
     },
@@ -158,9 +163,18 @@ test("X動画ページは投稿の読み込みを待って再解析し、MAINで
   chrome.scripting.executeScript = async injection => {
     calls.push({name: injection.func.name, world: injection.world, args: injection.args});
     if (injection.func.name === "waitForXPage") return [{result: {status: "ready"}}];
-    if (injection.func.name === "scanXMedia") return [{result: [{url: "https://video.twimg.com/example.mp4", kind: "video"}]}];
+    if (injection.func.name === "scanXMedia")
+      return [{result: [{url: "https://video.twimg.com/example.mp4", kind: "video"}]}];
     pageScans++;
-    return [{result: {url, title: "post", images: pageScans === 1 ? ["https://pbs.twimg.com/profile_images/1/avatar.jpg"] : ["https://pbs.twimg.com/media/photo.jpg", "https://pbs.twimg.com/profile_images/1/avatar.jpg"]}}];
+    return [{
+      result: {
+        url,
+        title: "post",
+        images: pageScans === 1
+          ? ["https://pbs.twimg.com/profile_images/1/avatar.jpg"]
+          : ["https://pbs.twimg.com/media/photo.jpg", "https://pbs.twimg.com/profile_images/1/avatar.jpg"]
+      }
+    }];
   };
   const result = await scanTab(8, undefined, url);
   assert.equal(pageScans, 2);
@@ -214,10 +228,12 @@ test("Xの対象投稿の解析失敗では確定済みの画像集合を置き�
   fixture(t, {query: async () => [{id: 8, url}], get: async () => ({url})});
   chrome.i18n = {getUILanguage: () => "ja"};
   const previousDocument = globalThis.document;
-  globalThis.document = {documentElement: {setAttribute() {}}, querySelectorAll: () => []};
+  globalThis.document = {documentElement: {setAttribute() {} }, querySelectorAll: () => []};
   t.after(() => { globalThis.document = previousDocument; });
-  chrome.scripting.executeScript = async ({func}) => [{result: func.name === "waitForXPage"
-    ? {status: "unavailable"} : {url, title: "post", images: ["https://pbs.twimg.com/media/other.jpg"]}}];
+  chrome.scripting.executeScript = async ({func}) => [{
+    result: func.name === "waitForXPage"
+      ? {status: "unavailable"} : {url, title: "post", images: ["https://pbs.twimg.com/media/other.jpg"]}
+  }];
   const {ImageCollection} = await import("../dist/extension/core/image-collection.js");
   const {createScanSessionController} = await import("../dist/extension/app/scan-session-controller.js");
   const collection = new ImageCollection();
@@ -226,10 +242,18 @@ test("Xの対象投稿の解析失敗では確定済みの画像集合を置き�
   const messages = [];
   let published = false;
   const controller = createScanSessionController({
-    collection, getEnteredUrl: () => "", getCollectionSession: () => null,
-    clearAnalyzedUrl() {}, markAnalyzedUrl() {}, isBusy: () => false, isDisposed: () => false,
-    onHideSourceInput() {}, onShowSourceInput() {}, onBusyChange() {},
-    onStatus: message => messages.push(message), onResults: () => { published = true; },
+    collection,
+    getEnteredUrl: () => "",
+    getCollectionSession: () => null,
+    clearAnalyzedUrl() {},
+    markAnalyzedUrl() {},
+    isBusy: () => false,
+    isDisposed: () => false,
+    onHideSourceInput() {},
+    onShowSourceInput() {},
+    onBusyChange() {},
+    onStatus: message => messages.push(message),
+    onResults: () => { published = true; },
   });
   await controller.start();
   assert.equal(collection.items, previousItems);
@@ -241,16 +265,16 @@ test("Xの対象投稿の解析失敗では確定済みの画像集合を置き�
 
 test("DOMの低画質URLを既知のvariantだけで置き換え、別動画と画像は残す", async t => {
   const url = "https://x.com/example/status/123/video/1";
-  fixture(t, {get:async () => ({url})});
+  fixture(t, {get: async () => ({url})});
   const low = "https://video.twimg.com/one/low/clip.mp4", high = "https://video.twimg.com/one/high/clip.mp4";
   const other = "https://video.twimg.com/two/high/clip.mp4", photo = "https://images.test/photo.jpg";
   chrome.scripting.executeScript = async ({func}) => {
-    if (func.name === "waitForXPage") return [{result:{status:"ready"}}];
-    if (func.name === "scanXMedia") return [{result:[{url:high, kind:"video", variantUrls:[low], previewUrl:photo}]}];
-    return [{result:{url, title:"post", images:[photo], media:[{url:low,kind:"video"},{url:other,kind:"video"},{url:photo,kind:"image"}]}}];
+    if (func.name === "waitForXPage") return [{result: {status: "ready"}}];
+    if (func.name === "scanXMedia") return [{result: [{url: high, kind: "video", variantUrls: [low], previewUrl: photo}]}];
+    return [{result: {url, title: "post", images: [photo], media: [{url: low, kind: "video"}, {url: other, kind: "video"}, {url: photo, kind: "image"}]}}];
   };
   const result = await scanTab(8, undefined, url);
-  assert.deepEqual(result.media, [{url:other,kind:"video"},{url:photo,kind:"image"},{url:high,kind:"video",previewUrl:photo}]);
+  assert.deepEqual(result.media, [{url: other, kind: "video"}, {url: photo, kind: "image"}, {url: high, kind: "video", previewUrl: photo}]);
   assert.deepEqual(result.images, [photo]);
 });
 
@@ -288,7 +312,10 @@ test("初回にdocument IDがない環境では後続のIDを採用せず、hash
 test("中止済みの解析はタブへ注入せず、一時ウィンドウも作らない", async t => {
   const state = fixture(t);
   let injections = 0;
-  chrome.scripting.executeScript = async () => { injections += 1; return []; };
+  chrome.scripting.executeScript = async () => {
+    injections += 1;
+    return [];
+  };
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(scanTab(8, controller.signal), /終了しました/);

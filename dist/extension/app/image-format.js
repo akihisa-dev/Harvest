@@ -16,6 +16,13 @@ async function isPng(blob, signal) {
     checkCancelled(signal);
     return pngSignature.every((value, index) => bytes[index] === value);
 }
+/** Keep cancellation ahead of dimension errors for every preserved image. */
+function validateDecodedDimensions(bitmap, signal) {
+    checkCancelled(signal);
+    const dimensionsError = imageDimensionsError(bitmap.width, bitmap.height);
+    if (dimensionsError)
+        throw new ImageFormatError(dimensionsError);
+}
 async function isDecodablePng(blob, signal) {
     if (!await isPng(blob, signal))
         return false;
@@ -28,10 +35,7 @@ async function isDecodablePng(blob, signal) {
         throw new ImageFormatError("画像を読み込めませんでした。形式が対応していないか、データが壊れています。");
     }
     try {
-        checkCancelled(signal);
-        const dimensionsError = imageDimensionsError(bitmap.width, bitmap.height);
-        if (dimensionsError)
-            throw new ImageFormatError(dimensionsError);
+        validateDecodedDimensions(bitmap, signal);
         return true;
     }
     finally {
@@ -48,10 +52,7 @@ async function validateOriginalJpeg(blob, signal) {
         throw new ImageFormatError("画像を読み込めませんでした。形式が対応していないか、データが壊れています。");
     }
     try {
-        checkCancelled(signal);
-        const dimensionsError = imageDimensionsError(bitmap.width, bitmap.height);
-        if (dimensionsError)
-            throw new ImageFormatError(dimensionsError);
+        validateDecodedDimensions(bitmap, signal);
     }
     finally {
         bitmap.close();
@@ -79,10 +80,8 @@ export async function convertImage(fetched, format, signal) {
         if (dimensionsError)
             throw new ImageFormatError(dimensionsError);
     }
-    if (fetched.kind === "original") {
-        if (format === "jpg")
-            return fetchedBlob(fetched);
-    }
+    if (fetched.kind === "original" && format === "jpg")
+        return fetchedBlob(fetched);
     if (format === "jpg" && fetched.kind === "bitmap" && fetched.originalJpeg) {
         await validateOriginalJpeg(fetched.blob, signal);
         return fetched.blob;

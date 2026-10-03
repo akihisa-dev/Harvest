@@ -112,6 +112,10 @@ function setBusy(value: boolean): void {
   render();
 }
 
+function scrollToFailures(): void {
+  failuresElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"});
+}
+
 function fileBaseName(): string {
   return exportFileBaseName(pageTitle, t("imageFallback"));
 }
@@ -240,9 +244,7 @@ pdfExportController = createPdfExportController({
   onCompleted: exportSession.complete,
   onCloseViewer: () => viewerController.setOpen(false),
   onClearSourceUrl: sourceInput.clearAfterExport,
-  onScrollToFailures() {
-    failuresElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"});
-  },
+  onScrollToFailures: scrollToFailures,
 });
 imageExportController = createImageExportController({
   getSelectedItems: exportSelectedItems,
@@ -254,9 +256,7 @@ imageExportController = createImageExportController({
   onCompleted: exportSession.complete,
   onCloseViewer: () => viewerController.setOpen(false),
   onClearSourceUrl: sourceInput.clearAfterExport,
-  onScrollToFailures() {
-    failuresElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"});
-  },
+  onScrollToFailures: scrollToFailures,
 });
 scanSessionController = createScanSessionController({
   collection: imageCollection,

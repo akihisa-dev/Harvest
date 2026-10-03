@@ -16,7 +16,7 @@ class MotionElement {
   }
   getAnimations() { return this.animations; }
   animate(keyframes, options) {
-    this.animations.push({keyframes, options, finished: new Promise(() => {}), cancel() {}});
+    this.animations.push({keyframes, options, finished: new Promise(() => {}), cancel() {} });
     return this.animations.at(-1);
   }
 }
@@ -32,7 +32,10 @@ test("選択表示だけの更新では要素を切り離さずフォーカス�
     const {reconcileKeyedChildren} = await import("../dist/extension/app/motion.js");
     const parent = new MotionParent();
     let focused = null;
-    parent.replaceChildren = (...children) => { focused = null; parent.children = children; };
+    parent.replaceChildren = (...children) => {
+      focused = null;
+      parent.children = children;
+    };
     const update = (element, item) => { element.selected = item.selected; };
     reconcileKeyedChildren(parent, [{id: "a", selected: true}], item => item.id, () => new MotionElement(), update);
     focused = parent.children[0];
@@ -40,7 +43,9 @@ test("選択表示だけの更新では要素を切り離さずフォーカス�
     reconcileKeyedChildren(parent, [{id: "a", selected: false}], item => item.id, () => new MotionElement(), update);
     assert.equal(focused, original);
     assert.equal(focused.selected, false);
-  } finally { globalThis.window = previousWindow; }
+  } finally {
+    globalThis.window = previousWindow;
+  }
 });
 
 test("大量行の選択状態更新では位置計測を行わない", async () => {
@@ -94,7 +99,12 @@ test("移動途中の再操作は現在の見た目から開始し、色の切�
     let cancelled = false;
     element.getBoundingClientRect = () => ({left: 0, top: Number(element.style.order) * 10 + visualOffset});
     element.animate = (keyframes, options) => {
-      const animation = {keyframes, options, finished: new Promise(() => {}), cancel() { cancelled = true; visualOffset = 0; }};
+      const animation = {
+        keyframes, options, finished: new Promise(() => {}), cancel() {
+          cancelled = true;
+          visualOffset = 0;
+        }
+      };
       element.animations.push(animation);
       return animation;
     };
@@ -109,7 +119,9 @@ test("移動途中の再操作は現在の見た目から開始し、色の切�
     animateLayoutChange([element], () => { element.style.order = "0"; });
     assert.equal(element.animations.length, 2);
     assert.equal(visualOffset, 0);
-  } finally { globalThis.window = previousWindow; }
+  } finally {
+    globalThis.window = previousWindow;
+  }
 });
 
 
@@ -123,8 +135,11 @@ test("ステータス文字は完了後もフェードし、古い完了通知�
     const element = new MotionElement();
     element.animate = (keyframes, options) => {
       let finish, reject;
-      const finished = new Promise((resolve, fail) => { finish = resolve; reject = fail; });
-      const animation = {keyframes, options, finished, finish, reject, cancel() {}};
+      const finished = new Promise((resolve, fail) => {
+        finish = resolve;
+        reject = fail;
+      });
+      const animation = {keyframes, options, finished, finish, reject, cancel() {} };
       element.animations.push(animation);
       return animation;
     };

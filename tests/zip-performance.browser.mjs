@@ -18,8 +18,11 @@ async function serve() {
   await writeFile(configPath, JSON.stringify({
     extends: join(root, "tsconfig.json"),
     compilerOptions: {noEmit: false, noEmitOnError: true, outDir: compiled},
-    files: [join(root, "src/core/stored-zip.ts"), join(root, "src/extension/stored-zip-worker.ts"),
-      join(root, "src/extension/stored-zip-crc-worker.ts")],
+    files: [
+      join(root, "src/core/stored-zip.ts"),
+      join(root, "src/extension/stored-zip-worker.ts"),
+      join(root, "src/extension/stored-zip-crc-worker.ts")
+    ],
     include: [],
   }));
   execFileSync(process.execPath, [compiler, "--project", configPath], {cwd: root, stdio: "pipe"});
@@ -34,7 +37,7 @@ async function serve() {
         ? join(compiled, "extension/stored-zip-worker.js")
         : request.url === "/app/stored-zip-crc-worker.js"
           ? join(compiled, "extension/stored-zip-crc-worker.js")
-        : null;
+          : null;
     if (!path) {
       response.writeHead(404).end();
       return;
@@ -66,11 +69,17 @@ test("ZIPのworker CRC32と格納データを確認し、中止時にworkerを�
       window.__terminatedWorkers = 0;
       window.__holdChecksum = false;
       window.Worker = class extends nativeWorker {
-        constructor(...args) { super(...args); window.__workers.push(this); }
+        constructor(...args) {
+          super(...args);
+          window.__workers.push(this);
+        }
         postMessage(message, transfer) {
           if (!window.__holdChecksum) return super.postMessage(message, transfer);
         }
-        terminate() { window.__terminatedWorkers += 1; super.terminate(); }
+        terminate() {
+          window.__terminatedWorkers += 1;
+          super.terminate();
+        }
       };
       const {createStoredZipInWorker} = await import("/app/stored-zip-worker.js");
       const bytes = new TextEncoder().encode("123456789");
@@ -87,8 +96,14 @@ test("ZIPのworker CRC32と格納データを確認し、中止時にworkerを�
       await new Promise(resolve => setTimeout(resolve, 0));
       controller.abort();
       const cancellation = await cancelled;
-      return {crc32, payload, expectedPayload: [...bytes], cancellation,
-        createdWorkers: window.__workers.length, terminatedWorkers: window.__terminatedWorkers};
+      return {
+        crc32,
+        payload,
+        expectedPayload: [...bytes],
+        cancellation,
+        createdWorkers: window.__workers.length,
+        terminatedWorkers: window.__terminatedWorkers
+      };
     });
     assert.equal(result.crc32, 0xcbf43926, "CRC32('123456789') matches the standard check value");
     assert.deepEqual(result.payload, result.expectedPayload, "ZIP stores the source payload byte-for-byte");

@@ -4,11 +4,16 @@ class ResultWindow {
   private closed = false;
   private closeError: unknown;
 
-  constructor(capacity: number) { this.available = capacity; }
+  constructor(capacity: number) {
+    this.available = capacity;
+  }
 
   acquire(): Promise<void> | undefined {
     if (this.closed) throw this.closeError;
-    if (this.available > 0) { this.available -= 1; return undefined; }
+    if (this.available > 0) {
+      this.available -= 1;
+      return undefined;
+    }
     return new Promise<void>((resolve, reject) => this.waiters.push({resolve, reject}));
   }
 
@@ -44,17 +49,20 @@ export function createPreparationWorkers(
 ): PreparationWorkers {
   if (!Number.isSafeInteger(concurrency) || concurrency <= 0) throw new RangeError("concurrency must be a positive safe integer.");
   const controller = new AbortController();
-  const window = new ResultWindow(Math.min(count, concurrency));
+  const resultWindow = new ResultWindow(Math.min(count, concurrency));
   let nextIndex = 0;
   let failed = false;
   let failure: unknown;
   const abort = (): void => {
     controller.abort();
-    window.close(controller.signal.reason);
+    resultWindow.close(controller.signal.reason);
     sourceSignal?.removeEventListener("abort", abort);
   };
   const fail = (error: unknown): void => {
-    if (!failed) { failed = true; failure = error; }
+    if (!failed) {
+      failed = true;
+      failure = error;
+    }
     abort();
   };
   sourceSignal?.addEventListener("abort", abort, {once: true});
@@ -63,18 +71,21 @@ export function createPreparationWorkers(
     try {
       while (nextIndex < count) {
         controller.signal.throwIfAborted();
-        const waiting = window.acquire();
+        const waiting = resultWindow.acquire();
         if (waiting) await waiting;
         let released = false;
         const release = (): void => {
           if (released) return;
           released = true;
-          window.release();
+          resultWindow.release();
         };
         try {
           controller.signal.throwIfAborted();
           const index = nextIndex++;
-          if (index >= count) { release(); return; }
+          if (index >= count) {
+            release();
+            return;
+          }
           await task(index, controller.signal, release);
         } catch (error) {
           release();
@@ -95,8 +106,13 @@ export function createPreparationWorkers(
   });
   // Fetch completion can precede the last conversion, so retain cancellation
   // until the consumer has finished with every result.
-  return {signal: controller.signal, finished, abort, fail,
-    dispose: () => sourceSignal?.removeEventListener("abort", abort)};
+  return {
+    signal: controller.signal,
+    finished,
+    abort,
+    fail,
+    dispose: () => sourceSignal?.removeEventListener("abort", abort),
+  };
 }
 
 /** Stops waiting even when an underlying operation ignores its abort signal. */

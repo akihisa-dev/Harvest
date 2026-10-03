@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ImageCollection } from "../dist/extension/core/image-collection.js";
+import {ImageCollection} from "../dist/extension/core/image-collection.js";
 
 class StubElement {
   constructor(tagName, owner) {
@@ -19,16 +19,26 @@ class StubElement {
     this.pointerCaptures = new Set();
     this.className = "";
     this.style = {order: ""};
-    this.classList = {add: name => { this.className += this.className ? ` ${name}` : name; }, remove: name => { this.className = this.className.split(" ").filter(value => value !== name).join(" "); }};
+    this.classList = {
+      add: name => { this.className += this.className ? ` ${name}` : name; },
+      remove: name => { this.className = this.className.split(" ").filter(value => value !== name).join(" "); }
+    };
   }
   addEventListener(name, callback) { this.listeners.set(name, callback); }
   append(...children) { this.children.push(...children.filter(Boolean)); }
-  replaceChildren(...children) { this.replaceChildrenCalls++; this.children = children.filter(Boolean); }
+  replaceChildren(...children) {
+    this.replaceChildrenCalls++;
+    this.children = children.filter(Boolean);
+  }
   remove() {}
   click() { if (this.tagName === "a") this.owner.downloads.push(this.download); }
-  getContext() { return this.tagName === "canvas" ? {
-    fillRect() {}, drawImage() {}, getImageData: () => ({data: new Uint8ClampedArray([12, 34, 56, 255])}),
-  } : null; }
+  getContext() {
+    return this.tagName === "canvas"
+      ? {
+        fillRect() {}, drawImage() {}, getImageData: () => ({data: new Uint8ClampedArray([12, 34, 56, 255])}),
+      }
+      : null;
+  }
   setAttribute(name, value) { this.attributes.set(name, String(value)); }
   removeAttribute(name) { this.attributes.delete(name); }
   getAttribute(name) { return this.attributes.get(name) ?? null; }
@@ -45,7 +55,7 @@ class StubElement {
   }
   animate(keyframes, options) {
     this.owner.animations.push({element: this, keyframes, options});
-    return {finished: Promise.resolve(), cancel() {}};
+    return {finished: Promise.resolve(), cancel() {} };
   }
   getAnimations() { return []; }
   dispatch(name, event = {}) {
@@ -105,13 +115,40 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   };
   document.body = new StubElement("body", document);
   for (const selector of [
-    "#source-url", "#scan", "#export", "#all-visibility", "#all-selection", "#reset-order", "#reset",
-    "#failures", "#failed-images", "#images", "#groups",
-    "#empty", "#empty-logo", "#empty-message", "#scan-overlay", "#url-drop-overlay", "#status", "#viewer-toggle", "#viewer", "#viewer-empty",
-    "#viewer-page", "#viewer-previous", "#viewer-position", "#viewer-next", "#viewer-image", "#export-overlay",
-    "#viewer-filename", "#viewer-thumbnails", "#viewer-zoom-in", "#viewer-zoom-out",
-    "#viewer-zoom-reset", "#viewer-stage",
-  ]) document.querySelector(selector);
+    "#source-url",
+    "#scan",
+    "#export",
+    "#all-visibility",
+    "#all-selection",
+    "#reset-order",
+    "#reset",
+    "#failures",
+    "#failed-images",
+    "#images",
+    "#groups",
+    "#empty",
+    "#empty-logo",
+    "#empty-message",
+    "#scan-overlay",
+    "#url-drop-overlay",
+    "#status",
+    "#viewer-toggle",
+    "#viewer",
+    "#viewer-empty",
+    "#viewer-page",
+    "#viewer-previous",
+    "#viewer-position",
+    "#viewer-next",
+    "#viewer-image",
+    "#export-overlay",
+    "#viewer-filename",
+    "#viewer-thumbnails",
+    "#viewer-zoom-in",
+    "#viewer-zoom-out",
+    "#viewer-zoom-reset",
+    "#viewer-stage",
+  ])
+    document.querySelector(selector);
   for (const format of ["pdf", "jpg", "png", "jxl"]) {
     const option = document.querySelector(`#export-format-${format}`);
     option.value = format;
@@ -141,9 +178,13 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   const createdUrls = [];
   globalThis.document = document;
   const {createImageListView} = await import("../dist/extension/app/image-list-view.js");
-  const inertPreviewLoader = {set() {}, clearImage() {}, clear() {}};
-  globalThis.window = {setTimeout: (callback, delay) => setTimeout(callback, delay === 60000 ? 0 : delay), clearTimeout, matchMedia: () => ({matches: false})};
-  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {}});
+  const inertPreviewLoader = {set() {}, clearImage() {}, clear() {} };
+  globalThis.window = {
+    setTimeout: (callback, delay) => setTimeout(callback, delay === 60000 ? 0 : delay),
+    clearTimeout,
+    matchMedia: () => ({matches: false})
+  };
+  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {} });
   const measuredCollection = new ImageCollection();
   measuredCollection.replace(Array.from({length: 500}, (_, index) =>
     `https://example.com/pages/${String(index + 1).padStart(4, "0")}.jpg`), "https://example.com/pages/");
@@ -238,32 +279,54 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   let connected;
   let capturedMessage;
   let disconnected;
-  const port = {name: "", sender: {tab: {id: 7}}, postMessage() {}, disconnect() { disconnected?.(); }, onMessage: {addListener(listener) { capturedMessage = listener; }}, onDisconnect: {addListener(listener) { disconnected = listener; }}};
+  const port = {
+    name: "",
+    sender: {tab: {id: 7}},
+    postMessage() {},
+    disconnect() { disconnected?.(); },
+    onMessage: {addListener(listener) { capturedMessage = listener; } },
+    onDisconnect: {addListener(listener) { disconnected = listener; } }
+  };
   globalThis.chrome = {
     windows: {
-      create: async ({url}) => { createdUrls.push(url); return {id: 17, tabs: [{id: 8, url}]}; },
+      create: async ({url}) => {
+        createdUrls.push(url);
+        return {id: 17, tabs: [{id: 8, url}]};
+      },
       remove: async () => {},
     },
     i18n: {getUILanguage: () => "ja"},
-    runtime: {onConnect: {addListener(listener) { connected = listener; }}},
+    runtime: {onConnect: {addListener(listener) { connected = listener; } }},
     tabs: {
       query: async () => [{id: 7, url: "https://example.com/view"}],
-      create: async ({url}) => { createdUrls.push(url); return {id: 8, url}; },
+      create: async ({url}) => {
+        createdUrls.push(url);
+        return {id: 8, url};
+      },
       get: async () => ({status: "complete"}),
       remove: async () => {},
-      onUpdated: {addListener() {}, removeListener() {}},
-      onRemoved: {addListener() {}, removeListener() {}},
+      onUpdated: {addListener() {}, removeListener() {} },
+      onRemoved: {addListener() {}, removeListener() {} },
     },
-    scripting: {executeScript: async (injection) => {
-      if (injection.args) { port.name = injection.args[0]; connected(port); return [{result: undefined}]; }
-      if (rejectScan) throw new Error("scan failed");
-      executionCount += 1;
-      return [{result: {
-        url: scanResultUrl, title: "ページ",
-        links: [{url: "https://example.com/pages/gallery", label: "一覧"}],
-        images: resultImages,
-      }}];
-    }},
+    scripting: {
+      executeScript: async (injection) => {
+        if (injection.args) {
+          port.name = injection.args[0];
+          connected(port);
+          return [{result: undefined}];
+        }
+        if (rejectScan) throw new Error("scan failed");
+        executionCount += 1;
+        return [{
+          result: {
+            url: scanResultUrl,
+            title: "ページ",
+            links: [{url: "https://example.com/pages/gallery", label: "一覧"}],
+            images: resultImages,
+          }
+        }];
+      }
+    },
   };
   try {
     await import(`../dist/extension/app/index.js?ui=${Date.now()}`);
@@ -476,7 +539,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.match(sourceSvg, /Source/);
     assert.match(sourceSvg, /ページ\.pdf/);
     assert.match(sourceSvg, /https:\/\/example.com\/view/);
-    const { createSourcePageLayout } = await import("../dist/extension/core/pdf.js");
+    const {createSourcePageLayout} = await import("../dist/extension/core/pdf.js");
     const sourceLayout = createSourcePageLayout({
       heading: "Source",
       filename: "ページ.pdf",
@@ -808,7 +871,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     rescannedRow.dispatch("pointerdown");
     rescannedRow.dispatch("click");
 
-    for (;;) {
+    for (; ;) {
       const selectedRow = document.querySelector("#images").children.find(row => row.getAttribute("aria-pressed") === "true");
       if (!selectedRow) break;
       selectedRow.dispatch("pointerdown");

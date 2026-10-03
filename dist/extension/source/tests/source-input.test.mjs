@@ -18,7 +18,11 @@ function fixture() {
   const eventTarget = new EventTarget();
   const state = {busy: false, reordering: false, scans: []};
   const controller = createSourceInputController({
-    input, display, dropOverlay, eventTarget, placeholder: "Drop a URL",
+    input,
+    display,
+    dropOverlay,
+    eventTarget,
+    placeholder: "Drop a URL",
     isBusy: () => state.busy,
     isReordering: () => state.reordering,
     onScan: () => state.scans.push(controller.enteredUrl),

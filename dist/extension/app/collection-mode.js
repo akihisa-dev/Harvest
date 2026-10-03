@@ -301,14 +301,8 @@ export function captureCollectionLinks(session) {
             glow.style.transition = prefersReducedMotion()
                 ? "none"
                 : "opacity 160ms cubic-bezier(.2,.75,.25,1),transform 160ms cubic-bezier(.2,.75,.25,1),box-shadow 160ms ease";
-            if (prefersReducedMotion()) {
-                glow.style.opacity = "1";
-                glow.style.transform = "scale(1)";
-            }
-            else {
-                glow.style.opacity = "1";
-                glow.style.transform = "scale(1)";
-            }
+            glow.style.opacity = "1";
+            glow.style.transform = "scale(1)";
             glow.style.boxShadow = desiredGlow(url.href);
             positionGlow(target, glow);
             return;
@@ -355,11 +349,7 @@ export function captureCollectionLinks(session) {
         hovered = target;
         visualTarget = target;
         glow.style.boxShadow = desiredGlow(url.href);
-        const rect = target.getBoundingClientRect();
-        glow.style.left = `${rect.left}px`;
-        glow.style.top = `${rect.top}px`;
-        glow.style.width = `${rect.width}px`;
-        glow.style.height = `${rect.height}px`;
+        positionGlow(target, glow);
         glow.style.display = "block";
         if (prefersReducedMotion()) {
             glow.style.transition = "none";
@@ -405,9 +395,20 @@ export function captureCollectionLinks(session) {
     document.addEventListener("transitionend", scheduleRedraw, true);
     document.addEventListener("animationend", scheduleRedraw, true);
     document.fonts?.addEventListener("loadingdone", scheduleRedraw);
-    const onLeave = () => { lastHover = null; hideGlow(); };
-    const onScroll = () => { onLeave(); pruneDetachedTargets(); scheduleRedraw(); };
-    const onResize = () => { onLeave(); pruneDetachedTargets(); scheduleRedraw(); };
+    const onLeave = () => {
+        lastHover = null;
+        hideGlow();
+    };
+    const onScroll = () => {
+        onLeave();
+        pruneDetachedTargets();
+        scheduleRedraw();
+    };
+    const onResize = () => {
+        onLeave();
+        pruneDetachedTargets();
+        scheduleRedraw();
+    };
     const onClick = (event) => {
         if (!event.isTrusted)
             return;

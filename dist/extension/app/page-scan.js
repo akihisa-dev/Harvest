@@ -180,11 +180,15 @@ export async function scanDocument(targetPostId) {
                     if (record.media)
                         media.push({ url: record.url, ...record.media });
                 }
-                return media.sort((a, b) => { checkDeadline(); return a.order - b.order; })
+                return media.sort((a, b) => {
+                    checkDeadline();
+                    return a.order - b.order;
+                })
                     .map(({ url, kind }) => ({ url, kind }));
             },
         };
     })();
+    // URL extraction from attributes, text, embedded JSON, srcset, and CSS.
     const imageAttributes = [
         "data-original",
         "data-full",
@@ -571,6 +575,7 @@ export async function scanDocument(targetPostId) {
         backgroundSnapshots.set(element, background);
         scanCss(background, element, element, true);
     };
+    // Visual ordering is resolved only after all candidate evidence is current.
     const orderedImages = () => {
         const documentOrder = new Map();
         for (const [index, element] of pageElements(root, false).entries()) {
@@ -628,7 +633,10 @@ export async function scanDocument(targetPostId) {
             record,
             position: record.positions
                 .map(positioned).filter((value) => Boolean(value))
-                .sort((a, b) => { checkDeadline(); return a.top - b.top || a.left - b.left || a.order - b.order; })[0],
+                .sort((a, b) => {
+                checkDeadline();
+                return a.top - b.top || a.left - b.left || a.order - b.order;
+            })[0],
         }))
             .sort((a, b) => {
             checkDeadline();
@@ -648,6 +656,7 @@ export async function scanDocument(targetPostId) {
         checkDeadline();
         return ordered;
     };
+    // Rebuild one element's evidence, including the sources owned by video/picture.
     const imagePositionElement = (element) => {
         if (element.tagName.toLowerCase() !== "source")
             return element;
@@ -656,6 +665,26 @@ export async function scanDocument(targetPostId) {
             return parent.querySelector("img") ?? element;
         }
         return element;
+    };
+    const collectVideoSources = (video) => {
+        // Chrome can retain old currentSrc after load() empties the media element.
+        const currentSrc = video.networkState === 0 ? "" : video.currentSrc;
+        for (const value of [currentSrc, video.src, video.getAttribute("src")]) {
+            let declaredType = video.getAttribute("type");
+            if (value) {
+                for (const source of Array.from(video.querySelectorAll("source"))) {
+                    try {
+                        const sourceUrl = source.getAttribute("src");
+                        if (sourceUrl && new URL(sourceUrl, document.baseURI).href === new URL(value, document.baseURI).href) {
+                            declaredType = source.getAttribute("type") ?? declaredType;
+                            break;
+                        }
+                    }
+                    catch { /* Ignore malformed source URLs. */ }
+                }
+            }
+            recordDirectVideo(value, video, declaredType);
+        }
     };
     const collectElement = (element) => {
         checkDeadline();
@@ -695,8 +724,7 @@ export async function scanDocument(targetPostId) {
         }
         else if (tagName === "script") {
             scanText(element.textContent, undefined, element);
-            if (tagName === "script")
-                scanEmbeddedVideoJson(element);
+            scanEmbeddedVideoJson(element);
         }
         else {
             // Rebuild all evidence owned by this element together. Only direct text
@@ -712,25 +740,7 @@ export async function scanDocument(targetPostId) {
             }
         }
         if (tagName === "video") {
-            const video = element;
-            // Chrome can retain old currentSrc after load() empties the media element.
-            const currentSrc = video.networkState === 0 ? "" : video.currentSrc;
-            for (const value of [currentSrc, video.src, element.getAttribute("src")]) {
-                let declaredType = element.getAttribute("type");
-                if (value) {
-                    for (const source of Array.from(element.querySelectorAll("source"))) {
-                        try {
-                            const sourceUrl = source.getAttribute("src");
-                            if (sourceUrl && new URL(sourceUrl, document.baseURI).href === new URL(value, document.baseURI).href) {
-                                declaredType = source.getAttribute("type") ?? declaredType;
-                                break;
-                            }
-                        }
-                        catch { /* Ignore malformed source URLs. */ }
-                    }
-                }
-                recordDirectVideo(value, element, declaredType);
-            }
+            collectVideoSources(element);
         }
         else if (isVideoSource) {
             const source = element;
@@ -799,6 +809,7 @@ export async function scanDocument(targetPostId) {
         scanBackground(element);
         finishElement();
     };
+    // Observe and flush page mutations while yielding between bounded scan chunks.
     const yieldToPage = async () => {
         checkDeadline();
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -953,6 +964,7 @@ export async function scanDocument(targetPostId) {
             characterData: true,
         });
     }
+    // Traverse the composed tree, including open shadow roots.
     const composedParent = (element) => {
         if (element.parentElement)
             return element.parentElement;
@@ -1020,9 +1032,8 @@ export async function scanDocument(targetPostId) {
     const refreshElementProperties = async () => {
         // Stylesheet edits can change another element without mutating that element.
         // Reconcile all scanned backgrounds once, including initially empty values
-        // and CSSOM edits
-        // that never emit a MutationRecord. Rebuild changed owners through the same
-        // evidence lifecycle so shared URLs and their order remain intact.
+        // and CSSOM edits that never emit a MutationRecord. Rebuild changed owners
+        // through the same evidence lifecycle so shared URLs and their order remain intact.
         const snapshots = [...backgroundSnapshots];
         for (let index = 0; index < snapshots.length; index += 1) {
             const [element, previous] = snapshots[index];
@@ -1035,6 +1046,7 @@ export async function scanDocument(targetPostId) {
                 await yieldToPage();
         }
     };
+    // Initial scan, quiet observation window, and final reconciliation.
     try {
         checkDeadline();
         const elements = pageElements(root, true);

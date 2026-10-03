@@ -13,14 +13,43 @@
     <div class="app-header">
       <div class="header-input-column">
         <section class="controls" aria-labelledby="source-heading">
-          <div class="visually-hidden"><h2 id="source-heading"><label for="source-url" data-i18n="pageUrl">ページURL</label></h2><span data-i18n="optional">任意</span></div>
+          <div class="visually-hidden">
+            <h2 id="source-heading">
+              <label for="source-url" data-i18n="pageUrl">ページURL</label>
+            </h2>
+            <span data-i18n="optional">任意</span>
+          </div>
           <div class="source-row">
             <button id="source-drop" type="button" data-i18n="sourceDrop">クリックしてページURLを入力</button>
-            <input id="source-url" type="url" inputmode="url" data-i18n-placeholder="sourcePlaceholder" placeholder="ページURLを入力" autocomplete="url" aria-describedby="source-hint" hidden>
+            <input
+              id="source-url"
+              type="url"
+              inputmode="url"
+              data-i18n-placeholder="sourcePlaceholder"
+              placeholder="ページURLを入力"
+              autocomplete="url"
+              aria-describedby="source-hint"
+              hidden
+            >
             <div class="source-actions">
               <button id="scan" type="button" data-i18n="scan">解析</button>
-              <button id="reset" type="button" data-i18n-aria-label="clearTitle" data-i18n-title="clearTitle" aria-label="収集結果と選択をクリア" title="収集結果と選択をクリア" data-i18n="clear">クリア</button>
-              <button id="collection-toggle" type="button" aria-pressed="false" data-i18n-title="collectionTitle" title="収集中はページ内のリンクをクリックすると、移動せずリンク先を解析します" data-i18n="collectionStart">収集</button>
+              <button
+                id="reset"
+                type="button"
+                data-i18n-aria-label="clearTitle"
+                data-i18n-title="clearTitle"
+                aria-label="収集結果と選択をクリア"
+                title="収集結果と選択をクリア"
+                data-i18n="clear"
+              >クリア</button>
+              <button
+                id="collection-toggle"
+                type="button"
+                aria-pressed="false"
+                data-i18n-title="collectionTitle"
+                title="収集中はページ内のリンクをクリックすると、移動せずリンク先を解析します"
+                data-i18n="collectionStart"
+              >収集</button>
             </div>
           </div>
           <p id="source-hint" class="visually-hidden" data-i18n="sourceHint">空欄なら、開いているページを解析します。</p>
@@ -28,78 +57,132 @@
       </div>
     </div>
     <div class="results-area">
-    <main>
-      <section class="results" aria-labelledby="images-heading">
-        <section id="failures" class="failures" aria-labelledby="failures-heading" hidden>
-          <h3 id="failures-heading" data-i18n="failuresHeading">取得できなかった画像</h3>
-          <ul id="failed-images"></ul>
+      <main>
+        <section class="results" aria-labelledby="images-heading">
+          <section id="failures" class="failures" aria-labelledby="failures-heading" hidden>
+            <h3 id="failures-heading" data-i18n="failuresHeading">取得できなかった画像</h3>
+            <ul id="failed-images"></ul>
+          </section>
+          <div id="empty">
+            <img id="empty-logo" src="../brand/harvest-geometric-logo.svg" alt="Harvest">
+            <p id="empty-message" role="status" aria-live="polite" aria-atomic="true"></p>
+          </div>
+          <ol id="images" class="image-list"></ol>
         </section>
-        <div id="empty"><img id="empty-logo" src="../brand/harvest-geometric-logo.svg" alt="Harvest"><p id="empty-message" role="status" aria-live="polite" aria-atomic="true"></p></div>
-        <ol id="images" class="image-list"></ol>
-      </section>
-      <section id="viewer" class="viewer" data-i18n-aria-label="viewer" aria-label="選択した画像のビュアー" hidden>
-        <p id="viewer-empty" data-i18n="viewerEmpty">保存する画像が選択されていません。</p>
-        <div id="viewer-page" class="viewer-page" hidden>
-          <div id="viewer-stage" class="viewer-stage" data-i18n-aria-label="viewerStage" aria-label="画像。ホイールで拡大縮小、拡大中はドラッグで移動">
-            <img id="viewer-image" alt="" referrerpolicy="no-referrer" draggable="false">
-            <div id="export-overlay" aria-hidden="true" hidden></div>
+        <section id="viewer" class="viewer" data-i18n-aria-label="viewer" aria-label="選択した画像のビュアー" hidden>
+          <p id="viewer-empty" data-i18n="viewerEmpty">保存する画像が選択されていません。</p>
+          <div id="viewer-page" class="viewer-page" hidden>
+            <div id="viewer-stage" class="viewer-stage" data-i18n-aria-label="viewerStage" aria-label="画像。ホイールで拡大縮小、拡大中はドラッグで移動">
+              <img id="viewer-image" alt="" referrerpolicy="no-referrer" draggable="false">
+              <div id="export-overlay" aria-hidden="true" hidden></div>
+            </div>
+            <aside class="viewer-sidebar" data-i18n-aria-label="viewerControls" aria-label="ビュアー操作と選択した画像のサムネイル">
+              <div class="viewer-navigation">
+                <button id="viewer-previous" type="button" data-i18n="previous">前へ</button>
+                <span id="viewer-position" aria-live="polite"></span>
+                <button id="viewer-next" type="button" data-i18n="next">次へ</button>
+              </div>
+              <div class="viewer-zoom" role="group" data-i18n-aria-label="zoomGroup" aria-label="画像の拡大と縮小">
+                <button id="viewer-zoom-out" type="button" data-i18n-aria-label="zoomOut" aria-label="縮小">−</button>
+                <button id="viewer-zoom-reset" type="button" data-i18n-aria-label="zoomReset" aria-label="表示倍率を戻す">100%</button>
+                <button id="viewer-zoom-in" type="button" data-i18n-aria-label="zoomIn" aria-label="拡大">＋</button>
+              </div>
+              <div class="viewer-thumbnails">
+                <ol id="viewer-thumbnails"></ol>
+              </div>
+              <p id="viewer-filename" class="visually-hidden"></p>
+            </aside>
           </div>
-          <aside class="viewer-sidebar" data-i18n-aria-label="viewerControls" aria-label="ビュアー操作と選択した画像のサムネイル">
-            <div class="viewer-navigation">
-              <button id="viewer-previous" type="button" data-i18n="previous">前へ</button>
-              <span id="viewer-position" aria-live="polite"></span>
-              <button id="viewer-next" type="button" data-i18n="next">次へ</button>
+        </section>
+      </main>
+      <aside class="workspace-sidebar" data-i18n-aria-label="workspaceControls" aria-label="画像と保存の操作">
+        <aside class="save-area" aria-labelledby="export-heading">
+          <h2 id="export-heading" class="visually-hidden" data-i18n="exportHeading">保存形式と保存</h2>
+          <div class="export-control">
+            <fieldset class="export-formats" role="group" aria-labelledby="export-format-label">
+              <legend id="export-format-label" class="visually-hidden" data-i18n="exportFormat">保存形式</legend>
+              <div class="export-media-formats">
+                <label hidden>
+                  <input id="export-format-mp4" type="radio" name="export-format" value="mp4">
+                  <span>MP4</span>
+                </label>
+                <label hidden>
+                  <input id="export-format-gif" type="radio" name="export-format" value="gif">
+                  <span>GIF</span>
+                </label>
+              </div>
+              <label>
+                <input id="export-format-pdf" type="radio" name="export-format" value="pdf">
+                <span>PDF</span>
+              </label>
+              <label>
+                <input id="export-format-jpg" type="radio" name="export-format" value="jpg">
+                <span>JPG</span>
+              </label>
+              <label>
+                <input id="export-format-png" type="radio" name="export-format" value="png">
+                <span>PNG</span>
+              </label>
+              <label>
+                <input id="export-format-jxl" type="radio" name="export-format" value="jxl">
+                <span>JXL</span>
+              </label>
+            </fieldset>
+            <button id="export" type="button" disabled aria-live="polite" aria-atomic="true" data-i18n="save">保存</button>
+          </div>
+          <p id="export-media-hint" class="export-media-hint" aria-live="polite" hidden></p>
+          <label class="source-page-option">
+            <input id="include-source-page" type="checkbox">
+            <span data-i18n="includeSourcePage">末尾に出典ページを追加</span>
+          </label>
+        </aside>
+        <aside class="viewer-controls" data-i18n-aria-label="viewerMode" aria-label="ビュアーモード">
+          <button id="viewer-toggle" type="button" aria-pressed="false" data-i18n="viewerMode" disabled>ビュアーモード</button>
+          <div class="viewer-meta">
+            <p id="status" role="status" aria-live="polite"></p>
+          </div>
+        </aside>
+        <div class="results-controls">
+          <div class="results-heading">
+            <div class="section-head">
+              <h2 id="images-heading" data-i18n="imagesHeading">画像グループ</h2>
             </div>
-            <div class="viewer-zoom" role="group" data-i18n-aria-label="zoomGroup" aria-label="画像の拡大と縮小">
-              <button id="viewer-zoom-out" type="button" data-i18n-aria-label="zoomOut" aria-label="縮小">−</button>
-              <button id="viewer-zoom-reset" type="button" data-i18n-aria-label="zoomReset" aria-label="表示倍率を戻す">100%</button>
-              <button id="viewer-zoom-in" type="button" data-i18n-aria-label="zoomIn" aria-label="拡大">＋</button>
+            <div class="toolbar" role="group" data-i18n-aria-label="selectionToolbar" aria-label="画像の表示・選択・並び順">
+              <button
+                id="reset-order"
+                type="button"
+                data-i18n-title="resetOrderTitle"
+                title="解析直後の並び順と選択に戻す"
+                data-i18n-aria-label="resetOrder"
+                aria-label="全部元に戻す"
+                disabled
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 11a9 9 0 1 1 2.6 7.4"/>
+                  <path d="M3 4v7h7"/>
+                </svg>
+              </button>
+              <button id="all-visibility" type="button" aria-label="すべての画像を表示" disabled></button>
+              <label class="toolbar-check">
+                <input id="all-selection" type="checkbox" aria-label="すべて選択" disabled>
+              </label>
             </div>
-            <div class="viewer-thumbnails"><ol id="viewer-thumbnails"></ol></div>
-            <p id="viewer-filename" class="visually-hidden"></p>
-          </aside>
-        </div>
-      </section>
-    </main>
-    <aside class="workspace-sidebar" data-i18n-aria-label="workspaceControls" aria-label="画像と保存の操作">
-      <aside class="save-area" aria-labelledby="export-heading">
-        <h2 id="export-heading" class="visually-hidden" data-i18n="exportHeading">保存形式と保存</h2>
-        <div class="export-control">
-          <fieldset class="export-formats" role="group" aria-labelledby="export-format-label">
-            <legend id="export-format-label" class="visually-hidden" data-i18n="exportFormat">保存形式</legend>
-            <div class="export-media-formats">
-              <label hidden><input id="export-format-mp4" type="radio" name="export-format" value="mp4"><span>MP4</span></label>
-              <label hidden><input id="export-format-gif" type="radio" name="export-format" value="gif"><span>GIF</span></label>
-            </div>
-            <label><input id="export-format-pdf" type="radio" name="export-format" value="pdf"><span>PDF</span></label>
-            <label><input id="export-format-jpg" type="radio" name="export-format" value="jpg"><span>JPG</span></label>
-            <label><input id="export-format-png" type="radio" name="export-format" value="png"><span>PNG</span></label>
-            <label><input id="export-format-jxl" type="radio" name="export-format" value="jxl"><span>JXL</span></label>
-          </fieldset>
-          <button id="export" type="button" disabled aria-live="polite" aria-atomic="true" data-i18n="save">保存</button>
-        </div>
-        <p id="export-media-hint" class="export-media-hint" aria-live="polite" hidden></p>
-        <label class="source-page-option"><input id="include-source-page" type="checkbox"><span data-i18n="includeSourcePage">末尾に出典ページを追加</span></label>
-      </aside>
-      <aside class="viewer-controls" data-i18n-aria-label="viewerMode" aria-label="ビュアーモード">
-        <button id="viewer-toggle" type="button" aria-pressed="false" data-i18n="viewerMode" disabled>ビュアーモード</button>
-        <div class="viewer-meta"><p id="status" role="status" aria-live="polite"></p></div>
-      </aside>
-      <div class="results-controls">
-        <div class="results-heading">
-          <div class="section-head"><h2 id="images-heading" data-i18n="imagesHeading">画像グループ</h2></div>
-          <div class="toolbar" role="group" data-i18n-aria-label="selectionToolbar" aria-label="画像の表示・選択・並び順">
-            <button id="reset-order" type="button" data-i18n-title="resetOrderTitle" title="解析直後の並び順と選択に戻す" data-i18n-aria-label="resetOrder" aria-label="全部元に戻す" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 7.4"/><path d="M3 4v7h7"/></svg></button>
-            <button id="all-visibility" type="button" aria-label="すべての画像を表示" disabled></button>
-            <label class="toolbar-check"><input id="all-selection" type="checkbox" aria-label="すべて選択" disabled></label>
+          </div>
+          <div class="group-bar">
+            <div id="groups" class="groups" role="group" data-i18n-aria-label="groupControls" aria-label="画像の表示と保存対象の選択" hidden></div>
           </div>
         </div>
-        <div class="group-bar"><div id="groups" class="groups" role="group" data-i18n-aria-label="groupControls" aria-label="画像の表示と保存対象の選択" hidden></div></div>
-      </div>
-    </aside>
-    <div id="scan-overlay" aria-hidden="true" hidden></div>
+      </aside>
+      <div id="scan-overlay" aria-hidden="true" hidden></div>
     </div>
-    <footer class="legal-footer"><a href="legal.html" target="_blank" rel="noopener">ライセンスとソース / License and source</a></footer>
-    <div id="url-drop-overlay" aria-hidden="true" hidden><div class="url-drop-content"><img src="../brand/harvest-geometric-logo.svg" alt=""><span data-i18n="dropUrl">URLをドロップして解析</span></div></div>
+    <footer class="legal-footer">
+      <a href="legal.html" target="_blank" rel="noopener">ライセンスとソース / License and source</a>
+    </footer>
+    <div id="url-drop-overlay" aria-hidden="true" hidden>
+      <div class="url-drop-content">
+        <img src="../brand/harvest-geometric-logo.svg" alt="">
+        <span data-i18n="dropUrl">URLをドロップして解析</span>
+      </div>
+    </div>
   </body>
 </html>

@@ -5,6 +5,9 @@ export interface StoredZipEntry {
 
 const ZIP32_MAX = 0xffff_ffff;
 const ZIP_ENTRY_MAX = 0xffff;
+const LOCAL_HEADER_SIZE = 30;
+const CENTRAL_HEADER_SIZE = 46;
+const DIRECTORY_END_SIZE = 22;
 const utf8 = new TextEncoder();
 
 const crcTable = (() => {
@@ -46,7 +49,6 @@ export async function storedZipChecksum(blob: Blob, signal?: AbortSignal): Promi
   }
 }
 
-
 function header(length: number): {bytes: Uint8Array; view: DataView} {
   const bytes = new Uint8Array(length);
   return {bytes, view: new DataView(bytes.buffer)};
@@ -71,12 +73,73 @@ function validateEntry(entry: StoredZipEntry, names: Set<string>): Uint8Array {
   return name;
 }
 
+function localFileHeader(name: Uint8Array, size: number, crc: number): {bytes: Uint8Array; view: DataView} {
+  const local = header(LOCAL_HEADER_SIZE + name.byteLength);
+  local.view.setUint32(0, 0x0403_4b50, true);
+  local.view.setUint16(4, 20, true);
+  local.view.setUint16(6, 0x0800, true);
+  local.view.setUint16(8, 0, true);
+  local.view.setUint16(10, 0, true);
+  local.view.setUint16(12, 0x0021, true);
+  local.view.setUint32(14, crc, true);
+  local.view.setUint32(18, size, true);
+  local.view.setUint32(22, size, true);
+  local.view.setUint16(26, name.byteLength, true);
+  local.view.setUint16(28, 0, true);
+  local.bytes.set(name, LOCAL_HEADER_SIZE);
+  return local;
+}
+
+function centralDirectoryHeader(
+  name: Uint8Array,
+  size: number,
+  crc: number,
+  fileOffset: number,
+): {bytes: Uint8Array; view: DataView} {
+  const central = header(CENTRAL_HEADER_SIZE + name.byteLength);
+  central.view.setUint32(0, 0x0201_4b50, true);
+  central.view.setUint16(4, 20, true);
+  central.view.setUint16(6, 20, true);
+  central.view.setUint16(8, 0x0800, true);
+  central.view.setUint16(10, 0, true);
+  central.view.setUint16(12, 0, true);
+  central.view.setUint16(14, 0x0021, true);
+  central.view.setUint32(16, crc, true);
+  central.view.setUint32(20, size, true);
+  central.view.setUint32(24, size, true);
+  central.view.setUint16(28, name.byteLength, true);
+  central.view.setUint16(30, 0, true);
+  central.view.setUint16(32, 0, true);
+  central.view.setUint16(34, 0, true);
+  central.view.setUint16(36, 0, true);
+  central.view.setUint32(38, 0, true);
+  central.view.setUint32(42, fileOffset, true);
+  central.bytes.set(name, CENTRAL_HEADER_SIZE);
+  return central;
+}
+
+function directoryEnd(entryCount: number, directorySize: number, localOffset: number): {bytes: Uint8Array; view: DataView} {
+  const end = header(DIRECTORY_END_SIZE);
+  end.view.setUint32(0, 0x0605_4b50, true);
+  end.view.setUint16(4, 0, true);
+  end.view.setUint16(6, 0, true);
+  end.view.setUint16(8, entryCount, true);
+  end.view.setUint16(10, entryCount, true);
+  end.view.setUint32(12, directorySize, true);
+  end.view.setUint32(16, localOffset, true);
+  end.view.setUint16(20, 0, true);
+  return end;
+}
+
 /** Maximum payload bytes after reserving all ZIP headers, names, and the directory. */
 export function storedZipDataLimit(filenames: readonly string[]): number {
   if (filenames.length > ZIP_ENTRY_MAX) throw new RangeError("ZIPに含められる画像数の上限を超えています。");
   const names = new Set<string>();
-  let overhead = 22;
-  for (const filename of filenames) overhead += 76 + 2 * validateFilename(filename, names).byteLength;
+  let overhead = DIRECTORY_END_SIZE;
+  for (const filename of filenames) {
+    const nameBytes = validateFilename(filename, names).byteLength;
+    overhead += LOCAL_HEADER_SIZE + CENTRAL_HEADER_SIZE + 2 * nameBytes;
+  }
   if (overhead > ZIP32_MAX) throw new RangeError("ZIP全体がZIP形式の上限を超えています。");
   return ZIP32_MAX - overhead;
 }
@@ -113,42 +176,13 @@ export async function createStoredZip(
     const entry = entries[index]!;
     const name = validateEntry(entry, names);
     const crc = await calculateChecksum(entry.blob, options.signal);
-    const local = header(30 + name.byteLength);
-    local.view.setUint32(0, 0x0403_4b50, true);
-    local.view.setUint16(4, 20, true);
-    local.view.setUint16(6, 0x0800, true);
-    local.view.setUint16(8, 0, true);
-    local.view.setUint16(10, 0, true);
-    local.view.setUint16(12, 0x0021, true);
-    local.view.setUint32(14, crc, true);
-    local.view.setUint32(18, entry.blob.size, true);
-    local.view.setUint32(22, entry.blob.size, true);
-    local.view.setUint16(26, name.byteLength, true);
-    local.view.setUint16(28, 0, true);
-    local.bytes.set(name, 30);
+    const local = localFileHeader(name, entry.blob.size, crc);
     parts.push(local.bytes.buffer as ArrayBuffer, entry.blob);
     localOffset += local.bytes.byteLength + entry.blob.size;
     if (localOffset > ZIP32_MAX) throw new RangeError("ZIP全体がZIP形式の上限を超えています。");
 
-    const central = header(46 + name.byteLength);
-    central.view.setUint32(0, 0x0201_4b50, true);
-    central.view.setUint16(4, 20, true);
-    central.view.setUint16(6, 20, true);
-    central.view.setUint16(8, 0x0800, true);
-    central.view.setUint16(10, 0, true);
-    central.view.setUint16(12, 0, true);
-    central.view.setUint16(14, 0x0021, true);
-    central.view.setUint32(16, crc, true);
-    central.view.setUint32(20, entry.blob.size, true);
-    central.view.setUint32(24, entry.blob.size, true);
-    central.view.setUint16(28, name.byteLength, true);
-    central.view.setUint16(30, 0, true);
-    central.view.setUint16(32, 0, true);
-    central.view.setUint16(34, 0, true);
-    central.view.setUint16(36, 0, true);
-    central.view.setUint32(38, 0, true);
-    central.view.setUint32(42, localOffset - local.bytes.byteLength - entry.blob.size, true);
-    central.bytes.set(name, 46);
+    const fileOffset = localOffset - local.bytes.byteLength - entry.blob.size;
+    const central = centralDirectoryHeader(name, entry.blob.size, crc, fileOffset);
     directory.push(central.bytes);
     directorySize += central.bytes.byteLength;
     if (directorySize > ZIP32_MAX) throw new RangeError("ZIP全体がZIP形式の上限を超えています。");
@@ -157,15 +191,7 @@ export async function createStoredZip(
   }
 
   checkCancelled(options.signal);
-  const end = header(22);
-  end.view.setUint32(0, 0x0605_4b50, true);
-  end.view.setUint16(4, 0, true);
-  end.view.setUint16(6, 0, true);
-  end.view.setUint16(8, entries.length, true);
-  end.view.setUint16(10, entries.length, true);
-  end.view.setUint32(12, directorySize, true);
-  end.view.setUint32(16, localOffset, true);
-  end.view.setUint16(20, 0, true);
+  const end = directoryEnd(entries.length, directorySize, localOffset);
   for (const central of directory) parts.push(central.buffer as ArrayBuffer);
   parts.push(end.bytes.buffer as ArrayBuffer);
   return new Blob(parts, {type: "application/zip"});

@@ -1,9 +1,9 @@
 import {exifJpeg} from "./jpeg-fixtures.mjs";
 import {storedZipChecksum} from "../dist/extension/core/stored-zip.js";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import test, { after } from "node:test";
-import { fileURLToPath } from "node:url";
+import {readFile} from "node:fs/promises";
+import test, {after} from "node:test";
+import {fileURLToPath} from "node:url";
 
 const previous = {
   chrome: globalThis.chrome,
@@ -14,16 +14,16 @@ const previous = {
 };
 const downloads = [];
 const pageDocument = {
-  documentElement: {setAttribute() {}},
-  body: {append(element) { downloads.push(element); }},
+  documentElement: {setAttribute() {} },
+  body: {append(element) { downloads.push(element); } },
   querySelectorAll() { return []; },
   createElement(tag) {
-    return {tagName: tag, href: "", download: "", click() {}, remove() {}};
+    return {tagName: tag, href: "", download: "", click() {}, remove() {} };
   },
 };
 globalThis.document = pageDocument;
 globalThis.chrome = {i18n: {getUILanguage: () => "en"}};
-globalThis.window = {setTimeout() {}};
+globalThis.window = {setTimeout() {} };
 
 const {convertImage} = await import("../dist/extension/app/image-format.js");
 const {fetchImage} = await import("../dist/extension/app/image-fetch.js");
@@ -64,8 +64,14 @@ function canvasFor({getImageData = () => ({data: new Uint8ClampedArray([10, 20, 
   const canvas = {
     width: 0,
     height: 0,
-    getContext(_type, options) { calls.contextOptions = options; return context; },
-    toBlob(callback, type, quality) { onBlob?.(type, quality); callback(new Blob([new Uint8Array([1, 2, 3])], {type})); },
+    getContext(_type, options) {
+      calls.contextOptions = options;
+      return context;
+    },
+    toBlob(callback, type, quality) {
+      onBlob?.(type, quality);
+      callback(new Blob([new Uint8Array([1, 2, 3])], {type}));
+    },
   };
   return {canvas, calls};
 }
@@ -80,7 +86,7 @@ test("reuses JPEG and PNG source bytes when they already match the selected form
   const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7, 8]);
   const originalPng = new Blob([pngBytes], {type: "image/png"});
   let closed = 0;
-  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() { closed += 1; }});
+  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() { closed += 1; } });
   try {
     const png = await convertImage({kind: "bitmap", blob: originalPng}, "png");
     assert.equal(png, originalPng, "valid PNG bytes are reused without re-encoding");
@@ -101,7 +107,7 @@ test("EXIFを含むJPEGはJPGのZIP保存で元のバイト列を保持し、再
   globalThis.createImageBitmap = async blob => {
     decoded += 1;
     assert.equal(blob.type, "image/jpeg");
-    return {width: 3, height: 2, close() { closed += 1; }};
+    return {width: 3, height: 2, close() { closed += 1; } };
   };
   globalThis.document.createElement = () => { throw new Error("Canvasで再エンコードしてはいけません"); };
   try {
@@ -134,8 +140,13 @@ test("JPG・PNG・JXLは共通画素上限をCanvas前に適用し、PNG再利�
   const previousCreateImageBitmap = globalThis.createImageBitmap;
   let createdCanvases = 0;
   let closed = 0;
-  globalThis.document = {...pageDocument, createElement() { createdCanvases += 1; throw new Error("canvas must not be created"); }};
-  globalThis.createImageBitmap = async () => ({width: 8_001, height: 8_000, close() { closed += 1; }});
+  globalThis.document = {
+    ...pageDocument, createElement() {
+      createdCanvases += 1;
+      throw new Error("canvas must not be created");
+    }
+  };
+  globalThis.createImageBitmap = async () => ({width: 8_001, height: 8_000, close() { closed += 1; } });
   const regularBlob = new Blob(["webp"], {type: "image/webp"});
   const pngBlob = new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], {type: "image/png"});
   try {
@@ -166,8 +177,16 @@ test("上限超過寸法を含む小さなPNGヘッダーはJPG・PNG・JXLで�
   view.setUint32(20, 8_000);
   let decodes = 0;
   let canvases = 0;
-  globalThis.document = {...pageDocument, createElement() { canvases += 1; throw new Error("canvas must not be created"); }};
-  globalThis.createImageBitmap = async () => { decodes += 1; throw new Error("bitmap must not be created"); };
+  globalThis.document = {
+    ...pageDocument, createElement() {
+      canvases += 1;
+      throw new Error("canvas must not be created");
+    }
+  };
+  globalThis.createImageBitmap = async () => {
+    decodes += 1;
+    throw new Error("bitmap must not be created");
+  };
   try {
     for (const format of ["jpg", "png", "jxl"]) {
       await assert.rejects(convertImage({kind: "bitmap", blob: new Blob([bytes], {type: "image/png"})}, format),
@@ -184,13 +203,15 @@ test("上限超過寸法を含む小さなPNGヘッダーはJPG・PNG・JXLで�
 test("JPG conversion uses maximum quality and composites transparency over white", async () => {
   const previousDocument = globalThis.document;
   const previousCreateImageBitmap = globalThis.createImageBitmap;
-  const {canvas, calls} = canvasFor({onBlob(type, quality) {
-    assert.equal(type, "image/jpeg");
-    assert.equal(quality, 1);
-  }});
+  const {canvas, calls} = canvasFor({
+    onBlob(type, quality) {
+      assert.equal(type, "image/jpeg");
+      assert.equal(quality, 1);
+    }
+  });
   let closed = 0;
   globalThis.document = {...pageDocument, createElement: () => canvas};
-  globalThis.createImageBitmap = async () => ({width: 2, height: 1, close() { closed += 1; }});
+  globalThis.createImageBitmap = async () => ({width: 2, height: 1, close() { closed += 1; } });
   try {
     const jpg = await convertImage({kind: "bitmap", blob: new Blob(["webp"], {type: "image/webp"})}, "jpg");
     assert.equal(jpg.type, "image/jpeg");
@@ -208,12 +229,14 @@ test("JPG conversion uses maximum quality and composites transparency over white
 test("PNG conversion keeps alpha instead of painting a background", async () => {
   const previousDocument = globalThis.document;
   const previousCreateImageBitmap = globalThis.createImageBitmap;
-  const {canvas, calls} = canvasFor({onBlob(type, quality) {
-    assert.equal(type, "image/png");
-    assert.equal(quality, undefined);
-  }});
+  const {canvas, calls} = canvasFor({
+    onBlob(type, quality) {
+      assert.equal(type, "image/png");
+      assert.equal(quality, undefined);
+    }
+  });
   globalThis.document = {...pageDocument, createElement: () => canvas};
-  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {}});
+  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {} });
   try {
     const png = await convertImage({kind: "bitmap", blob: new Blob(["gif"], {type: "image/gif"})}, "png");
     assert.equal(png.type, "image/png");
@@ -246,10 +269,13 @@ test("JXL output decodes to the same pixels, including alpha", async () => {
     }
     terminate() {}
   };
-  globalThis.setTimeout = callback => { idleCallback = callback; return 1; };
+  globalThis.setTimeout = callback => {
+    idleCallback = callback;
+    return 1;
+  };
   globalThis.clearTimeout = () => {};
   globalThis.document = {...pageDocument, createElement: () => canvas};
-  globalThis.createImageBitmap = async () => ({width: 2, height: 1, close() {}});
+  globalThis.createImageBitmap = async () => ({width: 2, height: 1, close() {} });
   globalThis.fetch = async input => {
     const url = String(input);
     assert.ok(url.startsWith("file:"), "the bundled codec loads its WASM from the extension package");
@@ -284,7 +310,7 @@ test("cancelling JXL encoding terminates its worker and releases decoded image m
   let terminated = false;
   let closed = 0;
   globalThis.document = {...pageDocument, createElement: () => canvas};
-  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() { closed += 1; }});
+  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() { closed += 1; } });
   globalThis.Worker = class {
     onmessage = null;
     onerror = null;
@@ -333,9 +359,11 @@ test("image export downloads one ordered ZIP, saves only selected images, and re
   const links = [];
   let busy = false;
   let clearedSource = 0;
-  pageDocument.createElement = tag => tag === "a" ? {
-    href: "", download: "", click() { links.push({href: this.href, filename: this.download}); }, remove() {},
-  } : previousCreateElement(tag);
+  pageDocument.createElement = tag => tag === "a"
+    ? {
+      href: "", download: "", click() { links.push({href: this.href, filename: this.download}); }, remove() {},
+    }
+    : previousCreateElement(tag);
   const append = pageDocument.body.append;
   pageDocument.body.append = link => { append.call(pageDocument.body, link); };
   globalThis.fetch = async url => {
@@ -344,8 +372,11 @@ test("image export downloads one ordered ZIP, saves only selected images, and re
     if (url === urls[1] && count === 1) return new Response("missing", {status: 404});
     return new Response(new Uint8Array([...png, count]), {headers: {"Content-Type": "image/png"}});
   };
-  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {}});
-  URL.createObjectURL = blob => { saved.push(blob); return "blob:archive"; };
+  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {} });
+  URL.createObjectURL = blob => {
+    saved.push(blob);
+    return "blob:archive";
+  };
   URL.revokeObjectURL = () => {};
   try {
     const controller = createImageExportController({
@@ -433,12 +464,15 @@ test("image export prefetches at most three images while converting in input ord
         firstDecodeStarted.resolve();
         await firstDecodeGate.promise;
       }
-      return {width: 1, height: 1, close() {}};
+      return {width: 1, height: 1, close() {} };
     } finally {
       activeDecodes -= 1;
     }
   };
-  URL.createObjectURL = blob => { saved.push(blob); return "blob:archive"; };
+  URL.createObjectURL = blob => {
+    saved.push(blob);
+    return "blob:archive";
+  };
   URL.revokeObjectURL = () => {};
   try {
     const controller = createImageExportController({
@@ -536,7 +570,7 @@ test("取消した画像形式の保存は進捗を保ち、作業を捨てて�
     href: "", download: "", click() { downloads.push(this.download); }, remove() {},
   } : previousCreateElement(tag);
   globalThis.document = {...pageDocument, createElement: tag => tag === "canvas" ? canvas : pageDocument.createElement(tag)};
-  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {}});
+  globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {} });
   globalThis.Worker = class extends EventTarget {
     onmessage = null;
     onerror = null;
@@ -557,7 +591,10 @@ test("取消した画像形式の保存は進捗を保ち、作業を捨てて�
     }
     return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), {headers: {"Content-Type": "image/png"}});
   };
-  URL.createObjectURL = blob => { downloads.push(blob.type); return "blob:archive"; };
+  URL.createObjectURL = blob => {
+    downloads.push(blob.type);
+    return "blob:archive";
+  };
   URL.revokeObjectURL = () => {};
   try {
     for (const format of formats) {

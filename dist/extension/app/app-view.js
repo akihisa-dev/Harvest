@@ -4,12 +4,26 @@ import { createEmptyStateView } from "./empty-state.js";
 import { imageFilename } from "./export-presentation.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { setMotionText } from "./motion.js";
+function exportButtonLabel(state) {
+    const { format, selected, view } = state;
+    if (view.phase === "running")
+        return view.progress;
+    if (view.phase === "retry-required")
+        return t("exportRetry");
+    if (view.phase === "saved") {
+        return t(isMediaArchiveFormat(format) ? "exportFilesSaved" : "exportSaved", {
+            count: selected.length,
+            plural: formatPlural(selected.length),
+        });
+    }
+    return selected.length ? t("exportAction", { format: format.toUpperCase() }) : t("save");
+}
 /** Displays snapshots; changing export work and notifying the page belong to application events. */
 export function createAppView(elements, positionOf) {
     const { sourceDrop, sourceUrl, scanButton, resetButton, exportButton, exportFormatInputs, includeSourcePage, sourcePageOption, exportMediaHint, statusElement, failuresElement, failedImagesElement, scanOverlay, exportOverlay, emptyElement, emptyLogoElement, emptyMessageElement, allSelectionCheckbox, resetOrderButton, } = elements;
     const updateEmptyState = createEmptyStateView({ container: emptyElement, logo: emptyLogoElement, message: emptyMessageElement });
     function renderProgress(snapshot) {
-        const { format, selected, view } = snapshot.export;
+        const { selected, view } = snapshot.export;
         const status = snapshot.status;
         const success = status.state === "success";
         setMotionText(statusElement, success ? "" : status.state === "busy" ? status.progress : status.message);
@@ -24,20 +38,24 @@ export function createAppView(elements, positionOf) {
         }
         else if (!running)
             exportButton.removeAttribute("aria-label");
-        if (running)
-            setButtonLabel(exportButton, view.progress);
-        else if (view.phase === "retry-required")
-            setButtonLabel(exportButton, t("exportRetry"));
-        else if (view.phase === "saved")
-            setButtonLabel(exportButton, t(isMediaArchiveFormat(format) ? "exportFilesSaved" : "exportSaved", {
-                count: selected.length, plural: formatPlural(selected.length),
-            }));
-        else if (selected.length)
-            setButtonLabel(exportButton, t("exportAction", { format: format.toUpperCase() }));
-        else
-            setButtonLabel(exportButton, t("save"));
+        setButtonLabel(exportButton, exportButtonLabel(snapshot.export));
         exportButton.title = running ? `${view.progress} — ${t("exportCancelHint")}` : exportButton.textContent;
         exportButton.disabled = (snapshot.busy && !running) || !selected.length;
+    }
+    function renderFailures({ format, view }) {
+        const pending = view.pending;
+        failuresElement.hidden = !pending?.failed.size;
+        failedImagesElement.replaceChildren(...(pending?.selected.filter(item => pending.failed.has(item)) ?? []).map(item => {
+            const row = document.createElement("li");
+            const fallback = format === "pdf" ? "errorPdfFetch" : "errorImageConvert";
+            row.textContent = t("failedRow", {
+                index: positionOf(item) + 1,
+                filename: imageFilename(item.url),
+                reason: localizeErrorMessage(pending.failed.get(item) ?? t(fallback), fallback),
+            });
+            row.title = item.url;
+            return row;
+        }));
     }
     function render(snapshot) {
         const { busy, items, selectedCount, scanState, scanRunning } = snapshot;
@@ -72,19 +90,7 @@ export function createAppView(elements, positionOf) {
         else
             scanButton.removeAttribute("aria-label");
         renderProgress(snapshot);
-        const pending = view.pending;
-        failuresElement.hidden = !pending?.failed.size;
-        failedImagesElement.replaceChildren(...(pending?.selected.filter(item => pending.failed.has(item)) ?? []).map(item => {
-            const row = document.createElement("li");
-            const fallback = format === "pdf" ? "errorPdfFetch" : "errorImageConvert";
-            row.textContent = t("failedRow", {
-                index: positionOf(item) + 1,
-                filename: imageFilename(item.url),
-                reason: localizeErrorMessage(pending.failed.get(item) ?? t(fallback), fallback),
-            });
-            row.title = item.url;
-            return row;
-        }));
+        renderFailures(snapshot.export);
         scanOverlay.hidden = scanState !== "scanning";
         exportOverlay.hidden = view.phase !== "running";
         emptyElement.hidden = items.length > 0;

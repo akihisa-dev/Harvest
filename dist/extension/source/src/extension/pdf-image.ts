@@ -141,7 +141,10 @@ export async function preparePdfImages<T extends { readonly url: string; readonl
   const closeQueue = (): void => queue.close(workers.signal.reason);
   workers.signal.addEventListener("abort", closeQueue, {once: true});
   if (workers.signal.aborted) closeQueue();
-  const fetchCompletion = workers.finished.then(() => queue.close(), error => { queue.close(error); throw error; });
+  const fetchCompletion = workers.finished.then(() => queue.close(), error => {
+    queue.close(error);
+    throw error;
+  });
   const converter = (async (): Promise<void> => {
     while (true) {
       const queued = await queue.pop();

@@ -13,10 +13,10 @@ const previous = {
 
 globalThis.chrome = {i18n: {getUILanguage: () => "en"}};
 globalThis.document = {
-  documentElement: {setAttribute() {}},
+  documentElement: {setAttribute() {} },
   querySelectorAll() { return []; },
-  body: {append() {}},
-  createElement() { return {setAttribute() {}, click() {}, remove() {}}; },
+  body: {append() {} },
+  createElement() { return {setAttribute() {}, click() {}, remove() {} }; },
 };
 
 const {fetchOriginalMedia} = await import("../dist/extension/app/media-fetch.js");
@@ -61,8 +61,8 @@ test("original media preserves GIF and MP4 bytes with MIME-based ZIP extensions"
   const links = [];
   globalThis.chrome = {i18n: {getUILanguage: () => "en"}};
   globalThis.document = {
-    body: {append(link) { links.push(link); }},
-    createElement() { return {href: "", download: "", click() {}, remove() {}}; },
+    body: {append(link) { links.push(link); } },
+    createElement() { return {href: "", download: "", click() {}, remove() {} }; },
   };
   globalThis.window = {setTimeout};
   globalThis.fetch = async url => {
@@ -75,7 +75,10 @@ test("original media preserves GIF and MP4 bytes with MIME-based ZIP extensions"
     if (url.endsWith("clip.webm")) return fakeResponse(webmBytes, "video/webm");
     return fakeResponse(mp4Bytes, "video/mp4");
   };
-  URL.createObjectURL = blob => { archives.push(blob); return "blob:archive"; };
+  URL.createObjectURL = blob => {
+    archives.push(blob);
+    return "blob:archive";
+  };
   URL.revokeObjectURL = () => {};
   try {
     const controller = createImageExportController({
@@ -141,7 +144,8 @@ test("original media rejects HTML, mismatched signatures, and payloads above 64 
     if (url.endsWith("/svg")) return fakeResponse("<svg/>", "image/svg+xml");
     if (url.endsWith("/avif-as-mp4")) return fakeResponse(avifFtyp, "video/mp4");
     if (url.endsWith("/late-mp4-brand")) return fakeResponse(largeFtyp, "video/mp4");
-    if (url.endsWith("/mp4-as-gif")) return fakeResponse(new Uint8Array([0, 0, 0, 16, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0, 0, 0, 0]), "video/mp4");
+    if (url.endsWith("/mp4-as-gif"))
+      return fakeResponse(new Uint8Array([0, 0, 0, 16, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0, 0, 0, 0]), "video/mp4");
     return fakeResponse(new Uint8Array([0xff, 0xd8, 0xff]), "image/jpeg", {"content-length": String(64 * 1024 * 1024 + 1)});
   };
   try {
@@ -198,7 +202,10 @@ test("MP4 export retains an unconvertible WebM as a retryable failure without cr
   const webm = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 1, 2, 3, 4]);
   const archives = [];
   globalThis.fetch = async () => fakeResponse(webm, "video/webm");
-  URL.createObjectURL = blob => { archives.push(blob); return "blob:archive"; };
+  URL.createObjectURL = blob => {
+    archives.push(blob);
+    return "blob:archive";
+  };
   const controller = createImageExportController({
     getSelectedItems: () => [item],
     getZipFilename: () => "Video.zip",
@@ -225,27 +232,34 @@ test.after(() => {
 
 test("GIF/MP4の不完全な構造とファイル外サンプルを拒否し、断片化MP4も元バイトを保つ", async () => {
   try {
-    for (const [name, {type,bytes}] of Object.entries(brokenMedia)) {
-      globalThis.fetch = async () => fakeResponse(bytes,type);
-      await assert.rejects(fetchOriginalMedia(`https://media.test/${name}`,type==='image/gif'?'gif':'video'), error=>error.kind==='invalid-image',name);
+    for (const [name, {type, bytes}] of Object.entries(brokenMedia)) {
+      globalThis.fetch = async () => fakeResponse(bytes, type);
+      await assert.rejects(fetchOriginalMedia(`https://media.test/${name}`, type === 'image/gif' ? 'gif' : 'video'), error => error.kind === 'invalid-image', name);
     }
-    for (const bytes of [mp4Bytes,fragmentedMp4]) {
-      globalThis.fetch = async () => fakeResponse(bytes,'video/mp4');
-      assert.deepEqual(new Uint8Array(await (await fetchOriginalMedia('https://media.test/valid','video')).arrayBuffer()),new Uint8Array(bytes));
+    for (const bytes of [mp4Bytes, fragmentedMp4]) {
+      globalThis.fetch = async () => fakeResponse(bytes, 'video/mp4');
+      assert.deepEqual(new Uint8Array(await (await fetchOriginalMedia('https://media.test/valid', 'video')).arrayBuffer()), new Uint8Array(bytes));
     }
-  } finally {globalThis.fetch = previous.fetch;}
+  } finally {
+    globalThis.fetch = previous.fetch;
+  }
 });
 
 
 test("GIF87a、複数フレーム、ローカルパレットと拡張ブロックの正常GIFを保持する", async () => {
-  const gif87 = Buffer.from(gifBytes);gif87.write('GIF87a');
-  const animated = Buffer.concat([gifBytes.subarray(0,-1),gifBytes.subarray(19)]);
-  const local = Buffer.from(gifBytes);local[10] = 0;local[36] = 128;
-  const localPalette = Buffer.concat([local.subarray(0,13),local.subarray(19,37),local.subarray(13,19),local.subarray(37)]);
+  const gif87 = Buffer.from(gifBytes);
+  gif87.write('GIF87a');
+  const animated = Buffer.concat([gifBytes.subarray(0, -1), gifBytes.subarray(19)]);
+  const local = Buffer.from(gifBytes);
+  local[10] = 0;
+  local[36] = 128;
+  const localPalette = Buffer.concat([local.subarray(0, 13), local.subarray(19, 37), local.subarray(13, 19), local.subarray(37)]);
   try {
-    for (const bytes of [gif87,animated,localPalette]) {
-      globalThis.fetch = async () => fakeResponse(bytes,'image/gif');
-      assert.deepEqual(new Uint8Array(await (await fetchOriginalMedia('https://media.test/valid','gif')).arrayBuffer()),new Uint8Array(bytes));
+    for (const bytes of [gif87, animated, localPalette]) {
+      globalThis.fetch = async () => fakeResponse(bytes, 'image/gif');
+      assert.deepEqual(new Uint8Array(await (await fetchOriginalMedia('https://media.test/valid', 'gif')).arrayBuffer()), new Uint8Array(bytes));
     }
-  } finally {globalThis.fetch = previous.fetch;}
+  } finally {
+    globalThis.fetch = previous.fetch;
+  }
 });

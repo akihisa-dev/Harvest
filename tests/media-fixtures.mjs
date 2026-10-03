@@ -2,22 +2,22 @@
 export const gifBytes = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
 export const mp4Bytes = Buffer.from('AAAAHGZ0eXBpc29tAAACAGlzb21hdmMxbXA0MQAAArNtb292AAAAbG12aGQAAAAA5uX9Q+bl/UMAAOEAAABDgAABAAABAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAACP3RyYWsAAABcdGtoZAAAAAPm5f1D5uX9QwAAAAEAAAAAAABDgAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAIAAAACAAAAAAAdttZGlhAAAAIG1kaGQAAAAA5uX9Q+bl/UMAAOEAAABDgFXEAAAAAAA3aGRscgAAAABtaGxydmlkZQAAAAAAAAAAAAAAAE1lZGlhYnVubnlWaWRlb0hhbmRsZXIAAAABfG1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAATxzdGJsAAAAuHN0c2QAAAAAAAAAAQAAAKhhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAACAAIABIAAAASAAAAAAAAAABEk1lZGlhYnVubnkgdjEuNjEuMAAAAAAAAAAAAAAAAAAAGP//AAAAK2F2Y0MBZAAB/+EAECdkAAGsVoIJ4MYRmoCGgIEBAAQo7jyw/fj4AAAAABNjb2xybmNseAABAA0AAQAAAAAUYnRydAAAAAAAAARwAAAOywAAABhzdHRzAAAAAAAAAAEAAAADAAAWgAAAABxzdHNjAAAAAAAAAAEAAAABAAAAAwAAAAEAAAAgc3RzegAAAAAAAAAAAAAAAwAAAGsAAAARAAAAEgAAABRzdGNvAAAAAAAAAAEAAALXAAAAFHN0c3MAAAAAAAAAAQAAAAEAAACWbWRhdAAAADUGBS1HVkrcXExDP5TvxRE80UOoAQAAAwABAwAAAwABAgABhqALAAADAAADAAAJ2AwDkSsBgAAAAC4luCAF/45JOZV/8JSXC17ze/p7d+BTLY2/m4BYtPUphdr3rlXmpqcxwrcKSKGAAAAADSHhBE//BD2w/Crk8+oAAAAOIeIIRP8CtsuM6q1SJcA=', 'base64');
 export const fragmentedMp4 = Buffer.from('AAAAHGZ0eXBpc281AAACAGlzbzVpc282bXA0MQAAAqNtb292AAAAbG12aGQAAAAA5uX9RObl/UQAAOEAAAAAAAABAAABAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAACB3RyYWsAAABcdGtoZAAAAAPm5f1E5uX9RAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAIAAAACAAAAAAAaNtZGlhAAAAIG1kaGQAAAAA5uX9RObl/UQAAOEAAAAAAFXEAAAAAAA3aGRscgAAAABtaGxydmlkZQAAAAAAAAAAAAAAAE1lZGlhYnVubnlWaWRlb0hhbmRsZXIAAAABRG1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAQRzdGJsAAAAuHN0c2QAAAAAAAAAAQAAAKhhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAACAAIABIAAAASAAAAAAAAAABEk1lZGlhYnVubnkgdjEuNjEuMAAAAAAAAAAAAAAAAAAAGP//AAAAK2F2Y0MBZAAB/+EAECdkAAGsVoIJ4MYRmoCGgIEBAAQo7jyw/fj4AAAAABNjb2xybmNseAABAA0AAQAAAAAUYnRydAAAAAAAAYagAAGGoAAAABBzdHRzAAAAAAAAAAAAAAAQc3RzYwAAAAAAAAAAAAAAFHN0c3oAAAAAAAAAAAAAAAAAAAAQc3RjbwAAAAAAAAAAAAAAKG12ZXgAAAAgdHJleAAAAAAAAAABAAAAAQAAAAAAAAAAAAAAAAAAAHRtb29mAAAAEG1maGQAAAAAAAAAAQAAAFx0cmFmAAAAHHRmaGQAAgA4AAAAAQAAFoAAAAARAQEAAAAAABR0ZmR0AQAAAAAAAAAAAAAAAAAAJHRydW4BAAIFAAAAAwAAAHwCAAAAAAAAawAAABEAAAASAAAAlm1kYXQAAAA1BgUtR1ZK3FxMQz+U78URPNFDqAEAAAMAAQMAAAMAAQIAAYagCwAAAwAAAwAACeIMA5ErAYAAAAAuJbggBf+OSTmVf/CUlwte83v6e3fgUy2Nv5uAWLT1KYXa965V5qanMcK3CkihgAAAAA0h4QRP/wQ9sPwq5PPqAAAADiHiCET/ArbLjOqtUiXAAAAATG1mcmEAAAA0dGZyYQEAAAAAAAABAAAAPwAAAAEAAAAAAAAAAAAAAAAAAAK/AAAAAQAAAAEAAAABAAAAEG1mcm8AAAAAAAAATA==', 'base64');
-const outsideSample = Buffer.from(mp4Bytes);
-const stco = outsideSample.indexOf('stco');
-outsideSample.writeUInt32BE(mp4Bytes.length + 1000, stco + 12);
-const boxes = [];
+const outOfBoundsSample = Buffer.from(mp4Bytes);
+const chunkOffsetBoxOffset = outOfBoundsSample.indexOf('stco');
+outOfBoundsSample.writeUInt32BE(mp4Bytes.length + 1000, chunkOffsetBoxOffset + 12);
+const topLevelBoxes = [];
 for (let offset = 0; offset < mp4Bytes.length;) {
-  const size = mp4Bytes.readUInt32BE(offset);
-  boxes.push({type: mp4Bytes.toString('ascii', offset + 4, offset + 8), bytes: mp4Bytes.subarray(offset, offset + size)});
-  offset += size;
+  const boxSize = mp4Bytes.readUInt32BE(offset);
+  topLevelBoxes.push({type: mp4Bytes.toString('ascii', offset + 4, offset + 8), bytes: mp4Bytes.subarray(offset, offset + boxSize)});
+  offset += boxSize;
 }
 export const brokenMedia = {
-  'gif-header': {type:'image/gif',bytes:Buffer.from('GIF89a')},
-  'gif-truncated': {type:'image/gif',bytes:gifBytes.subarray(0,-2)},
-  'gif-no-frame': {type:'image/gif',bytes:Buffer.concat([gifBytes.subarray(0,19),Buffer.from([0x3b])])},
-  'mp4-header': {type:'video/mp4',bytes:Buffer.from('00000010667479706d70343200000000','hex')},
-  'mp4-truncated': {type:'video/mp4',bytes:mp4Bytes.subarray(0,-1)},
-  'mp4-no-moov': {type:'video/mp4',bytes:Buffer.concat(boxes.filter(box=>box.type!=='moov').map(box=>box.bytes))},
-  'mp4-no-mdat': {type:'video/mp4',bytes:Buffer.concat(boxes.filter(box=>box.type!=='mdat').map(box=>box.bytes))},
-  'mp4-outside-sample': {type:'video/mp4',bytes:outsideSample},
+  'gif-header': {type: 'image/gif', bytes: Buffer.from('GIF89a')},
+  'gif-truncated': {type: 'image/gif', bytes: gifBytes.subarray(0, -2)},
+  'gif-no-frame': {type: 'image/gif', bytes: Buffer.concat([gifBytes.subarray(0, 19), Buffer.from([0x3b])])},
+  'mp4-header': {type: 'video/mp4', bytes: Buffer.from('00000010667479706d70343200000000', 'hex')},
+  'mp4-truncated': {type: 'video/mp4', bytes: mp4Bytes.subarray(0, -1)},
+  'mp4-no-moov': {type: 'video/mp4', bytes: Buffer.concat(topLevelBoxes.filter(box => box.type !== 'moov').map(box => box.bytes))},
+  'mp4-no-mdat': {type: 'video/mp4', bytes: Buffer.concat(topLevelBoxes.filter(box => box.type !== 'mdat').map(box => box.bytes))},
+  'mp4-outside-sample': {type: 'video/mp4', bytes: outOfBoundsSample},
 };

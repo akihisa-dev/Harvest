@@ -45,7 +45,7 @@ test("MP4・GIFの保存設定を読み取り、旧設定の内容は書き換�
 });
 
 test("unavailable preference storage falls back cleanly and reports writes that fail", () => {
-  const unreadable = {getItem() { throw new Error("storage unavailable"); }, setItem() { throw new Error("storage unavailable"); }};
+  const unreadable = {getItem() { throw new Error("storage unavailable"); }, setItem() { throw new Error("storage unavailable"); } };
   assert.deepEqual(loadExportPreferences(unreadable), {format: "pdf", includeSourcePage: false});
   assert.equal(saveExportFormat("jxl", unreadable), false);
   assert.equal(saveSourcePagePreference(true, unreadable), false);
@@ -58,10 +58,16 @@ function pending(format, failed = new Map()) {
 const image = {url: "https://example.test/image.png", sourcePage: "https://example.test/gallery"};
 function viewState(overrides = {}) {
   return deriveExportViewState({
-    format: "pdf", includeSourcePage: false, selected: [], completed: null,
-    pdfPending: null, imagePending: null,
-    pdfRunning: false, imageRunning: false,
-    pdfProgress: "", imageProgress: "",
+    format: "pdf",
+    includeSourcePage: false,
+    selected: [],
+    completed: null,
+    pdfPending: null,
+    imagePending: null,
+    pdfRunning: false,
+    imageRunning: false,
+    pdfProgress: "",
+    imageProgress: "",
     ...overrides,
   });
 }

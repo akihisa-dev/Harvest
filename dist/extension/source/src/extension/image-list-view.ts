@@ -209,7 +209,10 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
       resolution.textContent = ready ? `${preview.naturalWidth} × ${preview.naturalHeight}` : "";
     };
     preview.addEventListener("load", updateResolution);
-    preview.addEventListener("error", () => { resolution.hidden = true; resolution.textContent = ""; });
+    preview.addEventListener("error", () => {
+      resolution.hidden = true;
+      resolution.textContent = "";
+    });
     const selectedMark = document.createElement("span");
     selectedMark.className = "item-selected";
     selectedMark.textContent = "✓";
@@ -249,6 +252,60 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     return row;
   }
 
+  function renderSourceRow(row: HTMLLIElement, item: ImageItem, index: number): void {
+    row.className = "source-preview";
+    row.style.order = String(index);
+    const preview = row.children[0] as HTMLImageElement | undefined;
+    if (preview) {
+      if (preview.getAttribute("src") !== item.url) preview.setAttribute("src", item.url);
+    } else {
+      const sourcePreviewImage = document.createElement("img");
+      sourcePreviewImage.className = "preview";
+      sourcePreviewImage.setAttribute("src", item.url);
+      sourcePreviewImage.alt = "Source";
+      const name = document.createElement("div");
+      name.className = "item-body";
+      name.textContent = "Source";
+      row.append(sourcePreviewImage, name);
+    }
+  }
+
+  function renderImageRow(row: HTMLLIElement, item: ImageItem, index: number, failedItems: ReadonlySet<ImageItem>): void {
+    const parts = imageRowParts.get(row);
+    if (!parts) return;
+    const overallIndex = collection.positionOf(item)!;
+    row.style.order = String(index);
+    if (item.selected) row.classList.remove("unselected");
+    else row.classList.add("unselected");
+    const failed = failedItems.has(item);
+    if (failed) row.classList.add("failed");
+    else row.classList.remove("failed");
+    if (drag.draggedImage !== item) row.classList.remove("dragging");
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-pressed", String(item.selected));
+    row.setAttribute("aria-disabled", String(options.isBusy()));
+    row.draggable = !options.isBusy();
+    row.tabIndex = 0;
+    row.title = t("imageRowTitle");
+    row.dataset["dropLabel"] = t("dropImage");
+    row.setAttribute("data-focus-kind", "image");
+    row.setAttribute("data-focus-url", item.url);
+    row.setAttribute("data-focus-action", "drag");
+    row.setAttribute("aria-label", t("imageRowAria", {
+      filename: options.getFilename(item.url), index: overallIndex + 1,
+      failed: formatFailedAria(failed),
+    }));
+    options.previewLoader.set(parts.preview, item);
+    parts.updateResolution();
+    parts.preview.alt = t("imageAlt", {index: index + 1});
+    parts.order.textContent = `${overallIndex + 1}`;
+    parts.order.setAttribute("aria-label", t("imagePosition", {index: overallIndex + 1}));
+    parts.name.textContent = (item.kind === "gif" ? "GIF · " : item.kind === "video" ? t("mediaKindVideo") + " · " : "") + options.getFilename(item.url);
+    parts.name.title = item.url;
+    parts.selectedMark.hidden = false;
+    parts.failedMark.hidden = !failed;
+  }
+
   function renderImages(failedItems: ReadonlySet<ImageItem>, sourcePreview: ImageItem | null): void {
     const previousRows = rows;
     const listItems: RenderedListItem[] = visibleImages.map(image => ({kind: "image", image}));
@@ -259,59 +316,9 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     const nextListRows = reconcileKeyedChildren(imagesElement, listItems, listItemKey,
       item => item.kind === "image" ? createImageRow(item.image) : document.createElement("li"),
       (row, listItem, index) => {
-      if (listItem.kind === "source") {
-        row.className = "source-preview";
-        row.style.order = String(index);
-        const preview = row.children[0] as HTMLImageElement | undefined;
-        if (preview) {
-          if (preview.getAttribute("src") !== listItem.image.url) preview.setAttribute("src", listItem.image.url);
-        } else {
-          const sourcePreviewImage = document.createElement("img");
-          sourcePreviewImage.className = "preview";
-          sourcePreviewImage.setAttribute("src", listItem.image.url);
-          sourcePreviewImage.alt = "Source";
-          const name = document.createElement("div");
-          name.className = "item-body";
-          name.textContent = "Source";
-          row.append(sourcePreviewImage, name);
-        }
-        return;
-      }
-      const item = listItem.image;
-      const parts = imageRowParts.get(row);
-      if (!parts) return;
-      const overallIndex = collection.positionOf(item)!;
-      row.style.order = String(index);
-      if (item.selected) row.classList.remove("unselected");
-      else row.classList.add("unselected");
-      const failed = failedItems.has(item);
-      if (failed) row.classList.add("failed");
-      else row.classList.remove("failed");
-      if (drag.draggedImage !== item) row.classList.remove("dragging");
-      row.setAttribute("role", "button");
-      row.setAttribute("aria-pressed", String(item.selected));
-      row.setAttribute("aria-disabled", String(options.isBusy()));
-      row.draggable = !options.isBusy();
-      row.tabIndex = 0;
-      row.title = t("imageRowTitle");
-      row.dataset["dropLabel"] = t("dropImage");
-      row.setAttribute("data-focus-kind", "image");
-      row.setAttribute("data-focus-url", item.url);
-      row.setAttribute("data-focus-action", "drag");
-      row.setAttribute("aria-label", t("imageRowAria", {
-        filename: options.getFilename(item.url), index: overallIndex + 1,
-        failed: formatFailedAria(failed),
-      }));
-      options.previewLoader.set(parts.preview, item);
-      parts.updateResolution();
-      parts.preview.alt = t("imageAlt", {index: index + 1});
-      parts.order.textContent = `${overallIndex + 1}`;
-      parts.order.setAttribute("aria-label", t("imagePosition", {index: overallIndex + 1}));
-      parts.name.textContent = (item.kind === "gif" ? "GIF · " : item.kind === "video" ? t("mediaKindVideo") + " · " : "") + options.getFilename(item.url);
-      parts.name.title = item.url;
-      parts.selectedMark.hidden = false;
-      parts.failedMark.hidden = !failed;
-    }, {animateLayout: layoutChanged});
+        if (listItem.kind === "source") renderSourceRow(row, listItem.image, index);
+        else renderImageRow(row, listItem.image, index, failedItems);
+      }, {animateLayout: layoutChanged});
     renderedListKeys = nextKeys;
     const nextRows = new Map<string, HTMLLIElement>();
     for (const item of visibleImages) {

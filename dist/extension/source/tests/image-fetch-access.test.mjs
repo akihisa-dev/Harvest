@@ -35,7 +35,10 @@ test("画像取得は出典と同じオリジンだけ認証情報を使い、�
 test("公開ページが差し込んだローカル宛先や資格情報付きURLは通信前に拒否する", async () => {
   const previousFetch = globalThis.fetch;
   let calls = 0;
-  globalThis.fetch = async () => { calls += 1; throw new Error("通信してはいけません"); };
+  globalThis.fetch = async () => {
+    calls += 1;
+    throw new Error("通信してはいけません");
+  };
   try {
     for (const url of [
       "http://127.0.0.1/private.png",

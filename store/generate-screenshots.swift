@@ -12,12 +12,17 @@ func color(_ value: String) -> NSColor {
                    blue: CGFloat(hex & 255) / 255, alpha: 1)
 }
 
-func box(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat,
+func box(_ x: CGFloat, _ y: CGFloat, _ shapeWidth: CGFloat, _ shapeHeight: CGFloat,
          _ fill: NSColor, radius: CGFloat = 0, stroke: NSColor? = nil) {
-    let r = NSRect(x: x, y: CGFloat(height) - y - h, width: w, height: h)
-    let p = NSBezierPath(roundedRect: r, xRadius: radius, yRadius: radius)
-    fill.setFill(); p.fill()
-    if let stroke { stroke.setStroke(); p.lineWidth = 1; p.stroke() }
+    let rectangle = NSRect(x: x, y: CGFloat(height) - y - shapeHeight, width: shapeWidth, height: shapeHeight)
+    let path = NSBezierPath(roundedRect: rectangle, xRadius: radius, yRadius: radius)
+    fill.setFill()
+    path.fill()
+    if let stroke {
+        stroke.setStroke()
+        path.lineWidth = 1
+        path.stroke()
+    }
 }
 
 func label(_ value: String, _ x: CGFloat, _ y: CGFloat, _ size: CGFloat = 12,
@@ -27,23 +32,20 @@ func label(_ value: String, _ x: CGFloat, _ y: CGFloat, _ size: CGFloat = 12,
                              withAttributes: [.font: font, .foregroundColor: ink])
 }
 
-func circle(_ x: CGFloat, _ y: CGFloat, _ d: CGFloat, _ fill: NSColor) {
+func circle(_ x: CGFloat, _ y: CGFloat, _ diameter: CGFloat, _ fill: NSColor) {
     fill.setFill()
-    NSBezierPath(ovalIn: NSRect(x: x, y: CGFloat(height) - y - d, width: d, height: d)).fill()
-}
-
-func triangle(_ points: [(CGFloat, CGFloat)], _ fill: NSColor) {
-    let path = NSBezierPath()
-    path.move(to: NSPoint(x: points[0].0, y: CGFloat(height) - points[0].1))
-    for p in points.dropFirst() { path.line(to: NSPoint(x: p.0, y: CGFloat(height) - p.1)) }
-    path.close(); fill.setFill(); path.fill()
+    NSBezierPath(ovalIn: NSRect(x: x, y: CGFloat(height) - y - diameter, width: diameter, height: diameter)).fill()
 }
 
 func polygon(_ points: [(CGFloat, CGFloat)], _ fill: NSColor) {
     let path = NSBezierPath()
     path.move(to: NSPoint(x: points[0].0, y: CGFloat(height) - points[0].1))
-    for point in points.dropFirst() { path.line(to: NSPoint(x: point.0, y: CGFloat(height) - point.1)) }
-    path.close(); fill.setFill(); path.fill()
+    for point in points.dropFirst() {
+        path.line(to: NSPoint(x: point.0, y: CGFloat(height) - point.1))
+    }
+    path.close()
+    fill.setFill()
+    path.fill()
 }
 
 let palettes: [(String, String, String, String)] = [
@@ -55,17 +57,25 @@ let palettes: [(String, String, String, String)] = [
     ("#e0e9e2", "#aac2b5", "#719a87", "#bdd2c5")
 ]
 
-func landscape(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ index: Int) {
-    let p = palettes[index % palettes.count]
-    box(x, y, w, h, color(p.0), radius: 4)
-    circle(x + w * 0.49, y + h * 0.1, min(w, h) * 0.42, color(p.1))
-    triangle([(x, y + h), (x + w * 0.4, y + h * 0.38), (x + w * 0.8, y + h)], color(p.2))
-    triangle([(x + w * 0.44, y + h), (x + w * 0.7, y + h * 0.59), (x + w, y + h)], color(p.3))
+func landscape(_ x: CGFloat, _ y: CGFloat, _ shapeWidth: CGFloat, _ shapeHeight: CGFloat, _ index: Int) {
+    let palette = palettes[index % palettes.count]
+    box(x, y, shapeWidth, shapeHeight, color(palette.0), radius: 4)
+    circle(x + shapeWidth * 0.49, y + shapeHeight * 0.1, min(shapeWidth, shapeHeight) * 0.42, color(palette.1))
+    polygon([
+        (x, y + shapeHeight),
+        (x + shapeWidth * 0.4, y + shapeHeight * 0.38),
+        (x + shapeWidth * 0.8, y + shapeHeight)
+    ], color(palette.2))
+    polygon([
+        (x + shapeWidth * 0.44, y + shapeHeight),
+        (x + shapeWidth * 0.7, y + shapeHeight * 0.59),
+        (x + shapeWidth, y + shapeHeight)
+    ], color(palette.3))
 }
 
-func button(_ value: String, _ x: CGFloat, _ y: CGFloat, _ w: CGFloat,
+func button(_ value: String, _ x: CGFloat, _ y: CGFloat, _ shapeWidth: CGFloat,
             dark: Bool = false, size: CGFloat = 11) {
-    box(x, y, w, 30, dark ? color("#202020") : .white, radius: 5,
+    box(x, y, shapeWidth, 30, dark ? color("#202020") : .white, radius: 5,
         stroke: dark ? nil : color("#c8c8c8"))
     label(value, x + 9, y + 8, size, dark ? .white : color("#202020"), bold: true)
 }
@@ -73,23 +83,27 @@ func button(_ value: String, _ x: CGFloat, _ y: CGFloat, _ w: CGFloat,
 func checkbox(_ x: CGFloat, _ y: CGFloat, checked: Bool) {
     box(x, y, 15, 15, checked ? color("#202020") : .white, radius: 2,
         stroke: color("#888888"))
-    if checked { label("✓", x + 2, y - 2, 15, .white, bold: true) }
+    if checked {
+        label("✓", x + 2, y - 2, 15, .white, bold: true)
+    }
 }
 
 func render(english: Bool, output: String) throws {
-    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
-                               bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
-                               isPlanar: false, colorSpaceName: .deviceRGB,
-                               bytesPerRow: 0, bitsPerPixel: 0)!
+    let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+                                  bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                  isPlanar: false, colorSpaceName: .deviceRGB,
+                                  bytesPerRow: 0, bitsPerPixel: 0)!
     NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
     NSGraphicsContext.current?.imageInterpolation = .high
 
     let line = color("#dedede")
     let muted = color("#686868")
     box(0, 0, 1280, 800, .white)
     box(0, 0, 1280, 44, color("#f0f0f0"))
-    for i in 0..<3 { circle(18 + CGFloat(i) * 16, 19, 7, color("#b7b7b7")) }
+    for i in 0..<3 {
+        circle(18 + CGFloat(i) * 16, 19, 7, color("#b7b7b7"))
+    }
     box(78, 8, 1095, 28, .white, radius: 6, stroke: line)
     label("sample.example / field-notes", 96, 15, 11, muted)
     label(english ? "Sample page" : "サンプル画面", 1190, 16, 10, muted)
@@ -100,8 +114,10 @@ func render(english: Bool, output: String) throws {
     label(english ? "A sample gallery of six landscapes." : "色とかたちで描く、6つの風景。このページは掲載用のサンプルです。",
           36, 204, 12, muted)
     for i in 0..<6 {
-        let col = i % 3, row = i / 3
-        let x = CGFloat(36 + col * 294), y = CGFloat(256 + row * 272)
+        let column = i % 3
+        let row = i / 3
+        let x = CGFloat(36 + column * 294)
+        let y = CGFloat(256 + row * 272)
         landscape(x, y, 274, 220, i)
         label(String(format: "%02d", i + 1) + (english ? " / landscape" : " / 風景"), x, y + 232, 11, muted)
     }
@@ -148,7 +164,7 @@ func render(english: Bool, output: String) throws {
     NSGraphicsContext.current?.flushGraphics()
     NSGraphicsContext.restoreGraphicsState()
     let temporary = URL(fileURLWithPath: output + ".jpg")
-    let data = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.96])!
+    let data = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.96])!
     try data.write(to: temporary)
     let conversion = Process()
     conversion.executableURL = URL(fileURLWithPath: "/usr/bin/sips")
@@ -157,20 +173,23 @@ func render(english: Bool, output: String) throws {
     try conversion.run()
     conversion.waitUntilExit()
     try FileManager.default.removeItem(at: temporary)
-    guard conversion.terminationStatus == 0 else { throw NSError(domain: "Screenshot", code: 1) }
+    guard conversion.terminationStatus == 0 else {
+        throw NSError(domain: "Screenshot", code: 1)
+    }
 }
 
 try render(english: false, output: "store/assets/screenshot-ja.png")
 try render(english: true, output: "store/assets/screenshot-global.png")
 
 func renderPromo() throws {
-    width = 440; height = 280
-    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
-                               bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
-                               isPlanar: false, colorSpaceName: .deviceRGB,
-                               bytesPerRow: 0, bitsPerPixel: 0)!
+    width = 440
+    height = 280
+    let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+                                  bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                  isPlanar: false, colorSpaceName: .deviceRGB,
+                                  bytesPerRow: 0, bitsPerPixel: 0)!
     NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
     box(0, 0, 440, 280, color("#f7f6f3"))
     box(0, 0, 10, 280, color("#202020"))
     label("HARVEST  /  CHROME EXTENSION", 28, 20, 10, color("#686868"), bold: true)
@@ -198,7 +217,7 @@ func renderPromo() throws {
     icon.draw(in: NSRect(x: 368, y: CGFloat(height) - 230 - 42, width: 42, height: 42))
     NSGraphicsContext.current?.flushGraphics()
     NSGraphicsContext.restoreGraphicsState()
-    let data = rep.representation(using: .png, properties: [:])!
+    let data = bitmap.representation(using: .png, properties: [:])!
     try data.write(to: URL(fileURLWithPath: "store/assets/promo-small.png"))
 }
 

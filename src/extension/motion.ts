@@ -144,7 +144,10 @@ export function animateLayoutChange(
 export function setMotionText(element: HTMLElement, text: string): void {
   if (element.textContent === text) return;
   element.textContent = text;
-  if (prefersReducedMotion()) { cancelMotion(element); return; }
+  if (prefersReducedMotion()) {
+    cancelMotion(element);
+    return;
+  }
   const opacity = runningMotion.has(element) && typeof getComputedStyle === "function"
     ? Number(getComputedStyle(element).opacity) : .65;
   startMotion(element, [{opacity}, {opacity: 1}], defaultMotion);
