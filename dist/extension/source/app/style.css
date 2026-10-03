@@ -327,7 +327,7 @@ section, aside {
   grid-column: 3;
   grid-row: 1;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, auto);
   gap: 8px;
   width: calc(var(--sidebar-width) - 1px - var(--sidebar-padding) - var(--sidebar-padding));
   overflow-y: auto;
@@ -1268,6 +1268,13 @@ main:has(#viewer:not([hidden])) {
 }
 
 @media (max-width: 480px) {
+  .source-actions {
+    gap: 1px;
+  }
+  .source-actions button, .source-row #reset {
+    font-size: 10px;
+    padding-inline: 1px;
+  }
   :root {
     --sidebar-width: 148px;
     --stage-sidebar-width: 0px;
