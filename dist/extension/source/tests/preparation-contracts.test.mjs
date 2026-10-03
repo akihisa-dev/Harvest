@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {fetchImage} from "../dist/extension/app/image-fetch.js";
-import {fetchOriginalMedia} from "../dist/extension/app/media-fetch.js";
-import {ImageDataError} from "../dist/extension/app/image-data-contract.js";
-import {preparePdfImages} from "../dist/extension/app/pdf-image.js";
+import {fetchImage} from "../dist/extension/app/media/image-fetch.js";
+import {fetchOriginalMedia} from "../dist/extension/app/media/media-fetch.js";
+import {ImageDataError} from "../dist/extension/app/contracts/image-data-contract.js";
+import {preparePdfImages} from "../dist/extension/app/media/pdf-image.js";
 import {baselineJpeg} from "./jpeg-fixtures.mjs";
 
 const fetchers = [

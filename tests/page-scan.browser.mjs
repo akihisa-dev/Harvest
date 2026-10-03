@@ -6,7 +6,7 @@ import {normalizeImageUrls} from "../dist/extension/core/images.js";
 import {ImageCollection} from "../dist/extension/core/image-collection.js";
 
 test("audioのsourceを収集せず、画像の初期選択とpicture・videoのsourceを保つ", async () => {
-  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../dist/extension/app/content/page-scan.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();
@@ -75,7 +75,7 @@ test("audioのsourceを収集せず、画像の初期選択とpicture・videoの
 });
 
 test("CSSのurl境界を読み、クエリ・括弧・エスケープを保って保存候補を重複させない", async () => {
-  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../dist/extension/app/content/page-scan.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();
@@ -140,7 +140,7 @@ test("CSSのurl境界を読み、クエリ・括弧・エスケープを保っ�
 });
 
 test("初回走査中・待機中に既存ホストへ追加されたRootを発見し、削除・closedを除く", async () => {
-  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../dist/extension/app/content/page-scan.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();
@@ -188,7 +188,7 @@ test("初回走査中・待機中に既存ホストへ追加されたRootを発�
 });
 
 test("本文・script・styleとShadow DOMのText更新を所有要素へ反映する", async () => {
-  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../dist/extension/app/content/page-scan.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();
@@ -243,7 +243,7 @@ test("本文・script・styleとShadow DOMのText更新を所有要素へ反映�
 });
 
 test("本文候補は属性更新で失われず、追加・削除と共有する根拠を反映する", async () => {
-  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../dist/extension/app/content/page-scan.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();
@@ -291,7 +291,7 @@ test("本文候補は属性更新で失われず、追加・削除と共有す�
 });
 
 test("実ブラウザーでopen Shadow DOMを再帰走査し、短時間の変更を反映する", async () => {
-  const moduleSource = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const moduleSource = await readFile(new URL("../dist/extension/app/content/page-scan.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();
@@ -358,7 +358,7 @@ test("実ブラウザーでopen Shadow DOMを再帰走査し、短時間の変�
 
 
 test("初回noneの背景をCSSOMで追加すると通常DOMとopen Shadow DOMから収集する", async () => {
-  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../dist/extension/app/content/page-scan.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();
@@ -407,7 +407,7 @@ test("初回noneの背景をCSSOMで追加すると通常DOMとopen Shadow DOM�
 });
 
 test("結果確定前にCSS変更で消えた背景の根拠を更新し、共有URLと未適用CSSを保つ", async () => {
-  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../dist/extension/app/content/page-scan.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();
@@ -469,7 +469,7 @@ test("結果確定前にCSS変更で消えた背景の根拠を更新し、共�
 });
 
 test("実Chromeの本文URLで句読点を除き、URL自身の括弧・クエリと最終拡張子を保持する", async () => {
-  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../dist/extension/app/content/page-scan.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel:"chrome",headless:true});
   try {
     const page = await browser.newPage();

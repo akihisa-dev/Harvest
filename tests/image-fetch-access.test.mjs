@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {fetchImage} from "../dist/extension/app/image-fetch.js";
+import {fetchImage} from "../dist/extension/app/media/image-fetch.js";
 
 test("画像取得は出典と同じオリジンだけ認証情報を使い、認証付き転送を拒否する", async () => {
   const previousFetch = globalThis.fetch;

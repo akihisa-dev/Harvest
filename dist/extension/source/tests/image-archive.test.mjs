@@ -4,7 +4,7 @@ import test from "node:test";
 import {ImageArchiveLimitError, ImageArchivePlan, createImageZipEntries} from "../dist/extension/core/image-archive.js";
 import {mediaTypeMatchesKind, originalMediaType} from "../dist/extension/core/media-types.js";
 import {storedZipDataLimit} from "../dist/extension/core/stored-zip.js";
-import {prepareImageArchive} from "../dist/extension/app/image-archive-preparation.js";
+import {prepareImageArchive} from "../dist/extension/app/media/image-archive-preparation.js";
 
 const item = (name, kind) => ({url: `https://example.test/${name}`, sourcePage: "https://example.test/page", selected: true, ...(kind ? {kind} : {})});
 const gif = gifBytes;

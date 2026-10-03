@@ -25,11 +25,11 @@ globalThis.document = pageDocument;
 globalThis.chrome = {i18n: {getUILanguage: () => "en"}};
 globalThis.window = {setTimeout() {} };
 
-const {convertImage} = await import("../dist/extension/app/image-format.js");
-const {fetchImage} = await import("../dist/extension/app/image-fetch.js");
-const {IMAGE_TOO_LARGE_MESSAGE, MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS, imageDimensionsError} = await import("../dist/extension/app/image-data-contract.js");
-const {encodeJxlPixels} = await import("../dist/extension/app/jxl-codec.js");
-const {createImageExportController, createImageZipEntries} = await import("../dist/extension/app/image-export-controller.js");
+const {convertImage} = await import("../dist/extension/app/media/image-format.js");
+const {fetchImage} = await import("../dist/extension/app/media/image-fetch.js");
+const {IMAGE_TOO_LARGE_MESSAGE, MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS, imageDimensionsError} = await import("../dist/extension/app/contracts/image-data-contract.js");
+const {encodeJxlPixels} = await import("../dist/extension/app/workers/jxl-codec.js");
+const {createImageExportController, createImageZipEntries} = await import("../dist/extension/app/panel/image-export-controller.js");
 const {createStoredZip} = await import("../dist/extension/core/stored-zip.js");
 
 after(() => {

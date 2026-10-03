@@ -31,7 +31,7 @@ test('画像とSourceの登場途中の削除は現在の濃さを保って退�
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.evaluate(async () => {
       const {ImageCollection} = await import('/core/image-collection.js');
-      const {createImageListView} = await import('/app/image-list-view.js');
+      const {createImageListView} = await import('/app/panel/image-list-view.js');
       const collection = new ImageCollection();
       collection.replace(['https://example.test/1.jpg'], 'https://example.test/');
       const imagesElement = document.querySelector('#images');

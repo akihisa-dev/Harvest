@@ -16,11 +16,11 @@ export async function copyJxlVendor({jxlPackage, jxlVendor, wasmDetectPackage, w
   await copyFile(join(wasmDetectPackage, "LICENSE"), join(wasmDetectVendor, "LICENSE"));
 }
 
-export async function rewriteJxlAdapter(path) {
+export async function rewriteJxlAdapter(path, vendorPath = "./vendor") {
   const source = await readFile(path, "utf8");
   const code = source
-    .replaceAll('import("harvest-vendor-jxl-encoder")', 'import("./vendor/jxl/codec/enc/jxl_enc.js")')
-    .replaceAll('import("harvest-vendor-jxl-utils")', 'import("./vendor/jxl/utils.js")');
+    .replaceAll('import("harvest-vendor-jxl-encoder")', `import("${vendorPath}/jxl/codec/enc/jxl_enc.js")`)
+    .replaceAll('import("harvest-vendor-jxl-utils")', `import("${vendorPath}/jxl/utils.js")`);
   if (code.includes("harvest-vendor-jxl-")) throw new Error("JXLエンコーダーの参照を拡張機能内のファイルへ変換できません。");
   await writeFile(path, code);
 }

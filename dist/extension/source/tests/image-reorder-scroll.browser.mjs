@@ -26,7 +26,7 @@ async function serve() {
         <div id="outer"><div id="spacer"></div><div id="scroll"><ol id="images"></ol></div></div>
         <script type="module">
           import {ImageCollection} from "/core/image-collection.js";
-          import {createImageListView} from "/app/image-list-view.js";
+          import {createImageListView} from "/app/panel/image-list-view.js";
           const images = document.querySelector('#images');
           const collection = new ImageCollection();
           const urls = Array.from({length:60}, (_, i) => 'https://images.example.test/' + i + '.jpg');
@@ -81,8 +81,8 @@ async function serve() {
         </script>`);
         return;
       }
-      if (path === "/app/image-list-view.js") {
-        const source = await readFile(resolve(root, "src/extension/image-list-view.ts"), "utf8");
+      if (path === "/app/panel/image-list-view.js") {
+        const source = await readFile(resolve(root, "src/extension/panel/image-list-view.ts"), "utf8");
         const result = ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022}});
         response.setHeader("content-type", "text/javascript");
         response.end(result.outputText);

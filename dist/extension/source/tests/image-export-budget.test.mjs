@@ -62,7 +62,7 @@ globalThis.fetch = async (url, options) => {
   }
   return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), {headers: {"Content-Type": "image/png"}});
 };
-const {createImageExportController} = await import("../dist/extension/app/image-export-controller.js");
+const {createImageExportController} = await import("../dist/extension/app/panel/image-export-controller.js");
 
 for (const format of ["jpg", "png", "jxl"]) {
   test(`${format}: cumulative ZIP limit stops many valid images early and releases work`, {timeout: 5_000}, async () => {

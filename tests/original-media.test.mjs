@@ -19,8 +19,8 @@ globalThis.document = {
   createElement() { return {setAttribute() {}, click() {}, remove() {} }; },
 };
 
-const {fetchOriginalMedia} = await import("../dist/extension/app/media-fetch.js");
-const {createImageExportController, createImageZipEntries} = await import("../dist/extension/app/image-export-controller.js");
+const {fetchOriginalMedia} = await import("../dist/extension/app/media/media-fetch.js");
+const {createImageExportController, createImageZipEntries} = await import("../dist/extension/app/panel/image-export-controller.js");
 
 function fakeResponse(bytes, contentType, extraHeaders = {}) {
   return new Response(bytes, {headers: {"content-type": contentType, ...extraHeaders}});

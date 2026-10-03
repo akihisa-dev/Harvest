@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {fetchImage} from "../dist/extension/app/image-fetch.js";
-import {convertImage} from "../dist/extension/app/image-format.js";
-import {toPdfPage} from "../dist/extension/app/pdf-image.js";
-import {createImagePreviewLoader} from "../dist/extension/app/image-preview.js";
+import {fetchImage} from "../dist/extension/app/media/image-fetch.js";
+import {convertImage} from "../dist/extension/app/media/image-format.js";
+import {toPdfPage} from "../dist/extension/app/media/pdf-image.js";
+import {createImagePreviewLoader} from "../dist/extension/app/media/image-preview.js";
 
 for (const [width,height] of [[16385,1],[8001,8000]]) {
   test(`SVG ${width}x${height}は各入口で展開前に拒否する`, async t => {

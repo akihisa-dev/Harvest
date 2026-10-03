@@ -7,7 +7,7 @@ import {chromium} from "playwright";
 
 const extensionRoot = resolve(process.env.HARVEST_TEST_EXTENSION_DIR ?? fileURLToPath(new URL("../dist/extension/", import.meta.url)));
 const modules = Object.fromEntries(await Promise.all(["page-scan", "x-page-state", "x-media-scan", "../core/x-media"].map(async name =>
-  [name, await readFile(resolve(extensionRoot, "app", `${name}.js`), "utf8")])));
+  [name, await readFile(resolve(extensionRoot, name.startsWith("../core/") ? "app" : "app/content", `${name}.js`), "utf8")])));
 const post = (id, content) => `<article data-testid="tweet" id="post-${id}"><a role="link" href="/user/status/${id}"><time>Today</time></a>${content}</article>`;
 const photo = name => `<a role="link" href="/user/status/123/photo/1"><img src="https://pbs.twimg.com/media/${name}.jpg" width="40" height="40"></a>`;
 

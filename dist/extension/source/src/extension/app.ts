@@ -2,26 +2,27 @@ import {individualFilename, saveFilesIndividually} from "../core/export-files.js
 import { initialExportFormat, restoredExportFormat } from "../core/export-formats.js";
 import type { ImageItem } from "../core/images.js";
 import { ImageCollection } from "../core/image-collection.js";
-import { createCollectionController } from "./collection-controller.js";
-import { prefersReducedMotion } from "./motion.js";
-import { localizeErrorMessage, t } from "./localization.js";
-import { createViewerController } from "./viewer-controller.js";
-import { createImageListView } from "./image-list-view.js";
-import { createImagePreviewLoader } from "./image-preview.js";
-import { createPdfExportController, type PdfExportController } from "./pdf-export-controller.js";
-import { createImageExportController, type ImageExportController } from "./image-export-controller.js";
-import { queryAppElements } from "./app-elements.js";
-import { createAppView, type AppStatus } from "./app-view.js";
-import { createExportSession } from "./export-session.js";
-import { loadExportPreferences, saveExportFormat, saveSourcePagePreference } from "./export-preferences.js";
+import { createCollectionController } from "./panel/collection-controller.js";
+import { prefersReducedMotion } from "./panel/motion.js";
+import { localizeDocument, localizeErrorMessage, t } from "./panel/localization.js";
+import { createViewerController } from "./panel/viewer-controller.js";
+import { createImageListView } from "./panel/image-list-view.js";
+import { createImagePreviewLoader } from "./media/image-preview.js";
+import { createPdfExportController, type PdfExportController } from "./panel/pdf-export-controller.js";
+import { createImageExportController, type ImageExportController } from "./panel/image-export-controller.js";
+import { queryAppElements } from "./panel/app-elements.js";
+import { createAppView, type AppStatus } from "./panel/app-view.js";
+import { createExportSession } from "./panel/export-session.js";
+import { loadExportPreferences, saveExportFormat, saveSourcePagePreference } from "./browser/export-preferences.js";
 import {
   createSourcePreview,
   exportFileBaseName,
   imageFilename,
-} from "./export-presentation.js";
-import { createScanSessionController, type ScanSessionController } from "./scan-session-controller.js";
-import { createSourceInputController } from "./source-input-controller.js";
+} from "./panel/export-presentation.js";
+import { createScanSessionController, type ScanSessionController } from "./panel/scan-session-controller.js";
+import { createSourceInputController } from "./panel/source-input-controller.js";
 
+localizeDocument();
 const elements = queryAppElements();
 const {
   sourceUrl, sourceDrop, urlDropOverlay, collectionButton, scanButton, exportButton,

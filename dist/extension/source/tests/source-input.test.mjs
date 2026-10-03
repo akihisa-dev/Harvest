@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {createSourceInputController} from "../dist/extension/app/source-input-controller.js";
+import {createSourceInputController} from "../dist/extension/app/panel/source-input-controller.js";
 
 class Element extends EventTarget {
   value = "";

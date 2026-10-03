@@ -3,7 +3,7 @@ interface HarvestPort {
   sender?: {tab?: HarvestTab};
   postMessage(message: unknown): void;
   disconnect(): void;
-  onMessage: {addListener(listener: (message: {url?: unknown; busy?: boolean}) => void): void};
+  onMessage: {addListener(listener: (message: unknown) => void): void};
   onDisconnect: {addListener(listener: () => void): void};
 }
 

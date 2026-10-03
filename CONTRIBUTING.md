@@ -23,6 +23,10 @@ Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion�
 
 ## ビルド処理の構成
 
+`src/extension/`は実行場所と責務ごとのサブディレクトリを持ち、配布物の`app/`にも同じ階層を保ちます。パネルとバックグラウンドの入口は従来どおり`app/index.js`と`background.js`です。同梱ライブラリは`app/vendor/`へ配置し、コーデックからの参照をビルド時に解決します。`check:build`はimportだけでなく`new URL(..., import.meta.url)`によるWorker等の参照先も確認します。
+
+`pnpm check:architecture`は依存方向・実行時循環・ページ注入関数の実行時import・coreとWorkerの型環境を検査します。通常の`verify`に含まれるため、新しいモジュールも同じ境界を守る必要があります。詳細は[src/extension/README.md](src/extension/README.md)を参照してください。Nodeで生成済みJavaScriptを検証する際の形式推測をなくすため、packageのモジュール形式は`type: module`で明示しています。
+
 [scripts/build.mjs](scripts/build.mjs) は、コンパイル、実行コードの配置、同梱ライブラリ、画面・画像、対応ソースの配置をそれぞれの関数で行います。最後にmanifestを確定し、一時フォルダーから配布先へ置き換えます。既存の配布物は置換前に退避し、置換に失敗した場合は元へ戻します。
 
 ## 同梱ライブラリ

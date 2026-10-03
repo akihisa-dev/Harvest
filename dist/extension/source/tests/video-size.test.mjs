@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {fetchVideoSize, createVideoSizeLoader} from "../dist/extension/app/video-size.js";
+import {fetchVideoSize, createVideoSizeLoader} from "../dist/extension/app/media/video-size.js";
 import {formatFileSize} from "../dist/extension/core/file-size.js";
 
 const item = {url: "https://media.example.test/movie.mp4", sourcePage: "https://page.example.test/", kind: "video"};

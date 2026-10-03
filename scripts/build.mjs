@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { access, cp, copyFile, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import process from "node:process";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { copyJxlVendor, rewriteJxlAdapter } from "./jxl-build.mjs";
 
@@ -65,17 +65,18 @@ async function copyRuntimeModules() {
   const compiledExtension = join(stage, ".compiled", "extension");
   for (const file of await readdir(compiledExtension, { recursive: true })) {
     if (!file.endsWith(".js")) continue;
+    const modulePath = file.split(sep).join("/");
     const source = join(compiledExtension, file);
     const destination = file === "background.js"
       ? join(stage, "background.js")
       : join(stage, "app", file === "app.js" ? "index.js" : file);
     await mkdir(dirname(destination), { recursive: true });
-    if (file === "jxl-codec.js") {
+    if (modulePath === "workers/jxl-codec.js") {
       await copyFile(source, destination);
-      await rewriteJxlAdapter(destination);
-    } else if (file === "mp4-codec.js" || file === "original-media-validation.js") {
+      await rewriteJxlAdapter(destination, "../vendor");
+    } else if (modulePath === "workers/mp4-codec.js" || modulePath === "media/original-media-validation.js") {
       const code = await readFile(source, "utf8");
-      await writeFile(destination, code.replace('from "harvest-vendor-mediabunny"', 'from "./vendor/mediabunny/index.js"'));
+      await writeFile(destination, code.replace('from "harvest-vendor-mediabunny"', 'from "../vendor/mediabunny/index.js"'));
     } else {
       await copyFile(source, destination);
     }

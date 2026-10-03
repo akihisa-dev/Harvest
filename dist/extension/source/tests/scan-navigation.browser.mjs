@@ -9,7 +9,7 @@ test("scanDocumentとscanTabは解析中のSPA遷移を拒否し、確定済み�
     const page = await browser.newPage();
     await page.route("https://scan.example.test/**", async route => {
       const path = new URL(route.request().url()).pathname;
-      if (/^\/(?:app|core)\/[a-z-]+\.js$/.test(path)) {
+      if (/^\/(?:app|core)\/(?:[a-z-]+\/)*[a-z-]+\.js$/.test(path)) {
         return route.fulfill({contentType: "text/javascript", body: await readFile(new URL(`../dist/extension${path}`, import.meta.url), "utf8")});
       }
       return route.fulfill({contentType: "text/html", body: '<!doctype html><title>post</title><img data-src="https://cdn.example.test/old.jpg">'});
@@ -49,7 +49,7 @@ test("scanDocumentとscanTabは解析中のSPA遷移を拒否し、確定済み�
             }
           },
         };
-        const {createScanSessionController} = await import("/app/scan-session-controller.js");
+        const {createScanSessionController} = await import("/app/panel/scan-session-controller.js");
         const {ImageCollection} = await import("/core/image-collection.js");
         const collection = new ImageCollection();
         collection.replace(["https://previous.test/retained.jpg"], "https://previous.test/page");

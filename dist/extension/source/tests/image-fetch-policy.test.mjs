@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {getImageFetchCredentials, ImageFetchTargetError, validateImageFetchTarget} from "../dist/extension/app/image-fetch-policy.js";
+import {getImageFetchCredentials, ImageFetchTargetError, validateImageFetchTarget} from "../dist/extension/app/media/image-fetch-policy.js";
 
 test("ログイン状態は出典と完全一致するHTTPオリジンだけで使う", () => {
   assert.equal(getImageFetchCredentials("https://Reader.example:443/pages/1.jpg", "https://reader.example/book"), "include");

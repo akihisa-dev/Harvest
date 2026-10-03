@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {waitForXPage} from '../dist/extension/app/x-page-state.js';
+import {waitForXPage} from '../dist/extension/app/content/x-page-state.js';
 
 async function withPage(document, callback) {
   const previous = globalThis.document;

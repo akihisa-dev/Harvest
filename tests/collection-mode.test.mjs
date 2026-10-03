@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {captureCollectionLinks} from "../dist/extension/app/collection-mode.js";
+import {captureCollectionLinks} from "../dist/extension/app/content/collection-mode.js";
 
 class Anchor {
   constructor(href, style = makeStyle()) {

@@ -22,7 +22,7 @@ async function serve() {
         </style></head><body><button id="all"></button><div id="groups"></div><ol id="images"></ol>
           <script type="module">
             import {ImageCollection} from "/core/image-collection.js";
-            import {createImageListView} from "/app/image-list-view.js";
+            import {createImageListView} from "/app/panel/image-list-view.js";
             const collection = new ImageCollection();
             const urls = ["https://images.example.test/1.jpg", "https://images.example.test/2.jpg"];
             collection.replace(urls, "https://images.example.test/");
@@ -53,8 +53,8 @@ async function serve() {
         </body></html>`);
         return;
       }
-      if (pathname === "/app/image-list-view.js") {
-        const source = await readFile(resolve(root, "src/extension/image-list-view.ts"), "utf8");
+      if (pathname === "/app/panel/image-list-view.js") {
+        const source = await readFile(resolve(root, "src/extension/panel/image-list-view.ts"), "utf8");
         const {outputText} = ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022}});
         response.writeHead(200, {"content-type": "text/javascript"});
         response.end(outputText);

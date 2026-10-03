@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {createExportLifecycle} from "../dist/extension/app/export-lifecycle.js";
-import {createExportSession} from "../dist/extension/app/export-session.js";
+import {createExportLifecycle} from "../dist/extension/app/panel/export-lifecycle.js";
+import {createExportSession} from "../dist/extension/app/panel/export-session.js";
 
 const image = name => ({url: `https://images.example.test/${name}.png`, sourcePage: "https://example.test/", selected: true});
 
@@ -230,4 +230,44 @@ for (const archiveFormat of ["png", "jpg", "jxl"]) {
       assert.equal(session.state.view.phase, "saved");
     });
   }
+}
+
+for (const first of ["pdf", "png"]) {
+  test(`${first}の保存を開始したcontrollerが形式変更後も中止を所有する`, async () => {
+    const fixture = createFixture();
+    fixture.session.setFormat(first);
+    const controller = first === "pdf" ? fixture.pdf : fixture.archive;
+    let finish;
+    controller.task = async () => {
+      await new Promise(resolve => { finish = resolve; });
+      fixture.session.complete();
+    };
+    const execution = fixture.session.start();
+    fixture.session.setFormat(first === "pdf" ? "png" : "pdf");
+    fixture.session.abort();
+    assert.deepEqual(fixture.calls.at(-1), [first === "pdf" ? "pdf" : "image", "abort"]);
+    finish();
+    await execution;
+    fixture.session.setFormat(first);
+    assert.equal(fixture.session.state.view.phase, "ready", "中止後の完了通知を保存済みにしない");
+  });
+}
+
+for (const action of ["clear", "invalidateCompletion"]) {
+  test(`${action}後の遅い完了通知で保存済み表示を復活させない`, async () => {
+    const fixture = createFixture();
+    let finish;
+    fixture.pdf.task = async () => {
+      await new Promise(resolve => { finish = resolve; });
+      fixture.session.complete();
+    };
+    const execution = fixture.session.start();
+    fixture.session[action]();
+    finish();
+    await execution;
+    assert.equal(fixture.session.state.view.phase, "ready");
+    fixture.pdf.task = async () => { fixture.session.complete(); };
+    await fixture.session.start();
+    assert.equal(fixture.session.state.view.phase, "saved", "次の保存の完了は受け付ける");
+  });
 }

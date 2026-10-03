@@ -16,11 +16,11 @@ test("破損JPEGはPDF・JPGの失敗として再試行し、正常なbaseline/p
     });
     await page.goto("https://harvest.test/");
     const results = await page.evaluate(async fixtures => {
-      const {fetchImage} = await import("/app/image-fetch.js");
-      const {convertImage} = await import("/app/image-format.js");
-      const {toPdfPage} = await import("/app/pdf-image.js");
-      const {createPdfExportController} = await import("/app/pdf-export-controller.js");
-      const {createImageExportController} = await import("/app/image-export-controller.js");
+      const {fetchImage} = await import("/app/media/image-fetch.js");
+      const {convertImage} = await import("/app/media/image-format.js");
+      const {toPdfPage} = await import("/app/media/pdf-image.js");
+      const {createPdfExportController} = await import("/app/panel/pdf-export-controller.js");
+      const {createImageExportController} = await import("/app/panel/image-export-controller.js");
       const bytesByName = new Map(Object.entries(fixtures).map(([name, bytes]) => [name, new Uint8Array(bytes)]));
       const calls = {};
       let repair = false;

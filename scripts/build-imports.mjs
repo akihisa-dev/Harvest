@@ -15,6 +15,13 @@ export function findModuleSpecifiers(source, fileName) {
       && node.arguments.length === 1
       && ts.isStringLiteralLike(node.arguments[0])) {
       specifiers.push(node.arguments[0].text);
+    } else if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "URL"
+      && node.arguments?.length === 2 && ts.isStringLiteralLike(node.arguments[0])
+      && ts.isPropertyAccessExpression(node.arguments[1]) && node.arguments[1].name.text === "url"
+      && ts.isMetaProperty(node.arguments[1].expression)
+      && node.arguments[1].expression.keywordToken === ts.SyntaxKind.ImportKeyword) {
+      // Worker entry points and local resources are not import declarations.
+      specifiers.push(node.arguments[0].text);
     }
     ts.forEachChild(node, visit);
   }

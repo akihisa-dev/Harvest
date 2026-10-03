@@ -24,7 +24,7 @@ for (const path of [
   "background.js",
   "app/index.html",
   "app/index.js",
-  "app/mp4-conversion-worker.js",
+  "app/workers/mp4-conversion-worker.js",
   "app/vendor/mediabunny/index.js",
   "app/vendor/mediabunny/LICENSE",
   "app/style.css",

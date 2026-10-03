@@ -177,7 +177,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
   let scanResultUrl = "https://example.com/view";
   const createdUrls = [];
   globalThis.document = document;
-  const {createImageListView} = await import("../dist/extension/app/image-list-view.js");
+  const {createImageListView} = await import("../dist/extension/app/panel/image-list-view.js");
   const inertPreviewLoader = {set() {}, clearImage() {}, clear() {} };
   globalThis.window = {
     setTimeout: (callback, delay) => setTimeout(callback, delay === 60000 ? 0 : delay),

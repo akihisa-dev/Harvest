@@ -4,7 +4,7 @@ import {readFile, stat} from 'node:fs/promises';
 import {chromium} from 'playwright';
 
 test('大容量PDFとZIPの連続ダウンロードを保持時間なしで開始し、各Blob URLを解放する', async () => {
-  const source = await readFile(new URL('../dist/extension/app/export-lifecycle.js', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../dist/extension/app/panel/export-lifecycle.js', import.meta.url), 'utf8');
   const browser = await chromium.launch({channel: 'chrome', headless: true});
   try {
     const page = await browser.newPage({acceptDownloads: true});

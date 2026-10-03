@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {createImagePreviewLoader} from "../dist/extension/app/image-preview.js";
+import {createImagePreviewLoader} from "../dist/extension/app/media/image-preview.js";
 
 class PreviewImage {
   constructor() {

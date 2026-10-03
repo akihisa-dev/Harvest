@@ -29,7 +29,7 @@ test('ボタンのラベルと処理中表示、チェックと中間状態は�
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.evaluate(async () => {
-      const {setButtonLabel} = await import('/app/button-state.js');
+      const {setButtonLabel} = await import('/app/panel/button-state.js');
       window.setButtonLabel = setButtonLabel;
       setButtonLabel(document.querySelector('#scan'), '解析');
       setButtonLabel(document.querySelector('#export'), '保存');

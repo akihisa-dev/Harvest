@@ -34,7 +34,9 @@ test("JXL adapter references are rewritten to bundled files", async t => {
   const root = await mkdtemp(join(tmpdir(), "harvest-jxl-adapter-"));
   t.after(() => rm(root, {recursive: true, force: true}));
   const path = join(root, "jxl-codec.js");
-  await writeFile(path, 'import("harvest-vendor-jxl-encoder"); import("harvest-vendor-jxl-utils");');
-  await rewriteJxlAdapter(path);
-  assert.equal(await readFile(path, "utf8"), 'import("./vendor/jxl/codec/enc/jxl_enc.js"); import("./vendor/jxl/utils.js");');
+  for (const vendorPath of ["./vendor", "../vendor"]) {
+    await writeFile(path, 'import("harvest-vendor-jxl-encoder"); import("harvest-vendor-jxl-utils");');
+    await rewriteJxlAdapter(path, vendorPath);
+    assert.equal(await readFile(path, "utf8"), `import("${vendorPath}/jxl/codec/enc/jxl_enc.js"); import("${vendorPath}/jxl/utils.js");`);
+  }
 });

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const {loadExportPreferences, saveExportFormat, saveSourcePagePreference} = await import("../dist/extension/app/export-preferences.js");
-const {deriveExportViewState, exportFileBaseName, imageFilename, createSourcePreview} = await import("../dist/extension/app/export-presentation.js");
-const {createExportLifecycle} = await import("../dist/extension/app/export-lifecycle.js");
+const {loadExportPreferences, saveExportFormat, saveSourcePagePreference} = await import("../dist/extension/app/browser/export-preferences.js");
+const {deriveExportViewState, exportFileBaseName, imageFilename, createSourcePreview} = await import("../dist/extension/app/panel/export-presentation.js");
+const {createExportLifecycle} = await import("../dist/extension/app/panel/export-lifecycle.js");
 
 function memoryStorage(entries = []) {
   const values = new Map(entries);

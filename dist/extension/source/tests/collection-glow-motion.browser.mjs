@@ -50,7 +50,7 @@ async function serve(modulePath) {
 
 test("収集発光は出入りと状態を滑らかにつなぎ、追従を遅らせず終了時に片付く", async () => {
   const temporary = await mkdtemp(join(tmpdir(), "harvest-collection-glow-"));
-  const source = await readFile(join(root, "src/extension/collection-mode.ts"), "utf8");
+  const source = await readFile(join(root, "src/extension/content/collection-mode.ts"), "utf8");
   const modulePath = join(temporary, "collection-mode.js");
   await writeFile(modulePath, ts.transpileModule(source, {
     compilerOptions: {target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext},

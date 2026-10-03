@@ -1,18 +1,43 @@
 # 画面とブラウザーへの接続
 
+## 実行場所と依存方向
+
+`app.ts` はパネルの初期化と各担当の接続、`background.ts` はChromeのサイドパネル設定だけを担当します。解析結果や保存処理はパネルが所有し、停止・再起動するService Workerの変数には保持しません。
+
+| ディレクトリ | 責務 | 依存できる領域（自身を除く） |
+| --- | --- | --- |
+| `content/` | ページへ注入する自己完結した関数 | core・contractsの型のみ |
+| `contracts/` | 受け渡すデータの型と実行時検証 | core |
+| `browser/` | Chrome API、ページ読み取り、設定保存 | core・contracts・content |
+| `media/` | 取得、検証、変換、Workerの起動と解放 | core・contracts・browser |
+| `workers/` | 画面と分離して実行する変換・CRC計算 | core・contracts・同梱コーデック |
+| `panel/` | 画面、操作、解析・保存セッション | core・contracts・browser・media・content |
+
+`pnpm check:architecture` は型参照も含めた依存方向、実行時importの循環、contentの実行時import禁止、coreとWorkerの画面非依存を検査します。coreとWorkerはDOMやChromeの宣言を含まない型環境でも検査します。Blob、URL、AbortSignalなどの標準APIは使えます。Workerの起動はURLで行い、画面の実行環境からWorkerの入口を直接importしません。
+
+翻訳ヘルパーのimportは画面を書き換えません。パネルは`app.ts`、ライセンス画面は`panel/localize-page.ts`から明示的に初期化します。
+
+## 受信データと非同期処理の所有権
+
+[page-contracts.ts](contracts/page-contracts.ts) はページ結果をunknownから検証します。ページ名・URL・画像一覧・メディア一覧・Xの状態と証拠の構造を確認し、不正な値を確定済みの収集結果へ反映しません。URLの採否と未知の投稿データの探索は従来の担当に残します。
+
+[worker-contracts.ts](contracts/worker-contracts.ts) はWorkerの要求と応答を検証します。処理ID、画素寸法とバイト長、Blobの種類、CRC32の範囲、成功と失敗の排他性を両端で確認します。返答の復元失敗や送信失敗でも待機とリスナーを解放し、古いWorkerの通知を新しいWorkerへ反映しません。JXLの待機終了期限は未完了要求がなくなってから設定します。
+
+保存セッションは開始時の形式・選択と中止対象を保持し、中止・消去後の遅い完了通知を採用しません。保存と解析は担当自身でも多重開始と廃棄後の開始を拒否します。古い収集セッションの解析結果は、新しいセッションの解析済みURLを変更しません。再試行データの型は[export-contracts.ts](contracts/export-contracts.ts)に置き、準備処理が画面の状態管理へ依存しないようにします。
+
 ## 画面の接続と状態管理
 
-[app.ts](app.ts) は画面全体の接続と利用者の操作を受け持ちます。[export-session.ts](export-session.ts) が保存形式・出典設定・開始時の保存対象・完了記録を所有し、選択変更による再試行データの破棄は操作の経路から明示的に行います。保存完了は各保存処理から通知し、ステータスの文言には依存しません。[app-view.ts](app-view.ts) は渡された状態をDOMへ表示するだけで、描画による作業データの変更や収集先への通知は行いません。
+[app.ts](app.ts) は画面全体の接続と利用者の操作を受け持ちます。[export-session.ts](panel/export-session.ts) が保存形式・出典設定・開始時の保存対象・完了記録を所有し、選択変更による再試行データの破棄は操作の経路から明示的に行います。保存完了は各保存処理から通知し、ステータスの文言には依存しません。[app-view.ts](panel/app-view.ts) は渡された状態をDOMへ表示するだけで、描画による作業データの変更や収集先への通知は行いません。
 
-DOM要素の契約は [app-elements.ts](app-elements.ts)、設定の永続化は [export-preferences.ts](export-preferences.ts)、表示状態の導出とファイル名・Sourceプレビューは [export-presentation.ts](export-presentation.ts)、解析の開始・中断・結果公開は [scan-session-controller.ts](scan-session-controller.ts) が所有します。
+DOM要素の契約は [app-elements.ts](panel/app-elements.ts)、設定の永続化は [export-preferences.ts](browser/export-preferences.ts)、表示状態の導出とファイル名・Sourceプレビューは [export-presentation.ts](panel/export-presentation.ts)、解析の開始・中断・結果公開は [scan-session-controller.ts](panel/scan-session-controller.ts) が所有します。
 
-[image-list-view.ts](image-list-view.ts) は画像グループの表示、選択操作、キー操作による並べ替えと一覧DOMを担当します。[image-drag-controller.ts](image-drag-controller.ts) はドラッグ中の一時順序、計測済み座標、スクロール・サイズ変更の監視を所有し、確定結果だけを画像集合へ渡します。DOMを使わない挿入位置の計算は [src/core/image-reorder.ts](../core/image-reorder.ts) に置きます。
+[image-list-view.ts](panel/image-list-view.ts) は画像グループの表示、選択操作、キー操作による並べ替えと一覧DOMを担当します。[image-drag-controller.ts](panel/image-drag-controller.ts) はドラッグ中の一時順序、計測済み座標、スクロール・サイズ変更の監視を所有し、確定結果だけを画像集合へ渡します。DOMを使わない挿入位置の計算は [src/core/image-reorder.ts](../core/image-reorder.ts) に置きます。
 
 Sourceプレビューも通常画像と同じ一覧の更新管理へ含め、件数・順序が変わらない選択更新では行を切り離さず再利用します。Sourceの内容が変わった場合は既存のプレビュー画像を更新します。
 
-[viewer-controller.ts](viewer-controller.ts) はプレビュー操作を担当します。サムネイルの順序・件数が変わらない更新では行を文書から外さず、Enter・Space選択後のフォーカスを保ちます。構造変更では同じボタンへ、削除時には現在表示する残存項目へフォーカスを戻し、全件削除では空状態へ移します。
+[viewer-controller.ts](panel/viewer-controller.ts) はプレビュー操作を担当します。サムネイルの順序・件数が変わらない更新では行を文書から外さず、Enter・Space選択後のフォーカスを保ちます。構造変更では同じボタンへ、削除時には現在表示する残存項目へフォーカスを戻し、全件削除では空状態へ移します。
 
-[source-input-controller.ts](source-input-controller.ts) が入力欄・ドロップ操作・確定した出典の表示をまとめて管理します。URL入力は次の解析対象として保持し、閉じた表示には最後に確定した結果のダウンロード予定ファイル名を使い、保存形式と保存対象数に合わせてPDF・画像・動画・ZIPのファイル名を更新します。複数動画では最初のファイル名を表示します。クリックすると保持したURLを編集でき、入力がない場合は確定した結果の出典URLを表示します。再解析に失敗して旧結果を残す場合も表示のファイル名を変更せず、入力を再試行用に保持します。保存成功とクリアでは従来どおりURL表示を空にします。
+[source-input-controller.ts](panel/source-input-controller.ts) が入力欄・ドロップ操作・確定した出典の表示をまとめて管理します。URL入力は次の解析対象として保持し、閉じた表示には最後に確定した結果のダウンロード予定ファイル名を使い、保存形式と保存対象数に合わせてPDF・画像・動画・ZIPのファイル名を更新します。複数動画では最初のファイル名を表示します。クリックすると保持したURLを編集でき、入力がない場合は確定した結果の出典URLを表示します。再解析に失敗して旧結果を残す場合も表示のファイル名を変更せず、入力を再試行用に保持します。保存成功とクリアでは従来どおりURL表示を空にします。
 
 収集結果、準備した画像、接続、プレビュー状態はサイドパネル内だけで保持します。ブラウザー内へ保存するのは出典ページの設定と選択した保存形式だけです。
 
@@ -20,9 +45,9 @@ Sourceプレビューも通常画像と同じ一覧の更新管理へ含め、�
 
 プレビュー取得は開始直前の表示状態を確認し、画面外の待機項目は取得せず、再表示で再登録します。ビューアーで現在必要な画像を待機列の先頭より優先し、同じURLの参照共有・同時取得3件・キャッシュ上限を維持します。
 
-[viewer-controller.ts](viewer-controller.ts) はプレビューのページ位置・ズーム・移動を管理し、選択画像は画像集合から受け取ります。[viewer-image-transition.ts](viewer-image-transition.ts) は画像の取得待ち、切り替え中の残像、アニメーション、読み込み監視とその解放を所有します。
+[viewer-controller.ts](panel/viewer-controller.ts) はプレビューのページ位置・ズーム・移動を管理し、選択画像は画像集合から受け取ります。[viewer-image-transition.ts](panel/viewer-image-transition.ts) は画像の取得待ち、切り替え中の残像、アニメーション、読み込み監視とその解放を所有します。
 
-[collection-controller.ts](collection-controller.ts) は収集セッションごとにタブ、注入開始、接続を一つの記録へまとめ、現在の記録で許可した接続だけを解析・保存操作へ渡します。状態通知の送信に失敗した接続が現在の接続なら収集モードを終了し、画面更新を止めません。遅れて届く古い切断通知は新しい接続を終了させません。[app.ts](app.ts) は処理中・終了済みの状態を渡し、パネルを閉じたときには収集接続を切り、解析と画像準備を中断します。
+[collection-controller.ts](panel/collection-controller.ts) は収集セッションごとにタブ、注入開始、接続を一つの記録へまとめ、現在の記録で許可した接続だけを解析・保存操作へ渡します。状態通知の送信に失敗した接続が現在の接続なら収集モードを終了し、画面更新を止めません。遅れて届く古い切断通知は新しい接続を終了させません。[app.ts](app.ts) は処理中・終了済みの状態を渡し、パネルを閉じたときには収集接続を切り、解析と画像準備を中断します。
 
 画像一覧のドラッグ並べ替えでは、ドラッグ開始時に行位置を記録し、通常のドラッグ移動ではその記録を使います。祖先のスクロール量で位置記録を補正し、一覧やウィンドウのサイズが変わった場合だけ全行と列構成を再計測します。スクロール通知は描画フレームごとにまとめ、ポインターが静止していても挿入位置を更新します。順番が変わったときは、位置が変わる行だけを測ってアニメーションし、その結果で位置記録を更新します。ドラッグ中だけブラウザーのスクロール位置の自動補正を無効にし、確定・中止時に元の設定へ戻します。
 
@@ -30,7 +55,7 @@ Sourceプレビューも通常画像と同じ一覧の更新管理へ含め、�
 
 MP4は個別ファイル、画像・GIFは1枚なら直接保存し、複数枚ならZIPにまとめます。[src/core/export-files.ts](../core/export-files.ts) が保存方式と個別ファイル名を決めます。全件の準備が成功してから保存を開始し、単体はページ名、複数動画はページ名と連番を使います。既存の準備データの合計上限は個別保存でもメモリ使用量の制限として維持します。Chromeが複数ダウンロードの許可を求めた場合は利用者の操作が必要です。
 
-[pdf-export-controller.ts](pdf-export-controller.ts) と [image-export-controller.ts](image-export-controller.ts) は各保存操作の進捗・失敗通知・成果物の組み立て・ダウンロードを接続します。ZIP向けの取得と入力順の変換、未消費結果の解放は [image-archive-preparation.ts](image-archive-preparation.ts)、名前・形式照合・容量予算は [src/core/image-archive.ts](../core/image-archive.ts) が所有します。両方に共通する選択一致、保留中の準備結果、失敗分だけの再試行、中断、進捗、終了時の後始末、Blobのダウンロードは [export-lifecycle.ts](export-lifecycle.ts) が一元管理します。
+[pdf-export-controller.ts](panel/pdf-export-controller.ts) と [image-export-controller.ts](panel/image-export-controller.ts) は各保存操作の進捗・失敗通知・成果物の組み立て・ダウンロードを接続します。ZIP向けの取得と入力順の変換、未消費結果の解放は [image-archive-preparation.ts](media/image-archive-preparation.ts)、名前・形式照合・容量予算は [src/core/image-archive.ts](../core/image-archive.ts) が所有します。両方に共通する選択一致、保留中の準備結果、失敗分だけの再試行、中断、進捗、終了時の後始末、Blobのダウンロードは [export-lifecycle.ts](panel/export-lifecycle.ts) が一元管理します。
 
 保存中も保存ボタンだけは有効にし、再クリックで進行中の保存を中止します。進捗表示は維持し、中止後は通信・変換の終了を待って準備済み画像と失敗情報を破棄し、エラーにせず通常の保存可能状態へ戻します。収集モードからの保存要求はこの中止操作と分けます。
 
@@ -38,7 +63,7 @@ MP4は個別ファイル、画像・GIFは1枚なら直接保存し、複数枚�
 
 保存形式を変更した時点で、互換性のない形式の再試行用準備結果と失敗情報を解放します。同じ形式・同じ選択の再試行は成功済み結果を保ち、出典ページ設定だけの変更では破棄しません。
 
-形式固有の準備と組み立ては共通処理へ混ぜません。[image-format.ts](image-format.ts) はJPG・PNG・JXLへの変換を担当し、[jxl-encoder.ts](jxl-encoder.ts) と [jxl-encode-worker.ts](jxl-encode-worker.ts) はJXL変換を画面操作と分けて実行します。[jxl-codec.ts](jxl-codec.ts) は単一スレッド用のWebAssemblyエンコーダーを明示的に初期化し、ビルドでは未使用の複数スレッド版を配布対象から除きます。
+形式固有の準備と組み立ては共通処理へ混ぜません。[image-format.ts](media/image-format.ts) はJPG・PNG・JXLへの変換を担当し、[jxl-encoder.ts](media/jxl-encoder.ts) と [jxl-encode-worker.ts](workers/jxl-encode-worker.ts) はJXL変換を画面操作と分けて実行します。[jxl-codec.ts](workers/jxl-codec.ts) は単一スレッド用のWebAssemblyエンコーダーを明示的に初期化し、ビルドでは未使用の複数スレッド版を配布対象から除きます。
 
 画像の選択と確定した順序、ZIPの組み立ては `src/core/` に置き、画面やChromeの状態を参照させません。
 
@@ -46,27 +71,27 @@ MP4は個別ファイル、画像・GIFは1枚なら直接保存し、複数枚�
 
 ## 画像の取得・変換と並行処理
 
-並行取得の開始数、結果が消費されるまでの保持枠、中断と待機解除は [src/core/preparation-workers.ts](../core/preparation-workers.ts) がPDF・ZIPで共通管理します。PDF画像準備は [pdf-image.ts](pdf-image.ts) が取得できた順に逐次変換し、結果を入力順に通知します。ZIPは [image-archive-preparation.ts](image-archive-preparation.ts) が入力順に変換し、`ImageArchivePlan` へ渡して容量予算を確認します。未通知結果を含む処理中の画像数は取得並列数以内に保ち、先頭画像の遅延でJPEG結果が蓄積し続けないようにします。
+並行取得の開始数、結果が消費されるまでの保持枠、中断と待機解除は [src/core/preparation-workers.ts](../core/preparation-workers.ts) がPDF・ZIPで共通管理します。PDF画像準備は [pdf-image.ts](media/pdf-image.ts) が取得できた順に逐次変換し、結果を入力順に通知します。ZIPは [image-archive-preparation.ts](media/image-archive-preparation.ts) が入力順に変換し、`ImageArchivePlan` へ渡して容量予算を確認します。未通知結果を含む処理中の画像数は取得並列数以内に保ち、先頭画像の遅延でJPEG結果が蓄積し続けないようにします。
 
-画像・メディア共通の [response-fetch.ts](response-fetch.ts) が接続先・認証・転送制限、応答本文を含む時間制限、中断と応答の解放を担当します。[image-fetch.ts](image-fetch.ts) と [media-fetch.ts](media-fetch.ts) は形式ごとの内容検査と失敗理由を担当し、画像20秒・メディア120秒の上限と従来のエラー判定の優先順位を渡します。[image-response-bytes.ts](image-response-bytes.ts) は応答本文を64 MiBを超える前に止めます。`readImageBytes()` はプレビューなど別の取得経路でも同じバイト上限を共有できます。
+画像・メディア共通の [response-fetch.ts](media/response-fetch.ts) が接続先・認証・転送制限、応答本文を含む時間制限、中断と応答の解放を担当します。[image-fetch.ts](media/image-fetch.ts) と [media-fetch.ts](media/media-fetch.ts) は形式ごとの内容検査と失敗理由を担当し、画像20秒・メディア120秒の上限と従来のエラー判定の優先順位を渡します。[image-response-bytes.ts](media/image-response-bytes.ts) は応答本文を64 MiBを超える前に止めます。`readImageBytes()` はプレビューなど別の取得経路でも同じバイト上限を共有できます。
 
 取得したバイト列でJPEGの成分・表・走査ヘッダー・画像データ・終端を検査し、構造が不正なら準備失敗にします。
 
 直接埋め込み候補もブラウザーで読み取り可能かと画素数を確認し、検証用の画像を直ちに解放します。再圧縮せず、その元バイト列をPDFとJPG保存へ渡します。EXIFなどでPDFの直接埋め込み条件から外れるJPEGはPDF用にデコードしますが、JPG保存ではデコードによる有効性と画素数の確認後に元のバイト列を再利用します。
 
-その他の画像もデコード用のBlobを作り、[image-decode.ts](image-decode.ts) が画素の読み取り・圧縮と画像メモリの解放を担当します。PDF、JPG、PNG、JXLは、幅と高さがそれぞれ16,384画素以下かつ総画素数が64,000,000以下であることを共通の基準にします。RGB画素は最大262,144画素ずつ圧縮へ渡し、画像全体ぶんの未圧縮RGB配列は作りません。PDFと画像ZIPに共通する取得済み画像、サイズ基準、失敗理由、中断の契約は [image-data-contract.ts](image-data-contract.ts)、PDF準備固有の型は [pdf-image-contract.ts](pdf-image-contract.ts) に置きます。既存の利用側には [pdf-image.ts](pdf-image.ts) から従来と同じPDF向けの型とエラー名を公開します。
+その他の画像もデコード用のBlobを作り、[image-decode.ts](media/image-decode.ts) が画素の読み取り・圧縮と画像メモリの解放を担当します。PDF、JPG、PNG、JXLは、幅と高さがそれぞれ16,384画素以下かつ総画素数が64,000,000以下であることを共通の基準にします。RGB画素は最大262,144画素ずつ圧縮へ渡し、画像全体ぶんの未圧縮RGB配列は作りません。PDFと画像ZIPに共通する取得済み画像、サイズ基準、失敗理由、中断の契約は [image-data-contract.ts](contracts/image-data-contract.ts)、PDF準備固有の型は [pdf-image-contract.ts](contracts/pdf-image-contract.ts) に置きます。既存の利用側には [pdf-image.ts](media/pdf-image.ts) から従来と同じPDF向けの型とエラー名を公開します。
 
-画像取得の接続先判定は [image-fetch-policy.ts](image-fetch-policy.ts) が担当します。URL表記上のローカル・プライベート宛ては元ページと同一オリジンの場合だけ許可し、公開ホスト名への `fetch()` には `targetAddressSpace: "public"` を渡します。Chromeの接続先判定を使い、名前解決後や転送後のローカル接続を送信前に拒否します。同一オリジンの認証情報使用と認証付き取得の転送拒否は維持します。この指定を無視するChromeでの追加保護は保証せず、独自の名前解決サービスや権限は追加しません。
+画像取得の接続先判定は [image-fetch-policy.ts](media/image-fetch-policy.ts) が担当します。URL表記上のローカル・プライベート宛ては元ページと同一オリジンの場合だけ許可し、公開ホスト名への `fetch()` には `targetAddressSpace: "public"` を渡します。Chromeの接続先判定を使い、名前解決後や転送後のローカル接続を送信前に拒否します。同一オリジンの認証情報使用と認証付き取得の転送拒否は維持します。この指定を無視するChromeでの追加保護は保証せず、独自の名前解決サービスや権限は追加しません。
 
 実ブラウザーの回帰テストは専用拡張ページ、テスト用の名前解決規則、ループバック上の専用サーバーを使い、未指定時の到達と指定時の未到達を比較します。
 
-[worker-contracts.ts](worker-contracts.ts) はJXL・MP4・ZIPの要求と応答の型を、呼び出し側とWorker側の双方へ提供します。実行期間の管理は処理ごとに保ち、JXLは再利用後30秒で解放、MP4は1変換の完了・失敗・中止・120秒期限で解放、ZIPのCRC計算はアーカイブ処理の終了時に解放します。
+[worker-contracts.ts](contracts/worker-contracts.ts) はJXL・MP4・ZIPの要求と応答の型を、呼び出し側とWorker側の双方へ提供します。実行期間の管理は処理ごとに保ち、JXLは再利用後30秒で解放、MP4は1変換の完了・失敗・中止・120秒期限で解放、ZIPのCRC計算はアーカイブ処理の終了時に解放します。
 
-従来の呼び出し側との互換性のため、[image-fetch.ts](image-fetch.ts) の `readImageBytes` と、[image-format.ts](image-format.ts)・[export-preferences.ts](export-preferences.ts) の保存形式の型は正本から再公開します。処理や規則の複製は残しません。
+従来の呼び出し側との互換性のため、[image-fetch.ts](media/image-fetch.ts) の `readImageBytes` と、[image-format.ts](media/image-format.ts)・[export-preferences.ts](browser/export-preferences.ts) の保存形式の型は正本から再公開します。処理や規則の複製は残しません。
 
 ## ページ解析の入口と実行制約
 
-[page-access.ts](page-access.ts) は通常のページ走査とXの追加読み取りの順序・結果統合を担当します。[page-read-session.ts](page-read-session.ts) はChromeへの読み取り要求、同じ文書であることの照合、時間制限、中断、解析用ウィンドウ・タブの解放を管理します。[page-scan.ts](page-scan.ts)、[x-page-state.ts](x-page-state.ts)、[x-media-scan.ts](x-media-scan.ts)、[collection-mode.ts](collection-mode.ts) の注入関数はChromeが関数単体をページへコピーして実行するため、外側の変数やimportに依存しない形を保ちます。この制約のある関数内の処理を、通常のモジュール分割で外へ移すことは避けます。
+[page-access.ts](browser/page-access.ts) は通常のページ走査とXの追加読み取りの順序・結果統合を担当します。[page-read-session.ts](browser/page-read-session.ts) はChromeへの読み取り要求、同じ文書であることの照合、時間制限、中断、解析用ウィンドウ・タブの解放を管理します。[page-scan.ts](content/page-scan.ts)、[x-page-state.ts](content/x-page-state.ts)、[x-media-scan.ts](content/x-media-scan.ts)、[collection-mode.ts](content/collection-mode.ts) の注入関数はChromeが関数単体をページへコピーして実行するため、外側の変数やimportに依存しない形を保ちます。この制約のある関数内の処理を、通常のモジュール分割で外へ移すことは避けます。
 
 初回走査中は変更監視を保ち、初回走査とその差分反映が終わってから静穏250ms・最大800msの待機を開始します。要素の多いページでも、走査途中のURL変更・追加・削除を待機上限の都合で捨てません。
 
@@ -76,7 +101,7 @@ MP4は個別ファイル、画像・GIFは1枚なら直接保存し、複数枚�
 
 ## 画像候補の収集とページ内の変更
 
-[page-scan.ts](page-scan.ts) 内の候補管理は、URLごとの検出元と画像・メディアの根拠を一箇所に保持します。画像は表示位置順、メディアは検出順に、その記録から結果を作ります。属性更新、要素削除、対象投稿の範囲外への移動は同じ根拠の更新処理へ集めています。削除された要素だけを根拠とするURLは候補から外し、別の現存要素や本文にも根拠があるURLは残します。
+[page-scan.ts](content/page-scan.ts) 内の候補管理は、URLごとの検出元と画像・メディアの根拠を一箇所に保持します。画像は表示位置順、メディアは検出順に、その記録から結果を作ります。属性更新、要素削除、対象投稿の範囲外への移動は同じ根拠の更新処理へ集めています。削除された要素だけを根拠とするURLは候補から外し、別の現存要素や本文にも根拠があるURLは残します。
 
 source要素は所有要素と明示された種類を確認し、audio内のsourceとaudio/*指定のsourceを画像・動画の候補から除外します。動画のcurrentSrcも対応するsourceの種類を照合し、MP4という拡張子だけで音声を動画にしません。picture・videoのsourceと拡張子なし画像の既存対応を保ちます。
 
@@ -93,19 +118,19 @@ source要素は所有要素と明示された種類を確認し、audio内のsou
 
 ## 動画・GIFの保存とXの追加解析
 
-MP4・GIFの保存は [media-fetch.ts](media-fetch.ts) が共通の取得処理と [src/core/media-types.ts](../core/media-types.ts) の規則で種類を検査し、[src/core/image-archive.ts](../core/image-archive.ts) が選択形式の種類に合うファイルだけをZIPの構成要素にします。MP4とGIFは元データを保ち、WebMは[mp4-conversion.ts](mp4-conversion.ts)から専用Workerを起動して[mp4-codec.ts](mp4-codec.ts)でH.264/AACのMP4へ変換します。
+MP4・GIFの保存は [media-fetch.ts](media/media-fetch.ts) が共通の取得処理と [src/core/media-types.ts](../core/media-types.ts) の規則で種類を検査し、[src/core/image-archive.ts](../core/image-archive.ts) が選択形式の種類に合うファイルだけをZIPの構成要素にします。MP4とGIFは元データを保ち、WebMは[mp4-conversion.ts](media/mp4-conversion.ts)から専用Workerを起動して[mp4-codec.ts](workers/mp4-codec.ts)でH.264/AACのMP4へ変換します。
 
 取得後のMIMEと内容を検査し、変換時に映像・音声が脱落する場合は失敗として扱います。変換は120秒・出力64 MiBとZIP残量の小さい方を上限にし、完了・失敗・中止でWorkerを終了します。
 
 静止画像向けの形式では [src/core/media-selection.ts](../core/media-selection.ts) でGIF・動画を除外し、対象外の件数を表示します。解析結果にある種類だけを形式選択肢に表示します。ファイルの種類とサムネイルURLは収集結果の一部としてメモリに保持します。
 
-Xの追加解析は [x-media-scan.ts](x-media-scan.ts) をページの実行環境で実行し、投稿と動画要素に紐づく既存データの必要なフィールドだけを読みます。getterを実行せず、投稿本文・ユーザー情報・store・cache・認証情報は読み取り対象に含めません。投稿IDと一致する祖先までで探索を止め、1回の読み取りは2.5秒・18,000ノード・文字列合計1,000,000文字・60投稿・投稿ごと80要素・祖先40段・データ深さ36段・配列256要素を上限にします。上限到達を通常の成功として返しません。
+Xの追加解析は [x-media-scan.ts](content/x-media-scan.ts) をページの実行環境で実行し、投稿と動画要素に紐づく既存データの必要なフィールドだけを読みます。getterを実行せず、投稿本文・ユーザー情報・store・cache・認証情報は読み取り対象に含めません。投稿IDと一致する祖先までで探索を止め、1回の読み取りは2.5秒・18,000ノード・文字列合計1,000,000文字・60投稿・投稿ごと80要素・祖先40段・データ深さ36段・配列256要素を上限にします。上限到達を通常の成功として返しません。
 
-データの解釈・重複統合・投稿単位の照合は [src/core/x-media.ts](../core/x-media.ts) が担当します。[page-access.ts](page-access.ts) は不足投稿だけを400ms後に1回再読し、不足や上限到達をエラーとして返します。ページ移動・中止の確認を各読み取りへ適用し、エラー時は確定済みの画像集合を置き換えません。追加API通信・通信の監視・権限・永続保存はありません。
+データの解釈・重複統合・投稿単位の照合は [src/core/x-media.ts](../core/x-media.ts) が担当します。[page-access.ts](browser/page-access.ts) は不足投稿だけを400ms後に1回再読し、不足や上限到達をエラーとして返します。ページ移動・中止の確認を各読み取りへ適用し、エラー時は確定済みの画像集合を置き換えません。追加API通信・通信の監視・権限・永続保存はありません。
 
 解析件数は `PageScan.xDiagnostics`、正規化後と除外の件数は `ScanSessionController.diagnostics`、表示・非表示の件数は `ImageListView.diagnostics`、リモートプレビューの取得済み・失敗・待機件数は `ImagePreviewLoader.diagnostics` で確認できます。プレビュー件数は共有URLごとの取得状態であり、画像要素の描画完了件数ではありません。診断はメモリ上の件数だけで、ログ保存や外部送信を行いません。Xの解析後は全グループを初期表示し、一般URLの除外規則でXの候補が失われる場合も不完全な結果で置き換えません。
 
-Xの解析では [x-page-state.ts](x-page-state.ts) で投稿・動画の表示を最大10秒待ち、ページを再走査します。要求URLの投稿IDを待機・DOM再走査・再生情報抽出へ渡し、投稿自身の時刻リンクで照合します。引用・返信・おすすめを除外し、拡大表示も自身の投稿リンクで一致を確認します。DOMの祖先にある再生情報は投稿IDの一致を必須にし、対象投稿が取得できない場合は前回の確定した収集結果を保持します。表示制限や動画URLの取得失敗を通常の画像収集結果へ置き換えず、利用者へ理由を表示します。
+Xの解析では [x-page-state.ts](content/x-page-state.ts) で投稿・動画の表示を最大10秒待ち、ページを再走査します。要求URLの投稿IDを待機・DOM再走査・再生情報抽出へ渡し、投稿自身の時刻リンクで照合します。引用・返信・おすすめを除外し、拡大表示も自身の投稿リンクで一致を確認します。DOMの祖先にある再生情報は投稿IDの一致を必須にし、対象投稿が取得できない場合は前回の確定した収集結果を保持します。表示制限や動画URLの取得失敗を通常の画像収集結果へ置き換えず、利用者へ理由を表示します。
 
 GIF・MP4の元データ保存では識別子の検査に加え、GIFの画面・画像ブロック・カラーテーブル・データ終端・トレーラー、MP4のボックス境界・moov・mdat・映像トラック・全トラックの宣言サンプルの取得可能性を検査します。通常・断片化MP4を再エンコードせず元バイトで保存し、ブラウザーのコーデック対応を保存条件にしません。
 

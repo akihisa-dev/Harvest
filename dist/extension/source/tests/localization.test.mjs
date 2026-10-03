@@ -2,6 +2,15 @@ import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import test from "node:test";
 
+test("翻訳ヘルパーの読み込みは画面を必要とせず書き換えない", async () => {
+  const previous = globalThis.document;
+  delete globalThis.document;
+  try {
+    const {t} = await import(`../dist/extension/app/panel/localization.js?no-document=${Date.now()}`);
+    assert.equal(typeof t("imageFallback"), "string");
+  } finally { globalThis.document = previous; }
+});
+
 function installLocalizationEnvironment(language) {
   const previous = {document: globalThis.document, chrome: globalThis.chrome};
   globalThis.document = {
@@ -16,7 +25,7 @@ function installLocalizationEnvironment(language) {
 test("辞書は英語と日本語で同じキーを持ち、HTMLの静的キーを網羅する", async () => {
   const restore = installLocalizationEnvironment("en-US");
   try {
-    const localization = await import(`../dist/extension/app/localization.js?keys=${Date.now()}`);
+    const localization = await import(`../dist/extension/app/panel/localization.js?keys=${Date.now()}`);
     assert.equal(localization.uiLanguage, "en");
     assert.deepEqual(Object.keys(localization.translations.en).sort(), Object.keys(localization.translations.ja).sort());
     const html = (await Promise.all(["index.html", "legal.html"].map(file => readFile(new URL(`../app/${file}`, import.meta.url), "utf8")))).join("\n");
@@ -43,7 +52,7 @@ test("辞書は英語と日本語で同じキーを持ち、HTMLの静的キー�
 test("英語ではグループ名・既知エラーが英語になり、サイト値はそのまま扱える", async () => {
   const restore = installLocalizationEnvironment("en");
   try {
-    const localization = await import(`../dist/extension/app/localization.js?values=${Date.now()}`);
+    const localization = await import(`../dist/extension/app/panel/localization.js?values=${Date.now()}`);
     assert.equal(localization.formatGroupLabel("シリーズ (2枚)"), "Series (2 images)");
     assert.equal(localization.formatGroupLabel("表紙・サムネイル (1枚)"), "Cover / thumbnail (1 image)");
     assert.equal(localization.formatGroupLabel("PNG · その他 (2枚)"), "PNG · Other (2 images)");
@@ -197,7 +206,7 @@ test("英語画面で解析・分類・選択・エラー表示が翻訳され�
     await waitForScan();
     assert.ok(descendants(root.querySelector("#groups")).some(button => button.textContent === "Series\nJPG\n(2 images)"));
     assert.equal(root.querySelector("#export").textContent, "Save PDF");
-    assert.equal((await import(`../dist/extension/app/localization.js?source=${Date.now()}`)).t("includeSourcePage"), "Add a source page at the end");
+    assert.equal((await import(`../dist/extension/app/panel/localization.js?source=${Date.now()}`)).t("includeSourcePage"), "Add a source page at the end");
     const row = root.querySelector("#images").children[0];
     assert.match(row.getAttribute("aria-label"), /^001.jpg, number 1/);
     assert.equal(row.dataset.dropLabel, "Move here");
@@ -220,7 +229,7 @@ for (const [language, expected] of [["ja", "ja"], ["ja-JP", "ja"], ["JA-jp", "ja
   test(`${language}では${expected}を選び、既知の失敗理由と単複を保つ`, async () => {
     const restore = installLocalizationEnvironment(language);
     try {
-      const {uiLanguage, t, localizeErrorMessage, formatPlural} = await import(`../dist/extension/app/localization.js?audit=${language}`);
+      const {uiLanguage, t, localizeErrorMessage, formatPlural} = await import(`../dist/extension/app/panel/localization.js?audit=${language}`);
       assert.equal(uiLanguage, expected);
       for (const [message, key] of [
         ["画像が大きすぎるため、処理できません。", "errorDataTooLarge"],

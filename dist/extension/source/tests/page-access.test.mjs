@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {scanTab, scanUrl} from "../dist/extension/app/page-access.js";
+import {scanTab, scanUrl} from "../dist/extension/app/browser/page-access.js";
 
 function mediaSnapshot(url, candidates = [], observed = []) {
   return {url, limited: false, posts: [{key: 'post:123', postId: '123', observed,
@@ -289,7 +289,7 @@ for (const failure of ["unavailable", "incomplete"]) test(`Xの${failure}では�
         : {url, title: "post", images: ["https://pbs.twimg.com/media/other.jpg"]}
   }];
   const {ImageCollection} = await import("../dist/extension/core/image-collection.js");
-  const {createScanSessionController} = await import("../dist/extension/app/scan-session-controller.js");
+  const {createScanSessionController} = await import("../dist/extension/app/panel/scan-session-controller.js");
   const collection = new ImageCollection();
   collection.replace(["https://previous.test/retained.jpg"], "https://previous.test/page");
   const previousItems = collection.items;
@@ -436,7 +436,7 @@ test('Xの画像と動画を全グループ表示で公開し、件数だけの�
   chrome.scripting.executeScript = async ({func}) => [{result: func.name === 'waitForXPage' ? {status: 'ready'}
     : func.name === 'scanXMedia' ? mediaSnapshot(url, candidates) : {url, title: 'X', images: []}}];
   const {ImageCollection} = await import('../dist/extension/core/image-collection.js');
-  const {createScanSessionController} = await import('../dist/extension/app/scan-session-controller.js');
+  const {createScanSessionController} = await import('../dist/extension/app/panel/scan-session-controller.js');
   const collection = new ImageCollection();
   let initialGroup = 'not-published';
   const controller = createScanSessionController({collection, getEnteredUrl: () => '', getCollectionSession: () => null,

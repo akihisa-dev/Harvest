@@ -43,7 +43,7 @@ test('実Chromeの拡張機能から遅れて表示されるX動画プレイヤ�
     const panel = await context.newPage();
     await panel.goto(`chrome-extension://${id}/app/index.html`);
     const result = await panel.evaluate(async url => {
-      const {scanTab} = await import(chrome.runtime.getURL('app/page-access.js'));
+      const {scanTab} = await import(chrome.runtime.getURL('app/browser/page-access.js'));
       const [tab] = await chrome.tabs.query({url});
       return await scanTab(tab.id, undefined, url);
     }, postUrl);

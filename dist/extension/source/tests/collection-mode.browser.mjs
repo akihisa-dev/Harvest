@@ -4,7 +4,7 @@ import test from "node:test";
 import {chromium} from "playwright";
 
 test("removed collection links lose their marker in a real DOM", async () => {
-  const moduleSource = await readFile(new URL("../dist/extension/app/collection-mode.js", import.meta.url), "utf8");
+  const moduleSource = await readFile(new URL("../dist/extension/app/content/collection-mode.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();
@@ -70,7 +70,7 @@ test("removed collection links lose their marker in a real DOM", async () => {
 });
 
 test("href changes clear old collection markers and reject stale results in a real DOM", async () => {
-  const moduleSource = await readFile(new URL("../dist/extension/app/collection-mode.js", import.meta.url), "utf8");
+  const moduleSource = await readFile(new URL("../dist/extension/app/content/collection-mode.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();
@@ -119,7 +119,7 @@ test("href changes clear old collection markers and reject stale results in a re
 });
 
 test("page layout shifts reposition persistent and hovered collection glows", async () => {
-  const moduleSource = await readFile(new URL("../dist/extension/app/collection-mode.js", import.meta.url), "utf8");
+  const moduleSource = await readFile(new URL("../dist/extension/app/content/collection-mode.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();

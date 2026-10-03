@@ -21,7 +21,7 @@ async function serve() {
             <button id="previous"></button><button id="next"></button><span id="position"></span><p id="filename"></p><ol id="thumbnails"></ol>
             <button id="zoom-in"></button><button id="zoom-out"></button><button id="zoom-reset"></button></div></section><button id="toggle"></button>
           <script type="module">
-            import {createViewerController} from "/app/viewer-controller.js";
+            import {createViewerController} from "/app/panel/viewer-controller.js";
             let pages = [1, 2, 3].map(index => ({url: "https://images.example.test/" + index + ".jpg", sourcePage: "https://source.example.test"}));
             const get = selector => document.querySelector(selector);
             const bindings = new WeakMap();
@@ -50,8 +50,8 @@ async function serve() {
         </body></html>`);
         return;
       }
-      if (pathname === "/app/viewer-controller.js") {
-        const source = await readFile(resolve(root, "src/extension/viewer-controller.ts"), "utf8");
+      if (pathname === "/app/panel/viewer-controller.js") {
+        const source = await readFile(resolve(root, "src/extension/panel/viewer-controller.ts"), "utf8");
         const {outputText} = ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022}});
         response.writeHead(200, {"content-type": "text/javascript"});
         response.end(outputText);

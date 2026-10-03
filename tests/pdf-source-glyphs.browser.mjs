@@ -5,7 +5,7 @@ import test from "node:test";
 import { chromium } from "playwright";
 
 test("source characters outside Latin-1 become reusable visible PDF glyph images", async () => {
-  const moduleSource = await readFile(new URL("../dist/extension/app/pdf-source-glyphs.js", import.meta.url), "utf8");
+  const moduleSource = await readFile(new URL("../dist/extension/app/media/pdf-source-glyphs.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});
   try {
     const page = await browser.newPage();

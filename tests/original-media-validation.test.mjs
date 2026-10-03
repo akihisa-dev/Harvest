@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {mp4Bytes, brokenMedia} from './media-fixtures.mjs';
-import {validateOriginalMedia} from '../dist/extension/app/original-media-validation.js';
-import {prepareMp4} from '../dist/extension/app/mp4-conversion.js';
-import {fetchOriginalMedia} from '../dist/extension/app/media-fetch.js';
+import {validateOriginalMedia} from '../dist/extension/app/media/original-media-validation.js';
+import {prepareMp4} from '../dist/extension/app/media/mp4-conversion.js';
+import {fetchOriginalMedia} from '../dist/extension/app/media/media-fetch.js';
 
 function counted(blob) {
   let reads = 0;

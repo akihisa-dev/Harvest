@@ -51,7 +51,7 @@ test("Chrome blocks a public image hostname that resolves to loopback", {timeout
     const page = await context.newPage();
     await page.goto(`chrome-extension://${extensionId}/app/index.html`);
     const result = await page.evaluate(async port => {
-      const {fetchImage} = await import(chrome.runtime.getURL("app/image-fetch.js"));
+      const {fetchImage} = await import(chrome.runtime.getURL("app/media/image-fetch.js"));
       const url = `http://dns-public-test.invalid:${port}/image.png`;
       const direct = await fetch(`${url}?case=without-address-space`);
       await direct.arrayBuffer();

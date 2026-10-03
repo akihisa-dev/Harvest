@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {scanXMedia as readXMedia} from "../dist/extension/app/x-media-scan.js";
+import {scanXMedia as readXMedia} from "../dist/extension/app/content/x-media-scan.js";
 import {parseXMedia} from "../dist/extension/core/x-media.js";
 const scanXMedia = target => parseXMedia(readXMedia(target), target).media;
 

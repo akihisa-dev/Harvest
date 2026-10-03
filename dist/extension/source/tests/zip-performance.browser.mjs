@@ -20,8 +20,8 @@ async function serve() {
     compilerOptions: {noEmit: false, noEmitOnError: true, outDir: compiled},
     files: [
       join(root, "src/core/stored-zip.ts"),
-      join(root, "src/extension/stored-zip-worker.ts"),
-      join(root, "src/extension/stored-zip-crc-worker.ts")
+      join(root, "src/extension/media/stored-zip-worker.ts"),
+      join(root, "src/extension/workers/stored-zip-crc-worker.ts")
     ],
     include: [],
   }));
@@ -33,11 +33,13 @@ async function serve() {
     }
     const path = request.url === "/core/stored-zip.js"
       ? join(compiled, "core/stored-zip.js")
-      : request.url === "/app/stored-zip-worker.js"
-        ? join(compiled, "extension/stored-zip-worker.js")
-        : request.url === "/app/stored-zip-crc-worker.js"
-          ? join(compiled, "extension/stored-zip-crc-worker.js")
-          : null;
+      : request.url === "/app/media/stored-zip-worker.js"
+        ? join(compiled, "extension/media/stored-zip-worker.js")
+        : request.url === "/app/workers/stored-zip-crc-worker.js"
+          ? join(compiled, "extension/workers/stored-zip-crc-worker.js")
+          : request.url === "/app/contracts/worker-contracts.js"
+            ? join(compiled, "extension/contracts/worker-contracts.js")
+            : null;
     if (!path) {
       response.writeHead(404).end();
       return;
@@ -81,7 +83,7 @@ test("ZIPのworker CRC32と格納データを確認し、中止時にworkerを�
           super.terminate();
         }
       };
-      const {createStoredZipInWorker} = await import("/app/stored-zip-worker.js");
+      const {createStoredZipInWorker} = await import("/app/media/stored-zip-worker.js");
       const bytes = new TextEncoder().encode("123456789");
       const archive = await createStoredZipInWorker([{filename: "vector.bin", blob: new Blob([bytes])}]);
       const contents = new Uint8Array(await archive.arrayBuffer());
@@ -123,7 +125,7 @@ test("大容量ZIPのCRC計算中も画面側のタイマーが動き続ける",
     const page = await browser.newPage();
     await page.goto(fixture.url);
     const result = await page.evaluate(async () => {
-      const {createStoredZipInWorker} = await import("/app/stored-zip-worker.js");
+      const {createStoredZipInWorker} = await import("/app/media/stored-zip-worker.js");
       const megabyte = new Uint8Array(1024 * 1024).fill(0x5a);
       const blob = new Blob(Array.from({length: 96}, () => megabyte));
       let ticks = 0;

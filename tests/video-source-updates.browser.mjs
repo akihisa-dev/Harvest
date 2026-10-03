@@ -5,7 +5,7 @@ import {chromium} from 'playwright';
 import {mp4Bytes} from './media-fixtures.mjs';
 
 test('sourceの交換・削除・属性変更の非同期currentSrcを更新し、共有参照と追加sourceを保持する', async () => {
-  const source = await readFile(new URL('../dist/extension/app/page-scan.js', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../dist/extension/app/content/page-scan.js', import.meta.url), 'utf8');
   const browser = await chromium.launch({channel: 'chrome', headless: true});
   try {
     const page = await browser.newPage();

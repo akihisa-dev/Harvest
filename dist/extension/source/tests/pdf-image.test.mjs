@@ -2,10 +2,10 @@ import {baselineJpeg, exifJpeg} from "./jpeg-fixtures.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {deflateSync} from "node:zlib";
-import {readImageBytes} from "../dist/extension/app/image-fetch.js";
-import {IMAGE_TOO_LARGE_MESSAGE, MAX_IMAGE_BYTES} from "../dist/extension/app/image-data-contract.js";
+import {readImageBytes} from "../dist/extension/app/media/image-fetch.js";
+import {IMAGE_TOO_LARGE_MESSAGE, MAX_IMAGE_BYTES} from "../dist/extension/app/contracts/image-data-contract.js";
 import {inflateSync} from "node:zlib";
-import {PdfImageError, preparePdfImages, toPdfPage} from "../dist/extension/app/pdf-image.js";
+import {PdfImageError, preparePdfImages, toPdfPage} from "../dist/extension/app/media/pdf-image.js";
 
 function pngChunk(type, data) {
   const chunk = new Uint8Array(12 + data.length);

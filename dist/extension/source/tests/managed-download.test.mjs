@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {mp4Bytes} from './media-fixtures.mjs';
-import {downloadManagedBlob} from '../dist/extension/app/managed-download.js';
+import {downloadManagedBlob} from '../dist/extension/app/browser/managed-download.js';
 
 function api() {
   const listeners = new Set(), items = new Map(), starts = [], queries = [], cancelled = [];
@@ -105,7 +105,7 @@ async function controllerFixture(t) {
   const previousDocument = globalThis.document;
   globalThis.document = {documentElement: {setAttribute() {}}, body: {dataset: {}}, querySelectorAll: () => []};
   t.after(() => { globalThis.document = previousDocument; });
-  const {createImageExportController} = await import('../dist/extension/app/image-export-controller.js');
+  const {createImageExportController} = await import('../dist/extension/app/panel/image-export-controller.js');
   const selected = Array.from({length: 3}, (_, i) => ({url: `https://files.example.test/${i}.mp4`, sourcePage: 'https://page.example.test/', kind: 'video'}));
   const requests = [];
   t.mock.method(globalThis, 'fetch', async url => { requests.push(url); return new Response(mp4Bytes, {headers: {'content-type': 'video/mp4'}}); });

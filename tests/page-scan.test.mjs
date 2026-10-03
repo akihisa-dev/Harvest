@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {scanDocument} from "../dist/extension/app/page-scan.js";
+import {scanDocument} from "../dist/extension/app/content/page-scan.js";
 import {groupMediaImages} from "../dist/extension/core/images.js";
 
 class FixtureElement {

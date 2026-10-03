@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {createCollectionController} from "../dist/extension/app/collection-controller.js";
+import {createCollectionController} from "../dist/extension/app/panel/collection-controller.js";
 
 function setup() {
   const previousChrome = globalThis.chrome;
@@ -364,12 +364,47 @@ test("sessionの接続許可は一度限りで、解析済みURLは現在のsess
     assert.equal(port.messages.at(-1).pdfUrl, null);
     fixture.controller.markAnalyzedUrl(url, session);
     fixture.controller.markAnalyzedUrl("https://example.test/stale", "previous-session");
-    assert.equal(fixture.controller.analyzedUrl, null);
+    assert.equal(fixture.controller.analyzedUrl, url, "古いsessionの通知は現在の解析済みURLを消さない");
     fixture.controller.markAnalyzedUrl(url, session);
     fixture.controller.stop();
     assert.equal(fixture.controller.analyzedUrl, null);
     fixture.controller.markAnalyzedUrl(url, session);
     assert.equal(fixture.controller.analyzedUrl, null);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("廃棄後は開始せず、開始済みの遅延接続も切断する", async () => {
+  const fixture = setup();
+  try {
+    fixture.disposed = true;
+    await fixture.controller.toggle();
+    assert.equal(fixture.controller.session, null);
+    assert.equal(fixture.injections.length, 0);
+    fixture.disposed = false;
+    fixture.executeScript = async injection => { fixture.injections.push(injection); return []; };
+    await fixture.controller.toggle();
+    const session = fixture.controller.session;
+    fixture.disposed = true;
+    const latePort = fixture.connect(session, 7);
+    assert.equal(latePort.disconnectCount, 1);
+    assert.deepEqual(latePort.messages, []);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("受信値がnullや不正な型でも収集状態を壊さない", async () => {
+  const fixture = setup();
+  try {
+    await fixture.controller.toggle();
+    const port = fixture.ports.at(-1);
+    for (const message of [null, undefined, 1, "url", {}, {url: false}]) {
+      assert.doesNotThrow(() => port.send(message));
+    }
+    port.send({url: "https://example.test/current"});
+    assert.deepEqual(fixture.scans, ["https://example.test/current"]);
   } finally {
     fixture.restore();
   }

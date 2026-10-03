@@ -21,8 +21,8 @@ async function serve({sharedPoster = false} = {}) {
             <section id="viewer" class="viewer" hidden><p id="empty"></p><div id="page"><div id="stage" class="viewer-stage"><img id="image"></div><button id="previous"></button><button id="next"></button><span id="position"></span><p id="filename"></p><ol id="thumbnails"></ol><button id="zoom-in"></button><button id="zoom-out"></button><button id="zoom-reset"></button></div></section>
           </main><button id="toggle"></button>
           <script type="module">
-            import {createViewerController} from "/app/viewer-controller.js";
-            import {createImagePreviewLoader} from "/app/image-preview.js";
+            import {createViewerController} from "/app/panel/viewer-controller.js";
+            import {createImagePreviewLoader} from "/app/media/image-preview.js";
             const png = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
             const pages = [1, 2].map(index => ({url: "https://images.example.test/" + index + ".jpg", sourcePage: "https://source.example.test"}));
             if (${sharedPoster}) {

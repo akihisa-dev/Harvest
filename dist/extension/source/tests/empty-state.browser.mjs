@@ -10,8 +10,8 @@ test("空状態のロゴと文言は読み上げを即時更新しながら連�
   const extensionRoot = resolve(process.env.HARVEST_TEST_EXTENSION_DIR ?? fileURLToPath(new URL("../dist/extension/", import.meta.url)));
   const extensionUrl = pathToFileURL(`${extensionRoot}/`);
   const files = new Map([
-    ["/empty-state.js", new URL("app/empty-state.js", extensionUrl)],
-    ["/motion.js", new URL("app/motion.js", extensionUrl)],
+    ["/empty-state.js", new URL("app/panel/empty-state.js", extensionUrl)],
+    ["/motion.js", new URL("app/panel/motion.js", extensionUrl)],
     ["/style.css", new URL("app/style.css", extensionUrl)],
   ]);
   const server = createServer((request, response) => {

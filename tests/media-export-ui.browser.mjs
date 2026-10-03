@@ -254,7 +254,7 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
     assert.match(await page.locator('#export').textContent(), /MP4/);
     const webmUrl = 'https://files.example.test/movie.webm';
     const failures = await page.evaluate(async bytes => {
-      const {prepareMp4} = await import('./mp4-conversion.js');
+      const {prepareMp4} = await import('./media/mp4-conversion.js');
       const attempt = async (blob, limit) => {
         try {
           await prepareMp4(blob, undefined, limit);
@@ -333,7 +333,7 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
         .map(query => `https://files.example.test/gif-query?${query}`)
     ];
     const sourcePage = await context.newPage();
-    const scanSource = await readFile(resolve(root, 'app/page-scan.js'), 'utf8');
+    const scanSource = await readFile(resolve(root, 'app/content/page-scan.js'), 'utf8');
     const gifScan = await sourcePage.evaluate(async ({urls, source}) => {
       for (const url of urls) {
         const image = document.createElement('img');

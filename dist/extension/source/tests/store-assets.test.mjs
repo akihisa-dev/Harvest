@@ -27,7 +27,7 @@ test("配布物にライセンス、対応ソース、利用者向けの案内�
   assert.deepEqual(await read("../dist/extension/SOURCE.md"), await read("../SOURCE.md"));
 
   for (const directory of ["src/core", "src/extension", "scripts", "tests"]) {
-    for (const file of await readdir(new URL(`../${directory}/`, import.meta.url))) {
+    for (const file of await readdir(new URL(`../${directory}/`, import.meta.url), {recursive: true})) {
       if (!/\.(?:ts|mjs)$/.test(file)) continue;
       assert.deepEqual(await read(`../dist/extension/source/${directory}/${file}`), await read(`../${directory}/${file}`));
     }

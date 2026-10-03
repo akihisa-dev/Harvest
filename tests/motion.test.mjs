@@ -29,7 +29,7 @@ test("選択表示だけの更新では要素を切り離さずフォーカス�
   const previousWindow = globalThis.window;
   globalThis.window = {matchMedia: () => ({matches: true})};
   try {
-    const {reconcileKeyedChildren} = await import("../dist/extension/app/motion.js");
+    const {reconcileKeyedChildren} = await import("../dist/extension/app/panel/motion.js");
     const parent = new MotionParent();
     let focused = null;
     parent.replaceChildren = (...children) => {
@@ -50,7 +50,7 @@ test("選択表示だけの更新では要素を切り離さずフォーカス�
 
 test("大量行の選択状態更新では位置計測を行わない", async () => {
   globalThis.window = {matchMedia: () => ({matches: false})};
-  const {reconcileKeyedChildren} = await import("../dist/extension/app/motion.js?selection=" + Date.now());
+  const {reconcileKeyedChildren} = await import("../dist/extension/app/panel/motion.js?selection=" + Date.now());
   const parent = new MotionParent();
   const items = Array.from({length: 500}, (_, index) => ({id: String(index), selected: true}));
   const update = (element, item) => { element.selected = item.selected; };
@@ -67,7 +67,7 @@ test("大量行の選択状態更新では位置計測を行わない", async ()
 
 test("キー付き要素を再利用し、並び替えだけを滑らかに動かす", async () => {
   globalThis.window = {matchMedia: () => ({matches: false})};
-  const {reconcileKeyedChildren} = await import("../dist/extension/app/motion.js?test=" + Date.now());
+  const {reconcileKeyedChildren} = await import("../dist/extension/app/panel/motion.js?test=" + Date.now());
   const parent = new MotionParent();
   const first = reconcileKeyedChildren(parent, [{id: "a"}, {id: "b"}], item => item.id, () => new MotionElement(), (element, _item, index) => { element.style.order = String(index); });
   const a = first.get("a");
@@ -81,7 +81,7 @@ test("キー付き要素を再利用し、並び替えだけを滑らかに動�
 
 test("reduced motionでは位置アニメーションを発生させない", async () => {
   globalThis.window = {matchMedia: () => ({matches: true})};
-  const {reconcileKeyedChildren} = await import("../dist/extension/app/motion.js?reduced=" + Date.now());
+  const {reconcileKeyedChildren} = await import("../dist/extension/app/panel/motion.js?reduced=" + Date.now());
   const parent = new MotionParent();
   reconcileKeyedChildren(parent, [{id: "a"}], item => item.id, () => new MotionElement(), (element, _item, index) => { element.style.order = String(index); });
   const element = parent.children[0];
@@ -93,7 +93,7 @@ test("移動途中の再操作は現在の見た目から開始し、色の切�
   const previousWindow = globalThis.window;
   globalThis.window = {matchMedia: () => ({matches: false})};
   try {
-    const {animateLayoutChange} = await import("../dist/extension/app/motion.js?interrupt=" + Date.now());
+    const {animateLayoutChange} = await import("../dist/extension/app/panel/motion.js?interrupt=" + Date.now());
     const element = new MotionElement();
     let visualOffset = 0;
     let cancelled = false;
@@ -131,7 +131,7 @@ test("ステータス文字は完了後もフェードし、古い完了通知�
   globalThis.window = {matchMedia: () => ({matches: false})};
   globalThis.getComputedStyle = () => ({opacity: "0.8"});
   try {
-    const {setMotionText} = await import("../dist/extension/app/motion.js?text=" + Date.now());
+    const {setMotionText} = await import("../dist/extension/app/panel/motion.js?text=" + Date.now());
     const element = new MotionElement();
     element.animate = (keyframes, options) => {
       let finish, reject;
