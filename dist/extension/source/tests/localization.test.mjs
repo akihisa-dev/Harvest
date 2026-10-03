@@ -19,9 +19,19 @@ test("辞書は英語と日本語で同じキーを持ち、HTMLの静的キー�
     const localization = await import(`../dist/extension/app/localization.js?keys=${Date.now()}`);
     assert.equal(localization.uiLanguage, "en");
     assert.deepEqual(Object.keys(localization.translations.en).sort(), Object.keys(localization.translations.ja).sort());
-    const html = await readFile(new URL("../app/index.html", import.meta.url), "utf8");
+    const html = (await Promise.all(["index.html", "legal.html"].map(file => readFile(new URL(`../app/${file}`, import.meta.url), "utf8")))).join("\n");
     const keys = [...html.matchAll(/\bdata-i18n(?:-[a-z-]+)?="([^"]+)"/g)].map(match => match[1]);
     for (const key of keys) assert.ok(localization.translationKeys.includes(key), `辞書にないHTMLキー: ${key}`);
+    const placeholders = value => [...value.matchAll(/\{(\w+)\}/g)].map(match => match[1]).filter(name => name !== "plural").sort();
+    for (const key of localization.translationKeys) {
+      assert.deepEqual(placeholders(localization.translations.en[key]), placeholders(localization.translations.ja[key]), key);
+      assert.ok(localization.translations.en[key].trim() && localization.translations.ja[key].trim(), key);
+    }
+    const en = JSON.parse(await readFile(new URL("../_locales/en/messages.json", import.meta.url), "utf8"));
+    const ja = JSON.parse(await readFile(new URL("../_locales/ja/messages.json", import.meta.url), "utf8"));
+    assert.deepEqual(Object.keys(en).sort(), Object.keys(ja).sort());
+    const manifest = await readFile(new URL("../manifest.template.json", import.meta.url), "utf8");
+    for (const [, key] of manifest.matchAll(/__MSG_(\w+)__/g)) assert.ok(en[key]?.message && ja[key]?.message, key);
     for (const value of Object.values(localization.translations.en)) {
       assert.doesNotMatch(value, /[ぁ-んァ-ヶ一-龯]/u);
     }
@@ -205,3 +215,27 @@ test("英語画面で解析・分類・選択・エラー表示が翻訳され�
     Object.assign(globalThis, previous);
   }
 });
+
+for (const [language, expected] of [["ja", "ja"], ["ja-JP", "ja"], ["JA-jp", "ja"], ["en-GB", "en"], ["fr-FR", "en"]]) {
+  test(`${language}では${expected}を選び、既知の失敗理由と単複を保つ`, async () => {
+    const restore = installLocalizationEnvironment(language);
+    try {
+      const {uiLanguage, t, localizeErrorMessage, formatPlural} = await import(`../dist/extension/app/localization.js?audit=${language}`);
+      assert.equal(uiLanguage, expected);
+      for (const [message, key] of [
+        ["画像が大きすぎるため、処理できません。", "errorDataTooLarge"],
+        ["この画像URLは安全性を確認できないため取得できません。", "errorFetchTarget"],
+        ["選択項目と保存データの形式が一致しません。", "errorMediaSelectionMismatch"],
+        ["保存するデータの形式を確認できません。", "errorMediaFormat"],
+        ["JXLの変換結果が空です。", "errorJxlEncode"],
+        ["ZIPのCRC確認に失敗しました。", "errorZipCreate"],
+      ]) assert.equal(localizeErrorMessage(message, "errorFileSave", true), t(key));
+      assert.equal(localizeErrorMessage("Unknown native error", "errorFileSave", true), t("errorFileSave"));
+      for (const count of [0, 1, 2]) {
+        const hint = t("mediaExcludedHint", {format: "MP4", count, plural: formatPlural(count)});
+        assert.doesNotMatch(hint, /\{\w+\}/);
+        if (expected === "en") assert.ok(hint.endsWith(`${count} selected file${count === 1 ? "" : "s"}.`));
+      }
+    } finally { restore(); }
+  });
+}

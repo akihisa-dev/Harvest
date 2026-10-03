@@ -47,11 +47,11 @@ export function createAppView(elements, positionOf) {
         failuresElement.hidden = !pending?.failed.size;
         failedImagesElement.replaceChildren(...(pending?.selected.filter(item => pending.failed.has(item)) ?? []).map(item => {
             const row = document.createElement("li");
-            const fallback = format === "pdf" ? "errorPdfFetch" : "errorImageConvert";
+            const fallback = format === "pdf" ? "errorPdfFetch" : isMediaArchiveFormat(format) ? "errorFileSave" : "errorImageConvert";
             row.textContent = t("failedRow", {
                 index: positionOf(item) + 1,
                 filename: imageFilename(item.url),
-                reason: localizeErrorMessage(pending.failed.get(item) ?? t(fallback), fallback),
+                reason: localizeErrorMessage(pending.failed.get(item) ?? t(fallback), fallback, true),
             });
             row.title = item.url;
             return row;
@@ -65,7 +65,7 @@ export function createAppView(elements, positionOf) {
         const excludedCount = selectedCount - selected.length;
         exportMediaHint.textContent = [
             format === "mp4" && hasVideo ? t("videoConversionHint") : "",
-            excludedCount ? t("mediaExcludedHint", { count: excludedCount, format: format.toUpperCase() }) : "",
+            excludedCount ? t("mediaExcludedHint", { count: excludedCount, plural: formatPlural(excludedCount), format: format.toUpperCase() }) : "",
         ].filter(Boolean).join(" ");
         exportMediaHint.hidden = !exportMediaHint.textContent;
         scanButton.disabled = busy;

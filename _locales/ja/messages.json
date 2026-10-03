@@ -3,7 +3,7 @@
     "message": "Harvest"
   },
   "extensionDescription": {
-    "message": "Webページの画像を集め、必要な画像を選んでPDF・JPG・PNG・JXLで保存します。"
+    "message": "Webページの画像・GIF・動画を集め、選択した項目をPDF・JPG・PNG・JXL・MP4・GIFで保存します。"
   },
   "openHarvest": {
     "message": "Harvestを開く"
