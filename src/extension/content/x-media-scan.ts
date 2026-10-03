@@ -355,7 +355,19 @@ export function scanXMedia(targetPostId?: string | null, onlyPostKeys?: string[]
           roots: [...new Map([...old.roots, ...post.roots].map(item => [JSON.stringify(item), item])).values()],
         } : post);
       }
-      snapshot.posts = [...combined.values()];
+      // Current list/capture order is authoritative for observed keys. Keep
+      // offscreen posts beside their next known neighbour in the retained order.
+      const current = new Set(snapshot.posts.map(post => post.key));
+      const before = new Map<string, string[]>();
+      let pending: string[] = [];
+      for (const post of same ? previous.posts : []) {
+        if (current.has(post.key)) { before.set(post.key, pending); pending = []; }
+        else pending.push(post.key);
+      }
+      const keys = before.size
+        ? [...snapshot.posts.flatMap(post => [...(before.get(post.key) ?? []), post.key]), ...pending]
+        : [...pending, ...snapshot.posts.map(post => post.key)];
+      snapshot.posts = [...new Set(keys)].map(key => combined.get(key)!);
       Object.defineProperty(window, key, {configurable: true, value: {url, identity: bookmarkIdentity, epoch: captureEpoch, posts: snapshot.posts}});
     } else if (!onlyPostKeys && previous) {
       delete (window as unknown as Record<string, unknown>)[key];

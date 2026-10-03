@@ -58,7 +58,20 @@ export async function scanTab(tabId: number, signal?: AbortSignal, requestedUrl?
             roots: [...new Map([...previous.roots, ...post.roots].map(item => [JSON.stringify(item), item])).values()],
           } : post);
         }
-        snapshot = {...next, limited: snapshot.limited || next.limited, posts: [...posts.values()]};
+        // A re-read may reveal earlier entries. Respect its order while retaining
+        // missing offscreen entries next to their known neighbours.
+        const current = new Set(next.posts.map(post => post.key));
+        const before = new Map<string, string[]>();
+        let pending: string[] = [];
+        for (const post of snapshot.posts) {
+          if (current.has(post.key)) { before.set(post.key, pending); pending = []; }
+          else pending.push(post.key);
+        }
+        const keys = before.size
+          ? [...next.posts.flatMap(post => [...(before.get(post.key) ?? []), post.key]), ...pending]
+          : [...pending, ...next.posts.map(post => post.key)];
+        snapshot = {...next, limited: snapshot.limited || next.limited,
+          posts: [...new Set(keys)].map(key => posts.get(key)!)};
         if (page.status === "end") { bookmarkIncomplete = false; break; }
         if (page.status !== "advanced" || !page.cursor || cursors.has(page.cursor)) break;
         cursors.add(page.cursor);
