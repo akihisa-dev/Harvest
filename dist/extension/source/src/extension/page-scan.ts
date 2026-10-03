@@ -540,8 +540,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
 
   const scanBackground = (element: Element): void => {
     const background = backgroundFor(element);
-    if (background && background !== "none") backgroundSnapshots.set(element, background);
-    else backgroundSnapshots.delete(element);
+    backgroundSnapshots.set(element, background);
     scanCss(background, element, element, true);
   };
 
@@ -946,7 +945,8 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
 
   const refreshBackgrounds = async (): Promise<void> => {
     // Stylesheet edits can change another element without mutating that element.
-    // Reconcile only previously present backgrounds once, including CSSOM edits
+    // Reconcile all scanned backgrounds once, including initially empty values
+    // and CSSOM edits
     // that never emit a MutationRecord. Rebuild changed owners through the same
     // evidence lifecycle so shared URLs and their order remain intact.
     const snapshots = [...backgroundSnapshots];

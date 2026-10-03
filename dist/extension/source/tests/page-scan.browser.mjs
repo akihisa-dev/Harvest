@@ -296,6 +296,52 @@ test("実ブラウザーでopen Shadow DOMを再帰走査し、短時間の変�
 });
 
 
+test("初回noneの背景をCSSOMで追加すると通常DOMとopen Shadow DOMから収集する", async () => {
+  const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
+  const browser = await chromium.launch({channel: "chrome", headless: true});
+  try {
+    const page = await browser.newPage();
+    await page.route("**/*", route => route.abort());
+    for (const mode of ["style", "insert", "replace"]) {
+      await page.setContent('<main></main><div id="host"></div>');
+      const {result, initial, final} = await page.evaluate(async ({source, mode}) => {
+        const moduleUrl = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));
+        const {scanDocument} = await import(moduleUrl);
+        URL.revokeObjectURL(moduleUrl);
+        const roots = [document.querySelector("main"), document.querySelector("#host").attachShadow({mode: "open"})];
+        const backgrounds = [];
+        const changes = [];
+        roots.forEach((root, index) => {
+          const background = document.createElement("div"); background.className = "page";
+          root.append(background);
+          backgrounds.push(background);
+          const sheet = new CSSStyleSheet();
+          sheet.replaceSync(".page {width:10px;height:10px;background-image:none}");
+          (index === 0 ? document : root).adoptedStyleSheets = [sheet];
+          const value = `url("https://cdn.example.test/${index}/late?format=gif")`;
+          changes.push(() => {
+            if (mode === "style") sheet.cssRules[0].style.backgroundImage = value;
+            else if (mode === "insert") sheet.insertRule(`.page {background-image:${value}}`, 1);
+            else sheet.replaceSync(`.page {width:10px;height:10px;background-image:${value}}`);
+          });
+        });
+        const initial = backgrounds.map(element => getComputedStyle(element).backgroundImage);
+        const scan = scanDocument();
+        setTimeout(() => changes.forEach(change => change()), 20);
+        const result = await scan;
+        const final = backgrounds.map(element => getComputedStyle(element).backgroundImage);
+        return {result, initial, final};
+      }, {source, mode});
+      const expected = [0, 1].map(index => `https://cdn.example.test/${index}/late?format=gif`);
+      assert.deepEqual(initial, ["none", "none"], mode);
+      assert.deepEqual(final, expected.map(url => `url("${url}")`), mode);
+      assert.deepEqual([...result.images].sort(), expected, mode);
+      assert.deepEqual(result.media?.map(({url}) => url).sort(), expected, mode);
+      assert.ok(result.media.every(({kind}) => kind === "gif"), mode);
+    }
+  } finally { await browser.close(); }
+});
+
 test("結果確定前にCSS変更で消えた背景の根拠を更新し、共有URLと未適用CSSを保つ", async () => {
   const source = await readFile(new URL("../dist/extension/app/page-scan.js", import.meta.url), "utf8");
   const browser = await chromium.launch({channel: "chrome", headless: true});
