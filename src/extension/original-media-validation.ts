@@ -2,15 +2,21 @@ import {BlobSource, EncodedPacketSink, Input, MP4} from "harvest-vendor-mediabun
 import {hasCompleteGif, hasCompleteMp4Boxes} from "../core/original-media-structure.js";
 import {checkCancelled, invalidImage} from "./image-data-contract.js";
 
+// Blob bytes are immutable. Remember only completed successes by weak identity.
+const validatedMedia = new WeakSet<Blob>();
+
 /** Inspect structure and declared samples without codec support requirements or re-encoding. */
 export async function validateOriginalMedia(blob: Blob, signal?: AbortSignal): Promise<void> {
   if (blob.type !== "image/gif" && blob.type !== "video/mp4") return;
   checkCancelled(signal);
+  if (validatedMedia.has(blob)) return;
   const bytes = new Uint8Array(await blob.arrayBuffer());
   checkCancelled(signal);
   const invalid = (): Error => invalidImage("メディアのデータが不完全または破損しています。");
   if (blob.type === "image/gif") {
     if (!hasCompleteGif(bytes)) throw invalid();
+    checkCancelled(signal);
+    validatedMedia.add(blob);
     return;
   }
   if (!hasCompleteMp4Boxes(bytes)) throw invalid();
@@ -38,4 +44,6 @@ export async function validateOriginalMedia(blob: Blob, signal?: AbortSignal): P
   } finally {
     input.dispose();
   }
+  checkCancelled(signal);
+  validatedMedia.add(blob);
 }

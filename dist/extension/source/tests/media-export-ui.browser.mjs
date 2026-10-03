@@ -125,7 +125,17 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
       }
       return entries;
     };
+    await page.evaluate(() => {
+      window.mp4ValidationReads = 0;
+      window.originalBlobRead = Blob.prototype.arrayBuffer;
+      Blob.prototype.arrayBuffer = function() {
+        if(this.type === 'video/mp4')window.mp4ValidationReads++;
+        return window.originalBlobRead.call(this);
+      };
+    });
     const videos=await save('mp4');
+    assert.equal(await page.evaluate(() => window.mp4ValidationReads),1,'MP4保存では同じBlobの完全性検査を1回だけ行う');
+    await page.evaluate(() => { Blob.prototype.arrayBuffer = window.originalBlobRead; });
     assert.deepEqual(videos.map(e=>e.name),['001.mp4']);
     assert.deepEqual(videos[0].data,mp4);
     // The same merge used by scanTab must produce one archive entry per video.
