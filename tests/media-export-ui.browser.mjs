@@ -1,3 +1,4 @@
+import {mp4Bytes, brokenMedia} from './media-fixtures.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createServer} from 'node:http';
@@ -7,8 +8,9 @@ import {chromium} from 'playwright';
 
 let png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j+ioAAAAASUVORK5CYII=', 'base64');
 const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
-const mp4 = Buffer.from([0,0,0,24,102,116,121,112,105,115,111,109,0,0,0,0,105,115,111,109,109,112,52,49]);
+const mp4 = mp4Bytes;
 let webm;
+let repairBroken = false;
 
 test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存する', async () => {
   const root = resolve('dist/extension');
@@ -37,7 +39,8 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     await context.route('https://files.example.test/**', route => {
       const url = route.request().url();
       const isGif = url.endsWith('.gif') || url.includes('/gif-query?');
-      const body = isGif ? gif : url.endsWith('.mp4') ? mp4 : url.endsWith('.webm') ? webm : png;
+      const broken = Object.entries(brokenMedia).find(([name]) => url.includes(`/broken-${name}.`))?.[1];
+      const body = broken && !repairBroken ? broken.bytes : isGif ? gif : url.endsWith('.mp4') ? mp4 : url.endsWith('.webm') ? webm : png;
       const contentType = isGif ? 'image/gif' : url.endsWith('.mp4') ? 'video/mp4' : url.endsWith('.webm') ? 'video/webm' : 'image/png';
       return route.fulfill({status:200,contentType,body,headers:{'access-control-allow-origin':'*'}});
     });
@@ -142,6 +145,27 @@ test('画像の形式を保ち、MP4とGIFだけを各形式のZIPへ保存す�
     const gifs=await save('gif');
     assert.deepEqual(gifs.map(e=>e.name),['001.gif']);
     assert.deepEqual(gifs[0].data,gif);
+    let downloads = 0;
+    page.on('download', () => downloads++);
+    for (const [name, {type}] of Object.entries(brokenMedia)) {
+      repairBroken = false;
+      const format = type === 'image/gif' ? 'gif' : 'mp4';
+      const good = format === 'gif' ? animation : movie;
+      const bad = `https://files.example.test/broken-${name}.${format}`;
+      await scan(format === 'gif' ? [good,bad] : [],[{url:good,kind:format==='gif'?'gif':'video'},{url:bad,kind:format==='gif'?'gif':'video'}]);
+      const before = downloads;
+      await page.locator('#export').click();
+      await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'error');
+      assert.equal(downloads,before,name+' must not save a partial ZIP');
+      assert.match(await page.locator('#status').textContent(),/再試行/);
+      assert.match(await page.locator('#failures').textContent(),/不完全|破損/);
+      repairBroken = true;
+      const retried = await save(format);
+      assert.deepEqual(retried.map(entry => entry.data),[format==='gif'?gif:mp4,format==='gif'?gif:mp4]);
+      assert.equal(downloads,before+1);
+    }
+    await scan([photo,animation],[{url:animation,kind:'gif'},{url:movie,kind:'video'}]);
+    await page.locator('#all-selection').check();
     const images=await save('png');
     assert.deepEqual(images.map(e=>e.name),['001.png']);
     assert.deepEqual(images[0].data,png);

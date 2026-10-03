@@ -36,6 +36,7 @@ const english = {
   errorMediaTimeout: "File retrieval timed out.",
   errorMediaFormat: "Could not identify the file format.",
   errorMediaMismatch: "The file type does not match its contents.",
+  errorMediaIncomplete: "The media data is incomplete or damaged.",
   errorMediaUnsupported: "The file format is not supported for saving.",
   errorMp4Convert: "Could not convert the video to MP4.",
   errorMp4Unsupported: "This browser cannot convert the video or audio to MP4.",
@@ -185,6 +186,7 @@ const japanese: {[K in keyof typeof english]: string} = {
   errorMediaTimeout: "メディアの取得がタイムアウトしました。",
   errorMediaFormat: "メディアの形式を確認できませんでした。",
   errorMediaMismatch: "メディアの種類とデータが一致しません。",
+  errorMediaIncomplete: "メディアのデータが不完全または破損しています。",
   errorMediaUnsupported: "保存できる形式のデータではありません。",
   errorMp4Convert: "動画をMP4へ変換できませんでした。",
   errorMp4Unsupported: "この環境では動画の映像または音声をMP4へ変換できません。",
@@ -341,6 +343,7 @@ export function localizeDocument(root: Document = document): void {
 }
 
 const sourceMessages: Partial<Record<string, TranslationKey>> = {
+  "メディアのデータが不完全または破損しています。": "errorMediaIncomplete",
   "収集するWebページを開いてください。": "errorCollectionPage",
   "収集モードを開始できませんでした。": "errorCollectionStart",
   "ページの解析を終了しました。": "errorScanCancelled",

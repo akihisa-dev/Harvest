@@ -1,3 +1,4 @@
+import {gifBytes, mp4Bytes, fragmentedMp4, brokenMedia} from "./media-fixtures.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -46,8 +47,6 @@ function unzipStored(blob) {
 
 test("original media preserves GIF and MP4 bytes with MIME-based ZIP extensions", async () => {
   const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
-  const gifBytes = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 2, 3]);
-  const mp4Bytes = new Uint8Array([0, 0, 0, 16, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0, 0, 0, 0]);
   const webmBytes = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 1, 2, 3, 4]);
   const items = [
     {url: "https://media.test/photo.jpg", sourcePage: "https://media.test/page", selected: true, kind: "image"},
@@ -221,4 +220,32 @@ test.after(() => {
   Object.assign(globalThis, {chrome: previous.chrome, document: previous.document, fetch: previous.fetch, window: previous.window});
   URL.createObjectURL = previous.createObjectURL;
   URL.revokeObjectURL = previous.revokeObjectURL;
+});
+
+
+test("GIF/MP4の不完全な構造とファイル外サンプルを拒否し、断片化MP4も元バイトを保つ", async () => {
+  try {
+    for (const [name, {type,bytes}] of Object.entries(brokenMedia)) {
+      globalThis.fetch = async () => fakeResponse(bytes,type);
+      await assert.rejects(fetchOriginalMedia(`https://media.test/${name}`,type==='image/gif'?'gif':'video'), error=>error.kind==='invalid-image',name);
+    }
+    for (const bytes of [mp4Bytes,fragmentedMp4]) {
+      globalThis.fetch = async () => fakeResponse(bytes,'video/mp4');
+      assert.deepEqual(new Uint8Array(await (await fetchOriginalMedia('https://media.test/valid','video')).arrayBuffer()),new Uint8Array(bytes));
+    }
+  } finally {globalThis.fetch = previous.fetch;}
+});
+
+
+test("GIF87a、複数フレーム、ローカルパレットと拡張ブロックの正常GIFを保持する", async () => {
+  const gif87 = Buffer.from(gifBytes);gif87.write('GIF87a');
+  const animated = Buffer.concat([gifBytes.subarray(0,-1),gifBytes.subarray(19)]);
+  const local = Buffer.from(gifBytes);local[10] = 0;local[36] = 128;
+  const localPalette = Buffer.concat([local.subarray(0,13),local.subarray(19,37),local.subarray(13,19),local.subarray(37)]);
+  try {
+    for (const bytes of [gif87,animated,localPalette]) {
+      globalThis.fetch = async () => fakeResponse(bytes,'image/gif');
+      assert.deepEqual(new Uint8Array(await (await fetchOriginalMedia('https://media.test/valid','gif')).arrayBuffer()),new Uint8Array(bytes));
+    }
+  } finally {globalThis.fetch = previous.fetch;}
 });

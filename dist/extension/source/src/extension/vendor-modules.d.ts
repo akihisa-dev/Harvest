@@ -26,11 +26,19 @@ declare module "harvest-vendor-jxl-utils" {
 // declarations conflict with TypeScript's DOM library; keep them out of the app.
 declare module "harvest-vendor-mediabunny" {
   export const WEBM: object;
+  export const MP4: object;
+  export class EncodedPacketSink {
+    constructor(track: object);
+    packets(start?: object, end?: object, options?: {metadataOnly: boolean}): AsyncGenerator<{byteLength: number}, void, unknown>;
+    getFirstPacket(): Promise<{data: Uint8Array} | null>;
+    getNextPacket(previous: object): Promise<{data: Uint8Array} | null>;
+  }
   export const QUALITY_HIGH: object;
   export class BlobSource { constructor(blob: Blob); }
   export class Input {
     constructor(options: {formats: object[]; source: BlobSource});
     getPrimaryVideoTrack(): Promise<object | null>;
+    getTracks(): Promise<object[]>;
     dispose(): void;
   }
   export class BufferTarget {

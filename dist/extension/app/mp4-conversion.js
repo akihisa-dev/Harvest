@@ -1,9 +1,10 @@
+import { validateOriginalMedia } from "./original-media-validation.js";
 import { checkCancelled, MAX_IMAGE_BYTES } from "./image-data-contract.js";
 /** One worker owns one conversion and is released on completion, failure, timeout, or cancellation. */
 export function prepareMp4(blob, signal, maxBytes = MAX_IMAGE_BYTES) {
     checkCancelled(signal);
     if (blob.type === "video/mp4")
-        return Promise.resolve(blob);
+        return validateOriginalMedia(blob, signal).then(() => blob);
     if (blob.type !== "video/webm")
         return Promise.reject(new Error("選択項目と保存データの形式が一致しません。"));
     if (!Number.isSafeInteger(maxBytes) || maxBytes < 1)

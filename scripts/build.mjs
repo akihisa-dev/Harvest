@@ -68,7 +68,7 @@ try {
     if (file === "jxl-codec.js") {
       await copyFile(source, destination);
       await rewriteJxlAdapter(destination);
-    } else if (file === "mp4-codec.js") {
+    } else if (file === "mp4-codec.js" || file === "original-media-validation.js") {
       const code = await readFile(source, "utf8");
       await writeFile(destination, code.replace('from "harvest-vendor-mediabunny"', 'from "./vendor/mediabunny/index.js"'));
     } else {

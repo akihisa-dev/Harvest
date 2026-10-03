@@ -1,3 +1,4 @@
+import {gifBytes} from './media-fixtures.mjs';
 import assert from "node:assert/strict";
 import test from "node:test";
 import {ImageArchiveLimitError, ImageArchivePlan, createImageZipEntries} from "../dist/extension/core/image-archive.js";
@@ -6,7 +7,7 @@ import {storedZipDataLimit} from "../dist/extension/core/stored-zip.js";
 import {prepareImageArchive} from "../dist/extension/app/image-archive-preparation.js";
 
 const item = (name, kind) => ({url: `https://example.test/${name}`, sourcePage: "https://example.test/page", selected: true, ...(kind ? {kind} : {})});
-const gif = new TextEncoder().encode("GIF89a");
+const gif = gifBytes;
 const fakeSizedBlob = (size, type = "image/png") => ({size, type});
 
 test("取得とZIP命名は同じMIME分類を使い、種類未指定画像のGIF互換を保つ", () => {

@@ -1,3 +1,4 @@
+import {mp4Bytes} from './media-fixtures.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {prepareMp4} from '../dist/extension/app/mp4-conversion.js';
@@ -5,8 +6,9 @@ import {prepareMp4} from '../dist/extension/app/mp4-conversion.js';
 const webm = new Blob([new Uint8Array([0x1a,0x45,0xdf,0xa3])],{type:'video/webm'});
 
 test('MP4は同じBlobを返し、GIFを動画へ変換しない', async () => {
-  const mp4 = new Blob(['original'],{type:'video/mp4'});
+  const mp4 = new Blob([mp4Bytes],{type:'video/mp4'});
   assert.equal(await prepareMp4(mp4),mp4);
+  await assert.rejects(prepareMp4(new Blob(['original'],{type:'video/mp4'})), /不完全|破損/);
   await assert.rejects(prepareMp4(new Blob(['GIF89a'],{type:'image/gif'})),/形式が一致しません/);
 });
 

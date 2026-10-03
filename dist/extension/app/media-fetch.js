@@ -1,3 +1,4 @@
+import { validateOriginalMedia } from "./original-media-validation.js";
 import { mediaTypeMatchesKind, normalizeMediaMimeType, originalMediaType } from "../core/media-types.js";
 import { checkCancelled, ImageDataError, invalidImage, MAX_IMAGE_BYTES } from "./image-data-contract.js";
 import { readImageBytes } from "./image-response-bytes.js";
@@ -40,7 +41,7 @@ const mediaFetchErrors = {
 };
 /** Fetch original image/video bytes with the existing credential, target, and byte-limit policies. */
 export async function fetchOriginalMedia(url, kind = "image", options = {}) {
-    return fetchResponse(url, { ...options, timeoutMs: options.timeoutMs ?? DEFAULT_MEDIA_TIMEOUT_MS }, mediaFetchErrors, async (response, { sourceSignal }) => {
+    return fetchResponse(url, { ...options, timeoutMs: options.timeoutMs ?? DEFAULT_MEDIA_TIMEOUT_MS }, mediaFetchErrors, async (response, { sourceSignal, signal }) => {
         const contentType = response.headers.get("content-type") ?? "";
         const normalizedType = normalizeMediaMimeType(contentType);
         const mediaType = originalMediaType(normalizedType);
@@ -51,6 +52,8 @@ export async function fetchOriginalMedia(url, kind = "image", options = {}) {
         checkCancelled(sourceSignal);
         if (!mediaType.matches(bytes))
             throw invalidImage("メディアの種類とデータが一致しません。");
-        return new Blob([bytes.buffer], { type: normalizedType });
+        const blob = new Blob([bytes.buffer], { type: normalizedType });
+        await validateOriginalMedia(blob, signal);
+        return blob;
     });
 }
