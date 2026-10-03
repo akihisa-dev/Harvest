@@ -2,6 +2,52 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {scanXMedia} from "../dist/extension/app/x-media-scan.js";
 
+test("ブックマークの投稿データから未描画の複数写真と動画をすべて補う", async () => {
+  const photos = ["first", "second", "third", "fourth"].map(name => ({
+    type: "photo", media_url_https: `https://pbs.twimg.com/media/${name}.jpg`,
+  }));
+  const article = {__reactProps$fixture: {tweet: {legacy: {extended_entities: {media: [
+    ...photos,
+    {type: "video", media_url_https: "https://pbs.twimg.com/media/poster.jpg",
+      video_info: {variants: [{url: "https://video.twimg.com/clip.mp4", content_type: "video/mp4"}]}},
+  ]}}}, cache: {media: [{type: "photo", media_url_https: "https://pbs.twimg.com/media/unrelated.jpg"}]}}};
+  const result = await runOnPage("x.com", [article], scanXMedia, [], "/i/bookmarks");
+  assert.deepEqual(result, [
+    ...photos.map(photo => ({url: photo.media_url_https, kind: "image"})),
+    {url: "https://video.twimg.com/clip.mp4", kind: "video", previewUrl: "https://pbs.twimg.com/media/poster.jpg"},
+  ]);
+});
+
+test("写真と直接srcが同じプレイヤーにあっても両方を取得する", async () => {
+  const player = {__reactProps$fixture: {
+    src: "https://video.twimg.com/direct.mp4",
+    media: [{type: "photo", media_url_https: "https://pbs.twimg.com/media/photo.jpg"}],
+  }};
+  assert.deepEqual(await runOnPage("x.com", [], scanXMedia,
+    [{element: player, selectors: ['[data-testid="videoPlayer"]']}]), [
+    {url: "https://pbs.twimg.com/media/photo.jpg", kind: "image"},
+    {url: "https://video.twimg.com/direct.mp4", kind: "video"},
+  ]);
+});
+
+test("同じpropsの直接動画を検出しても残りの投稿メディアを省略しない", async () => {
+  const variants = name => [{url: `https://video.twimg.com/${name}.mp4`, content_type: "video/mp4"}];
+  const player = {__reactProps$fixture: {
+    video_info: {variants: variants("first")},
+    mediaDetails: [
+      {type: "video", video_info: {variants: variants("second")}, media_url_https: "https://pbs.twimg.com/media/second.jpg"},
+      {type: "photo", media_url_https: "https://pbs.twimg.com/media/photo.jpg"},
+    ],
+  }};
+  const result = await runOnPage("x.com", [], scanXMedia,
+    [{element: player, selectors: ['[data-testid="videoPlayer"]']}], "/i/bookmarks");
+  assert.deepEqual(result, [
+    {url: "https://video.twimg.com/first.mp4", kind: "video"},
+    {url: "https://video.twimg.com/second.mp4", kind: "video", previewUrl: "https://pbs.twimg.com/media/second.jpg"},
+    {url: "https://pbs.twimg.com/media/photo.jpg", kind: "image"},
+  ]);
+});
+
 async function runOnPage(hostname, articles, callback = scanXMedia, mediaElements = [], pathname = "/home") {
   const previous = {
     document: globalThis.document,

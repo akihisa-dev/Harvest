@@ -94,7 +94,7 @@ export class PageReadSession {
     }
     waitForPost(expectVideo, targetPostId) {
         return this.read({
-            func: waitForXPage, args: [expectVideo, 10_000, targetPostId],
+            func: waitForXPage, args: targetPostId ? [expectVideo, 10_000, targetPostId] : [expectVideo, 10_000],
             failureMessage: "Xの投稿を読み取れませんでした。",
             accept: result => {
                 if (!result)
@@ -105,7 +105,7 @@ export class PageReadSession {
     }
     scanPost(targetPostId) {
         return this.read({
-            func: scanDocument, args: [targetPostId],
+            func: scanDocument, args: targetPostId ? [targetPostId] : [],
             failureMessage: "Xの投稿を読み取れませんでした。",
             accept: result => {
                 if (!result)

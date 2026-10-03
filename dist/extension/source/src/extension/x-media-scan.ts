@@ -1,12 +1,12 @@
 export interface XMediaCandidate {
   url: string;
-  kind: "video";
+  kind: "image" | "video";
   previewUrl?: string;
   variantUrls?: string[];
 }
 
 /**
- * Read video URLs from data already attached to X/Twitter posts and players.
+ * Read photo and video URLs from data already attached to X/Twitter posts and players.
  *
  * This function is passed directly to chrome.scripting.executeScript in the
  * page's MAIN world. Keep every helper inside it so it remains serializable.
@@ -185,6 +185,16 @@ export function scanXMedia(targetPostId?: string): XMediaCandidate[] {
     addVideoVariants(dataValue(videoInfo, "variants"), mediaObject);
 
   const addAttachedMedia = (mediaObject: object, includeDirectVariants: boolean): boolean => {
+    // Only explicit photo attachments are still images. A video's media_url
+    // is its poster, and must not become an additional photo candidate.
+    if (includeDirectVariants && dataValue(mediaObject, "type") === "photo") {
+      const url = previewUrl(dataValue(mediaObject, "media_url_https"))
+        ?? previewUrl(dataValue(mediaObject, "media_url"));
+      if (url) {
+        resultByUrl.set(url, {url, kind: "image"});
+        return true;
+      }
+    }
     let foundVideo = false;
     const videoInfo = dataValue(mediaObject, "video_info") ?? dataValue(mediaObject, "videoInfo");
     if (typeof videoInfo === "object" && videoInfo !== null && addVideoInfo(videoInfo, mediaObject)) {
@@ -270,7 +280,7 @@ export function scanXMedia(targetPostId?: string): XMediaCandidate[] {
   };
 
   const inspectTweetProps = (props: object, requireIdentity = false): boolean => {
-    if (!requireIdentity && addAttachedMedia(props, false)) return true;
+    const foundDirect = !requireIdentity && addAttachedMedia(props, false);
     const roots: Array<{value: unknown; mediaObject: boolean}> = [];
     for (const key of tweetPropKeys) {
       if (timedOut()) break;
@@ -282,14 +292,15 @@ export function scanXMedia(targetPostId?: string): XMediaCandidate[] {
         });
       }
     }
-    return inspectPostTree(roots, requireIdentity);
+    const foundInTree = inspectPostTree(roots, requireIdentity);
+    return foundDirect || foundInTree;
   };
 
   const inspectPlayerProps = (props: object, requireIdentity = false): boolean => {
     if (requireIdentity) return inspectTweetProps(props, true);
     let foundVideo = addAttachedMedia(props, true);
-    if (!foundVideo && inspectTweetProps(props)) foundVideo = true;
-    if (!foundVideo && addDirectVideoSource(dataValue(props, "src"), props)) foundVideo = true;
+    if (inspectTweetProps(props)) foundVideo = true;
+    if (addDirectVideoSource(dataValue(props, "src"), props)) foundVideo = true;
     return foundVideo;
   };
 

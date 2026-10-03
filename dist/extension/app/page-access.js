@@ -1,4 +1,4 @@
-import { mergeMediaCandidates } from "../core/media-selection.js";
+import { mergeMediaCandidates, xPhotoKey } from "../core/media-selection.js";
 import { PageReadSession, withTemporaryPage } from "./page-read-session.js";
 const isXUrl = (url) => /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(url);
 const isProfileImage = (url) => {
@@ -17,7 +17,8 @@ export async function scanTab(tabId, signal, requestedUrl) {
             ? requestedUrl : result.url;
         const expectVideo = /\/status\/\d+\/video\/\d+(?:[?#]|$)/i.test(targetUrl);
         const targetPostId = /\/status\/(\d+)(?:[/?#]|$)/i.exec(targetUrl)?.[1];
-        if (targetPostId) {
+        const isBookmarkPage = /^\/i\/(?:history|bookmarks)(?:\/|$)/i.test(new URL(result.url).pathname);
+        if (targetPostId || isBookmarkPage) {
             const state = await session.waitForPost(expectVideo, targetPostId);
             if (state.status === "restricted")
                 throw new Error("Xがこの投稿の表示を制限しています。Chromeで投稿を表示できる状態にしてから解析してください。");
@@ -29,8 +30,18 @@ export async function scanTab(tabId, signal, requestedUrl) {
         }
         session.assertSourceUrl(result.url);
         const extra = await session.scanPostMedia(targetPostId);
-        result.media = mergeMediaCandidates(result.media ?? [], extra);
-        if (targetPostId) {
+        const knownPhotos = new Set([...result.images, ...(result.media ?? [])
+                .filter(item => item.kind === "image").map(item => item.url)].map(xPhotoKey));
+        result.media = mergeMediaCandidates(result.media ?? [], extra.filter(item => {
+            if (item.kind !== "image")
+                return true;
+            const key = xPhotoKey(item.url);
+            if (knownPhotos.has(key))
+                return false;
+            knownPhotos.add(key);
+            return true;
+        }));
+        if (targetPostId || isBookmarkPage) {
             result.images = result.images.filter(url => !isProfileImage(url));
             result.media = result.media.filter(item => !isProfileImage(item.url));
         }

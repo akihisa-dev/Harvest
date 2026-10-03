@@ -11,6 +11,56 @@ const modules = Object.fromEntries(await Promise.all(["page-scan", "x-page-state
 const post = (id, content) => `<article data-testid="tweet" id="post-${id}"><a role="link" href="/user/status/${id}"><time>Today</time></a>${content}</article>`;
 const photo = name => `<a role="link" href="/user/status/123/photo/1"><img src="https://pbs.twimg.com/media/${name}.jpg" width="40" height="40"></a>`;
 
+test("履歴画面で遅れて表示される投稿と引用の複数写真・動画を読み取る", async () => {
+  const browser = await chromium.launch({channel: "chrome", headless: true});
+  try {
+    const page = await browser.newPage();
+    await page.route("https://x.com/**", route => route.fulfill({contentType: "text/html", body: "<!doctype html><main></main>"}));
+    await page.route("https://pbs.twimg.com/**", route => route.abort());
+    await page.goto("https://x.com/i/history");
+    const result = await page.evaluate(async sources => {
+      const loaded = {};
+      for (const [name, source] of Object.entries(sources)) {
+        const url = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));
+        try { loaded[name] = await import(url); }
+        finally { URL.revokeObjectURL(url); }
+      }
+      const main = document.querySelector("main");
+      main.innerHTML = '<img src="https://pbs.twimg.com/profile_images/1/person.jpg">';
+      const before = await loaded["page-scan"].scanDocument();
+      setTimeout(() => {
+        const article = document.createElement("article");
+        article.dataset.testid = "tweet";
+        article.innerHTML = '<a href="/user/status/123"><time>Today</time></a><img src="https://pbs.twimg.com/media/first?format=jpg&name=small">';
+        article.__reactFiber$fixture = {memoizedProps: {}, return: {memoizedProps: {tweet: {
+          rest_id: "123", legacy: {extended_entities: {media: [
+            {type: "photo", media_url_https: "https://pbs.twimg.com/media/first.jpg"},
+            {type: "photo", media_url_https: "https://pbs.twimg.com/media/second.jpg"},
+            {type: "video", media_url_https: "https://pbs.twimg.com/media/poster.jpg",
+              video_info: {variants: [{url: "https://video.twimg.com/clip.mp4", content_type: "video/mp4"}]}},
+          ]}, quoted_status: {rest_id: "456", legacy: {extended_entities: {media: [
+            {type: "photo", media_url_https: "https://pbs.twimg.com/media/quoted.jpg"},
+          ]}}}},
+        }}, return: null}};
+        main.append(article);
+      }, 350);
+      const state = await loaded["x-page-state"].waitForXPage(false, 2_000);
+      return {before, state, after: await loaded["page-scan"].scanDocument(),
+        media: loaded["x-media-scan"].scanXMedia(), scoped: loaded["x-media-scan"].scanXMedia("123")};
+    }, modules);
+    assert.deepEqual(result.before.images, ["https://pbs.twimg.com/profile_images/1/person.jpg"]);
+    assert.equal(result.state.status, "ready");
+    assert.ok(result.after.images.includes("https://pbs.twimg.com/media/first?format=jpg&name=small"));
+    assert.deepEqual(new Set(result.media.map(item => item.url)), new Set([
+      "https://pbs.twimg.com/media/first.jpg", "https://pbs.twimg.com/media/second.jpg",
+      "https://pbs.twimg.com/media/quoted.jpg", "https://video.twimg.com/clip.mp4",
+    ]));
+    assert.equal(result.media.find(item => item.kind === "video").previewUrl, "https://pbs.twimg.com/media/poster.jpg");
+    assert.equal(result.scoped.some(item => item.url.includes("quoted")), false);
+    assert.equal(result.scoped.filter(item => item.kind === "image").length, 2);
+  } finally { await browser.close(); }
+});
+
 test("Xの対象投稿IDを待機・DOM・再生情報の全経路で照合し、他投稿を代用しない", async () => {
   const browser = await chromium.launch({channel: "chrome", headless: true});
   try {

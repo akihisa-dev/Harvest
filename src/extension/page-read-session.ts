@@ -94,9 +94,9 @@ export class PageReadSession {
     });
   }
 
-  waitForPost(expectVideo: boolean, targetPostId: string): Promise<XPageState> {
+  waitForPost(expectVideo: boolean, targetPostId?: string): Promise<XPageState> {
     return this.read({
-      func: waitForXPage, args: [expectVideo, 10_000, targetPostId],
+      func: waitForXPage, args: targetPostId ? [expectVideo, 10_000, targetPostId] : [expectVideo, 10_000],
       failureMessage: "Xの投稿を読み取れませんでした。",
       accept: result => {
         if (!result) throw new Error("Xの投稿を読み取れませんでした。");
@@ -105,9 +105,9 @@ export class PageReadSession {
     });
   }
 
-  scanPost(targetPostId: string): Promise<PageScan> {
+  scanPost(targetPostId?: string): Promise<PageScan> {
     return this.read({
-      func: scanDocument, args: [targetPostId],
+      func: scanDocument, args: targetPostId ? [targetPostId] : [],
       failureMessage: "Xの投稿を読み取れませんでした。",
       accept: result => {
         if (!result) throw new Error("Xの投稿を読み取れませんでした。");

@@ -2,6 +2,47 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {scanTab, scanUrl} from "../dist/extension/app/page-access.js";
 
+for (const path of ["/i/history", "/i/bookmarks"]) {
+  test(`${path}は投稿表示を待ち、写真の重複とプロフィールを除いて全メディアを結合する`, async t => {
+    const url = `https://x.com${path}`;
+    fixture(t, {get: async () => ({url})});
+    const avatar = "https://pbs.twimg.com/profile_images/1/person.jpg";
+    const photo = "https://pbs.twimg.com/media/first?name=small&format=jpg";
+    const extraPhoto = "https://pbs.twimg.com/media/second.jpg";
+    const video = {url: "https://video.twimg.com/clip.mp4", kind: "video", previewUrl: "https://pbs.twimg.com/media/poster.jpg"};
+    const calls = [];
+    let scans = 0;
+    chrome.scripting.executeScript = async ({func, args}) => {
+      calls.push(func.name);
+      if (func.name === "waitForXPage") {
+        assert.deepEqual(args, [false, 10_000]);
+        return [{result: {status: "ready"}}];
+      }
+      if (func.name === "scanXMedia") return [{result: [
+        {url: "https://pbs.twimg.com/media/first.jpg", kind: "image"},
+        {url: extraPhoto, kind: "image"},
+        {url: "https://pbs.twimg.com/media/second?format=jpg&name=large", kind: "image"},
+        video,
+      ]}];
+      scans++;
+      return [{result: {url, title: "History", images: scans === 1 ? [avatar] : [avatar, photo],
+        media: [{url: avatar, kind: "image"}, ...(scans === 1 ? [] : [{url: photo, kind: "image"}])]}}];
+    };
+    const result = await scanTab(8, undefined, url);
+    assert.deepEqual(calls, ["scanDocument", "waitForXPage", "scanDocument", "scanXMedia"]);
+    assert.deepEqual(result.images, [photo]);
+    assert.deepEqual(result.media, [{url: photo, kind: "image"}, {url: extraPhoto, kind: "image"}, video]);
+  });
+}
+
+test("履歴画面の投稿が読み込めなければプロフィール画像だけで成功しない", async t => {
+  const url = "https://x.com/i/history";
+  fixture(t, {get: async () => ({url})});
+  chrome.scripting.executeScript = async ({func}) => [{result: func.name === "waitForXPage"
+    ? {status: "timeout"} : {url, title: "X", images: ["https://pbs.twimg.com/profile_images/1/person.jpg"]}}];
+  await assert.rejects(scanTab(8), /読み込みが完了しませんでした/);
+});
+
 for (const change of ["url", "document"]) {
   test(`Xの追加解析中に${change}が変わった場合は結果を結合しない`, async t => {
     const url = "https://x.com/example/status/123";
