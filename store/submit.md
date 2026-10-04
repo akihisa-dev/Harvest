@@ -15,4 +15,4 @@
 - アカウント名義、Trader/Non-Trader、公開地域、公開タイミング。これらは開発者の判断とアカウント操作が必要。
 - `store/assets/screenshot-ja.png`と`store/assets/screenshot-global.png`は掲載用の画面イメージ。架空のギャラリーと固定した解析結果を使い、日本語・英語の現行操作を表す。生成元は`store/generate-screenshots.swift`。提出前にChromeのサイドパネルで現行の表示・操作と照合する。
 
-提出用画像の出所: `assets/brand/harvest-logo-master.png` は現行画面の白・黒・グレーの配色に合わせて再制作したアイコン原画。拡張機能の各サイズのアイコンと紹介画像はこの原画をもとに制作した。掲載用の画面イメージは自作の風景図形と固定データで構成している。ストア用画像はZIPに含めず、掲載情報へ個別にアップロードする。
+提出用画像の出所: アプリアイコンは`assets/brand/harvest-geometric-logo.svg`の稲穂を白くし、濃いグレーの角丸背景に配置したもの。`pnpm icons:generate`で、各サイズのアイコンと1024pxの`assets/brand/harvest-logo-master.png`を生成する。紹介画像は同じ幾何学ロゴとアプリアイコンを使う。掲載用の画面イメージは自作の風景図形と固定データで構成している。ストア用画像はZIPに含めず、掲載情報へ個別にアップロードする。

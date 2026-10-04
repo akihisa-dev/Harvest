@@ -31,6 +31,8 @@ Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion�
 
 [build/artifact-plan.mjs](scripts/build/artifact-plan.mjs) は画面・画像と対応ソースの配置先を定義し、生成と `check:build` が同じ定義を参照します。`scripts/` と `tests/` の下に追加する補助モジュールも階層を保って収録し、検査では正本との内容一致を確認します。ソースと生成コードの依存検査は [lib/module-references.mjs](scripts/lib/module-references.mjs) の構文解析を共用し、WorkerへのURL参照と実行時importを区別します。
 
+アプリアイコンは`assets/brand/harvest-geometric-logo.svg`を正本とし、`pnpm icons:generate`で濃いグレーの角丸背景と白いロゴを組み合わせます。Chromeと既存の開発用Playwrightを使い、`assets/icons/`の16/32/48/128pxと`assets/brand/harvest-logo-master.png`の1024px画像を生成します。更新後は通常のビルドで配布物へ反映します。紹介画像のアイコンも更新する場合は、macOSで`swift store/generate-screenshots.swift --promo-only`を実行します。
+
 [build/output-transaction.mjs](scripts/build/output-transaction.mjs) は一意の一時フォルダー、既存配布物の退避、完成した配布物への置換と失敗時の復元を管理します。準備が失敗した場合は既存配布物を保持し、置換が失敗した場合は元へ戻します。復元も失敗した場合は退避先を残してエラーに表示します。失敗時の復元は一時フォルダーを使った自動テストで確認します。
 
 ## 同梱ライブラリ

@@ -1,6 +1,6 @@
 {
   "name": "harvest-chrome-extension",
-  "version": "0.44.2",
+  "version": "0.44.3",
   "description": "Harvest Chrome extension",
   "license": "AGPL-3.0-only",
   "private": true,
@@ -10,6 +10,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "icons:generate": "node scripts/generate-icons.mjs",
     "package:extension": "node scripts/package-extension.mjs",
     "typecheck": "tsc --noEmit --pretty false",
     "test": "node --test tests/*.test.mjs",

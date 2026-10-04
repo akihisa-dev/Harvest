@@ -178,8 +178,10 @@ func render(english: Bool, output: String) throws {
     }
 }
 
-try render(english: false, output: "store/assets/screenshot-ja.png")
-try render(english: true, output: "store/assets/screenshot-global.png")
+if !CommandLine.arguments.contains("--promo-only") {
+    try render(english: false, output: "store/assets/screenshot-ja.png")
+    try render(english: true, output: "store/assets/screenshot-global.png")
+}
 
 func renderPromo() throws {
     width = 440
@@ -202,8 +204,7 @@ func renderPromo() throws {
         box(x, 207, 56, 28, .white, radius: 5, stroke: color("#c8c8c8"))
         label(["PDF", "JPG", "PNG", "JXL"][i], x + 12, 214, 11, color("#202020"), bold: true)
     }
-    // The geometric grain mark leads the large brand treatment. The familiar
-    // image-file app icon remains small and serves only as the toolbar cue.
+    // The geometric grain mark is shared with the rounded app icon below.
     let ink = color("#202020")
     polygon([(342, 45), (359, 68), (342, 91), (325, 68)], ink)
     polygon([(292, 78), (324, 82), (337, 105), (307, 101)], ink)
