@@ -20,7 +20,6 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   const browser = await launchBrowser(t);
   const context = await browser.newContext({locale: 'ja-JP', reducedMotion: 'reduce', acceptDownloads: true});
   await context.addInitScript(() => {
-    localStorage.setItem("harvest.exportFormat", "pdf");
     // This Web fixture mocks only the downloads API; real-extension coverage is separate.
     const listeners = new Set(), downloads = new Map();
     let nextDownload = 1;
@@ -73,6 +72,7 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   page.on('pageerror', error => errors.push(error.message));
   await page.setViewportSize({width: 768, height: 600});
   await page.goto(`http://127.0.0.1:${server.address().port}/app/index.html`);
+  await page.locator("#export-format-pdf").check();
   webm = Buffer.from(await page.evaluate(async () => {
     const {Output, WebMOutputFormat, BufferTarget, CanvasSource, AudioBufferSource} = await import('./vendor/mediabunny/index.js');
     const target = new BufferTarget();

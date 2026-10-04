@@ -1,16 +1,32 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {loadSplitExportPreferences,saveImageExportFormat,saveVideoExportFormat} from '../dist/extension/app/browser/split-export-preferences.js';
-function storage(entries=[]){const values=new Map(entries);return {getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),values};}
-test('画像/動画保存設定は全旧値を移行し、有効な新値と出典設定を維持する',()=>{
- const migration={original:['original','original'],recommend:['recommend','recommend'],pdf:['pdf','recommend'],jpg:['jpg','recommend'],png:['png','recommend'],jxl:['jxl','recommend'],mp4:['recommend','mp4'],gif:['recommend','recommend'],unknown:['recommend','recommend']};
- for(const [legacy,[imageFormat,videoFormat]] of Object.entries(migration)){
-  const s=storage([['harvest.exportFormat',legacy],['harvest.includeSourcePage','true']]);assert.deepEqual(loadSplitExportPreferences(s),{imageFormat,videoFormat,includeSourcePage:true});assert.equal(s.values.get('harvest.exportFormat'),legacy);
-  assert.equal(s.values.get('harvest.imageExportFormat'),imageFormat);assert.equal(s.values.get('harvest.videoExportFormat'),videoFormat);
-  assert.equal(saveImageExportFormat('jxl',s),true);assert.equal(saveVideoExportFormat('original',s),true);assert.deepEqual(loadSplitExportPreferences(s),{imageFormat:'jxl',videoFormat:'original',includeSourcePage:true});
+import {loadSplitExportPreferences} from '../dist/extension/app/browser/split-export-preferences.js';
+function storage(entries = []) {
+ const values = new Map(entries), reads = [], writes = [];
+ return {values, reads, writes,
+  getItem(key) {reads.push(key); return values.get(key) ?? null;},
+  setItem(key, value) {writes.push([key, value]); values.set(key, value);},
+ };
+}
+test('画像と動画は保存済み形式を参照・変更せず常に推奨で始め、出典設定だけ復元する', () => {
+ for (const previous of ['original', 'recommend', 'pdf', 'jpg', 'png', 'jxl', 'mp4', 'gif', 'unknown']) {
+  for (const includeSourcePage of [false, true]) {
+   const entries = [
+    ['harvest.exportFormat', previous], ['harvest.imageExportFormat', previous],
+    ['harvest.videoExportFormat', previous], ['harvest.includeSourcePage', String(includeSourcePage)],
+   ];
+   const s = storage(entries);
+   assert.deepEqual(loadSplitExportPreferences(s), {imageFormat: 'recommend', videoFormat: 'recommend', includeSourcePage});
+   assert.deepEqual(s.reads, ['harvest.includeSourcePage']);
+   assert.deepEqual(s.writes, []);
+   assert.deepEqual([...s.values], entries);
+  }
  }
- assert.deepEqual(loadSplitExportPreferences(storage()),{imageFormat:'recommend',videoFormat:'recommend',includeSourcePage:false});
- const broken={getItem(){throw Error('unavailable');},setItem(){throw Error('unavailable');}};assert.deepEqual(loadSplitExportPreferences(broken),{imageFormat:'recommend',videoFormat:'recommend',includeSourcePage:false});assert.equal(saveImageExportFormat('png',broken),false);assert.equal(saveVideoExportFormat('mp4',broken),false);
+ const empty = storage();
+ assert.deepEqual(loadSplitExportPreferences(empty), {imageFormat: 'recommend', videoFormat: 'recommend', includeSourcePage: false});
+ assert.deepEqual([...empty.values], []);
+ const broken = {getItem() {throw Error('unavailable');}, setItem() {throw Error('unavailable');}};
+ assert.deepEqual(loadSplitExportPreferences(broken), {imageFormat: 'recommend', videoFormat: 'recommend', includeSourcePage: false});
 });
 
 test('両形式の一保存セッションは全件と順序を固定し、設定変更/中止/クリア後の成功を拒否する',async()=>{

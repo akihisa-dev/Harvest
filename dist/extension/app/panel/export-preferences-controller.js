@@ -1,7 +1,6 @@
 import { saveSourcePagePreference } from "../browser/export-preferences.js";
-import { saveImageExportFormat, saveVideoExportFormat } from "../browser/split-export-preferences.js";
 import { t } from "./localization.js";
-/** Applies explicit preference changes; a failed write invalidates any saved confirmation. */
+/** Format choices last for this panel; only the source-page preference is persisted. */
 export function bindExportPreferences(options) {
     const { session, elements } = options;
     elements.includeSourcePage.addEventListener("change", () => {
@@ -17,10 +16,6 @@ export function bindExportPreferences(options) {
             if (!input.checked)
                 return;
             session.setFormat(format);
-            if (!saveImageExportFormat(format)) {
-                session.invalidateCompletion();
-                options.onStatus(t("errorSaveFormatPreference"), "error");
-            }
             options.onSelectionChange();
         });
     }
@@ -29,10 +24,6 @@ export function bindExportPreferences(options) {
             if (!input.checked)
                 return;
             session.setVideoFormat(format);
-            if (!saveVideoExportFormat(format)) {
-                session.invalidateCompletion();
-                options.onStatus(t("errorSaveFormatPreference"), "error");
-            }
             options.onSelectionChange();
         });
     }

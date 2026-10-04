@@ -149,7 +149,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     "#viewer-stage",
   ])
     document.querySelector(selector);
-  for (const format of ["pdf", "jpg", "png", "jxl"]) {
+  for (const format of ["original", "recommend", "pdf", "jpg", "png", "jxl"]) {
     const option = document.querySelector(`#export-format-${format}`);
     option.value = format;
     option.checked = format === "pdf";
@@ -339,16 +339,18 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     const includeSourcePage = document.querySelector("#include-source-page");
     assert.equal(includeSourcePage.checked, true, "保存済みの設定を再び開いたパネルへ反映する");
     const exportFormat = document.querySelector("#export-format-pdf");
-    const exportFormats = ["pdf", "jpg", "png", "jxl"].map(format => document.querySelector(`#export-format-${format}`));
+    const exportFormats = ["original", "recommend", "pdf", "jpg", "png", "jxl"].map(format => document.querySelector(`#export-format-${format}`));
     const sourcePageOption = document.querySelector(".source-page-option");
     assert.equal(exportFormats.filter(option => option.checked).length, 1, "保存形式は1つだけ選択する");
-    assert.equal(exportFormat.checked, true, "初回は既存どおりPDFを選ぶ");
+    assert.equal(document.querySelector("#export-format-recommend").checked, true, "保存済みPDFより推奨の初期選択を優先する");
+    assert.equal(document.querySelector("#video-export-format-recommend").checked, true, "動画も推奨を初期選択する");
     const changeExportFormat = format => {
       for (const option of exportFormats) option.checked = option.value === format;
       document.querySelector(`#export-format-${format}`).dispatch("change");
     };
     changeExportFormat("jxl");
-    assert.equal(savedPreferences.get("harvest.imageExportFormat"), "jxl", "保存形式だけをブラウザー内に記録する");
+    assert.equal(savedPreferences.has("harvest.imageExportFormat"), false, "保存形式はパネル内だけで変更する");
+    assert.equal(savedPreferences.get("harvest.exportFormat"), "pdf", "過去の形式設定は上書きしない");
     assert.equal(sourcePageOption.hidden, true, "出典ページ設定は画像形式では隠す");
     assert.equal(includeSourcePage.checked, true, "保存形式を変えてもPDFの出典設定を保つ");
     changeExportFormat("pdf");

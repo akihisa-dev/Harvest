@@ -121,7 +121,7 @@ for (const language of ["ja", "en"]) test(`${language}: 元形式・推奨形式
   assert.equal(await page.locator("#export-recommend-extension").textContent(), "(GIF)");
   assert.deepEqual(await save("recommend", "automatic.gif"), gifBytes);
   await scan([video]);
-  assert.equal(await page.locator("#video-export-format-recommend + span").textContent(), "recommend(MP4)");
+  assert.equal(await page.locator("#video-export-format-recommend + span").textContent(), "recommended(MP4)");
   assert.deepEqual(await save("recommend", "automatic.mp4"), mp4Bytes);
   await scan([image, gif, video]);
   await page.locator("#all-selection").check();
@@ -133,6 +133,7 @@ for (const language of ["ja", "en"]) test(`${language}: 元形式・推奨形式
   const originals = zipEntries(await save("original", "automatic.zip"));
   assert.deepEqual(originals.find(entry => entry.name.endsWith(".jpg")).bytes, jpeg);
   await page.reload();
-  assert.equal(await page.locator("#export-format-original").isChecked(), true);
+  assert.equal(await page.locator("#export-format-recommend").isChecked(), true, "パネルを開き直すと推奨へ戻る");
+  assert.equal(await page.locator("#video-export-format-recommend").isChecked(), true);
   assert.deepEqual(errors, []);
 });
