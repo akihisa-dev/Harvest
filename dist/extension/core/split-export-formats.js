@@ -6,12 +6,6 @@ export function isImageExportFormat(value) {
 export function isVideoExportFormat(value) {
     return videoExportFormats.some(format => format === value);
 }
-/** Migrate the old shared choice without excluding either media kind. */
-export function migrateExportFormats(value) {
-    if (value === "original" || value === "recommend")
-        return { imageFormat: value, videoFormat: value };
-    return { imageFormat: isImageExportFormat(value) ? value : "recommend", videoFormat: value === "mp4" ? "mp4" : "recommend" };
-}
 export function isStillImage(item) {
     return item.kind !== "video" && item.kind !== "gif" && item.recommendedFormat !== "gif";
 }

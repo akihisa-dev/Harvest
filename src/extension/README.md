@@ -31,7 +31,7 @@
 
 [split-export-session.ts](panel/split-export-session.ts) が両形式・出典設定・開始時の全保存対象・実際の画像形式`resolvedImageFormat`・完了記録を所有し、選択変更による再試行データの破棄は操作の経路から明示的に行います。recommendedから決めた`resolvedImageFormat`は開始時に固定し、取得で項目の情報が更新されても再試行・完了まで維持します。保存完了は各保存処理から通知し、ステータスの文言には依存しません。[app-view.ts](panel/app-view.ts) は渡された状態をDOMへ表示するだけで、描画による作業データの変更や収集先への通知は行いません。
 
-DOM要素の契約は [app-elements.ts](panel/app-elements.ts)、設定保存を呼ぶ操作は [export-preferences-controller.ts](panel/export-preferences-controller.ts)、設定の読み書きは [export-preferences.ts](browser/export-preferences.ts)、表示状態の導出とファイル名・Sourceプレビューは [export-presentation.ts](panel/export-presentation.ts)、解析の開始・中断・収集結果の確定は [scan-session-controller.ts](panel/scan-session-controller.ts) が所有します。
+DOM要素の契約は [app-elements.ts](panel/app-elements.ts)、設定保存を呼ぶ操作は [export-preferences-controller.ts](panel/export-preferences-controller.ts)、初期設定の読込は [split-export-preferences.ts](browser/split-export-preferences.ts)、出典設定だけの保存は [export-preferences.ts](browser/export-preferences.ts)、表示状態の導出とファイル名・Sourceプレビューは [export-presentation.ts](panel/export-presentation.ts)、解析の開始・中断・収集結果の確定は [scan-session-controller.ts](panel/scan-session-controller.ts) が所有します。
 
 [image-list-view.ts](panel/image-list-view.ts) は画像グループの表示、選択操作、キー操作による並べ替えと一覧DOMを担当します。[image-drag-controller.ts](panel/image-drag-controller.ts) はドラッグ中の一時順序、計測済み座標、スクロール・サイズ変更の監視を所有し、確定結果だけを画像集合へ渡します。DOMを使わない挿入位置の計算は [src/core/image-reorder.ts](../core/image-reorder.ts) に置きます。
 
@@ -57,7 +57,7 @@ Sourceプレビューも通常画像と同じ一覧の更新管理へ含め、�
 
 [mixed-export-preparation.ts](media/mixed-export-preparation.ts) が全選択項目を準備し、[mixed-export-controller.ts](panel/mixed-export-controller.ts) が静止PDFと個別GIF/動画を組み立てます。一つの出力は直接保存し、複数出力はZIPにまとめます。動画のみのrecommended/MP4は [managed-download.ts](browser/managed-download.ts) で順次保存し、全ダウンロード完了を確認します。動画originalの複数出力はZIPです。準備データの合計上限は個別保存でも維持し、全件の準備成功後に保存を開始します。
 
-[export-operation.ts](panel/export-operation.ts) が開始前確認、保存対象の確定、失敗分の選定、準備進捗と完了通知を管理します。[export-lifecycle.ts](panel/export-lifecycle.ts) は選択一致、中断、進捗、終了時の後始末、Blobダウンロードを管理します。従来の [pdf-export-controller.ts](panel/pdf-export-controller.ts)・[image-export-controller.ts](panel/image-export-controller.ts) とその準備関数は互換呼び出し用に保持します。
+[export-operation.ts](panel/export-operation.ts) が開始前確認、保存対象の確定、失敗分の選定、準備進捗と完了通知を管理します。[export-lifecycle.ts](panel/export-lifecycle.ts) は選択一致、中断、進捗、終了時の後始末、Blobダウンロードを管理します。旧PDF/画像controllerと単一形式sessionは撤去し、mixed/split経路で安全性を検証します。
 
 保存中も保存ボタンだけは有効にし、再クリックで進行中の保存を中止します。進捗表示は維持し、中止後は通信・変換の終了を待って準備済み画像と失敗情報を破棄し、エラーにせず通常の保存可能状態へ戻します。収集モードからの保存要求はこの中止操作と分けます。
 
@@ -75,7 +75,7 @@ Sourceプレビューも通常画像と同じ一覧の更新管理へ含め、�
 
 ## 画像の取得・変換と並行処理
 
-並行取得の開始数、結果が消費されるまでの保持枠、中断と待機解除は [src/core/preparation-workers.ts](../core/preparation-workers.ts) がPDF・ZIPで共通管理します。PDF画像準備は [pdf-image.ts](media/pdf-image.ts) が取得できた順に逐次変換し、結果を入力順に通知します。ZIPは [image-archive-preparation.ts](media/image-archive-preparation.ts) が入力順に変換し、`ImageArchivePlan` へ渡して容量予算を確認します。未通知結果を含む処理中の画像数は取得並列数以内に保ち、先頭画像の遅延でJPEG結果が蓄積し続けないようにします。
+並行取得の開始数、未消費結果の保持枠、中断と待機解除は [preparation-workers.ts](../core/preparation-workers.ts) が管理します。[mixed-export-preparation.ts](media/mixed-export-preparation.ts) は最大3件の取得と1件ずつの入力順変換を行い、容量予算を確認します。先頭画像が遅れても未消費取得結果は3件以内に保ちます。
 
 画像・メディア共通の [response-fetch.ts](media/response-fetch.ts) が接続先・認証・転送制限、応答本文を含む時間制限、中断と応答の解放を担当します。[image-fetch.ts](media/image-fetch.ts) と [media-fetch.ts](media/media-fetch.ts) は形式ごとの内容検査と失敗理由を担当し、静止・未分類画像取得20秒、既知GIF・動画・original取得120秒の上限と従来のエラー判定の優先順位を渡します。[image-response-bytes.ts](media/image-response-bytes.ts) は応答本文を64 MiBを超える前に止めます。`readImageBytes()` はプレビューなど別の取得経路でも同じバイト上限を共有できます。
 
@@ -83,7 +83,7 @@ Sourceプレビューも通常画像と同じ一覧の更新管理へ含め、�
 
 直接埋め込み候補もブラウザーで読み取り可能かと画素数を確認し、検証用の画像を直ちに解放します。再圧縮せず、その元バイト列をPDFとJPG保存へ渡します。EXIFなどでPDFの直接埋め込み条件から外れるJPEGはPDF用にデコードしますが、JPG保存ではデコードによる有効性と画素数の確認後に元のバイト列を再利用します。
 
-その他の画像もデコード用のBlobを作り、[image-decode.ts](media/image-decode.ts) が画素の読み取り・圧縮と画像メモリの解放を担当します。PDF、JPG、PNG、JXLは、幅と高さがそれぞれ16,384画素以下かつ総画素数が64,000,000以下であることを共通の基準にします。RGB画素は最大262,144画素ずつ圧縮へ渡し、画像全体ぶんの未圧縮RGB配列は作りません。PDFと画像ZIPに共通する取得済み画像、サイズ基準、失敗理由、中断の契約は [image-data-contract.ts](contracts/image-data-contract.ts)、PDF準備固有の型は [pdf-image-contract.ts](contracts/pdf-image-contract.ts) に置きます。既存の利用側には [pdf-image.ts](media/pdf-image.ts) から従来と同じPDF向けの型とエラー名を公開します。
+その他の画像もデコード用のBlobを作り、[image-decode.ts](media/image-decode.ts) が画素の読み取り・圧縮と画像メモリの解放を担当します。PDF、JPG、PNG、JXLは、幅と高さがそれぞれ16,384画素以下かつ総画素数が64,000,000以下であることを共通の基準にします。RGB画素は最大262,144画素ずつ圧縮へ渡し、画像全体ぶんの未圧縮RGB配列は作りません。PDFと画像ZIPに共通する取得済み画像、サイズ基準、失敗理由、中断の契約は [image-data-contract.ts](contracts/image-data-contract.ts)に置きます。
 
 画像取得の接続先判定は [image-fetch-policy.ts](media/image-fetch-policy.ts) が担当します。URL表記上のローカル・プライベート宛ては元ページと同一オリジンの場合だけ許可し、公開ホスト名への `fetch()` には `targetAddressSpace: "public"` を渡します。Chromeの接続先判定を使い、名前解決後や転送後のローカル接続を送信前に拒否します。同一オリジンの認証情報使用と認証付き取得の転送拒否は維持します。この指定を無視するChromeでの追加保護は保証せず、独自の名前解決サービスや権限は追加しません。
 
@@ -91,7 +91,7 @@ Sourceプレビューも通常画像と同じ一覧の更新管理へ含め、�
 
 [worker-contracts.ts](contracts/worker-contracts.ts) はJXL・MP4・ZIPの要求と応答の型を、呼び出し側とWorker側の双方へ提供します。実行期間の管理は処理ごとに保ち、JXLは再利用後30秒で解放、MP4は1変換の完了・失敗・中止・120秒期限で解放、ZIPのCRC計算はアーカイブ処理の終了時に解放します。
 
-従来の呼び出し側との互換性のため、[image-fetch.ts](media/image-fetch.ts) の `readImageBytes` と、[image-format.ts](media/image-format.ts)・[export-preferences.ts](browser/export-preferences.ts) の保存形式の型は正本から再公開します。処理や規則の複製は残しません。
+[image-fetch.ts](media/image-fetch.ts) の `readImageBytes` と [image-format.ts](media/image-format.ts) の保存形式の型は、共通の正本から公開します。
 
 ## ページ解析の入口と実行制約
 
@@ -186,6 +186,6 @@ fetchのRequest形式では本文を複製から読み、元のRequestを消費�
 
 `browser/split-export-preferences.ts`は出典ページ設定だけを読み、画像・動画を毎回recommendedで初期化します。旧形式キーは参照・削除・上書きしません。`panel/split-export-session.ts`は全選択項目、順序、両形式、出典設定と開始時に解決した`resolvedImageFormat`のスナップショットを一つの保存要求として管理し、同じ解決済み形式を再試行と完了表示にも使います。タイプが非表示になったり再解析したりしても形式は維持し、変更・中止・クリア後の古い成功表示を拒否します。
 
-`media/mixed-export-preparation.ts`は最大3取得・1変換、動画/GIF/原本を含む場合は1取得で、静止PDFページと個別ファイルを準備します。動く画像は`resolvedImageFormat`がoriginalなら原本を保持し、それ以外ならGIFへ分岐します。解決済み取得結果の参照は各変換後に解放し、同じ設定と選択順の失敗のみを再試行します。`panel/mixed-export-controller.ts`が静止PDFを集約し、必要ならGIF・動画と一つのZIPにします。すべての準備とZIP32容量確認が成功するまでダウンロードを始めません。動画のみのMP4保存は管理済みダウンロードの順次完了確認を維持します。従来の個別PDF/画像コントローラーAPIは互換呼び出し用に保持します。
+`media/mixed-export-preparation.ts`は最大3取得・1変換、動画/GIF/原本を含む場合は1取得で、静止PDFページと個別ファイルを準備します。動く画像は`resolvedImageFormat`がoriginalなら原本を保持し、それ以外ならGIFへ分岐します。解決済み取得結果の参照は各変換後に解放し、同じ設定と選択順の失敗のみを再試行します。`panel/mixed-export-controller.ts`が静止PDFを集約し、必要ならGIF・動画と一つのZIPにします。すべての準備とZIP32容量確認が成功するまでダウンロードを始めません。動画のみのMP4保存は管理済みダウンロードの順次完了確認を維持します。旧個別PDF/画像経路は配布に含めません。
 
 項目数はZIPの既存上限65,535件を取得前に確認します。上限を超えた場合は保存を開始せず、選択スナップショットと準備データを解放します。対象を減らすと新しい保存を開始できます。

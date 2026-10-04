@@ -5,7 +5,21 @@ import {deflateSync} from "node:zlib";
 import {readImageBytes} from "../dist/extension/app/media/image-fetch.js";
 import {IMAGE_TOO_LARGE_MESSAGE, MAX_IMAGE_BYTES} from "../dist/extension/app/contracts/image-data-contract.js";
 import {inflateSync} from "node:zlib";
-import {PdfImageError, preparePdfImages, toPdfPage} from "../dist/extension/app/media/pdf-image.js";
+import {ImageDataError} from "../dist/extension/app/contracts/image-data-contract.js";
+import {fetchImage} from "../dist/extension/app/media/image-fetch.js";
+import {decodeImage} from "../dist/extension/app/media/image-decode.js";
+import {prepareMixedExport} from "../dist/extension/app/media/mixed-export-preparation.js";
+
+// Exercise the shared fetch/decode boundary used by mixed PDF preparation.
+async function preparePage(url, options = {}) {
+  return decodeImage(await fetchImage(url, options), options);
+}
+function pdfWork(selected) {
+  return {selected, imageFormat: "pdf", resolvedImageFormat: "pdf", videoFormat: "original", includeSourcePage: false, prepared: new Map(), failed: new Map(), saved: new Set()};
+}
+function prepareSelection(work, signal = new AbortController().signal, onProgress = () => {}) {
+  return prepareMixedExport(work, {signal, isStopped: () => signal.aborted, onProgress});
+}
 
 function pngChunk(type, data) {
   const chunk = new Uint8Array(12 + data.length);
@@ -56,10 +70,13 @@ test("応答が中断を無視してもキャンセルは即座に完了し、�
   };
   try {
     const urls = ["a", "b", "c", "d", "e"].map(name => `https://example.test/${name}`);
-    const work = preparePdfImages(urls.map(url => ({url})), () => {}, {signal: controller.signal});
-    const rejected = assert.rejects(work, error => error instanceof PdfImageError && error.kind === "cancelled");
+    const state = pdfWork(urls.map(url => ({url})));
+    const work = prepareSelection(state, controller.signal);
+    await new Promise(resolve => setImmediate(resolve));
+    const rejected = assert.rejects(work, error => error.name === "AbortError");
     controller.abort();
     await rejected;
+    assert.equal(state.prepared.size, 0);
     assert.deepEqual(fetched, urls.slice(0, 3));
   } finally {
     globalThis.fetch = previousFetch;
@@ -97,7 +114,7 @@ test("設定なしで元の画素と寸法を保ち、JPEGへ再圧縮しない"
     return {width: 2, height: 1, close() { closed++; } };
   };
   try {
-    const page = await toPdfPage("https://example.com/image.png");
+    const page = await preparePage("https://example.com/image.png");
     assert.equal(page.width, 2);
     assert.equal(page.height, 1);
     assert.deepEqual([...inflateSync(page.rgbFlate)], [12, 34, 56, 78, 90, 123]);
@@ -156,7 +173,7 @@ test("非JPEG画像は画素を小分けに圧縮し、画像全体のRGB配列�
     }
   };
   try {
-    const page = await toPdfPage("https://example.com/image.webp", {pixelRowsPerChunk: 1});
+    const page = await preparePage("https://example.com/image.webp", {pixelRowsPerChunk: 1});
     const expectedRgb = [];
     for (let index = 0; index < rgba.length; index += 4) expectedRgb.push(rgba[index], rgba[index + 1], rgba[index + 2]);
     const fullImageRgbBytes = width * height * 3;
@@ -209,7 +226,7 @@ test("大きな画像も既定の画素上限ごとにRGBを圧縮へ渡す", as
     }
   };
   try {
-    const page = await toPdfPage("https://example.com/large.png");
+    const page = await preparePage("https://example.com/large.png");
     const rgbBytesPerChunk = 512 * 512 * 3;
     const fullImageRgbBytes = width * height * 3;
     assert.equal(page.width, width);
@@ -258,11 +275,11 @@ test("画素変換後の圧縮中に中止すると、完了を待たずに画�
     }
   };
   try {
-    const work = toPdfPage("https://example.com/image.png", {signal: controller.signal});
+    const work = preparePage("https://example.com/image.png", {signal: controller.signal});
     await started;
     controller.abort();
     await Promise.race([
-      assert.rejects(work, error => error instanceof PdfImageError && error.kind === "cancelled"),
+      assert.rejects(work, error => error instanceof ImageDataError && error.kind === "cancelled"),
       new Promise((_, reject) => setTimeout(() => reject(new Error("圧縮完了を待っています")), 500)),
     ]);
     assert.equal(closed, 1);
@@ -291,7 +308,7 @@ test("対応するJFIF JPEGは取得したバイト列と寸法をそのまま�
     return {width: 3, height: 2, close() {} };
   };
   try {
-    const page = await toPdfPage("https://example.com/original.jpg");
+    const page = await preparePage("https://example.com/original.jpg");
     assert.deepEqual([...page.jpeg], [...jpeg]);
     assert.strictEqual(page.jpeg.buffer, responseBuffer, "JPEG reuses the response buffer");
     assert.equal(page.width, 3);
@@ -316,7 +333,7 @@ test("EXIF付きJPEGはPDF用には画素へ変換し、JPG保存用の元デー
     })
   };
   try {
-    const page = await toPdfPage("https://example.test/exif.jpg");
+    const page = await preparePage("https://example.test/exif.jpg");
     assert.equal(page.width, 1);
     assert.equal(page.height, 1);
     assert.equal("jpeg" in page, false, "EXIF付きJPEGをPDFへ無変換で埋め込まない");
@@ -331,24 +348,24 @@ test("HTTP失敗・通信失敗・画像形式不正を利用者向け理由へ�
   const previous = {fetch: globalThis.fetch};
   try {
     globalThis.fetch = async () => new Response(null, {status: 404});
-    await assert.rejects(toPdfPage("https://example.com/missing"), (error) => {
-      assert(error instanceof PdfImageError);
+    await assert.rejects(preparePage("https://example.com/missing"), (error) => {
+      assert(error instanceof ImageDataError);
       assert.equal(error.kind, "http");
       assert.match(error.message, /画像が見つかりません/);
       return true;
     });
 
     globalThis.fetch = async () => { throw new Error("private network detail"); };
-    await assert.rejects(toPdfPage("https://example.com/offline"), (error) => {
-      assert(error instanceof PdfImageError);
+    await assert.rejects(preparePage("https://example.com/offline"), (error) => {
+      assert(error instanceof ImageDataError);
       assert.equal(error.kind, "network");
       assert.doesNotMatch(error.message, /private network detail/);
       return true;
     });
 
     globalThis.fetch = async () => new Response("not an image", {headers: {"Content-Type": "text/html"}});
-    await assert.rejects(toPdfPage("https://example.com/page"), (error) => {
-      assert(error instanceof PdfImageError);
+    await assert.rejects(preparePage("https://example.com/page"), (error) => {
+      assert(error instanceof ImageDataError);
       assert.equal(error.kind, "invalid-image");
       assert.match(error.message, /画像データではありません/);
       return true;
@@ -393,8 +410,8 @@ test("応答待ちの上限でAbortし、応答本文も後始末する", async 
     return response;
   };
   try {
-    await assert.rejects(toPdfPage("https://example.com/slow", {timeoutMs: 10}), (error) => {
-      assert(error instanceof PdfImageError);
+    await assert.rejects(preparePage("https://example.com/slow", {timeoutMs: 10}), (error) => {
+      assert(error instanceof ImageDataError);
       assert.equal(error.kind, "timeout");
       assert.match(error.message, /時間がかかりすぎ/);
       return true;
@@ -421,7 +438,7 @@ test("画像応答はContent-Lengthと実データの両方で上限を守る", 
     });
     await assert.rejects(
       readImageBytes(new Response(overLimitBody, headers ? {headers} : undefined), 4),
-      error => error instanceof PdfImageError
+      error => error instanceof ImageDataError
         && error.kind === "invalid-image"
         && error.message === IMAGE_TOO_LARGE_MESSAGE,
     );
@@ -452,7 +469,7 @@ test("Content-Lengthが上限を超える応答は本文を読む前に拒否す
     },
   });
   try {
-    await assert.rejects(toPdfPage("https://example.com/too-large"), error => error instanceof PdfImageError
+    await assert.rejects(preparePage("https://example.com/too-large"), error => error instanceof ImageDataError
       && error.kind === "invalid-image"
       && error.message === IMAGE_TOO_LARGE_MESSAGE);
     assert.equal(reads, 0);
@@ -485,13 +502,13 @@ test("大きすぎるJPEGとデコード画像をCanvasへ渡さず、画像メ�
     return {width: 8_001, height: 8_000, close() { closedBitmaps += 1; } };
   };
   try {
-    await assert.rejects(toPdfPage("https://example.com/large-jpeg"), error => error instanceof PdfImageError
+    await assert.rejects(preparePage("https://example.com/large-jpeg"), error => error instanceof ImageDataError
       && error.kind === "invalid-image"
       && error.message === IMAGE_TOO_LARGE_MESSAGE);
     assert.equal(decodedJpegs, 0, "oversized JPEG dimensions are rejected during fetch");
 
     globalThis.fetch = async () => new Response(new Uint8Array([1]), {headers: {"content-type": "image/webp"}});
-    await assert.rejects(toPdfPage("https://example.com/large-webp"), error => error instanceof PdfImageError
+    await assert.rejects(preparePage("https://example.com/large-webp"), error => error instanceof ImageDataError
       && error.kind === "invalid-image"
       && error.message === IMAGE_TOO_LARGE_MESSAGE);
     assert.equal(createdCanvases, 0, "non-JPEG images are rejected before canvas allocation");
@@ -520,7 +537,7 @@ test("圧縮後は小さいが画素数が上限を超えるPNGをデコード�
     }
   };
   try {
-    await assert.rejects(toPdfPage("https://example.com/tiny-oversized.png"), error => error instanceof PdfImageError
+    await assert.rejects(preparePage("https://example.com/tiny-oversized.png"), error => error instanceof ImageDataError
       && error.kind === "invalid-image"
       && error.message === IMAGE_TOO_LARGE_MESSAGE);
     assert.equal(decodes, 0);
@@ -530,7 +547,7 @@ test("圧縮後は小さいが画素数が上限を超えるPNGをデコード�
   }
 });
 
-test("取得は少数並列、画素変換は逐次、結果は入力順で通知する", async () => {
+test("mixed PDFは取得3並列、画素変換は逐次、準備結果は入力順で保持する", async () => {
   const previous = {fetch: globalThis.fetch, document: globalThis.document, createImageBitmap: globalThis.createImageBitmap};
   let activeFetches = 0;
   let maxFetches = 0;
@@ -546,7 +563,7 @@ test("取得は少数並列、画素変換は逐次、結果は入力順で通�
   };
   globalThis.createImageBitmap = async () => ({
     width: 1,
-    height: 2,
+    height: 1,
     close() { activeConversions -= 1; },
   });
   globalThis.document = {
@@ -569,16 +586,14 @@ test("取得は少数並列、画素変換は逐次、結果は入力順で通�
   };
   try {
     const items = ["a", "b", "c", "d"].map(name => ({url: `https://example.test/${name}`}));
-    const results = [];
-    await preparePdfImages(items, (item, result) => results.push([item.url, result]), {
-      fetchConcurrency: 2,
-      pixelRowsPerChunk: 1,
-      timeoutMs: 1_000,
-    });
-    assert.deepEqual(results.map(([url]) => url), items.map(item => item.url));
-    assert.equal(results.every(([, result]) => !(result instanceof PdfImageError)), true);
-    assert.equal(maxFetches <= 2, true);
+    const work = pdfWork(items);
+    const progress = [];
+    await prepareSelection(work, undefined, (...args) => progress.push(args));
+    assert.deepEqual([...work.prepared.keys()].map(item => item.url), items.map(item => item.url));
+    assert.equal(work.failed.size, 0);
+    assert.equal(maxFetches, 3);
     assert.equal(maxConversions, 1);
+    assert.deepEqual(progress, [[1, 4], [2, 4], [3, 4], [4, 4]]);
   } finally {
     Object.assign(globalThis, previous);
   }
@@ -629,11 +644,8 @@ test("先頭画像が遅れても後続JPEGを並列数以上に蓄積せず、�
   let work;
   try {
     const items = Array.from({length: 24}, (_, index) => ({url: `https://example.test/image-${index}`}));
-    const results = [];
-    work = preparePdfImages(items, (item, result) => results.push([item.url, result]), {
-      fetchConcurrency: 3,
-      timeoutMs: 5_000,
-    });
+    const state = pdfWork(items);
+    work = prepareSelection(state);
     await Promise.race([
       firstWave,
       new Promise((_, reject) => setTimeout(() => reject(new Error("初回の並列取得が完了しませんでした")), 1_000)),
@@ -644,9 +656,9 @@ test("先頭画像が遅れても後続JPEGを並列数以上に蓄積せず、�
 
     releaseHead();
     await work;
-    assert.deepEqual(results.map(([url]) => url), items.map(({url}) => url));
-    assert.equal(results.every(([, result]) => !(result instanceof PdfImageError)), true);
-    assert.equal(results.every(([, result]) => result.jpeg && Buffer.from(result.jpeg).equals(Buffer.from(jpeg))), true);
+    assert.deepEqual([...state.prepared.keys()].map(item => item.url), items.map(({url}) => url));
+    assert.equal(state.failed.size, 0);
+    assert.equal([...state.prepared.values()].every(({page}) => page.jpeg && Buffer.from(page.jpeg).equals(Buffer.from(jpeg))), true);
     assert.equal(decodes, items.length, "each JPEG is checked once and its original bytes are retained");
   } finally {
     releaseHead();
@@ -655,16 +667,28 @@ test("先頭画像が遅れても後続JPEGを並列数以上に蓄積せず、�
   }
 });
 
-test("結果通知の失敗でも待機中の取得を解放する", async () => {
+test("mixed進捗通知の失敗でも待機中の取得を解放し、未開始画像を取得しない", async () => {
   const previous = {fetch: globalThis.fetch};
-  globalThis.fetch = async () => new Response("image", {headers: {"Content-Type": "image/png"}});
+  const requests = [];
+  const waitingSignals = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push(url);
+    if (url.endsWith("/a")) return new Response(null, {status: 404});
+    waitingSignals.push(options.signal);
+    return new Promise(() => {});
+  };
   try {
+    const items = ["a", "b", "c", "d"].map(name => ({url: `https://example.test/${name}`}));
+    const work = pdfWork(items);
     await assert.rejects(
-      preparePdfImages(["a", "b", "c", "d"].map(name => ({url: `https://example.test/${name}`})), () => {
-        throw new Error("callback failed");
-      }, {fetchConcurrency: 3, timeoutMs: 1_000}),
+      prepareSelection(work, undefined, () => { throw new Error("callback failed"); }),
       /callback failed/,
     );
+    assert.deepEqual(requests, items.slice(0, 3).map(item => item.url));
+    assert.equal(waitingSignals.length, 2);
+    assert.ok(waitingSignals.every(signal => signal.aborted));
+    assert.equal(work.prepared.size, 0);
+    assert.deepEqual([...work.failed.keys()], [items[0]]);
   } finally {
     Object.assign(globalThis, previous);
   }
@@ -701,14 +725,14 @@ test("画素の読み取り失敗でもメモリを解放し、後続画像を�
     }
   };
   try {
-    const results = [];
     const items = ["broken", "valid"].map(name => ({url: `https://example.test/${name}`}));
-    await preparePdfImages(items, (item, result) => results.push([item.url, result]));
-    assert.deepEqual(results.map(([url]) => url), items.map(item => item.url));
-    assert.ok(results[0][1] instanceof PdfImageError);
-    assert.equal(results[0][1].kind, "invalid-image");
-    assert.doesNotMatch(results[0][1].message, /private decoder detail/);
-    assert.deepEqual([...inflateSync(results[1][1].rgbFlate)], [1, 2, 3]);
+    const work = pdfWork(items);
+    await prepareSelection(work);
+    assert.deepEqual([...work.failed.keys()], [items[0]]);
+    assert.match(work.failed.get(items[0]), /画像をPDF用に変換できません/);
+    assert.doesNotMatch(work.failed.get(items[0]), /private decoder detail/);
+    assert.deepEqual([...work.prepared.keys()], [items[1]]);
+    assert.deepEqual([...inflateSync(work.prepared.get(items[1]).page.rgbFlate)], [1, 2, 3]);
     assert.deepEqual(closed, ["broken", "valid"]);
     assert.ok(canvases.every(canvas => canvas.width === 0 && canvas.height === 0));
   } finally {

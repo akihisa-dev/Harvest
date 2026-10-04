@@ -1,10 +1,9 @@
 import { createSourcePageLayout } from "../../core/pdf.js";
-import { isImageExportFormat, isStillImage, pdfSourceFilename } from "../../core/split-export-formats.js";
+import { isStillImage, pdfSourceFilename } from "../../core/split-export-formats.js";
 import { resolveImageExportFormat } from "../../core/export-recommendations.js";
-import { itemArchiveFormat, originalItemExtension } from "../../core/export-formats.js";
-import { selectionsMatch } from "./export-lifecycle.js";
+import { originalItemExtension } from "../../core/export-formats.js";
 import { replaceLoneSurrogates } from "../../core/source-text.js";
-import { individualFilename, saveFilesIndividually } from "../../core/export-files.js";
+import { individualFilename } from "../../core/export-files.js";
 export function imageFilename(url) {
     try {
         return decodeURIComponent(new URL(url).pathname.split("/").pop() || url);
@@ -41,16 +40,14 @@ export function createSourcePreview(selected, format, includeSourcePage, heading
 /** Keeps output labels and both preview surfaces tied to the same export selection rules. */
 export function createExportPresentation(options) {
     function outputFormat(selection) {
-        return selection.videoFormat !== undefined && isImageExportFormat(selection.format)
-            ? selection.resolvedImageFormat ?? resolveImageExportFormat(selection.format, selection.selected) : selection.format;
+        return selection.resolvedImageFormat ?? resolveImageExportFormat(selection.format, selection.selected);
     }
     function filename(extension) {
         return `${exportFileBaseName(options.getTitle(), options.fallbackTitle)}.${extension}`;
     }
     function preview(selection) {
-        const still = selection.videoFormat === undefined ? selection.selected : selection.selected.filter(isStillImage);
-        const sourceFilename = selection.videoFormat === undefined ? filename("pdf")
-            : pdfSourceFilename(selection.selected.length, selection.selected.indexOf(still[0]), selection.selected.length - still.length, filename("pdf"));
+        const still = selection.selected.filter(isStillImage);
+        const sourceFilename = pdfSourceFilename(selection.selected.length, selection.selected.indexOf(still[0]), selection.selected.length - still.length, filename("pdf"));
         return createSourcePreview(still, outputFormat(selection), selection.includeSourcePage, options.sourceHeading, sourceFilename);
     }
     return {
@@ -60,35 +57,22 @@ export function createExportPresentation(options) {
             const selection = options.getSelection();
             const { selected, videoFormat } = selection;
             const format = outputFormat(selection);
-            if (videoFormat !== undefined) {
-                if (!selected.length)
-                    return filename(format === "pdf" ? "pdf" : "zip");
-                const still = selected.filter(isStillImage), pdf = format === "pdf" && still.length > 0;
-                const count = format === "pdf" ? selected.length - still.length + (pdf ? 1 : 0) : selected.length;
-                if (count === 1 && pdf)
-                    return filename("pdf");
-                const videosOnly = selected.length > 0 && selected.every(item => item.kind === "video");
-                if (count > 1 && !(videosOnly && videoFormat !== "original"))
-                    return filename("zip");
-                const item = selected[0], original = item?.kind === "video" ? videoFormat === "original" : format === "original";
-                const extension = !item ? null : original ? originalItemExtension(item)?.toLowerCase()
-                    : item.kind === "video" ? "mp4" : !isStillImage(item) ? "gif" : format === "recommend" ? "png" : format;
-                if (!extension)
-                    return exportFileBaseName(options.getTitle(), options.fallbackTitle);
-                const first = `${"1".padStart(Math.max(3, String(selected.length).length), "0")}.${extension}`;
-                return individualFilename(filename("zip"), first, count);
-            }
-            if (format === "pdf")
+            if (!selected.length)
+                return filename(format === "pdf" ? "pdf" : "zip");
+            const still = selected.filter(isStillImage), pdf = format === "pdf" && still.length > 0;
+            const count = format === "pdf" ? selected.length - still.length + (pdf ? 1 : 0) : selected.length;
+            if (count === 1 && pdf)
                 return filename("pdf");
-            if (!saveFilesIndividually(format, selected.length, selected))
+            const videosOnly = selected.length > 0 && selected.every(item => item.kind === "video");
+            if (count > 1 && !(videosOnly && videoFormat !== "original"))
                 return filename("zip");
-            const extension = selected[0]
-                ? format === "original" ? originalItemExtension(selected[0])?.toLowerCase() : itemArchiveFormat(format, selected[0])
-                : null;
+            const item = selected[0], original = item?.kind === "video" ? videoFormat === "original" : format === "original";
+            const extension = !item ? null : original ? originalItemExtension(item)?.toLowerCase()
+                : item.kind === "video" ? "mp4" : !isStillImage(item) ? "gif" : format === "recommend" ? "png" : format;
             if (!extension)
                 return exportFileBaseName(options.getTitle(), options.fallbackTitle);
             const first = `${"1".padStart(Math.max(3, String(selected.length).length), "0")}.${extension}`;
-            return individualFilename(filename("zip"), first, selected.length);
+            return individualFilename(filename("zip"), first, count);
         },
         get sourcePreview() { return preview(options.getSelection()); },
         get viewerPages() {
@@ -97,23 +81,4 @@ export function createExportPresentation(options) {
             return source ? [...selection.selected, source] : selection.selected;
         },
     };
-}
-export function deriveExportViewState(options) {
-    const pending = options.format === "pdf"
-        ? options.pdfPending
-        : options.imagePending?.format === options.format ? options.imagePending : null;
-    const running = options.format === "pdf" ? options.pdfRunning : options.imageRunning;
-    const progress = options.format === "pdf" ? options.pdfProgress : options.imageProgress;
-    if (running)
-        return { phase: "running", pending, progress };
-    if (pending?.failed.size)
-        return { phase: "retry-required", pending, progress: "" };
-    const saved = options.completed?.format === options.format
-        && (options.format !== "pdf" || options.completed.includeSourcePage === options.includeSourcePage)
-        && selectionsMatch(options.completed.selected, options.selected);
-    if (saved)
-        return { phase: "saved", pending: null, progress: "" };
-    return options.selected.length
-        ? { phase: "ready", pending: null, progress: "" }
-        : { phase: "empty", pending: null, progress: "" };
 }

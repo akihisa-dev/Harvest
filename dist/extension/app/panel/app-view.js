@@ -1,5 +1,5 @@
 import { isMediaArchiveFormat, originalItemExtension } from "../../core/export-formats.js";
-import { isImageExportFormat, isStillImage } from "../../core/split-export-formats.js";
+import { isStillImage } from "../../core/split-export-formats.js";
 import { imageRecommendations, videoRecommendations, resolveImageExportFormat } from "../../core/export-recommendations.js";
 import { setButtonLabel } from "./button-state.js";
 import { createEmptyStateView } from "./empty-state.js";
@@ -7,33 +7,14 @@ import { imageFilename } from "./export-presentation.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { setMotionText } from "./motion.js";
 function exportButtonLabel(state) {
-    const { format, selected, view } = state;
-    if (state.videoFormat !== undefined) {
-        if (view.phase === "running")
-            return view.progress;
-        if (view.phase === "retry-required")
-            return t("exportRetry");
-        if (!selected.length)
-            return t("save");
-        return t(view.phase === "saved" ? "exportFilesSaved" : "exportSelectionAction", { count: selected.length, plural: formatPlural(selected.length) });
-    }
+    const { selected, view } = state;
     if (view.phase === "running")
         return view.progress;
     if (view.phase === "retry-required")
         return t("exportRetry");
-    if (view.phase === "saved") {
-        return t(isMediaArchiveFormat(format) ? "exportFilesSaved" : "exportSaved", {
-            count: selected.length,
-            plural: formatPlural(selected.length),
-        });
-    }
     if (!selected.length)
         return t("save");
-    if (format === "original")
-        return t("exportOriginalAction");
-    if (format === "recommend")
-        return t("exportRecommendAction");
-    return t("exportAction", { format: format.toUpperCase() });
+    return t(view.phase === "saved" ? "exportFilesSaved" : "exportSelectionAction", { count: selected.length, plural: formatPlural(selected.length) });
 }
 function renderExtensions(element, extensions) {
     const values = [...new Set(extensions.map(value => value ?? t("exportUnknownFormat")))];
@@ -103,7 +84,7 @@ export function createAppView(elements, positionOf) {
         const { format, selected, includeSourcePage: sourceIncluded, view } = snapshot.export;
         const selectedItems = items.filter(item => item.selected);
         const images = selectedItems.filter(item => item.kind !== "video"), videos = selectedItems.filter(item => item.kind === "video");
-        const outputFormat = snapshot.export.resolvedImageFormat ?? (isImageExportFormat(format) ? resolveImageExportFormat(format, selectedItems) : format);
+        const outputFormat = snapshot.export.resolvedImageFormat;
         const recommendedFormat = format === "recommend" ? outputFormat : resolveImageExportFormat("recommend", selectedItems);
         const reasons = [...new Set([
                 ...renderRecommendations(exportFormatInputs, imageRecommendations(selectedItems)),

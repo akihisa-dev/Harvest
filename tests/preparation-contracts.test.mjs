@@ -3,7 +3,8 @@ import test from "node:test";
 import {fetchImage} from "../dist/extension/app/media/image-fetch.js";
 import {fetchOriginalMedia} from "../dist/extension/app/media/media-fetch.js";
 import {ImageDataError} from "../dist/extension/app/contracts/image-data-contract.js";
-import {preparePdfImages} from "../dist/extension/app/media/pdf-image.js";
+import {prepareMixedExport} from "../dist/extension/app/media/mixed-export-preparation.js";
+const pdfWork = selected => ({selected, imageFormat: "pdf", resolvedImageFormat: "pdf", videoFormat: "original", includeSourcePage: false, prepared: new Map(), failed: new Map(), saved: new Set()});
 import {baselineJpeg} from "./jpeg-fixtures.mjs";
 
 const fetchers = [
@@ -118,7 +119,7 @@ test("既存の取得失敗と中断状態が重なった場合の形式ごと�
   }
 });
 
-test("PDFは先に到着したbitmapを変換し、JPEGを混在させても入力順と未消費上限を保つ", async () => {
+test("mixed PDFはJPEGとbitmapの混在でも入力順と未消費上限を保つ", async () => {
   const previous = {fetch: globalThis.fetch, document: globalThis.document, createImageBitmap: globalThis.createImageBitmap};
   let releaseHead;
   const head = new Promise(resolve => { releaseHead = resolve; });
@@ -148,17 +149,20 @@ test("PDFは先に到着したbitmapを変換し、JPEGを混在させても入�
   };
   let execution;
   try {
-    execution = preparePdfImages(items, (item, result) => {
-      assert.equal(result instanceof Error, false);
-      delivered.push(item.url);
-    });
-    for (let attempt = 0; !converted.length && attempt < 100; attempt += 1) await tick();
-    assert.deepEqual(converted, ["second"]);
+    const work = pdfWork(items);
+    execution = prepareMixedExport(work, {signal: new AbortController().signal, isStopped: () => false, onProgress() {
+      delivered.push([...work.prepared.keys()].at(-1).url);
+    }});
+    for (let attempt = 0; started.length < 3 && attempt < 100; attempt += 1) await tick();
+    await tick();
+    assert.deepEqual(converted, [], "先頭待ちの間に後続の画素を展開しない");
     assert.deepEqual(started, ["head", "second", "jpeg"]);
     assert.deepEqual(delivered, []);
     releaseHead();
     await execution;
-    assert.deepEqual(converted, ["second", "head", "last"]);
+    assert.deepEqual(converted, ["head", "second", "last"]);
+    assert.equal(work.failed.size, 0);
+    assert.deepEqual([...work.prepared.get(items[2]).page.jpeg], [...baselineJpeg]);
     assert.deepEqual(delivered, items.map(item => item.url));
   } finally {
     releaseHead();
@@ -181,14 +185,16 @@ test("PDFは全取得が終わった後の最後の画像変換にも中断を�
   globalThis.document = {createElement() { throw new Error("中断後にCanvasを作ってはいけません"); } };
   let execution;
   try {
-    execution = preparePdfImages([{url: "https://example.test/last"}], () => {}, {signal: controller.signal});
-    const rejection = assert.rejects(execution, error => error.kind === "cancelled");
+    const work = pdfWork([{url: "https://example.test/last"}]);
+    execution = prepareMixedExport(work, {signal: controller.signal, isStopped: () => controller.signal.aborted, onProgress() {assert.fail("中断後に進捗を通知しない");}});
     for (let attempt = 0; !decoding && attempt < 100; attempt += 1) await tick();
     assert.equal(decoding, true);
     await tick();
     controller.abort();
     finishDecode();
-    await rejection;
+    await execution;
+    assert.equal(work.prepared.size, 0);
+    assert.equal(work.failed.size, 0);
     assert.equal(released, 1);
   } finally {
     finishDecode?.();

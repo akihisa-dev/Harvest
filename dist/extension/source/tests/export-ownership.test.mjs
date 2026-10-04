@@ -1,16 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {createPdfExportController} from "../dist/extension/app/panel/pdf-export-controller.js";
-import {createImageExportController} from "../dist/extension/app/panel/image-export-controller.js";
+import {createMixedExportController} from "../dist/extension/app/panel/mixed-export-controller.js";
 
-for (const kind of ["pdf", "image"]) {
+for (const kind of ["pdf", "png"]) {
   function create(getSelectedItems, isDisposed = () => false) {
     const options = {
       getSelectedItems, isDisposed, isBusy: () => false,
       onBusyChange() {}, onStatus() {}, onCloseViewer() {}, onClearSourceUrl() {}, onScrollToFailures() {},
-      getFilename: () => "images.pdf", getSourcePage: () => undefined, getZipFilename: () => "images.zip",
+      getPdfFilename: () => "images.pdf", getZipFilename: () => "images.zip",
     };
-    return kind === "pdf" ? createPdfExportController(options) : createImageExportController(options);
+    return createMixedExportController(options);
   }
 
   test(`${kind}: 外部のbusy反映前の重複開始でも、実行中の対象と再試行データを保持する`, async t => {
@@ -22,13 +21,13 @@ for (const kind of ["pdf", "image"]) {
     const second = {url: "https://example.test/second.jpg", selected: true};
     let selected = [first];
     const controller = create(() => selected);
-    const running = controller.export("original");
+    const running = controller.export({imageFormat: kind, videoFormat: "original", includeSourcePage: false});
     try {
       for (let i = 0; i < 20 && !failFetch; i++) await new Promise(resolve => setImmediate(resolve));
       assert.equal(typeof failFetch, "function");
       const pending = controller.pending;
       selected = [second];
-      await controller.export("png");
+      await controller.export({imageFormat: "original", videoFormat: "original", includeSourcePage: false});
       assert.equal(controller.pending, pending);
       assert.deepEqual(controller.pending.selected, [first]);
     } finally {
@@ -42,7 +41,7 @@ for (const kind of ["pdf", "image"]) {
 
   test(`${kind}: 廃棄後の開始は選択を読まず、再試行データも作らない`, async () => {
     const controller = create(() => { throw new Error("disposed selection was read"); }, () => true);
-    await controller.export("original");
+    await controller.export({imageFormat: kind, videoFormat: "original", includeSourcePage: false});
     assert.equal(controller.pending, null);
     assert.equal(controller.isRunning, false);
   });

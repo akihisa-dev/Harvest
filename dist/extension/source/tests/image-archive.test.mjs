@@ -1,10 +1,12 @@
 import {gifBytes} from './media-fixtures.mjs';
 import assert from "node:assert/strict";
 import test from "node:test";
-import {ImageArchiveLimitError, ImageArchivePlan, createImageZipEntries} from "../dist/extension/core/image-archive.js";
+import {ImageArchiveLimitError} from "../dist/extension/core/image-archive.js";
 import {mediaTypeMatchesKind, originalMediaType} from "../dist/extension/core/media-types.js";
-import {storedZipDataLimit} from "../dist/extension/core/stored-zip.js";
-import {prepareImageArchive} from "../dist/extension/app/media/image-archive-preparation.js";
+import {createStoredZip, storedZipDataLimit} from "../dist/extension/core/stored-zip.js";
+import {indexedExportFilename} from "../dist/extension/core/split-export-formats.js";
+import {prepareMixedExport} from "../dist/extension/app/media/mixed-export-preparation.js";
+const mixedWork = selected => ({selected, imageFormat: "original", resolvedImageFormat: "original", videoFormat: "original", includeSourcePage: false, prepared: new Map(), failed: new Map(), saved: new Set()});
 
 const item = (name, kind) => ({url: `https://example.test/${name}`, sourcePage: "https://example.test/page", selected: true, ...(kind ? {kind} : {})});
 const gif = gifBytes;
@@ -28,66 +30,73 @@ test("取得とZIP命名は同じMIME分類を使い、種類未指定画像のG
     const type = originalMediaType(` ${mime.toUpperCase()}; charset=binary `);
     assert.equal(type.extension, extension);
     assert.equal(type.kind, kind);
-    const selected = item(extension, kind);
-    const blob = new Blob([extension], {type: mime});
-    const entries = createImageZipEntries([selected], new Map([[selected, blob]]), "original");
-    assert.equal(entries[0].filename, `001.${extension}`);
-    assert.equal(entries[0].blob, blob, "元のBlobを複製しない");
+    assert.equal(indexedExportFilename(0, 1, type.extension), `001.${extension}`);
   }
   assert.equal(originalMediaType("image/svg+xml"), undefined);
   assert.equal(originalMediaType("text/html"), undefined);
   assert.equal(mediaTypeMatchesKind("image", "gif"), true);
   assert.equal(mediaTypeMatchesKind("gif", "image"), false);
   assert.equal(mediaTypeMatchesKind("image", "video"), false);
-  const legacy = item("legacy");
-  assert.equal(createImageZipEntries([legacy], new Map([[legacy, new Blob([gif], {type: "image/gif"})]]), "original")[0].filename, "001.gif");
+  assert.equal(indexedExportFilename(0, 1, originalMediaType("image/gif").extension), "001.gif");
 });
 
-test("ZIP容量は再試行の成功分を含めて加算し、超過画像を保持しない", () => {
+test("mixed ZIP容量は再試行の成功分を加算し、超過画像を保持しない", async t => {
   const selected = [item("first"), item("second")];
-  const limit = storedZipDataLimit(["001.png", "002.png"]);
-  const existing = fakeSizedBlob(limit - 4);
-  const prepared = new Map([[selected[0], existing]]);
-  const plan = new ImageArchivePlan(selected, prepared, "png");
-  assert.equal(plan.remainingBytes, 4);
-  assert.throws(() => plan.retain(selected[1], fakeSizedBlob(5)), ImageArchiveLimitError);
-  assert.equal(prepared.size, 1);
-  assert.equal(plan.remainingBytes, 4);
-  const last = fakeSizedBlob(4);
-  plan.retain(selected[1], last);
-  assert.equal(plan.remainingBytes, 0);
-  assert.deepEqual(plan.entries().map(entry => entry.blob), [existing, last]);
-  assert.throws(() => new ImageArchivePlan(selected, new Map([[selected[0], fakeSizedBlob(limit + 1)]]), "png"), ImageArchiveLimitError);
+  const limit = storedZipDataLimit(["001.webm", "002.webm"]);
+  const controller = new AbortController();
+  const options = {signal: controller.signal, isStopped: () => false, onProgress() {}};
+  const response = new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], {type: "image/png"});
+  t.mock.method(globalThis, "fetch", async () => new Response(response));
+  const existing = {blob: fakeSizedBlob(limit - response.size + 1)};
+  const work = mixedWork(selected);
+  work.prepared.set(selected[0], existing);
+  await assert.rejects(prepareMixedExport(work, options), ImageArchiveLimitError);
+  assert.equal(work.prepared.size, 1);
+  assert.equal(work.prepared.get(selected[0]), existing);
+  assert.equal(work.failed.size, 0);
+
+  existing.blob = fakeSizedBlob(limit - response.size);
+  await prepareMixedExport(work, options);
+  assert.equal(work.prepared.size, 2);
+  assert.equal(work.prepared.get(selected[1]).blob.size, response.size);
+  assert.equal(work.prepared.get(selected[0]), existing);
+
+  const oversized = mixedWork(selected);
+  oversized.prepared.set(selected[0], {blob: fakeSizedBlob(limit + 1)});
+  let fetched = false;
+  t.mock.method(globalThis, "fetch", () => {fetched = true; assert.fail("既存成功分の上限判定前に取得しない");});
+  await assert.rejects(prepareMixedExport(oversized, options), ImageArchiveLimitError);
+  assert.equal(fetched, false);
 });
 
-test("元形式は実際の拡張子で容量を再確認し、取得前の概算だけで保存しない", () => {
+test("元形式のZIP容量は実際の拡張子で再確認し、概算だけで保存しない", async () => {
   const selected = [item("animation", "video")];
   const optimisticLimit = storedZipDataLimit(["001.jpg"]);
-  const prepared = new Map();
-  const plan = new ImageArchivePlan(selected, prepared, "original");
-  plan.retain(selected[0], fakeSizedBlob(optimisticLimit, "video/webm"));
-  assert.equal(plan.remainingBytes, 0);
-  assert.throws(() => plan.entries(), ImageArchiveLimitError);
+  const blob = fakeSizedBlob(optimisticLimit, "video/webm");
+  const entries = [{filename: indexedExportFilename(0, selected.length, originalMediaType(blob.type).extension), blob}];
+  assert.equal(entries[0].filename, "001.webm");
+  assert.equal(entries[0].blob, blob);
+  await assert.rejects(createStoredZip(entries), /ZIP全体がZIP形式の上限を超えています/);
 });
 
-test("メディアの不一致は容量超過より先に判定し、未準備や不明形式の理由も維持する", () => {
+test("mixed準備は媒体不一致・不明形式を失敗として保持し、未準備結果を保存可能にしない", async t => {
   const selected = [item("animation", "gif")];
-  const prepared = new Map();
-  const plan = new ImageArchivePlan(selected, prepared, "gif");
-  assert.throws(() => plan.retain(selected[0], fakeSizedBlob(0xffffffff, "video/mp4")), {
-    name: "RangeError", message: "選択項目と保存データの形式が一致しません。",
-  });
-  assert.throws(() => plan.retain(selected[0], fakeSizedBlob(0xffffffff, "text/html")), {
-    name: "RangeError", message: "保存するデータの形式を確認できません。",
-  });
-  assert.throws(() => plan.entries(), {name: "RangeError", message: "保存する画像が準備されていません。"});
-  assert.equal(prepared.size, 0);
+  const controller = new AbortController();
+  for (const [bytes, mime] of [[gif, "video/mp4"], ["html", "text/html"]]) {
+    t.mock.method(globalThis, "fetch", async () => new Response(bytes, {headers: {"content-type": mime}}));
+    const work = mixedWork(selected);
+    assert.equal(work.prepared.has(selected[0]), false);
+    await prepareMixedExport(work, {signal: controller.signal, isStopped: () => false, onProgress() {}});
+    assert.equal(work.prepared.has(selected[0]), false, "不一致を準備済みに登録しない");
+    assert.equal(work.failed.size, 1);
+    assert.match(work.failed.get(selected[0]), /形式|種類/);
+  }
 });
 
 test("画面から独立した準備は成功結果を保持し、失敗分だけを再取得して入力順へ戻す", async () => {
   const previousFetch = globalThis.fetch;
   const selected = [item("first", "gif"), item("second", "gif"), item("third", "gif")];
-  const work = {format: "gif", selected, prepared: new Map(), failed: new Map()};
+  const work = mixedWork(selected);
   const requests = [];
   const progress = [];
   let failing = true;
@@ -95,7 +104,6 @@ test("画面から独立した準備は成功結果を保持し、失敗分だ�
   const options = {
     signal: controller.signal,
     isStopped: () => controller.signal.aborted,
-    fallbackFailure: "fallback",
     onProgress: (...value) => progress.push(value)
   };
   globalThis.fetch = async url => {
@@ -105,20 +113,21 @@ test("画面から独立した準備は成功結果を保持し、失敗分だ�
       : new Response(gif, {headers: {"content-type": "image/gif"}});
   };
   try {
-    assert.equal(await prepareImageArchive(work, options), null);
+    await prepareMixedExport(work, options);
     assert.deepEqual([...work.prepared.keys()], [selected[0], selected[2]]);
     assert.deepEqual([...work.failed], [[selected[1], "メディアが見つかりませんでした。"]]);
     assert.deepEqual(progress, [[1, 3], [2, 3], [3, 3]]);
     const retained = work.prepared.get(selected[0]);
     requests.length = progress.length = 0;
     failing = false;
-    const entries = await prepareImageArchive(work, options);
+    await prepareMixedExport(work, options);
+    const entries = selected.map((item, index) => ({filename: indexedExportFilename(index, selected.length, originalMediaType(work.prepared.get(item).blob.type).extension), blob: work.prepared.get(item).blob}));
     assert.deepEqual(requests, [selected[1].url]);
     assert.deepEqual(progress, [[1, 1]]);
     assert.equal(work.failed.size, 0);
     assert.equal(work.prepared.get(selected[0]), retained);
     assert.deepEqual(entries.map(entry => entry.filename), ["001.gif", "002.gif", "003.gif"]);
-    assert.equal(entries[0].blob, retained);
+    assert.equal(entries[0].blob, retained.blob);
   } finally {
     globalThis.fetch = previousFetch;
   }
@@ -133,15 +142,14 @@ test("準備開始直後の中止では通信も進捗通知も開始しない",
     throw new Error("must not fetch");
   };
   try {
-    const work = {format: "gif", selected: [item("first", "gif")], prepared: new Map(), failed: new Map()};
-    const execution = prepareImageArchive(work, {
+    const work = mixedWork([item("first", "gif")]);
+    const execution = prepareMixedExport(work, {
       signal: controller.signal,
       isStopped: () => controller.signal.aborted,
-      fallbackFailure: "fallback",
-      onProgress() { assert.fail("中止した作業は進捗を進めない"); },
+        onProgress() { assert.fail("中止した作業は進捗を進めない"); },
     });
     controller.abort();
-    assert.equal(await execution, null);
+    await execution;
     assert.equal(requested, 0);
     assert.equal(work.prepared.size, 0);
     assert.equal(work.failed.size, 0);
@@ -150,11 +158,16 @@ test("準備開始直後の中止では通信も進捗通知も開始しない",
   }
 });
 
-test('実レスポンスで確認したGIFの推奨形式を単体/ZIP名へ反映し、明示PNGは変えない', () => {
-  const image = {...item('no-extension', 'image'), recommendedFormat: 'gif'};
-  const png = {...item('static.webp', 'image'), recommendedFormat: 'png'};
-  const prepared = new Map([[image,new Blob([gif],{type:'image/gif'})],[png,new Blob(['png'],{type:'image/png'})]]);
-  assert.deepEqual(createImageZipEntries([image,png],prepared,'recommend').map(entry=>entry.filename),['001.gif','002.png']);
-  assert.equal(createImageZipEntries([image],new Map([[image,new Blob(['png'],{type:'image/png'})]]),'png')[0].filename,'001.png');
-  assert.throws(()=>createImageZipEntries([image],new Map([[image,new Blob(['png'],{type:'image/png'})]]),'recommend'),/一致しません/);
+test("mixed推奨の原本経路は実レスポンスのGIF/PNGと元Blobを保持する", async t => {
+  const selected = [item("no-extension", "image"), item("static.webp", "image")];
+  const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  t.mock.method(globalThis, "fetch", async url => new Response(url === selected[0].url ? gif : png, {headers: {"content-type": url === selected[0].url ? "image/gif" : "image/png"}}));
+  const work = {...mixedWork(selected), imageFormat: "recommend", resolvedImageFormat: "original"};
+  await prepareMixedExport(work, {signal: new AbortController().signal, isStopped: () => false, onProgress() {}});
+  assert.equal(work.failed.size, 0);
+  assert.equal(selected[0].recommendedFormat, "gif");
+  assert.deepEqual(selected.map(item => work.prepared.get(item).blob.type), ["image/gif", "image/png"]);
+  assert.deepEqual([...new Uint8Array(await work.prepared.get(selected[0]).blob.arrayBuffer())], [...gif]);
+  assert.deepEqual([...new Uint8Array(await work.prepared.get(selected[1]).blob.arrayBuffer())], [...png]);
+  assert.deepEqual(selected.map((item, index) => indexedExportFilename(index, selected.length, originalMediaType(work.prepared.get(item).blob.type).extension)), ["001.gif", "002.png"]);
 });

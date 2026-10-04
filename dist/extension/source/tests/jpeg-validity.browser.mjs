@@ -17,9 +17,8 @@ test("破損JPEGはPDF・JPGの失敗として再試行し、正常なbaseline/p
   const results = await page.evaluate(async fixtures => {
     const {fetchImage} = await import("/app/media/image-fetch.js");
     const {convertImage} = await import("/app/media/image-format.js");
-    const {toPdfPage} = await import("/app/media/pdf-image.js");
-    const {createPdfExportController} = await import("/app/panel/pdf-export-controller.js");
-    const {createImageExportController} = await import("/app/panel/image-export-controller.js");
+    const {decodeImage} = await import("/app/media/image-decode.js");
+    const {createMixedExportController} = await import("/app/panel/mixed-export-controller.js");
     const bytesByName = new Map(Object.entries(fixtures).map(([name, bytes]) => [name, new Uint8Array(bytes)]));
     const calls = {};
     let repair = false;
@@ -50,7 +49,7 @@ test("破損JPEGはPDF・JPGの失敗として再試行し、正常なbaseline/p
       if (name === "baseline" || name === "progressive" || name === "retry") continue;
       for (const format of ["pdf", "jpg"]) {
         try {
-          if (format === "pdf") await toPdfPage(`https://harvest.test/${name}`);
+          if (format === "pdf") await decodeImage(await fetchImage(`https://harvest.test/${name}`, {}), {});
           else await convertImage(await fetchImage(`https://harvest.test/${name}`, {}), "jpg");
           rejected.push({name, format, failed: false});
         } catch (error) {
@@ -60,7 +59,7 @@ test("破損JPEGはPDF・JPGの失敗として再試行し、正常なbaseline/p
     }
     const originals = [];
     for (const name of ["baseline", "progressive"]) {
-      const pdf = await toPdfPage(`https://harvest.test/${name}`);
+      const pdf = await decodeImage(await fetchImage(`https://harvest.test/${name}`, {}), {});
       const image = await fetchImage(`https://harvest.test/${name}`, {});
       const jpg = await convertImage(image, "jpg");
       originals.push({name, pdf: [...pdf.jpeg], jpg: [...new Uint8Array(await jpg.arrayBuffer())], activeBitmaps});
@@ -82,9 +81,8 @@ test("破損JPEGはPDF・JPGの失敗として再試行し、正常なbaseline/p
       let busy = false;
       const options = {
         getSelectedItems: () => [successful, failed],
-        getFilename: () => "fixture.pdf",
         getZipFilename: () => "fixture.zip",
-        getSourcePage: () => undefined,
+        getPdfFilename: () => "fixture.pdf",
         isBusy: () => busy,
         isDisposed: () => false,
         onBusyChange: value => { busy = value; },
@@ -93,15 +91,15 @@ test("破損JPEGはPDF・JPGの失敗として再試行し、正常なbaseline/p
         onClearSourceUrl() {},
         onScrollToFailures() {},
       };
-      const controller = format === "pdf" ? createPdfExportController(options) : createImageExportController(options);
+      const controller = createMixedExportController(options);
       const beforeGood = calls.baseline ?? 0;
       const beforeFailed = calls.retry ?? 0;
       const beforeDownloads = downloaded.length;
-      await controller.export(format);
+      await controller.export({imageFormat: format, videoFormat: "original", includeSourcePage: false});
       const retained = controller.pending?.prepared.has(successful) && controller.pending?.failed.has(failed);
       const noPartialDownload = downloaded.length === beforeDownloads;
       repair = true;
-      await controller.export(format);
+      await controller.export({imageFormat: format, videoFormat: "original", includeSourcePage: false});
       const artifact = new Uint8Array(await downloaded.at(-1).arrayBuffer());
       const expected = bytesByName.get("baseline");
       const first = artifact.findIndex((_, index) => expected.every((byte, offset) => artifact[index + offset] === byte));

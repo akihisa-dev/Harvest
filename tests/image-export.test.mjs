@@ -29,7 +29,8 @@ const {convertImage} = await import("../dist/extension/app/media/image-format.js
 const {fetchImage} = await import("../dist/extension/app/media/image-fetch.js");
 const {IMAGE_TOO_LARGE_MESSAGE, MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS, imageDimensionsError} = await import("../dist/extension/app/contracts/image-data-contract.js");
 const {encodeJxlPixels} = await import("../dist/extension/app/workers/jxl-codec.js");
-const {createImageExportController, createImageZipEntries} = await import("../dist/extension/app/panel/image-export-controller.js");
+const {createMixedExportController} = await import("../dist/extension/app/panel/mixed-export-controller.js");
+const {indexedExportFilename} = await import("../dist/extension/core/split-export-formats.js");
 const {createStoredZip} = await import("../dist/extension/core/stored-zip.js");
 
 after(() => {
@@ -334,15 +335,11 @@ test("cancelling JXL encoding terminates its worker and releases decoded image m
   }
 });
 
-test("ZIP filenames follow selected order and expand to four digits for 1,200 images", () => {
+test("現行ZIP命名は1,200件で4桁へ拡張し、2件では3桁を保つ", () => {
   const selected = Array.from({length: 1_200}, (_, index) => ({url: `https://example.test/${index}`}));
-  const prepared = new Map(selected.map(item => [item, new Blob([String(item.url)])]));
-  const entries = createImageZipEntries(selected, prepared, "jxl");
-  assert.equal(entries[0].filename, "0001.jxl");
-  assert.equal(entries[1_199].filename, "1200.jxl");
-  const reordered = createImageZipEntries([selected[1], selected[0]], prepared, "jpg");
-  assert.deepEqual(reordered.map(entry => entry.blob), [prepared.get(selected[1]), prepared.get(selected[0])]);
-  assert.deepEqual(reordered.map(entry => entry.filename), ["001.jpg", "002.jpg"]);
+  assert.equal(indexedExportFilename(0, selected.length, "jxl"), "0001.jxl");
+  assert.equal(indexedExportFilename(1_199, selected.length, "jxl"), "1200.jxl");
+  assert.deepEqual([0, 1].map(index => indexedExportFilename(index, 2, "jpg")), ["001.jpg", "002.jpg"]);
 });
 
 test("image export downloads one ordered ZIP, saves only selected images, and retries failures only", async () => {
@@ -370,7 +367,7 @@ test("image export downloads one ordered ZIP, saves only selected images, and re
     const count = (calls.get(url) ?? 0) + 1;
     calls.set(url, count);
     if (url === urls[1] && count === 1) return new Response("missing", {status: 404});
-    return new Response(new Uint8Array([...png, count]), {headers: {"Content-Type": "image/png"}});
+    return new Response(new Uint8Array([...png, 0, 0, 0, 1, 116, 69, 88, 116, count, 0, 0, 0, 0]), {headers: {"Content-Type": "image/png"}});
   };
   globalThis.createImageBitmap = async () => ({width: 1, height: 1, close() {} });
   URL.createObjectURL = blob => {
@@ -379,9 +376,10 @@ test("image export downloads one ordered ZIP, saves only selected images, and re
   };
   URL.revokeObjectURL = () => {};
   try {
-    const controller = createImageExportController({
+    const controller = createMixedExportController({
       getSelectedItems: () => selected,
       getZipFilename: () => "Artwork.zip",
+      getPdfFilename: () => "images.pdf",
       isBusy: () => busy,
       isDisposed: () => false,
       onBusyChange(value) { busy = value; },
@@ -390,20 +388,27 @@ test("image export downloads one ordered ZIP, saves only selected images, and re
       onClearSourceUrl() { clearedSource += 1; },
       onScrollToFailures() {},
     });
-    await controller.export("png");
+    await controller.export({imageFormat: "png", videoFormat: "original", includeSourcePage: false});
     assert.equal(controller.pending.failed.size, 1);
     assert.equal(saved.length, 0, "a partial archive is never downloaded");
-    await controller.export("png");
+    await controller.export({imageFormat: "png", videoFormat: "original", includeSourcePage: false});
     assert.equal(calls.get(urls[0]), 1, "a prepared image is retained for retry");
     assert.equal(calls.get(urls[1]), 2, "only the failed image is fetched again");
     assert.equal(links[0].filename, "Artwork.zip");
     assert.equal(saved[0].type, "application/zip");
     const entries = await readStoredZip(saved[0]);
     assert.deepEqual(entries.map(entry => entry.name), ["001.png", "002.png"]);
-    assert.deepEqual(entries.map(entry => [...entry.data]), [[...png, 1], [...png, 2]]);
+    assert.deepEqual(entries.map(entry => [...entry.data]), [[...png, 0, 0, 0, 1, 116, 69, 88, 116, 1, 0, 0, 0, 0], [...png, 0, 0, 0, 1, 116, 69, 88, 116, 2, 0, 0, 0, 0]]);
     assert.equal(controller.pending, null);
     assert.equal(clearedSource, 1);
     assert.equal(busy, false);
+    selected.reverse();
+    await controller.export({imageFormat: "png", videoFormat: "original", includeSourcePage: false});
+    const reordered = await readStoredZip(saved[1]);
+    assert.deepEqual(reordered.map(entry => entry.name), ["001.png", "002.png"]);
+    assert.equal(calls.get(urls[0]), 2);
+    assert.equal(calls.get(urls[1]), 3);
+    assert.deepEqual(reordered.map(entry => entry.data[16]), [3, 2], "選択順を変更するとBlobもその順で保存する");
   } finally {
     pageDocument.createElement = previousCreateElement;
     globalThis.fetch = previousFetch;
@@ -448,14 +453,14 @@ test("image export prefetches at most three images while converting in input ord
     maximumFetches = Math.max(maximumFetches, activeFetches);
     try {
       if (index < responseGates.length) await responseGates[index].promise;
-      return new Response(new Uint8Array([...pngSignature, index]), {headers: {"Content-Type": "image/png"}});
+      return new Response(new Uint8Array([...pngSignature, 0, 0, 0, 1, 116, 69, 88, 116, index, 0, 0, 0, 0]), {headers: {"Content-Type": "image/png"}});
     } finally {
       activeFetches -= 1;
     }
   };
   globalThis.createImageBitmap = async blob => {
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    const index = bytes[8];
+    const index = bytes[16];
     decoded.push(index);
     activeDecodes += 1;
     maximumDecodes = Math.max(maximumDecodes, activeDecodes);
@@ -475,9 +480,10 @@ test("image export prefetches at most three images while converting in input ord
   };
   URL.revokeObjectURL = () => {};
   try {
-    const controller = createImageExportController({
+    const controller = createMixedExportController({
       getSelectedItems: () => selected,
       getZipFilename: () => "Artwork.zip",
+      getPdfFilename: () => "images.pdf",
       isBusy: () => busy,
       isDisposed: () => false,
       onBusyChange(value) { busy = value; },
@@ -486,7 +492,7 @@ test("image export prefetches at most three images while converting in input ord
       onClearSourceUrl() {},
       onScrollToFailures() {},
     });
-    const work = controller.export("png");
+    const work = controller.export({imageFormat: "png", videoFormat: "original", includeSourcePage: false});
     await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(started, [0, 1, 2], "the first three network requests start together");
     responseGates[0].resolve();
@@ -503,7 +509,7 @@ test("image export prefetches at most three images while converting in input ord
     assert.deepEqual(decoded, [0, 1, 2, 3, 4, 5], "prefetched images are converted in input order");
     const entries = await readStoredZip(saved[0]);
     assert.deepEqual(entries.map(entry => entry.name), ["001.png", "002.png", "003.png", "004.png", "005.png", "006.png"]);
-    assert.deepEqual(entries.map(entry => entry.data[8]), [0, 1, 2, 3, 4, 5]);
+    assert.deepEqual(entries.map(entry => entry.data[16]), [0, 1, 2, 3, 4, 5]);
   } finally {
     pageDocument.createElement = previousCreateElement;
     globalThis.fetch = previousFetch;
@@ -525,9 +531,10 @@ test("aborting an image export stops concurrent fetches and prevents ZIP downloa
   };
   URL.createObjectURL = () => { throw new Error("cancelled export must not create a download"); };
   try {
-    const controller = createImageExportController({
+    const controller = createMixedExportController({
       getSelectedItems: () => selected,
       getZipFilename: () => "Artwork.zip",
+      getPdfFilename: () => "images.pdf",
       isBusy: () => busy,
       isDisposed: () => false,
       onBusyChange(value) { busy = value; },
@@ -536,7 +543,7 @@ test("aborting an image export stops concurrent fetches and prevents ZIP downloa
       onClearSourceUrl() {},
       onScrollToFailures() {},
     });
-    const work = controller.export("png");
+    const work = controller.export({imageFormat: "png", videoFormat: "original", includeSourcePage: false});
     await new Promise(resolve => setImmediate(resolve));
     controller.abort();
     await work;
@@ -601,9 +608,10 @@ test("取消した画像形式の保存は進捗を保ち、作業を捨てて�
       fetchRound = 0;
       downloads.length = 0;
       statuses.length = 0;
-      const controller = createImageExportController({
+      const controller = createMixedExportController({
         getSelectedItems: () => selected,
         getZipFilename: () => `Artwork-${format}.zip`,
+      getPdfFilename: () => "images.pdf",
         isBusy: () => busy,
         isDisposed: () => false,
         onBusyChange(value) { busy = value; },
@@ -613,7 +621,7 @@ test("取消した画像形式の保存は進捗を保ち、作業を捨てて�
         onScrollToFailures() {},
       });
       assert.equal(busy, false, `${format}: fixture starts idle`);
-      const work = controller.export(format);
+      const work = controller.export({imageFormat: format, videoFormat: "original", includeSourcePage: false});
       assert.equal(controller.isRunning, true, `${format}: export begins before cancellation`);
       await new Promise(resolve => setImmediate(resolve));
       const progressWhileSaving = controller.progress;
@@ -626,7 +634,7 @@ test("取消した画像形式の保存は進捗を保ち、作業を捨てて�
       assert.equal(downloads.length, 0, `${format}: cancellation produces no partial archive`);
       assert.ok(statuses.some(([, state]) => state === "info"), `${format}: cancellation is reported as an informational state`);
 
-      await controller.export(format);
+      await controller.export({imageFormat: format, videoFormat: "original", includeSourcePage: false});
       assert.equal(fetchRound, 2, `${format}: re-save starts a fresh fetch`);
       assert.ok(!downloads.includes("application/zip"), `${format}: a single image is saved without a ZIP archive`);
       assert.ok(downloads.includes(`Artwork-${format}.${format === "original" ? "png" : format}`), `${format}: the complete retry downloads the expected filename`);
@@ -655,9 +663,10 @@ test("aborting immediately after an image export starts does not wait for an uns
   };
   URL.createObjectURL = () => { throw new Error("cancelled export must not create a download"); };
   try {
-    controller = createImageExportController({
+    controller = createMixedExportController({
       getSelectedItems: () => selected,
       getZipFilename: () => "Artwork.zip",
+      getPdfFilename: () => "images.pdf",
       isBusy: () => false,
       isDisposed: () => false,
       onBusyChange() {},
@@ -666,7 +675,7 @@ test("aborting immediately after an image export starts does not wait for an uns
       onClearSourceUrl() {},
       onScrollToFailures() {},
     });
-    await controller.export("png");
+    await controller.export({imageFormat: "png", videoFormat: "original", includeSourcePage: false});
     assert.equal(requests, 0, "the scheduled cancellation wins before any fetch starts");
     assert.equal(controller.isRunning, false);
   } finally {

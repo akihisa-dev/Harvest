@@ -4,7 +4,7 @@
 
 ## 保存形式と画像の選択
 
-[split-export-formats.ts](split-export-formats.ts) が現在の画像/動画の独立形式、旧設定の移行、静止画像の判定、連番とPDF出典名の規則を定義します。保存対象は種類で除外せず選択全件です。[export-formats.ts](export-formats.ts) と [media-selection.ts](media-selection.ts) の従来の形式・対象抽出規則は互換呼び出し用に保持しています。
+[split-export-formats.ts](split-export-formats.ts) が画像/動画の独立形式、静止画像判定、連番とPDF出典名を定義します。全選択項目を保存対象とし、形式は毎回recommendで開始します。[export-formats.ts](export-formats.ts) は実使用の形式分類と原本拡張子、[media-selection.ts](media-selection.ts) は取得候補の統合を担当します。
 
 [image-collection.ts](image-collection.ts) は解析結果の画像、選択、初期順と確定した変更後の順序を一箇所で管理し、表示を絞った状態での並べ替えでも非表示画像の位置を保ちます。ドラッグ中のDOM計測は画面側が担当し、座標から挿入位置と一時順序を求める純粋な計算は [image-reorder.ts](image-reorder.ts) が担当します。確定した順序だけを画像集合へ渡します。
 
@@ -38,7 +38,7 @@
 
 ## ZIPの容量管理と組み立て
 
-[image-archive.ts](image-archive.ts) は選択順のファイル名、保存形式と取得内容の照合、ZIPの容量予算を担当します。`ImageArchivePlan` は再試行で残したBlobも容量へ含め、実際の拡張子が判明した段階で管理情報込みの上限を再確認します。通信・変換・進捗表示には依存しません。
+[image-archive.ts](image-archive.ts) は現行mixed経路の容量超過エラーを定義します。[stored-zip.ts](stored-zip.ts) の件数・管理情報込み容量上限をmixed準備と最終ZIP生成で共有し、再試行の保持済みBlobも容量へ含めます。
 
 [stored-zip.ts](stored-zip.ts) は画像Blobをそのまま部品として保持し、CRC確認、キャンセル、ZIP32形式の上限確認を行いながら、圧縮せずにZIPを組み立てます。`storedZipDataLimit()` はファイル名と全ヘッダー・中央ディレクトリ・終端情報を予約して、約4 GiBのZIP32容量以内に収まる画像データの上限を返します。ZIP作成側も画像を読み取る前に合計サイズと件数を確認します。画像データ全体を別の配列へ複製しないため、ZIP作成中の追加メモリを抑えます。
 
@@ -50,4 +50,4 @@ CRC計算の方法は呼び出し元から渡せます。共通処理はWorker�
 
 ## 独立した保存形式
 
-[split-export-formats.ts](split-export-formats.ts)は画像と動画の選択可能な形式、旧共有設定の移行規則、設定比較、元の選択順に対応する連番を定義します。従来の`export-formats.ts`・`media-selection.ts`の種類限定APIは互換呼び出し用に残し、パネルの全件保存は独立形式の規則を使います。静止PDFを集約するときは最初の静止画像の番号を使い、個別GIF・動画を含むZIPの順序を元の選択順に合わせます。
+[split-export-formats.ts](split-export-formats.ts) は独立形式の検証と設定比較、元の選択順に対応する連番を定義します。静止PDFを集約するときは最初の静止画像の番号を使い、個別GIF・動画を含むZIPの順序を元の選択順に合わせます。

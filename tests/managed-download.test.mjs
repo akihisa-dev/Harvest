@@ -105,13 +105,13 @@ async function controllerFixture(t) {
   const previousDocument = globalThis.document;
   globalThis.document = {documentElement: {setAttribute() {}}, body: {dataset: {}}, querySelectorAll: () => []};
   t.after(() => { globalThis.document = previousDocument; });
-  const {createImageExportController} = await import('../dist/extension/app/panel/image-export-controller.js');
+  const {createMixedExportController} = await import('../dist/extension/app/panel/mixed-export-controller.js');
   const selected = Array.from({length: 3}, (_, i) => ({url: `https://files.example.test/${i}.mp4`, sourcePage: 'https://page.example.test/', kind: 'video'}));
   const requests = [];
   t.mock.method(globalThis, 'fetch', async url => { requests.push(url); return new Response(mp4Bytes, {headers: {'content-type': 'video/mp4'}}); });
   let completed = 0;
   const statuses = [];
-  const controller = createImageExportController({getSelectedItems: () => selected, getZipFilename: () => 'batch.zip', isBusy: () => false,
+  const controller = createMixedExportController({getSelectedItems: () => selected, getZipFilename: () => 'batch.zip', getPdfFilename: () => 'batch.pdf', isBusy: () => false,
     isDisposed: () => false, onBusyChange() {}, onStatus: (...args) => statuses.push(args), onCloseViewer() {}, onClearSourceUrl() {},
     onCompleted: () => completed++, onScrollToFailures() {}});
   return {fake, controller, requests, statuses, get completed() { return completed; }};
@@ -119,7 +119,7 @@ async function controllerFixture(t) {
 
 for (const stop of ['interrupt', 'abort']) test(`個別MP4の${stop}後は保存済み分を重複させず未保存分だけ再試行する`, async t => {
   const fixture = await controllerFixture(t), {fake, controller} = fixture;
-  const execution = controller.export('mp4');
+  const execution = controller.export({imageFormat: 'original', videoFormat: 'mp4', includeSourcePage: false});
   await tick();
   assert.equal(fake.starts.length, 1);
   assert.equal(fixture.completed, 0);
@@ -132,7 +132,7 @@ for (const stop of ['interrupt', 'abort']) test(`個別MP4の${stop}後は保存
   assert.equal(fixture.completed, 0);
   assert.equal(controller.pending.failed.size, 2);
   assert.equal(fixture.statuses.some(status => status[1] === 'success'), false);
-  const retry = controller.export('mp4');
+  const retry = controller.export({imageFormat: 'original', videoFormat: 'mp4', includeSourcePage: false});
   await tick();
   assert.equal(fake.starts[2].filename, 'batch_002.mp4');
   fake.finish(3, 'complete');
@@ -149,7 +149,7 @@ for (const stop of ['interrupt', 'abort']) test(`個別MP4の${stop}後は保存
 test('MP4の準備に失敗した場合は保存を一件も開始しない', async t => {
   const fixture = await controllerFixture(t);
   t.mock.method(globalThis, 'fetch', async () => new Response('broken', {headers: {'content-type': 'video/mp4'}}));
-  await fixture.controller.export('mp4');
+  await fixture.controller.export({imageFormat: 'original', videoFormat: 'mp4', includeSourcePage: false});
   assert.equal(fixture.fake.starts.length, 0);
   assert.equal(fixture.completed, 0);
   assert.equal(fixture.controller.pending.failed.size, 3);

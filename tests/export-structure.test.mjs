@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const {loadExportPreferences, saveExportFormat, saveSourcePagePreference} = await import("../dist/extension/app/browser/export-preferences.js");
-const {deriveExportViewState, exportFileBaseName, imageFilename, createSourcePreview, createExportPresentation} = await import("../dist/extension/app/panel/export-presentation.js");
+const {saveSourcePagePreference} = await import("../dist/extension/app/browser/export-preferences.js");
+const {exportFileBaseName, imageFilename, createSourcePreview, createExportPresentation} = await import("../dist/extension/app/panel/export-presentation.js");
+const {loadSplitExportPreferences} = await import("../dist/extension/app/browser/split-export-preferences.js");
+const {createSplitExportSession} = await import("../dist/extension/app/panel/split-export-session.js");
 const {createExportLifecycle} = await import("../dist/extension/app/panel/export-lifecycle.js");
 
 function memoryStorage(entries = []) {
@@ -14,88 +16,47 @@ function memoryStorage(entries = []) {
   };
 }
 
-test("export preferences use safe defaults and persist only supported choices", () => {
-  assert.deepEqual(loadExportPreferences(memoryStorage()), {format: "recommend", includeSourcePage: false});
-  assert.deepEqual(loadExportPreferences(memoryStorage([
-    ["harvest.exportFormat", "jxl"],
-    ["harvest.includeSourcePage", "true"],
-  ])), {format: "jxl", includeSourcePage: true});
-  assert.deepEqual(loadExportPreferences(memoryStorage([
-    ["harvest.exportFormat", "unsupported"],
-    ["harvest.includeSourcePage", "yes"],
-  ])), {format: "recommend", includeSourcePage: false});
-
-  const storage = memoryStorage();
-  assert.equal(saveExportFormat("png", storage), true);
-  assert.equal(saveSourcePagePreference(true, storage), true);
-  assert.deepEqual(loadExportPreferences(storage), {format: "png", includeSourcePage: true});
-  assert.equal(saveSourcePagePreference(false, storage), true);
-  assert.equal(loadExportPreferences(storage).includeSourcePage, false);
+test("出典設定だけを保存し、両形式は常にrecommendで初期化する", () => {
+  const entries = [["harvest.exportFormat", "jxl"], ["harvest.imageExportFormat", "png"], ["harvest.videoExportFormat", "mp4"]];
+  const storage = memoryStorage(entries);
+  const reads = [], writes = [];
+  const get = storage.getItem, set = storage.setItem;
+  storage.getItem = key => {reads.push(key); return get(key);};
+  storage.setItem = (key,value) => {writes.push([key,String(value)]); set(key,value);};
+  const expected = {imageFormat:"recommend", videoFormat:"recommend", includeSourcePage:false};
+  assert.deepEqual(loadSplitExportPreferences(storage), expected);
+  assert.deepEqual(reads, ["harvest.includeSourcePage"]);
+  assert.equal(saveSourcePagePreference(true,storage),true);
+  assert.deepEqual(loadSplitExportPreferences(storage), {...expected,includeSourcePage:true});
+  assert.equal(saveSourcePagePreference(false,storage),true);
+  assert.deepEqual(loadSplitExportPreferences(storage), expected);
+  assert.deepEqual(writes, [["harvest.includeSourcePage","true"],["harvest.includeSourcePage","false"]]);
+  assert.deepEqual([...storage.values].slice(0,3),entries);
+  const unavailable = {getItem(){throw Error("unavailable");},setItem(){throw Error("unavailable");}};
+  assert.deepEqual(loadSplitExportPreferences(unavailable),expected);
+  assert.equal(saveSourcePagePreference(true,unavailable),false);
 });
-
-test("MP4・GIFの保存設定を読み取り、旧設定の内容は書き換えない", () => {
-  for (const format of ["original", "recommend", "mp4", "gif"]) {
-    const storage = memoryStorage();
-    assert.equal(saveExportFormat(format, storage), true);
-    assert.equal(loadExportPreferences(storage).format, format);
-  }
-  const legacy = memoryStorage([["harvest.exportFormat", "original"]]);
-  assert.equal(loadExportPreferences(legacy).format, "original");
-  assert.equal(legacy.values.get("harvest.exportFormat"), "original");
-});
-
-test("unavailable preference storage falls back cleanly and reports writes that fail", () => {
-  const unreadable = {getItem() { throw new Error("storage unavailable"); }, setItem() { throw new Error("storage unavailable"); } };
-  assert.deepEqual(loadExportPreferences(unreadable), {format: "recommend", includeSourcePage: false});
-  assert.equal(saveExportFormat("jxl", unreadable), false);
-  assert.equal(saveSourcePagePreference(true, unreadable), false);
-});
-
-function pending(format, failed = new Map()) {
-  return {format, selected: [image], prepared: new Map(), failed};
-}
 
 const image = {url: "https://example.test/image.png", sourcePage: "https://example.test/gallery"};
-function viewState(overrides = {}) {
-  return deriveExportViewState({
-    format: "pdf",
-    includeSourcePage: false,
-    selected: [],
-    completed: null,
-    pdfPending: null,
-    imagePending: null,
-    pdfRunning: false,
-    imageRunning: false,
-    pdfProgress: "",
-    imageProgress: "",
-    ...overrides,
-  });
-}
-
-test("export presentation follows empty, ready, running, retry, saved, and format compatibility states", () => {
-  assert.equal(viewState().phase, "empty");
-  assert.equal(viewState({selected: [image]}).phase, "ready");
-  const pdfWork = pending(undefined, new Map([[image, "failed"]]));
-  assert.deepEqual(viewState({selected: [image], pdfRunning: true, pdfProgress: "1 / 2", pdfPending: pdfWork}), {
-    phase: "running", pending: pdfWork, progress: "1 / 2",
-  });
-  assert.deepEqual(viewState({selected: [image], pdfPending: pdfWork}), {phase: "retry-required", pending: pdfWork, progress: ""});
-  assert.equal(viewState({selected: [image], completed: {format: "pdf", selected: [image], includeSourcePage: false}}).phase, "saved");
-  const pdfCompleted = {format: "pdf", selected: [image], includeSourcePage: false};
-  assert.equal(viewState({selected: [image], completed: pdfCompleted, includeSourcePage: true}).phase, "ready",
-    "changing the source page setting after a PDF save requires another save");
-  assert.equal(viewState({selected: [image], completed: {...pdfCompleted, includeSourcePage: true}, includeSourcePage: true}).phase, "saved",
-    "a PDF is saved again when its current source page setting matches");
-  assert.equal(viewState({format: "jpg", selected: [image], completed: {...pdfCompleted, format: "jpg"}, includeSourcePage: true}).phase, "saved",
-    "source page setting does not affect image archive save state");
-  assert.equal(viewState({selected: [image], completed: {format: "jpg", selected: [image]}}).phase, "ready");
-  assert.equal(viewState({selected: [image], completed: {format: "pdf", selected: [{...image}]}}).phase, "ready",
-    "a result is saved only while the same image objects remain selected in the same order");
-
-  const pngWork = pending("png", new Map([[image, "failed"]]));
-  assert.equal(viewState({format: "jpg", selected: [image], imagePending: pngWork}).phase, "ready",
-    "pending image work for a different format must not block the selected format");
-  assert.equal(viewState({format: "png", selected: [image], imagePending: pngWork}).phase, "retry-required");
+test("現行splitのempty/ready/running/retry/savedと設定・同一順序を確認する", async () => {
+  let selected=[],finish;
+  const controller={pending:null,isRunning:false,progress:"",clear(){this.pending=null;},abort(){},discardIfSelectionChanged(){return false;},
+    async export(){this.isRunning=true;await new Promise(resolve=>finish=resolve);this.isRunning=false;}};
+  const session=createSplitExportSession({imageFormat:"pdf",videoFormat:"recommend",includeSourcePage:false,
+    getSelectedItems:()=>selected,getController:()=>controller,isBusy:()=>false});
+  assert.equal(session.state.view.phase,"empty");selected=[image];assert.equal(session.state.view.phase,"ready");
+  const pending={selected:[image],imageFormat:"pdf",videoFormat:"recommend",includeSourcePage:false,resolvedImageFormat:"pdf",failed:new Map([[image,"failed"]])};
+  controller.pending=pending;controller.progress="1 / 2";
+  const running=session.start();
+  assert.deepEqual(session.state.view,{phase:"running",pending,progress:"1 / 2"});finish();await running;
+  assert.deepEqual(session.state.view,{phase:"retry-required",pending,progress:""});
+  session.setFormat("png");assert.equal(controller.pending,null);assert.equal(session.state.view.phase,"ready");
+  const saved=session.start();session.complete();finish();await saved;assert.equal(session.state.view.phase,"saved");
+  selected=[{...image}];assert.equal(session.state.view.phase,"ready","同じURLでも別の項目参照なら保存済みでない");
+  selected=[image];assert.equal(session.state.view.phase,"saved");
+  session.setIncludeSourcePage(true);assert.equal(session.state.view.phase,"ready","両形式・出典を一つの現行スナップショットで管理する");
+  const again=session.start();session.complete();finish();await again;assert.equal(session.state.view.phase,"saved");
+  session.setVideoFormat("original");assert.equal(session.state.view.phase,"ready");
 });
 
 test("file labels and source preview safely represent URLs and XML text", () => {
@@ -119,7 +80,7 @@ test("file labels and source preview safely represent URLs and XML text", () => 
 
 test("出力名・画像一覧の出典・閲覧ページが同じ選択順序と形式を反映する", () => {
   let title = "Title / test";
-  let selection = {format: "pdf", includeSourcePage: true, selected: [image, {...image, url: "https://example.test/second.png"}]};
+  let selection = {format: "pdf", videoFormat: "recommend", includeSourcePage: true, selected: [image, {...image, url: "https://example.test/second.png"}]};
   const presentation = createExportPresentation({
     getTitle: () => title,
     getSelection: () => selection,
@@ -134,14 +95,27 @@ test("出力名・画像一覧の出典・閲覧ページが同じ選択順序�
   selection = {...selection, selected: [...selection.selected].reverse()};
   assert.equal(presentation.viewerPages[0], selection.selected[0]);
   assert.equal(presentation.viewerPages.at(-1).sourcePage, selection.selected[0].sourcePage);
-  for (const format of ["jpg", "png", "jxl", "gif", "mp4"]) {
+  for (const format of ["jpg", "png", "jxl"]) {
     selection = {...selection, format};
     assert.equal(presentation.sourcePreview, null, format);
     assert.deepEqual(presentation.viewerPages, selection.selected, format);
-    assert.equal(presentation.resultFilename, format === "mp4" ? "Title _ test_001.mp4" : "Title _ test.zip", format);
+    assert.equal(presentation.resultFilename, "Title _ test.zip", format);
     selection = {...selection, selected: [image]};
     assert.equal(presentation.resultFilename, `Title _ test.${format}`, format);
     selection = {...selection, selected: [image, {...image}]};
+  }
+  for (const [item, format, extension] of [
+    [{...image,url:"https://example.test/animation.gif",kind:"gif"},"png","gif"],
+    [{...image,url:"https://example.test/movie.mp4",kind:"video"},"pdf","mp4"],
+  ]) {
+    selection={...selection,format,videoFormat:"recommend",selected:[item]};
+    assert.equal(presentation.resultFilename,`Title _ test.${extension}`);
+    assert.equal(presentation.sourcePreview,null);
+    assert.deepEqual(presentation.viewerPages,selection.selected);
+    selection={...selection,selected:[item,{...item}]};
+    assert.equal(presentation.resultFilename,extension==="mp4"?"Title _ test_001.mp4":"Title _ test.zip");
+    assert.equal(presentation.sourcePreview,null);
+    assert.deepEqual(presentation.viewerPages,selection.selected);
   }
   title = "...";
   selection = {...selection, format: "pdf", selected: []};

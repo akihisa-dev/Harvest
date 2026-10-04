@@ -199,8 +199,6 @@ export function createPanelApplication(elements: AppElements) {
     imageList: imageListView,
     viewer: viewerController,
     previews: imagePreviewLoader,
-    getPreferredFormat: () => loadSplitExportPreferences().imageFormat,
-    preserveFormat: true,
     clearAnalyzedUrl: collectionController.clearAnalyzedUrl,
     resetScan: () => scanSessionController.reset(),
     fallbackTitle: t("imageFallback"),

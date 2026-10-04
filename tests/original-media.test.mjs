@@ -20,7 +20,9 @@ globalThis.document = {
 };
 
 const {fetchOriginalMedia} = await import("../dist/extension/app/media/media-fetch.js");
-const {createImageExportController, createImageZipEntries} = await import("../dist/extension/app/panel/image-export-controller.js");
+const {createMixedExportController} = await import("../dist/extension/app/panel/mixed-export-controller.js");
+const {originalMediaType, mediaTypeMatchesKind} = await import("../dist/extension/core/media-types.js");
+const {indexedExportFilename} = await import("../dist/extension/core/split-export-formats.js");
 
 function fakeResponse(bytes, contentType, extraHeaders = {}) {
   return new Response(bytes, {headers: {"content-type": contentType, ...extraHeaders}});
@@ -81,9 +83,10 @@ test("original media preserves GIF and MP4 bytes with MIME-based ZIP extensions"
   };
   URL.revokeObjectURL = () => {};
   try {
-    const controller = createImageExportController({
+    const controller = createMixedExportController({
       getSelectedItems: () => items,
       getZipFilename: () => "Original.zip",
+      getPdfFilename: () => "images.pdf",
       isBusy: () => false,
       isDisposed: () => false,
       onBusyChange() {},
@@ -92,7 +95,7 @@ test("original media preserves GIF and MP4 bytes with MIME-based ZIP extensions"
       onClearSourceUrl() {},
       onScrollToFailures() {},
     });
-    await controller.export("original");
+    await controller.export({imageFormat: "original", videoFormat: "original", includeSourcePage: false});
     assert.equal(maximumFetches, 1, "original downloads use one in-flight request to limit memory");
     assert.equal(archives.length, 1);
     assert.equal(links[0].download, "Original.zip");
@@ -184,17 +187,19 @@ test("original media honors timeout and caller cancellation", async () => {
   }
 });
 
-test("ZIP extensions follow recognized MIME types and reject unknown or mismatched types", () => {
-  const image = {url: "https://example.test/unknown", sourcePage: "https://example.test", selected: true};
-  assert.equal(createImageZipEntries([image], new Map([[image, new Blob(["x"], {type: "image/avif"})]]), "original")[0].filename, "001.avif");
-  assert.throws(() => createImageZipEntries([image], new Map([[image, new Blob(["x"], {type: "text/html"})]]), "original"), /形式を確認できません/);
-  const gif = {...image, kind: "gif"};
-  const video = {...image, kind: "video"};
-  assert.equal(createImageZipEntries([gif], new Map([[gif, new Blob(["gif"], {type: "image/gif"})]]), "gif")[0].filename, "001.gif");
-  assert.equal(createImageZipEntries([video], new Map([[video, new Blob(["mp4"], {type: "video/mp4"})]]), "mp4")[0].filename, "001.mp4");
-  assert.throws(() => createImageZipEntries([gif], new Map([[gif, new Blob(["mp4"], {type: "video/mp4"})]]), "gif"), /形式が一致しません/);
-  assert.throws(() => createImageZipEntries([video], new Map([[video, new Blob(["gif"], {type: "image/gif"})]]), "mp4"), /形式が一致しません/);
-  assert.throws(() => createImageZipEntries([gif], new Map([[gif, new Blob(["mp4"], {type: "video/mp4"})]]), "original"), /形式が一致しません/);
+test("現行取得境界は不明MIMEと媒体不一致を拒否し、検証済みMIMEから保存名を決める", async () => {
+  for (const [mime, extension] of [["image/avif", "avif"], ["image/gif", "gif"], ["video/mp4", "mp4"]]) {
+    assert.equal(indexedExportFilename(0, 1, originalMediaType(mime).extension), `001.${extension}`);
+  }
+  assert.equal(originalMediaType("text/html"), undefined);
+  assert.equal(mediaTypeMatchesKind("gif", "video"), false);
+  assert.equal(mediaTypeMatchesKind("video", "gif"), false);
+  try {
+    for (const [kind, bytes, mime] of [["image", "x", "text/html"], ["gif", mp4Bytes, "video/mp4"], ["video", gifBytes, "image/gif"]]) {
+      globalThis.fetch = async () => fakeResponse(bytes, mime);
+      await assert.rejects(fetchOriginalMedia("https://example.test/unknown", kind), error => error.kind === "invalid-image", `${kind}: ${mime}`);
+    }
+  } finally {globalThis.fetch = previous.fetch;}
 });
 
 test("MP4 export retains an unconvertible WebM as a retryable failure without creating an archive", async () => {
@@ -206,9 +211,10 @@ test("MP4 export retains an unconvertible WebM as a retryable failure without cr
     archives.push(blob);
     return "blob:archive";
   };
-  const controller = createImageExportController({
+  const controller = createMixedExportController({
     getSelectedItems: () => [item],
     getZipFilename: () => "Video.zip",
+      getPdfFilename: () => "images.pdf",
     isBusy: () => false,
     isDisposed: () => false,
     onBusyChange() {},
@@ -217,7 +223,7 @@ test("MP4 export retains an unconvertible WebM as a retryable failure without cr
     onClearSourceUrl() {},
     onScrollToFailures() {},
   });
-  await controller.export("mp4");
+  await controller.export({imageFormat: "original", videoFormat: "mp4", includeSourcePage: false});
   assert.equal(archives.length, 0);
   assert.equal(controller.pending?.failed.has(item), true);
   assert.match(controller.pending?.failed.get(item) ?? "", /MP4へ変換できません/);

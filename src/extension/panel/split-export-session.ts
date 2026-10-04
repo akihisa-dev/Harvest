@@ -1,10 +1,18 @@
 import type {ImageItem} from "../../core/images.js";
-import type {ExportFormat} from "../../core/export-formats.js";
-import {isImageExportFormat, splitSettingsMatch, type SplitExportSettings, type VideoExportFormat} from "../../core/split-export-formats.js";
-import type {ExportSessionState} from "./export-session.js";
+import {isImageExportFormat, splitSettingsMatch, type SplitExportSettings, type ImageExportFormat, type VideoExportFormat} from "../../core/split-export-formats.js";
+import type {ExportViewState} from "./export-presentation.js";
 import type {createMixedExportController} from "./mixed-export-controller.js";
 import {selectionsMatch} from "./export-lifecycle.js";
 import {resolveImageExportFormat, type ResolvedImageExportFormat} from "../../core/export-recommendations.js";
+
+export interface ExportSessionState {
+  readonly format: ImageExportFormat;
+  readonly resolvedImageFormat: ResolvedImageExportFormat;
+  readonly videoFormat: VideoExportFormat;
+  readonly includeSourcePage: boolean;
+  readonly selected: readonly ImageItem[];
+  readonly view: ExportViewState;
+}
 
 type Controller = ReturnType<typeof createMixedExportController>;
 interface Options extends SplitExportSettings {
@@ -44,7 +52,7 @@ export function createSplitExportSession(options: Options) {
     get videoFormat() {return settings.videoFormat;},
     get includeSourcePage() {return settings.includeSourcePage;},
     get selectedItems() {return options.getSelectedItems();},
-    get state(): ExportSessionState & {readonly videoFormat: VideoExportFormat} {
+    get state(): ExportSessionState {
       const selected=options.getSelectedItems(),controller=options.getController(),pending=controller?.pending??null;
       const saved=completed!==null&&splitSettingsMatch(settings,completed)&&selectionsMatch(selected,completed.selected);
       const view: ExportSessionState["view"] = controller?.isRunning ? {phase:"running",pending,progress:controller.progress}
@@ -53,7 +61,7 @@ export function createSplitExportSession(options: Options) {
         : {phase:selected.length ? "ready" : "empty",pending:null,progress:""};
       return {format:settings.imageFormat,resolvedImageFormat:resolvedFormat(),videoFormat:settings.videoFormat,includeSourcePage:settings.includeSourcePage,selected,view};
     },
-    setFormat(format: ExportFormat): void {
+    setFormat(format: ImageExportFormat): void {
       if (!isImageExportFormat(format)) throw new Error("画像の保存形式が不正です。");
       update({...settings,imageFormat:format});
     },

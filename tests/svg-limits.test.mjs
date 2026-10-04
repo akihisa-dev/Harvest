@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {fetchImage} from "../dist/extension/app/media/image-fetch.js";
 import {convertImage} from "../dist/extension/app/media/image-format.js";
-import {toPdfPage} from "../dist/extension/app/media/pdf-image.js";
+import {decodeImage} from "../dist/extension/app/media/image-decode.js";
 import {createImagePreviewLoader} from "../dist/extension/app/media/image-preview.js";
 
 for (const [width,height] of [[16385,1],[8001,8000]]) {
@@ -15,7 +15,7 @@ for (const [width,height] of [[16385,1],[8001,8000]]) {
     t.after(() => { if(previous === undefined) delete globalThis.createImageBitmap; else globalThis.createImageBitmap=previous; });
     t.mock.method(URL, "createObjectURL", () => {urls++; return "blob:test";});
     await assert.rejects(fetchImage("https://example.com/uploads/a.svg", {}), /大きすぎる/);
-    await assert.rejects(toPdfPage("https://example.com/uploads/a.svg"), /大きすぎる/);
+    await assert.rejects(decodeImage({kind:"bitmap", blob:new Blob([svg], {type:"image/svg+xml"})}, {}), /大きすぎる/);
     for (const format of ["jpg","png","jxl"]) await assert.rejects(convertImage({kind:"bitmap",blob:new Blob([svg],{type:"image/svg+xml"})},format), /大きすぎる/);
     const image = {dataset:{},isConnected:true,loading:"",getAttribute(){return null;},removeAttribute(){},set src(value){srcSets++;}};
     const loader = createImagePreviewLoader();

@@ -935,13 +935,12 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
 
 test("解析結果の公開とリセットで出典・形式・表示資源の寿命をそろえる", async () => {
   const {createResultSession} = await import("../dist/extension/app/panel/result-session.js");
-  const {createExportSession} = await import("../dist/extension/app/panel/export-session.js");
+  const {createSplitExportSession} = await import("../dist/extension/app/panel/split-export-session.js");
   const collection = new ImageCollection();
-  const session = createExportSession({
-    format: "pdf", includeSourcePage: true,
+  const session = createSplitExportSession({
+    imageFormat: "pdf", videoFormat: "original", includeSourcePage: true,
     getSelectedItems: () => collection.selectedItems,
-    getPdfController: () => null,
-    getImageController: () => null,
+    getController: () => null,
     isBusy: () => false,
   });
   let committedSource = null;
@@ -952,7 +951,6 @@ test("解析結果の公開とリセットで出典・形式・表示資源の�
   let videoSizesCleared = 0;
   let analyzedUrl = "old";
   let scanState = "results";
-  let preferredFormat = "jxl";
   const results = createResultSession({
     collection,
     exportSession: session,
@@ -973,7 +971,6 @@ test("解析結果の公開とリセットで出典・形式・表示資源の�
       clearCurrentPage() { viewerPage = null; },
     },
     previews: {clear() { previewsCleared++; }},
-    getPreferredFormat: () => preferredFormat,
     clearAnalyzedUrl() { analyzedUrl = null; },
     resetScan() { scanState = "initial"; },
     fallbackTitle: "Images",
@@ -981,7 +978,8 @@ test("解析結果の公開とリセットで出典・形式・表示資源の�
   const url = "https://example.test/clip.mp4";
   collection.replace([url], "https://example.test/page", [{url, kind: "video"}]);
   results.commit("New title", null, "https://example.test/page");
-  assert.equal(session.format, "mp4", "結果内の動画形式を初期選択する");
+  assert.equal(session.format, "pdf", "再解析で画像の選択形式を維持する");
+  assert.equal(session.videoFormat, "original", "再解析で動画の選択形式を維持する");
   assert.equal(committedSource, "https://example.test/page");
   assert.equal(visibleGroup, null);
   assert.equal(viewerOpen, false);
@@ -996,10 +994,12 @@ test("解析結果の公開とリセットで出典・形式・表示資源の�
   assert.equal(analyzedUrl, null);
   assert.equal(scanState, "initial");
   assert.equal(session.includeSourcePage, true, "結果のリセットでは保存設定を変更しない");
-  assert.equal(session.format, "mp4");
-  preferredFormat = "png";
+  assert.equal(session.format, "pdf");
+  session.setFormat("png");
+  session.setVideoFormat("mp4");
   collection.replace(["https://example.test/image.png"], "https://example.test/new");
   results.commit("New title", "group", "https://example.test/new");
-  assert.equal(session.format, "png", "次の結果で読み直した保存形式を適用する");
+  assert.equal(session.format, "png", "パネル内で変更した画像形式を次の解析でも維持する");
+  assert.equal(session.videoFormat, "mp4", "パネル内で変更した動画形式を次の解析でも維持する");
   assert.equal(committedSource, "https://example.test/new");
 });

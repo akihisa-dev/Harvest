@@ -15,11 +15,6 @@ export function isImageExportFormat(value: unknown): value is ImageExportFormat 
 export function isVideoExportFormat(value: unknown): value is VideoExportFormat {
   return videoExportFormats.some(format => format === value);
 }
-/** Migrate the old shared choice without excluding either media kind. */
-export function migrateExportFormats(value: unknown): Pick<SplitExportSettings, "imageFormat" | "videoFormat"> {
-  if (value === "original" || value === "recommend") return {imageFormat: value, videoFormat: value};
-  return {imageFormat: isImageExportFormat(value) ? value : "recommend", videoFormat: value === "mp4" ? "mp4" : "recommend"};
-}
 export function isStillImage(item: ImageItem): boolean {
   return item.kind !== "video" && item.kind !== "gif" && item.recommendedFormat !== "gif";
 }

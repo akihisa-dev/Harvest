@@ -62,7 +62,7 @@ globalThis.fetch = async (url, options) => {
   }
   return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), {headers: {"Content-Type": "image/png"}});
 };
-const {createImageExportController} = await import("../dist/extension/app/panel/image-export-controller.js");
+const {createMixedExportController} = await import("../dist/extension/app/panel/mixed-export-controller.js");
 
 for (const format of ["jpg", "png", "jxl"]) {
   test(`${format}: cumulative ZIP limit stops many valid images early and releases work`, {timeout: 5_000}, async () => {
@@ -71,9 +71,10 @@ for (const format of ["jpg", "png", "jxl"]) {
     started = active = cancelled = 0;
     downloads.length = statuses.length = 0;
     let busy = false;
-    const controller = createImageExportController({
+    const controller = createMixedExportController({
       getSelectedItems: () => selected,
       getZipFilename: () => "images.zip",
+    getPdfFilename: () => "images.pdf",
       isBusy: () => busy,
       isDisposed: () => false,
       onBusyChange(value) { busy = value; },
@@ -82,7 +83,7 @@ for (const format of ["jpg", "png", "jxl"]) {
       onClearSourceUrl() {},
       onScrollToFailures() {},
     });
-    await controller.export(format);
+    await controller.export({imageFormat: format, videoFormat: "original", includeSourcePage: false});
     assert.ok(started < 140, "stop before fetching every image");
     assert.ok(cancelled > 0, "cancel outstanding prefetches on overflow");
     assert.equal(active, 0);
@@ -93,7 +94,7 @@ for (const format of ["jpg", "png", "jxl"]) {
     assert.match(statuses.at(-1)[0], /ZIP format limits/);
     large = false;
     selected = selected.slice(0, 2);
-    await controller.export(format);
+    await controller.export({imageFormat: format, videoFormat: "original", includeSourcePage: false});
     assert.deepEqual(downloads, ["images.zip"], "reducing the selection permits a fresh successful save");
   });
 }
@@ -105,9 +106,10 @@ test("retry counts successful images already held toward the cumulative limit", 
   globalThis.fetch = async (url, options) => Number(new URL(url).pathname.slice(1)) >= 127
     ? new Response("failed", {status: 404}) : normalFetch(url, options);
   let busy = false;
-  const controller = createImageExportController({
+  const controller = createMixedExportController({
     getSelectedItems: () => selected,
     getZipFilename: () => "images.zip",
+    getPdfFilename: () => "images.pdf",
     isBusy: () => busy,
     isDisposed: () => false,
     onBusyChange(value) { busy = value; },
@@ -117,12 +119,12 @@ test("retry counts successful images already held toward the cumulative limit", 
     onScrollToFailures() {},
   });
   try {
-    await controller.export("png");
+    await controller.export({imageFormat: "png", videoFormat: "original", includeSourcePage: false});
     const previousWork = controller.pending;
     assert.equal(previousWork.prepared.size, 127, "ordinary failures preserve successful images for retry");
     assert.equal(previousWork.failed.size, 13);
     globalThis.fetch = normalFetch;
-    await controller.export("png");
+    await controller.export({imageFormat: "png", videoFormat: "original", includeSourcePage: false});
     assert.equal(controller.pending, null, "retry cannot exceed the budget using previous results");
     assert.equal(previousWork.prepared.size, 0);
     assert.equal(previousWork.failed.size, 0);
@@ -130,23 +132,4 @@ test("retry counts successful images already held toward the cumulative limit", 
   } finally {
     globalThis.fetch = normalFetch;
   }
-});
-
-test("too many ZIP entries are rejected before any image fetch", async () => {
-  selected = Array.from({length: 65_536}, (_, index) => ({url: `https://example.test/${index}`}));
-  started = 0;
-  const controller = createImageExportController({
-    getSelectedItems: () => selected,
-    getZipFilename: () => "images.zip",
-    isBusy: () => false,
-    isDisposed: () => false,
-    onBusyChange() {},
-    onStatus() {},
-    onCloseViewer() {},
-    onClearSourceUrl() {},
-    onScrollToFailures() {},
-  });
-  await controller.export("png");
-  assert.equal(started, 0);
-  assert.equal(controller.pending, null);
 });

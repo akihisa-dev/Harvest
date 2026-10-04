@@ -1,47 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {availableExportFormats, initialExportFormat, restoredExportFormat, isExportFormat, originalItemExtension, recommendedItemFormat} from "../dist/extension/core/export-formats.js";
-import {createImageZipEntries} from "../dist/extension/core/image-archive.js";
-import {saveFilesIndividually} from "../dist/extension/core/export-files.js";
-import {mediaExportSelection} from "../dist/extension/core/media-selection.js";
-
+import {originalItemExtension} from "../dist/extension/core/export-formats.js";
+import {imageExportFormats, videoExportFormats, isImageExportFormat, isVideoExportFormat} from "../dist/extension/core/split-export-formats.js";
+import {resolveImageExportFormat} from "../dist/extension/core/export-recommendations.js";
+import {individualFilename} from "../dist/extension/core/export-files.js";
 const image = {url: "https://example.test/image.jpg", sourcePage: "https://example.test/", selected: true};
 const gif = {...image, url: "https://example.test/image.gif", kind: "gif"};
 const video = {...image, url: "https://example.test/video.webm", kind: "video"};
 
-test("保存候補・自動選択・対象の抽出は同じ種類の契約を使い、混在しても順序を保つ", () => {
-  for (const [items, formats, initial] of [
-    [[], ["pdf", "jpg", "png", "jxl"], "jxl"],
-    [[image], ["pdf", "jpg", "png", "jxl"], "jxl"],
-    [[gif], ["gif"], "gif"],
-    [[video], ["mp4"], "mp4"],
-    [[gif, image], ["gif", "pdf", "jpg", "png", "jxl"], "gif"],
-    [[gif, video, image], ["mp4", "gif", "pdf", "jpg", "png", "jxl"], "mp4"],
-  ]) {
-    assert.deepEqual(availableExportFormats(items), ["original", "recommend", ...formats]);
-    assert.equal(initialExportFormat(items, "jxl"), initial);
-    for (const format of formats) {
-      const kind = format === "mp4" ? "video" : format === "gif" ? "gif" : "image";
-      assert.deepEqual(mediaExportSelection(items, format), items.filter(item => (item.kind ?? "image") === kind));
-    }
+test("画像・動画の独立した形式候補と受理値が一致し、他媒体の選択を除外しない", () => {
+  assert.deepEqual(imageExportFormats, ["original", "recommend", "pdf", "jpg", "png", "jxl"]);
+  assert.deepEqual(videoExportFormats, ["original", "recommend", "mp4"]);
+  for (const value of [...imageExportFormats, ...videoExportFormats, "gif", "webm", "PDF", "", null, undefined, 1]) {
+    assert.equal(isImageExportFormat(value), imageExportFormats.includes(value));
+    assert.equal(isVideoExportFormat(value), videoExportFormats.includes(value));
   }
-  assert.deepEqual(mediaExportSelection([video, image, gif], "original"), [video, image, gif]);
-  assert.deepEqual(mediaExportSelection([video, image, gif], "recommend"), [video, image, gif]);
-  assert.deepEqual(mediaExportSelection([video, image, gif], "legacy-unknown"), [image]);
+  const selected = [video, image, gif];
+  assert.equal(resolveImageExportFormat("recommend", selected), "original");
+  for (const format of imageExportFormats.filter(value => value !== "recommend")) assert.equal(resolveImageExportFormat(format, selected), format);
+  assert.deepEqual(selected, [video, image, gif], "形式解決で選択と順序を変えない");
 });
 
-test("推奨形式は項目ごとの種類に追従し、混在した選択も順序を保ってすべて保存する", () => {
-  const items = [video, image, gif];
-  assert.deepEqual(items.map(recommendedItemFormat), ["mp4", "png", "gif"]);
-  for (const preference of ["original", "recommend"]) {
-    assert.equal(initialExportFormat(items, preference), preference);
-  }
-  const prepared = new Map(items.map((item, index) => [item, new Blob(["data"], {type: ["video/mp4", "image/png", "image/gif"][index]})]));
-  assert.deepEqual(createImageZipEntries(items, prepared, "recommend").map(entry => entry.filename), ["001.mp4", "002.png", "003.gif"]);
-  assert.equal(saveFilesIndividually("recommend", items.length, items), false);
-  assert.equal(saveFilesIndividually("recommend", 2, [video, video]), true);
-  prepared.set(video, new Blob(["wrong type"], {type: "image/png"}));
-  assert.throws(() => createImageZipEntries(items, prepared, "recommend"), /形式が一致しません/);
+test("単体名はページ名を使い、複数の個別保存は入力番号を保つ", () => {
+  assert.equal(individualFilename("Artwork.zip", "001.gif", 1), "Artwork.gif");
+  assert.equal(individualFilename("Artwork.zip", "001.mp4", 2), "Artwork_001.mp4");
+  assert.equal(individualFilename("Artwork.zip", "002.mp4", 2), "Artwork_002.mp4");
 });
 
 test("元の拡張子はクエリ指定・data URL・判別できないURLを扱う", () => {
@@ -49,12 +32,4 @@ test("元の拡張子はクエリ指定・data URL・判別できないURLを扱
   assert.equal(originalItemExtension({...image, url: "data:image/png;base64,AAAA"}), "PNG");
   assert.equal(originalItemExtension({...image, url: "https://example.test/file"}), null);
   assert.equal(originalItemExtension({...gif, url: "https://example.test/file"}), "GIF");
-});
-
-test("保存設定の対応値と、解析前の静止画像用選択を維持する", () => {
-  for (const format of ["original", "recommend", "pdf", "jpg", "png", "jxl", "mp4", "gif"]) {
-    assert.equal(isExportFormat(format), true);
-    assert.equal(restoredExportFormat(format), ["gif", "mp4"].includes(format) ? "pdf" : format);
-  }
-  for (const value of ["webm", "PDF", "", null, undefined, 1]) assert.equal(isExportFormat(value), false);
 });
