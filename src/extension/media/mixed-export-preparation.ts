@@ -6,7 +6,7 @@ import {ImageArchiveLimitError} from "../../core/image-archive.js";
 import {createPreparationWorkers, waitForPreparation} from "../../core/preparation-workers.js";
 import type {MutablePendingExport} from "../contracts/export-contracts.js";
 import type {FetchedImage} from "../contracts/image-data-contract.js";
-import {fetchOriginalMedia} from "./media-fetch.js";
+import {DEFAULT_MEDIA_TIMEOUT_MS, fetchOriginalMedia} from "./media-fetch.js";
 import {fetchImage} from "./image-fetch.js";
 import {prepareRecommendedGif} from "./recommended-gif.js";
 import {prepareAnimatedImage} from "./animated-image.js";
@@ -48,7 +48,10 @@ export async function prepareMixedExport(work: MixedExportWork, options: Options
     try {
       const original = item.kind === "video" || work.imageFormat === "original";
       if (original) results[index]!.resolve({kind:"media",blob:await fetchOriginalMedia(item.url,item.kind ?? "image",{signal,sourcePage:item.sourcePage}),release});
-      else results[index]!.resolve({kind:"image",fetched:await fetchImage(item.url,{signal,sourcePage:item.sourcePage}),release});
+      else {
+        const knownGif = item.kind === "gif" || item.recommendedFormat === "gif";
+        results[index]!.resolve({kind:"image",fetched:await fetchImage(item.url,{signal,sourcePage:item.sourcePage,...(knownGif ? {timeoutMs:DEFAULT_MEDIA_TIMEOUT_MS} : {})}),release});
+      }
     } catch (error) { results[index]!.resolve({kind:"error",error,release}); }
   });
   const completion = Promise.allSettled([workers.finished]);

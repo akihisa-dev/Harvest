@@ -3,7 +3,7 @@ import { mediaTypeMatchesKind, normalizeMediaMimeType, originalMediaType } from 
 import { checkCancelled, ImageDataError, invalidImage, MAX_IMAGE_BYTES } from "../contracts/image-data-contract.js";
 import { readImageBytes } from "./image-response-bytes.js";
 import { fetchResponse } from "./response-fetch.js";
-const DEFAULT_MEDIA_TIMEOUT_MS = 120_000;
+export const DEFAULT_MEDIA_TIMEOUT_MS = 120_000;
 /** Return a safe file extension for a MIME type that this exporter recognizes. */
 export function originalMediaExtension(mimeType) {
     const mediaType = originalMediaType(mimeType);

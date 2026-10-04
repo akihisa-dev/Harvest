@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
+import {setTimeout as delay} from 'node:timers/promises';
 import {temporaryDirectory,launchExtensionContext,startServer} from './browser.mjs';
 
 export async function animationPanel(t, assets, options = {}) {
@@ -10,7 +11,12 @@ export async function animationPanel(t, assets, options = {}) {
     const path = new URL(request.url,'http://localhost').pathname;
     if (path === '/gallery') { response.writeHead(200,{'content-type':'text/html'});response.end(`<title>${name}</title>${paths.map(path => assets.get(path)?.[1].startsWith("video/") ? `<video controls width="32" height="24" src="${path}"></video>` : `<img width="32" height="24" src="${path}">`).join('')}`);return; }
     const [body,type] = assets.get(path) ?? [Buffer.from('missing'),'text/plain'];
-    requests.push(path); response.writeHead(200,{'content-type':type,'content-length':String(body.length)});response.end(request.method === 'HEAD' ? '' : body);
+    requests.push(path); response.writeHead(200,{'content-type':type,'content-length':String(body.length)});if(request.method === 'HEAD') response.end();
+    else {
+      const delay=options.responseDelayMs?.(request,path)??0;
+      if(delay){response.flushHeaders();const timer=setTimeout(()=>response.end(body),delay);response.on('close',()=>clearTimeout(timer));}
+      else response.end(body);
+    }
   });
   const origin = `http://127.0.0.1:${server.address().port}`, temporary = await temporaryDirectory(t,'/tmp/harvest-recommended-animation-');
   await mkdir(`${temporary}/profile/Default`,{recursive:true});await mkdir(`${temporary}/downloads`);
@@ -27,7 +33,12 @@ export async function animationPanel(t, assets, options = {}) {
     paths=nextPaths;name=nextName;requests=[];await page.locator('#source-drop').click();await page.locator('#source-url').fill(`${origin}/gallery`);await page.locator('#scan').click();await page.waitForFunction(()=>document.querySelector('#scan').dataset.scanning==='false'&&!document.querySelector('#scan').disabled);await page.locator('#all-selection').check();
   };
   const saved = async (format) => {
-    await page.locator(`#export-format-${format}`).check();const before=await count();await page.locator('#export').click();await page.waitForFunction(before=>window.downloadIds.length===before+1,before);await page.waitForFunction(async()=> (await chrome.downloads.search({id:window.downloadIds.at(-1)}))[0]?.state==='complete');await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='success');const download=await page.evaluate(async()=> (await chrome.downloads.search({id:window.downloadIds.at(-1)}))[0]);return {bytes:await readFile(download.filename),filename:download.filename};
+    await page.locator(`#export-format-${format}`).check();const before=await count();await page.locator('#export').click();await page.waitForFunction(before=>window.downloadIds.length===before+1,before);await page.waitForFunction(async()=> (await chrome.downloads.search({id:window.downloadIds.at(-1)}))[0]?.state==='complete');await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='success');const download=await page.evaluate(async()=> (await chrome.downloads.search({id:window.downloadIds.at(-1)}))[0]);let bytes;
+    // Chrome can report completion just before the final path is visible to another process.
+    const readStarted=Date.now();
+    for(;;){try{bytes=await readFile(download.filename);break;}catch(error){if(error.code!=='ENOENT'||Date.now()-readStarted>=1000)throw error;await delay(20);}}
+    if(Date.now()-readStarted>=20)console.log(`Completed download became readable after ${Date.now()-readStarted} ms: ${download.filename}`);
+    return {bytes,filename:download.filename};
   };
   const failed = async () => {
     const before=await count();await page.locator('#export').click();await page.waitForFunction(()=>document.querySelector('#export').dataset.saving==='false'&&!document.querySelector('#failures').hidden);assert.equal(await count(),before);assert.notEqual(await page.locator('#status').getAttribute('data-state'),'success');return page.locator('#failures').innerText();

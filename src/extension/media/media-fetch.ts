@@ -4,7 +4,7 @@ import { checkCancelled, ImageDataError, invalidImage, MAX_IMAGE_BYTES } from ".
 import { readImageBytes } from "./image-response-bytes.js";
 import {fetchResponse, type ResponseFetchErrors} from "./response-fetch.js";
 
-const DEFAULT_MEDIA_TIMEOUT_MS = 120_000;
+export const DEFAULT_MEDIA_TIMEOUT_MS = 120_000;
 
 export interface OriginalMediaOptions {
   readonly signal?: AbortSignal;
