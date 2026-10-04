@@ -29,7 +29,7 @@
 
 [application.ts](panel/application.ts) はパネルごとに状態と各担当を生成し、操作の購読と終了時の解放を受け持ちます。[result-session.ts](panel/result-session.ts) は確定した結果のタイトルと、その結果に対応する出典・初期形式・表示グループ・プレビューの公開とリセットをまとめます。解析の失敗時には結果の公開を呼ばず、前の結果を維持します。
 
-[export-session.ts](panel/export-session.ts) が保存形式・出典設定・開始時の保存対象・完了記録を所有し、選択変更による再試行データの破棄は操作の経路から明示的に行います。保存完了は各保存処理から通知し、ステータスの文言には依存しません。[app-view.ts](panel/app-view.ts) は渡された状態をDOMへ表示するだけで、描画による作業データの変更や収集先への通知は行いません。
+[split-export-session.ts](panel/split-export-session.ts) が両形式・出典設定・開始時の全保存対象・完了記録を所有し、選択変更による再試行データの破棄は操作の経路から明示的に行います。保存完了は各保存処理から通知し、ステータスの文言には依存しません。[app-view.ts](panel/app-view.ts) は渡された状態をDOMへ表示するだけで、描画による作業データの変更や収集先への通知は行いません。
 
 DOM要素の契約は [app-elements.ts](panel/app-elements.ts)、設定保存を呼ぶ操作は [export-preferences-controller.ts](panel/export-preferences-controller.ts)、設定の読み書きは [export-preferences.ts](browser/export-preferences.ts)、表示状態の導出とファイル名・Sourceプレビューは [export-presentation.ts](panel/export-presentation.ts)、解析の開始・中断・収集結果の確定は [scan-session-controller.ts](panel/scan-session-controller.ts) が所有します。
 
@@ -55,15 +55,15 @@ Sourceプレビューも通常画像と同じ一覧の更新管理へ含め、�
 
 ## 保存・再試行・ダウンロード
 
-MP4は個別ファイル、画像・GIFは1枚なら直接保存し、複数枚ならZIPにまとめます。[src/core/export-files.ts](../core/export-files.ts) が保存方式と個別ファイル名を決めます。全件の準備が成功してから保存を開始し、単体はページ名、複数動画はページ名と連番を使います。既存の準備データの合計上限は個別保存でもメモリ使用量の制限として維持します。Chromeが複数ダウンロードの許可を求めた場合は利用者の操作が必要です。
+[mixed-export-preparation.ts](media/mixed-export-preparation.ts) が全選択項目を準備し、[mixed-export-controller.ts](panel/mixed-export-controller.ts) が静止PDFと個別GIF/動画を組み立てます。一つの出力は直接保存し、複数出力はZIPにまとめます。動画のみのrecommend/MP4は [managed-download.ts](browser/managed-download.ts) で順次保存し、全ダウンロード完了を確認します。動画originalの複数出力はZIPです。準備データの合計上限は個別保存でも維持し、全件の準備成功後に保存を開始します。
 
-[pdf-export-controller.ts](panel/pdf-export-controller.ts) と [image-export-controller.ts](panel/image-export-controller.ts) は形式ごとの準備・成果物の組み立て・ダウンロードを接続します。[export-operation.ts](panel/export-operation.ts) が両者の開始前確認、保存対象の確定、失敗分の選定、準備進捗と完了通知の順序を共通化します。[export-lifecycle.ts](panel/export-lifecycle.ts) は保留中の準備結果、選択一致、中断、進捗、終了時の後始末、Blobのダウンロードを管理します。ZIP向けの取得と入力順の変換、未消費結果の解放は [image-archive-preparation.ts](media/image-archive-preparation.ts)、名前・形式照合・容量予算は [src/core/image-archive.ts](../core/image-archive.ts) が所有します。
+[export-operation.ts](panel/export-operation.ts) が開始前確認、保存対象の確定、失敗分の選定、準備進捗と完了通知を管理します。[export-lifecycle.ts](panel/export-lifecycle.ts) は選択一致、中断、進捗、終了時の後始末、Blobダウンロードを管理します。従来の [pdf-export-controller.ts](panel/pdf-export-controller.ts)・[image-export-controller.ts](panel/image-export-controller.ts) とその準備関数は互換呼び出し用に保持します。
 
 保存中も保存ボタンだけは有効にし、再クリックで進行中の保存を中止します。進捗表示は維持し、中止後は通信・変換の終了を待って準備済み画像と失敗情報を破棄し、エラーにせず通常の保存可能状態へ戻します。収集モードからの保存要求はこの中止操作と分けます。
 
 画像形式の保存では、ZIPの名前・管理情報を除いた容量上限を準備前に算出し、再試行用の成功結果も含めてBlobの合計サイズを追跡します。超過時は残る取得を中断して作業を破棄し、通常の画像失敗では成功結果を保持します。変換済みの取得結果は待機配列から解放し、取得済みデータが全件残らないようにします。
 
-保存形式を変更した時点で、互換性のない形式の再試行用準備結果と失敗情報を解放します。同じ形式・同じ選択の再試行は成功済み結果を保ち、出典ページ設定だけの変更では破棄しません。
+保存形式を変更した時点で、互換性のない形式の再試行用準備結果と失敗情報を解放します。同じ両形式・出典設定・同じ選択順の再試行は成功済み結果を保ち、どれかを変更すると準備結果を破棄します。
 
 形式固有の準備と組み立ては共通処理へ混ぜません。[image-format.ts](media/image-format.ts) はJPG・PNG・JXLへの変換を担当し、[jxl-encoder.ts](media/jxl-encoder.ts) と [jxl-encode-worker.ts](workers/jxl-encode-worker.ts) はJXL変換を画面操作と分けて実行します。[jxl-codec.ts](workers/jxl-codec.ts) は単一スレッド用のWebAssemblyエンコーダーを明示的に初期化し、ビルドでは未使用の複数スレッド版を配布対象から除きます。
 
@@ -77,7 +77,7 @@ MP4は個別ファイル、画像・GIFは1枚なら直接保存し、複数枚�
 
 並行取得の開始数、結果が消費されるまでの保持枠、中断と待機解除は [src/core/preparation-workers.ts](../core/preparation-workers.ts) がPDF・ZIPで共通管理します。PDF画像準備は [pdf-image.ts](media/pdf-image.ts) が取得できた順に逐次変換し、結果を入力順に通知します。ZIPは [image-archive-preparation.ts](media/image-archive-preparation.ts) が入力順に変換し、`ImageArchivePlan` へ渡して容量予算を確認します。未通知結果を含む処理中の画像数は取得並列数以内に保ち、先頭画像の遅延でJPEG結果が蓄積し続けないようにします。
 
-画像・メディア共通の [response-fetch.ts](media/response-fetch.ts) が接続先・認証・転送制限、応答本文を含む時間制限、中断と応答の解放を担当します。[image-fetch.ts](media/image-fetch.ts) と [media-fetch.ts](media/media-fetch.ts) は形式ごとの内容検査と失敗理由を担当し、画像20秒・メディア120秒の上限と従来のエラー判定の優先順位を渡します。[image-response-bytes.ts](media/image-response-bytes.ts) は応答本文を64 MiBを超える前に止めます。`readImageBytes()` はプレビューなど別の取得経路でも同じバイト上限を共有できます。
+画像・メディア共通の [response-fetch.ts](media/response-fetch.ts) が接続先・認証・転送制限、応答本文を含む時間制限、中断と応答の解放を担当します。[image-fetch.ts](media/image-fetch.ts) と [media-fetch.ts](media/media-fetch.ts) は形式ごとの内容検査と失敗理由を担当し、静止・未分類画像取得20秒、既知GIF・動画・original取得120秒の上限と従来のエラー判定の優先順位を渡します。[image-response-bytes.ts](media/image-response-bytes.ts) は応答本文を64 MiBを超える前に止めます。`readImageBytes()` はプレビューなど別の取得経路でも同じバイト上限を共有できます。
 
 取得したバイト列でJPEGの成分・表・走査ヘッダー・画像データ・終端を検査し、構造が不正なら準備失敗にします。
 
@@ -126,11 +126,11 @@ source要素は所有要素と明示された種類を確認し、audio内のsou
 
 ## 動画・GIFの保存とXの追加解析
 
-MP4・GIFの保存は [media-fetch.ts](media/media-fetch.ts) が共通の取得処理と [src/core/media-types.ts](../core/media-types.ts) の規則で種類を検査し、[src/core/image-archive.ts](../core/image-archive.ts) が選択形式の種類に合うファイルだけをZIPの構成要素にします。MP4とGIFは元データを保ち、WebMは[mp4-conversion.ts](media/mp4-conversion.ts)から専用Workerを起動して[mp4-codec.ts](workers/mp4-codec.ts)でH.264/AACのMP4へ変換します。
+動画・originalの取得は [media-fetch.ts](media/media-fetch.ts)、その他の画像取得は [image-fetch.ts](media/image-fetch.ts) が担当します。[src/core/media-types.ts](../core/media-types.ts) とGIF構造・デコード検査で実データの種類を検証し、[mixed-export-controller.ts](panel/mixed-export-controller.ts) が全選択項目の出力を構成します。MP4とGIFは元データを保ち、WebMは[mp4-conversion.ts](media/mp4-conversion.ts)から専用Workerを起動して[mp4-codec.ts](workers/mp4-codec.ts)でH.264/AACのMP4へ変換します。
 
 取得後のMIMEと内容を検査し、変換時に映像・音声が脱落する場合は失敗として扱います。変換は120秒・出力64 MiBとZIP残量の小さい方を上限にし、完了・失敗・中止でWorkerを終了します。
 
-静止画像向けの形式では [src/core/media-selection.ts](../core/media-selection.ts) でGIF・動画を除外し、対象外の件数を表示します。解析結果にある種類だけを形式選択肢に表示します。ファイルの種類とサムネイルURLは収集結果の一部としてメモリに保持します。
+画像と動画の形式欄は独立し、種類がない欄だけを隠して選択値を保持します。画像のoriginal以外では動く画像をGIFにし、静止PDFと個別GIF・動画を一つのZIPへまとめるため、形式によって選択項目を除外しません。ファイルの種類とサムネイルURLは収集結果の一部としてメモリに保持します。
 
 Xの追加解析は [x-media-scan.ts](content/x-media-scan.ts) をページの実行環境で実行し、投稿と動画要素に紐づく既存データの必要なフィールドだけを読みます。getterを実行せず、投稿本文・ユーザー情報・認証情報は出力対象に含めません。属性の補完ではstore・cacheを丸ごと走査しません。投稿IDと一致する祖先までで探索を止め、1回の読み取りは2.5秒・18,000ノード・文字列合計1,000,000文字・投稿ごと80要素・祖先40段・データ深さ36段・配列256要素を上限にします。画面上のメディアを全投稿から先に収集し、その後に既存データから補完します。投稿数による打ち切りは行いません。祖先40段で投稿データが見つからない場合は補完を止めるだけで、取得済みのDOM画像を失敗にしません。補完の処理予算を使い切った場合も取得済みの候補を返し、件数診断で不完全であることを区別します。
 

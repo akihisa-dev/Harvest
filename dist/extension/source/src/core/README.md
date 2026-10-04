@@ -4,7 +4,7 @@
 
 ## 保存形式と画像の選択
 
-[export-formats.ts](export-formats.ts) は保存形式の正本です。対応値と表示順、各形式が受け入れる種類、解析前の選択、解析後の自動選択、利用可能な選択肢を定義します。[media-selection.ts](media-selection.ts) の保存対象抽出、画面の選択肢、保存設定の読み取り、画像・メディアの準備経路はこの規則を参照します。種類を指定していない従来の画像は静止画像として扱い、既存の設定キーや保存内容は変えません。
+[split-export-formats.ts](split-export-formats.ts) が現在の画像/動画の独立形式、旧設定の移行、静止画像の判定、連番とPDF出典名の規則を定義します。保存対象は種類で除外せず選択全件です。[export-formats.ts](export-formats.ts) と [media-selection.ts](media-selection.ts) の従来の形式・対象抽出規則は互換呼び出し用に保持しています。
 
 [image-collection.ts](image-collection.ts) は解析結果の画像、選択、初期順と確定した変更後の順序を一箇所で管理し、表示を絞った状態での並べ替えでも非表示画像の位置を保ちます。ドラッグ中のDOM計測は画面側が担当し、座標から挿入位置と一時順序を求める純粋な計算は [image-reorder.ts](image-reorder.ts) が担当します。確定した順序だけを画像集合へ渡します。
 
