@@ -135,7 +135,7 @@ async function inspectLayout(page, width, height, label) {
   }
   assert.ok(result.exportControl.y < result.viewer.y && result.viewer.y < result.headingText.y,
     `${label}: PDF, list toggle, and image groups must be arranged vertically`);
-  const compactHeight = width >= 600 && height <= 540;
+  const compactHeight = height <= 540;
   if (compactHeight) {
     assert.ok(result.headingText.right <= result.resetOrder.x,
       `${label}: short panels must keep heading beside the selection actions without overlap`);
@@ -167,6 +167,21 @@ async function inspectLayout(page, width, height, label) {
 }
 
 async function assertGroupScrolling(page, label) {
+  // Keep Chrome's native input widget larger than the emulated CSS viewport.
+  // Otherwise switching between narrow and wide pages can leave wheel input
+  // outside the widget even while DOM hit testing reports the correct target.
+  await page.bringToFront();
+  const resizeSession = await page.context().newCDPSession(page);
+  try {
+    const chromeWindow = await resizeSession.send("Browser.getWindowForTarget");
+    const viewport = page.viewportSize();
+    await resizeSession.send("Browser.setWindowBounds", {
+      windowId: chromeWindow.windowId,
+      bounds: {width: viewport.width + 100, height: viewport.height + 100},
+    });
+  } finally {
+    await resizeSession.detach();
+  }
   const list = page.locator(".group-bar");
   const readState = () => page.evaluate(() => {
     const list = document.querySelector(".group-bar");
@@ -198,11 +213,44 @@ async function assertGroupScrolling(page, label) {
     assert.equal(state.pageTop, initial.pageTop, `${label}: page must not move`);
     assert.deepEqual(state.fixed, initial.fixed, `${label}: save, viewer, group heading, and all-group actions must stay fixed`);
   };
-  await list.hover();
-  // Let the compositor update the wheel target after the scan changes the layout.
+  // Re-read the wheel coordinates after layout and compositing settle. Moving
+  // outside and back also refreshes Chrome's input target after a previous scan.
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const wheelBox = await list.boundingBox();
+  const wheelPoint = {x: wheelBox.x + wheelBox.width / 2, y: wheelBox.y + wheelBox.height / 2};
+  assert.equal(await page.evaluate(({x, y}) => document.querySelector(".group-bar").contains(document.elementFromPoint(x, y)), wheelPoint),
+    true, `${label}: actual wheel coordinates must hit the group list`);
+  // A rendered frame synchronizes Chrome's compositor hit test with the
+  // measured layout; RAF alone can precede submission of the new scroll layer.
+  await page.mouse.move(0, 0);
+  await page.mouse.move(wheelPoint.x, wheelPoint.y);
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+  await page.evaluate(() => {
+    window.__layoutWheel = null;
+    document.addEventListener("wheel", event => {
+      window.__layoutWheel = {x: event.clientX, y: event.clientY,
+        inList: document.querySelector(".group-bar").contains(event.target), trusted: event.isTrusted,
+        target: event.target.outerHTML.slice(0, 160)};
+      queueMicrotask(() => { window.__layoutWheel.prevented = event.defaultPrevented; });
+    }, {once: true, passive: true});
+  });
+  // Hover changes the painted controls too; capture the final viewport after
+  // it and the listener are installed, before Chrome receives the wheel input.
+  await page.screenshot();
   await page.mouse.wheel(0, 160);
-  await page.waitForFunction(() => document.querySelector(".group-bar").scrollTop > 0);
+  await page.waitForFunction(() => window.__layoutWheel !== null, null, {timeout: 3000});
+  const wheelEvent = await page.evaluate(() => window.__layoutWheel);
+  assert.equal(wheelEvent.trusted, true, `${label}: Chrome must produce a trusted native wheel event`);
+  assert.equal(wheelEvent.inList, true, `${label}: dispatched wheel must target the group list`);
+  assert.ok(Math.abs(wheelEvent.x - wheelPoint.x) < 1 && Math.abs(wheelEvent.y - wheelPoint.y) < 1,
+    `${label}: dispatched wheel must use the measured coordinates`);
+  try {
+    await page.waitForFunction(() => document.querySelector(".group-bar").scrollTop > 0, null, {timeout: 3000});
+  } catch (error) {
+    error.message += `\n${label}: wheel=${JSON.stringify(await page.evaluate(() => window.__layoutWheel))}; scroll=${JSON.stringify(await readState())}`;
+    console.error(error.message);
+    throw error;
+  }
   await page.waitForTimeout(150);
   assertFixed(await readState());
 
@@ -218,6 +266,7 @@ async function assertGroupScrolling(page, label) {
   }
 
   const heading = await page.locator(".results-heading").boundingBox();
+  await page.screenshot({clip: {x: Math.floor(heading.x), y: Math.floor(heading.y), width: 1, height: 1}});
   await page.mouse.move(heading.x + heading.width / 2, heading.y + 2);
   await page.mouse.wheel(0, 500);
   await page.waitForTimeout(150);
@@ -238,6 +287,15 @@ async function assertGroupScrolling(page, label) {
   const wasSelected = await selection.isChecked();
   await selection.setChecked(!wasSelected);
   assert.equal(await selection.isChecked(), !wasSelected, `${label}: final group selection must remain operable after scrolling`);
+  await visibility.focus();
+  await page.keyboard.press("Space");
+  assert.equal(await visibility.getAttribute("aria-pressed"), wasVisible,
+    `${label}: final group visibility must also work from the keyboard`);
+  await page.keyboard.press("Tab");
+  assert.equal(await selection.evaluate(element => element === document.activeElement), true,
+    `${label}: Tab must reach the final group checkbox`);
+  await page.keyboard.press("Space");
+  assert.equal(await selection.isChecked(), wasSelected, `${label}: Space must operate the final checkbox`);
   assert.equal((await readState()).sidebarTop, 0, `${label}: focusing final group controls must not scroll the right panel`);
 }
 
@@ -279,11 +337,12 @@ async function assertNoBrowserErrors(page, label, errors) {
 test("real Chrome keeps the large viewer beside vertical controls across panel sizes and content states", async t => {
   const {server, url} = await serveExtension(t);
   const browser = await launchBrowser(t, {ignoreDefaultArgs: ["--hide-scrollbars"]});
-  const dimensions = [[1220, 800], [1000, 800], [768, 600], [768, 421], [768, 300], [700, 300], [360, 800]];
+  const dimensions = [[1220, 800], [1000, 800], [768, 600], [768, 421], [768, 300], [700, 300], [320, 300], [320, 400], [400, 300], [400, 400], [360, 800]];
   for (const locale of ["ja-JP", "en-US"]) {
     const context = await browser.newContext({locale, reducedMotion: "reduce"});
     await context.addInitScript(() => {
       localStorage.setItem("harvest.exportFormat", "pdf");
+      localStorage.setItem("harvest.includeSourcePage", "false");
       window.chrome = {
         runtime: {onConnect: {addListener() {} }},
         i18n: {getUILanguage: () => navigator.language},
@@ -473,7 +532,9 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
           assert.equal(thumbnailScroll.overflow, true, `${caseName}: thumbnails should overflow in the scrolling direction`);
           assert.ok(thumbnailScroll.scrollbarSpace >= 10, `${caseName}: thumbnail scrollbar must occupy visible space`);
           const stage = await page.locator("#viewer-stage").boundingBox();
-          assert.ok(stage.width > 100 && stage.height > height * 0.45, `${caseName}: large image must use available space`);
+          const imageArea = await page.locator("main").boundingBox();
+          const minimumStageWidth = width <= 480 ? Math.min(100, imageArea.width - 24 - 1) : 100;
+          assert.ok(stage.width >= minimumStageWidth && stage.height > height * 0.45, `${caseName}: large image must use available space`);
           const exportOverlayState = await page.locator("#export-overlay").evaluate(overlay => {
             const initiallyHidden = overlay.hidden;
             overlay.hidden = false;
@@ -561,9 +622,30 @@ test("real Chrome keeps the large viewer beside vertical controls across panel s
             });
             assert.equal(await page.locator("#image-export-formats").isVisible(), true, `${caseName}: mixed media must keep image format choices visible`);
             assert.equal(await page.locator("#video-export-formats").isVisible(), true, `${caseName}: mixed media must show video format choices`);
-            await inspectLayout(page, width, height, `${caseName} mixed media groups`);
-            await assertGroupScrolling(page, `${caseName} mixed media groups`);
-            await inspectLayout(page, width, height, `${caseName} after mixed media selection`);
+            // Exhaustive settings cover the changed short panels and the narrow
+            // normal-height control; unchanged desktop sizes keep one representative.
+            const coverSettings = height <= 540 || width <= 400;
+            for (const colorScheme of coverSettings ? ["light", "dark"] : ["light"]) {
+              await page.emulateMedia({colorScheme});
+              for (const format of coverSettings ? ["pdf", "recommend"] : ["pdf"]) {
+                await page.locator(`#export-format-${format}`).check();
+                await page.locator("#video-export-format-mp4").check();
+                for (const includeSource of coverSettings ? [true, false] : [false]) {
+                  await page.locator("#export-format-pdf").check();
+                  await page.locator("#include-source-page").setChecked(includeSource);
+                  await page.locator(`#export-format-${format}`).check();
+                  const label = `${caseName} ${colorScheme} ${format} source=${includeSource}`;
+                  await inspectLayout(page, width, height, label);
+                  await assertGroupScrolling(page, label);
+                  await inspectLayout(page, width, height, `${label} after group operations`);
+                }
+              }
+            }
+            await page.locator("#export-format-pdf").check();
+            await page.locator("#include-source-page").check();
+            if (width <= 400) {
+              await page.screenshot({path: join(tmpdir(), `harvest-124-${locale}-${width}x${height}.png`)});
+            }
           }
           await page.locator("#reset").click();
           await page.evaluate(message => { window.__harvestScanFixture = {error: message}; }, "A deliberately long scan error used to exercise status rendering. ".repeat(12));

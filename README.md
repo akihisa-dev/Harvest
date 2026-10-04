@@ -46,7 +46,7 @@ Controls are monochrome, while images and saved PDFs retain their original color
 
 Drag a zoomed image to pan. Group labels show counts, and image labels show positions in the full collection. Save controls show the selected item count, progress while saving, and a retry action after failure; completion shows the saved count. Click the save button again during saving to cancel while retaining the progress display. Once requests and conversion stop, prepared images are discarded and saving becomes available again. Incomplete PDFs and ZIPs are not saved; the same selection can be saved again.
 
-The all-images eye and checkbox control visibility and save selection for the whole collection; group controls affect only their own group. A crossed-out eye indicates hidden images. When there are many controls, the right column scrolls independently of the image list or viewer.
+The all-images eye and checkbox control visibility and save selection for the whole collection; group controls affect only their own group. A crossed-out eye indicates hidden images. When there are many groups, only the group list scrolls; save settings and collection-wide visibility and selection controls stay fixed. Narrow, short panels use compact controls to keep the last group reachable.
 
 Saved filenames use the page title. Unsupported filename symbols and control characters are replaced, and leading or trailing dots and whitespace are removed. Long titles are shortened without splitting an emoji; an empty result uses the default image name. A directly saved PDF uses the page title; a PDF inside a ZIP uses its numbered entry name. The PDF source page and both preview surfaces show that actual PDF name. Multiple MP4 files keep their sequence numbers.
 
@@ -202,7 +202,7 @@ Xのブックマークでは、Xが受信した一覧の投稿IDとメディア�
 
 拡大中は画像をドラッグして表示位置を動かせます。グループ名には枚数、各画像には収集結果全体での順番を表示します。保存ボタンには選択件数、保存中には進捗、失敗時には再試行の操作、保存完了時には保存件数を表示します。保存中に同じボタンをもう一度押すと、進捗表示を保ったまま保存を中止できます。通信と変換の終了後に準備済みの画像を破棄し、通常の保存可能状態へ戻ります。不完全なPDF・ZIPは保存せず、同じ対象を再度保存できます。
 
-全画像の目とチェックボックスで、収集結果全体の表示・保存対象を切り替えます。各グループの目とチェックボックスでは、そのグループだけを切り替えられます。斜線の付いた目は非表示を示します。操作項目が多いときは右側の操作欄をスクロールでき、画像一覧やビュアーとは別に動かせます。
+全画像の目とチェックボックスで、収集結果全体の表示・保存対象を切り替えます。各グループの目とチェックボックスでは、そのグループだけを切り替えられます。斜線の付いた目は非表示を示します。グループが多いときはグループ名の領域だけをスクロールでき、保存設定や全体の表示・選択ボタンは固定されます。狭幅で高さが低い場合は操作欄を圧縮して、末尾のグループも操作できる領域を確保します。
 
 保存名にはページタイトルを使います。ファイル名に使えない記号と制御文字を置き換え、先頭・末尾のドットと空白を取り除きます。長いタイトルは絵文字を途中で切らずに短くし、名前が空になる場合は既定の画像名を使います。直接保存するPDFはページ名、ZIP内のPDFは連番の項目名を使い、PDF出典ページと一覧・ビューアーの出典プレビューにもその実際のPDF名を表示します。複数MP4の連番は維持します。
 

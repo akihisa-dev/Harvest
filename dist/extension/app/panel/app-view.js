@@ -95,6 +95,7 @@ export function createAppView(elements, positionOf) {
             snapshot.export.videoFormat !== "original" && videos.length ? t("videoConversionHint") : "",
         ].filter(Boolean).join(" ");
         exportMediaHint.hidden = !exportMediaHint.textContent;
+        exportMediaHint.title = exportMediaHint.textContent;
         scanButton.disabled = busy && !scanRunning;
         sourceDrop.disabled = busy;
         sourceUrl.disabled = busy;
