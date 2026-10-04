@@ -10,7 +10,8 @@ export function createResultSession(options) {
         get title() { return title; },
         commit(nextTitle, initialGroup, sourcePage) {
             // The scan owns atomic collection replacement; dependent state follows only a successful result.
-            options.exportSession.setFormat(initialExportFormat(options.collection.items, options.getPreferredFormat()));
+            if (!options.preserveFormat)
+                options.exportSession.setFormat(initialExportFormat(options.collection.items, options.getPreferredFormat()));
             title = nextTitle;
             options.sourceInput.commitResult(sourcePage);
             options.previews.clear();

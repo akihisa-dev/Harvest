@@ -300,8 +300,15 @@ section, aside {
   min-width: 0;
   overflow: hidden;
   padding-inline: 6px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.export-control #export .button-label {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .source-page-option {
@@ -1669,3 +1676,7 @@ button[data-shown="false"] .eye-slash, button[data-shown="false"] .eye-slash-gap
   line-height: 1.5;
   color: var(--muted);
 }
+
+/* Independent media choices remain readable in the narrow side panel. */
+.export-formats[hidden] {display:none;}
+.export-formats legend {padding:0 0 4px;font-size:11px;font-weight:600;}

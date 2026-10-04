@@ -348,7 +348,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
       document.querySelector(`#export-format-${format}`).dispatch("change");
     };
     changeExportFormat("jxl");
-    assert.equal(savedPreferences.get("harvest.exportFormat"), "jxl", "保存形式だけをブラウザー内に記録する");
+    assert.equal(savedPreferences.get("harvest.imageExportFormat"), "jxl", "保存形式だけをブラウザー内に記録する");
     assert.equal(sourcePageOption.hidden, true, "出典ページ設定は画像形式では隠す");
     assert.equal(includeSourcePage.checked, true, "保存形式を変えてもPDFの出典設定を保つ");
     changeExportFormat("pdf");
@@ -504,7 +504,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     exportFormat.value = "pdf";
     exportFormat.dispatch("change");
     document.querySelector("#all-visibility").dispatch("click");
-    assert.equal(document.querySelector("#export").textContent, "PDFを保存");
+    assert.equal(document.querySelector("#export").textContent, "2件を保存");
     const resetOrder = document.querySelector("#reset-order");
     assert.equal(resetOrder.disabled, true);
 
@@ -754,11 +754,11 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     document.querySelector("#export").dispatch("click");
     assert.equal(exportButton.dataset.saving, "true", "PDF保存中はボタンにロードマークを出す");
     assert.equal(exportButton.textContent, "0 / 4", "保存中はボタンに処理済み枚数と対象枚数を表示する");
-    assert.equal(exportButton.getAttribute("aria-label"), "画像を準備しています… 0 / 4 もう一度押すと保存を中止します", "保存中のボタンは進捗と中止方法を読み上げられる");
+    assert.equal(exportButton.getAttribute("aria-label"), "ファイルを準備しています… 0 / 4 もう一度押すと保存を中止します", "保存中のボタンは進捗と中止方法を読み上げられる");
     assert.equal(exportOverlay.hidden, false, "PDF保存中はビュアーにオーバーレイを重ねる");
     assert.equal(exportButton.disabled, false, "保存中も再クリックで中止できる");
     assert.equal(document.querySelector("#status").textContent, "0 / 4", "PDF作成中も枚数の進捗を画面に表示する");
-    assert.equal(document.querySelector("#status").getAttribute("aria-label"), "画像を準備しています… 0 / 4", "PDF作成の状態と進捗を読み上げ用に残す");
+    assert.equal(document.querySelector("#status").getAttribute("aria-label"), "ファイルを準備しています… 0 / 4", "PDF作成の状態と進捗を読み上げ用に残す");
     assert.equal(document.querySelector("#images").children.every(row => !row.draggable), true);
     assert.equal(document.querySelector("#status").dataset.state, "busy");
     assert.equal(resetOrder.disabled, true);
@@ -771,7 +771,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(document.querySelector("#status").dataset.state, "busy");
     assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), busyOrder);
     await waitUntil(() => exportButton.textContent === "2 / 4");
-    assert.equal(exportButton.getAttribute("aria-label"), "画像を準備しています… 2 / 4 もう一度押すと保存を中止します", "処理に合わせて進捗と中止方法が更新される");
+    assert.equal(exportButton.getAttribute("aria-label"), "ファイルを準備しています… 2 / 4 もう一度押すと保存を中止します", "処理に合わせて進捗と中止方法が更新される");
     releaseFailedFetch();
     await waitUntil(() => document.querySelector("#failures").hidden === false);
     assert.equal(exportButton.dataset.saving, "false", "保存失敗後はロードマークを消す");
@@ -832,7 +832,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(exportButton.disabled, false, "PDF保存中のボタンは中止操作を受け付ける");
     exportButton.dispatch("click");
     assert.equal(exportButton.textContent, cancelProgress, "再クリック後も中止処理が終わるまで進捗を保つ");
-    assert.equal(exportButton.getAttribute("aria-label"), `画像を準備しています… ${cancelProgress} もう一度押すと保存を中止します`);
+    assert.equal(exportButton.getAttribute("aria-label"), `ファイルを準備しています… ${cancelProgress} もう一度押すと保存を中止します`);
     await waitUntil(() => exportButton.dataset.saving === "false");
     assert.equal(document.downloads.length, completedDownloadCount, "中止したPDFをダウンロードしない");
     assert.equal(document.querySelector("#status").dataset.state, "info", "中止は失敗ではなく案内として表示する");
@@ -848,12 +848,12 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     assert.equal(exportButton.dataset.saved, "false", "保存後に出典ページを追加すると保存完了状態を外す");
     includeSourcePage.checked = false;
     includeSourcePage.dispatch("change");
-    assert.equal(exportButton.dataset.saved, "true", "元の出典ページ設定へ戻すと保存済み状態へ戻る");
+    assert.equal(exportButton.dataset.saved, "false", "出典ページ設定を変更した後は古い成功を再表示しない");
     const savedSelection = document.querySelector("#images").children.find(row => row.getAttribute("aria-pressed") === "true");
     savedSelection.dispatch("pointerdown");
     savedSelection.dispatch("click");
     assert.equal(exportButton.dataset.saved, "false", "保存対象が変わったら保存完了状態を外す");
-    assert.equal(exportButton.textContent, "PDFを保存", "保存対象が変わったら保存操作を表示する");
+    assert.equal(exportButton.textContent, "3件を保存", "保存対象が変わったら保存操作を表示する");
     savedSelection.dispatch("pointerdown");
     savedSelection.dispatch("click");
     rejectScan = true;

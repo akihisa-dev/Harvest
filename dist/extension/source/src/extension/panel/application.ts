@@ -1,4 +1,3 @@
-import { restoredExportFormat } from "../../core/export-formats.js";
 import type { ImageItem } from "../../core/images.js";
 import { ImageCollection } from "../../core/image-collection.js";
 import { createCollectionController } from "./collection-controller.js";
@@ -7,12 +6,11 @@ import { localizeErrorMessage, t } from "./localization.js";
 import { createViewerController } from "./viewer-controller.js";
 import { createImageListView } from "./image-list-view.js";
 import { createImagePreviewLoader } from "../media/image-preview.js";
-import { createPdfExportController } from "./pdf-export-controller.js";
-import { createImageExportController } from "./image-export-controller.js";
+import {createMixedExportController} from "./mixed-export-controller.js";
 import type { AppElements } from "./app-elements.js";
 import { createAppView, type AppStatus } from "./app-view.js";
-import { createExportSession } from "./export-session.js";
-import { loadExportPreferences } from "../browser/export-preferences.js";
+import {createSplitExportSession} from "./split-export-session.js";
+import {loadSplitExportPreferences} from "../browser/split-export-preferences.js";
 import {
   createExportPresentation,
   imageFilename,
@@ -34,16 +32,16 @@ export function createPanelApplication(elements: AppElements) {
     resetOrderButton, resetButton, failuresElement, imagesElement, groupsElement,
   } = elements;
 
-  const preferences = loadExportPreferences();
+  const preferences = loadSplitExportPreferences();
   const imageCollection = new ImageCollection();
   let busy = false;
   let disposed = false;
-  const exportSession = createExportSession({
-    format: restoredExportFormat(preferences.format),
+  const exportSession = createSplitExportSession({
+    imageFormat: preferences.imageFormat,
+    videoFormat: preferences.videoFormat,
     includeSourcePage: preferences.includeSourcePage,
     getSelectedItems: () => imageCollection.selectedItems,
-    getPdfController: () => pdfExportController,
-    getImageController: () => imageExportController,
+    getController: () => mixedExportController,
     isBusy: () => busy,
   });
   const appView = createAppView(elements, item => imageCollection.positionOf(item));
@@ -88,7 +86,7 @@ export function createPanelApplication(elements: AppElements) {
 
   const exportPresentation = createExportPresentation({
     getTitle: () => results.title,
-    getSelection: () => ({format: exportSession.format, includeSourcePage: exportSession.includeSourcePage, selected: exportSession.selectedItems}),
+    getSelection: () => ({format: exportSession.format, videoFormat: exportSession.videoFormat, includeSourcePage: exportSession.includeSourcePage, selected: exportSession.selectedItems}),
     fallbackTitle: t("imageFallback"),
     sourceHeading: t("sourceHeading"),
   });
@@ -189,17 +187,9 @@ export function createPanelApplication(elements: AppElements) {
     onClearSourceUrl: sourceInput.clearAfterExport,
     onScrollToFailures: scrollToFailures,
   };
-  const pdfExportController = createPdfExportController({
+  const mixedExportController = createMixedExportController({
     ...exportOptions,
-    getFilename: () => exportPresentation.pdfFilename,
-    getSourcePage(firstSelected, filename) {
-      return exportSession.includeSourcePage
-        ? {heading: t("sourceHeading"), filename, url: firstSelected.sourcePage}
-        : undefined;
-    },
-  });
-  const imageExportController = createImageExportController({
-    ...exportOptions,
+    getPdfFilename: () => exportPresentation.pdfFilename,
     getZipFilename: () => exportPresentation.zipFilename,
   });
   const results = createResultSession({
@@ -209,7 +199,8 @@ export function createPanelApplication(elements: AppElements) {
     imageList: imageListView,
     viewer: viewerController,
     previews: imagePreviewLoader,
-    getPreferredFormat: () => loadExportPreferences().format,
+    getPreferredFormat: () => loadSplitExportPreferences().imageFormat,
+    preserveFormat: true,
     clearAnalyzedUrl: collectionController.clearAnalyzedUrl,
     resetScan: () => scanSessionController.reset(),
     fallbackTitle: t("imageFallback"),
@@ -271,8 +262,7 @@ export function createPanelApplication(elements: AppElements) {
       imagePreviewLoader.clear();
       collectionController.stop();
       scanSessionController.abort();
-      pdfExportController.abort();
-      imageExportController.abort();
+      mixedExportController.abort();
       imageListView.clearVideoSizes();
     },
   };

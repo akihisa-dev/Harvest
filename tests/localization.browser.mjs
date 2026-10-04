@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
 import test from "node:test";
+import {redPng} from "./animation-fixtures.mjs";
 import {mp4Bytes} from "./media-fixtures.mjs";
 
 // Browser plugin not available; use the repository's Chrome/Playwright test setup.
@@ -41,8 +42,8 @@ test("日英の操作・動画保存失敗・ライセンス画面が同じ表�
     }, locale);
     await context.route("https://files.example.test/**", route => {
       const video = route.request().url().endsWith(".mp4");
-      const body = video ? mp4Bytes : Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j+ioAAAAASUVORK5CYII=", "base64");
-      return route.fulfill({status: 200, contentType: video ? "video/mp4" : "image/png", body,
+      const body = video ? mp4Bytes : redPng;
+      return route.fulfill({status: video ? 500 : 200, contentType: video ? "video/mp4" : "image/png", body,
         headers: {"access-control-allow-origin": "*", "content-length": String(body.length)}});
     });
     const page = await context.newPage();
@@ -58,15 +59,15 @@ test("日英の操作・動画保存失敗・ライセンス画面が同じ表�
       await page.getByRole("button", {name: ja ? "解析" : "Analyze", exact: true}).click();
       await page.waitForFunction(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
       await page.locator("#all-selection").check();
-      await page.locator("#export-format-mp4").check();
+      await page.locator("#video-export-format-mp4").check();
       assert.equal(await page.locator("#export-media-hint").textContent(), ja
-        ? "動画はMP4で保存します。WebMは変換し、MP4は元データを使います。 MP4の対象だけを保存します。選択中の1件は対象外です。"
-        : "Videos are saved as MP4. WebM is converted; existing MP4 data is preserved. Only files for MP4 are saved. Excluded: 1 selected file.");
+        ? "動く画像はGIF。 動画はMP4で保存します。WebMは変換し、MP4は元データを使います。"
+        : "Animated images use GIF. Videos are saved as MP4. WebM is converted; existing MP4 data is preserved.");
       await page.locator("#export").click();
       await page.waitForFunction(() => !document.querySelector("#failures").hidden);
       assert.equal(await page.locator("#failures-heading").textContent(), ja ? "保存できなかったファイル" : "Files that could not be saved");
       assert.match(await page.locator("#failed-images").textContent(), /動画\.mp4/);
-      assert.ok((await page.locator("#failed-images").textContent()).endsWith(ja ? "ファイルを保存できませんでした。" : "Could not save the files."));
+      assert.match(await page.locator("#failed-images").textContent(), /応答|respond/);
       assert.equal(await page.locator("#export").textContent(), ja ? "失敗分を再試行" : "Retry failed files");
       assert.doesNotMatch(await page.locator("body").innerText(), /Unknown native|\{\w+\}/);
       await page.screenshot({path: join(tmpdir(), `harvest-localization-${locale}-failure.png`)});
@@ -88,7 +89,7 @@ test("日英の操作・動画保存失敗・ライセンス画面が同じ表�
       for (const href of await legal.locator("a").evaluateAll(links => links.map(link => link.href))) {
         if (href.startsWith(origin)) assert.equal((await context.request.get(href)).status(), 200);
       }
-      assert.deepEqual(errors, []);
+      assert.deepEqual(errors.filter(error=>!error.includes("status of 500")), []);
     } finally { await context.close(); }
   }
 });

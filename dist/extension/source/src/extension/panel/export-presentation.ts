@@ -1,5 +1,6 @@
 import type { ImageItem } from "../../core/images.js";
 import { createSourcePageLayout } from "../../core/pdf.js";
+import {isStillImage, pdfSourceFilename, type VideoExportFormat} from "../../core/split-export-formats.js";
 import type { ExportFormat, ImageArchiveFormat } from "../../core/export-formats.js";
 import { itemArchiveFormat, originalItemExtension } from "../../core/export-formats.js";
 import { selectionsMatch } from "./export-lifecycle.js";
@@ -17,6 +18,7 @@ export interface PendingImageExportView extends PendingExportView {
 }
 
 export interface CompletedExport {
+  readonly videoFormat?: VideoExportFormat;
   readonly format: ExportFormat;
   readonly selected: readonly ImageItem[];
   readonly includeSourcePage: boolean;
@@ -81,14 +83,31 @@ export function createExportPresentation(options: ExportPresentationOptions) {
   }
 
   function preview(selection: CompletedExport): ImageItem | null {
-    return createSourcePreview(selection.selected, selection.format, selection.includeSourcePage, options.sourceHeading, filename("pdf"));
+    const still = selection.videoFormat === undefined ? selection.selected : selection.selected.filter(isStillImage);
+    const sourceFilename = selection.videoFormat === undefined ? filename("pdf")
+      : pdfSourceFilename(selection.selected.length,selection.selected.indexOf(still[0]!),selection.selected.length-still.length,filename("pdf"));
+    return createSourcePreview(still, selection.format, selection.includeSourcePage, options.sourceHeading, sourceFilename);
   }
 
   return {
     get pdfFilename() { return filename("pdf"); },
     get zipFilename() { return filename("zip"); },
     get resultFilename(): string {
-      const {format, selected} = options.getSelection();
+      const {format, selected,videoFormat} = options.getSelection();
+      if (videoFormat !== undefined) {
+        if (!selected.length) return filename(format === "pdf" ? "pdf" : "zip");
+        const still = selected.filter(isStillImage),pdf = format === "pdf" && still.length > 0;
+        const count = format === "pdf" ? selected.length-still.length+(pdf?1:0) : selected.length;
+        if (count === 1 && pdf) return filename("pdf");
+        const videosOnly=selected.length>0&&selected.every(item=>item.kind === "video");
+        if (count > 1 && !(videosOnly&&videoFormat !== "original")) return filename("zip");
+        const item=selected[0],original=item?.kind === "video" ? videoFormat === "original" : format === "original";
+        const extension=!item ? null : original ? originalItemExtension(item)?.toLowerCase()
+          : item.kind === "video" ? "mp4" : !isStillImage(item) ? "gif" : format === "recommend" ? "png" : format;
+        if (!extension) return exportFileBaseName(options.getTitle(),options.fallbackTitle);
+        const first=`${"1".padStart(Math.max(3,String(selected.length).length),"0")}.${extension}`;
+        return individualFilename(filename("zip"),first,count);
+      }
       if (format === "pdf") return filename("pdf");
       if (!saveFilesIndividually(format, selected.length, selected)) return filename("zip");
       const extension = selected[0]

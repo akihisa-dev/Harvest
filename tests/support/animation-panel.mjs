@@ -4,18 +4,18 @@ import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {temporaryDirectory,launchExtensionContext,startServer} from './browser.mjs';
 
-export async function animationPanel(t, assets) {
+export async function animationPanel(t, assets, options = {}) {
   let paths = [], name = 'animation', requests = [];
   const server = await startServer(t, (request,response) => {
     const path = new URL(request.url,'http://localhost').pathname;
-    if (path === '/gallery') { response.writeHead(200,{'content-type':'text/html'});response.end(`<title>${name}</title>${paths.map(path => `<img width="32" height="24" src="${path}">`).join('')}`);return; }
+    if (path === '/gallery') { response.writeHead(200,{'content-type':'text/html'});response.end(`<title>${name}</title>${paths.map(path => assets.get(path)?.[1].startsWith("video/") ? `<video controls width="32" height="24" src="${path}"></video>` : `<img width="32" height="24" src="${path}">`).join('')}`);return; }
     const [body,type] = assets.get(path) ?? [Buffer.from('missing'),'text/plain'];
     requests.push(path); response.writeHead(200,{'content-type':type,'content-length':String(body.length)});response.end(request.method === 'HEAD' ? '' : body);
   });
   const origin = `http://127.0.0.1:${server.address().port}`, temporary = await temporaryDirectory(t,'/tmp/harvest-recommended-animation-');
   await mkdir(`${temporary}/profile/Default`,{recursive:true});await mkdir(`${temporary}/downloads`);
   await writeFile(`${temporary}/profile/Default/Preferences`,JSON.stringify({download:{default_directory:`${temporary}/downloads`,prompt_for_download:false}}));
-  const context = await launchExtensionContext(t,`${temporary}/profile`,{locale:'ja-JP',reducedMotion:'reduce',args:['--enable-unsafe-extension-debugging','--disable-background-networking','--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1','--no-first-run']});
+  const context = await launchExtensionContext(t,`${temporary}/profile`,{locale:options.locale ?? 'ja-JP',reducedMotion:'reduce',args:['--enable-unsafe-extension-debugging','--disable-background-networking','--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1','--no-first-run']});
   await context.route('**/*', route => {
     const url = new URL(route.request().url());return ['http:','https:'].includes(url.protocol) && url.origin !== origin ? route.abort('blockedbyclient') : route.continue();
   });
@@ -30,7 +30,7 @@ export async function animationPanel(t, assets) {
     await page.locator(`#export-format-${format}`).check();const before=await count();await page.locator('#export').click();await page.waitForFunction(before=>window.downloadIds.length===before+1,before);await page.waitForFunction(async()=> (await chrome.downloads.search({id:window.downloadIds.at(-1)}))[0]?.state==='complete');await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='success');const download=await page.evaluate(async()=> (await chrome.downloads.search({id:window.downloadIds.at(-1)}))[0]);return {bytes:await readFile(download.filename),filename:download.filename};
   };
   const failed = async () => {
-    const before=await count();await page.locator('#export').click();await page.waitForFunction(()=>document.querySelector('#export').dataset.saving==='false'&&document.querySelector('#images .failed'));assert.equal(await count(),before);assert.notEqual(await page.locator('#status').getAttribute('data-state'),'success');return page.locator('#failures').innerText();
+    const before=await count();await page.locator('#export').click();await page.waitForFunction(()=>document.querySelector('#export').dataset.saving==='false'&&!document.querySelector('#failures').hidden);assert.equal(await count(),before);assert.notEqual(await page.locator('#status').getAttribute('data-state'),'success');return page.locator('#failures').innerText();
   };
   return {page,scan,saved,failed,count,requests:()=>requests};
 }

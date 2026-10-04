@@ -42,7 +42,7 @@ test('実Chromeでタイトル境界の単体・複数MP4を安全な名前で�
     await page.evaluate(({title, count}) => {window.downloads = []; window.fixture = {url: 'https://source.example.test/gallery', title, images: [],
       media: Array.from({length: count}, (_, i) => ({url: `https://files.example.test/${i}.mp4`, kind: 'video'}))};}, {title, count});
     await page.locator('#scan').click(); await page.waitForFunction(() => (document.querySelector('#scan').dataset.scanning === "false" && !document.querySelector('#scan').disabled));
-    await page.locator('#export-format-mp4').check();
+    await page.locator('#video-export-format-mp4').check();
     assert.equal(await page.locator('#source-drop').textContent(), count === 1 ? base + '.mp4' : base + '_001.mp4');
     await page.locator('#export').click(); await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'success');
     assert.equal(await page.locator('#export').textContent(), `${count}件保存しました`);

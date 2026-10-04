@@ -1,4 +1,4 @@
-import { exportFormats } from "../../core/export-formats.js";
+import { imageExportFormats, videoExportFormats } from "../../core/split-export-formats.js";
 function required(selector) {
     const element = document.querySelector(selector);
     if (!element)
@@ -17,7 +17,11 @@ export function queryAppElements() {
         exportMediaHint: required("#export-media-hint"),
         exportOriginalExtension: required("#export-original-extension"),
         exportRecommendExtension: required("#export-recommend-extension"),
-        exportFormatInputs: exportFormats.map(format => ({ format, input: required(`#export-format-${format}`) })),
+        exportFormatInputs: imageExportFormats.map(format => ({ format, input: required(`#export-format-${format}`) })),
+        videoExportFormatInputs: videoExportFormats.map(format => ({ format, input: required(`#video-export-format-${format}`) })),
+        imageFormatGroup: required("#image-export-formats"),
+        videoFormatGroup: required("#video-export-formats"),
+        videoOriginalExtension: required("#video-original-extension"),
         sourcePageOption: required(".source-page-option"),
         includeSourcePage: required("#include-source-page"),
         viewerToggleButton: required("#viewer-toggle"),

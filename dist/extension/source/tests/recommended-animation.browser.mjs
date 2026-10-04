@@ -24,6 +24,6 @@ test('拡張子なしGIFを実レスポンスで確認し、推奨単体/選択�
     assets.set('/unknown',[body,type]);await scan(['/unknown','/static.webp']);await page.locator('#export-format-recommend').check();assert.match(await failed(),/一致しません|不完全|破損/);
     assets.set('/unknown',[animatedGif,'image/gif']);const retry=storedEntries((await saved('recommend')).bytes);assert.deepEqual(retry[0].bytes,animatedGif);assert.equal(retry[0].name,'001.gif');
   }
-  await scan(['/unknown']);assert.match((await saved('png')).filename,/\.png$/);assert.deepEqual((await saved('recommend')).bytes,animatedGif);
+  await scan(['/unknown']);assert.match((await saved('png')).filename,/\.gif$/);assert.deepEqual((await saved('png')).bytes,animatedGif);assert.deepEqual((await saved('recommend')).bytes,animatedGif);
   const before=await count();await page.evaluate(()=>{document.querySelector('#export').click();document.querySelector('#export').click();});await page.waitForFunction(()=>document.querySelector('#export').dataset.saving==='false');assert.equal(await count(),before);
 });

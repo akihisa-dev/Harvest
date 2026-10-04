@@ -1,4 +1,5 @@
-import { availableExportFormats, isMediaArchiveFormat, originalItemExtension, recommendedItemFormat } from "../../core/export-formats.js";
+import { isMediaArchiveFormat, originalItemExtension, recommendedItemFormat } from "../../core/export-formats.js";
+import { isStillImage } from "../../core/split-export-formats.js";
 import { setButtonLabel } from "./button-state.js";
 import { createEmptyStateView } from "./empty-state.js";
 import { imageFilename } from "./export-presentation.js";
@@ -6,6 +7,15 @@ import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { setMotionText } from "./motion.js";
 function exportButtonLabel(state) {
     const { format, selected, view } = state;
+    if (state.videoFormat !== undefined) {
+        if (view.phase === "running")
+            return view.progress;
+        if (view.phase === "retry-required")
+            return t("exportRetry");
+        if (!selected.length)
+            return t("save");
+        return t(view.phase === "saved" ? "exportFilesSaved" : "exportSelectionAction", { count: selected.length, plural: formatPlural(selected.length) });
+    }
     if (view.phase === "running")
         return view.progress;
     if (view.phase === "retry-required")
@@ -73,16 +83,16 @@ export function createAppView(elements, positionOf) {
     function render(snapshot) {
         const { busy, items, selectedCount, scanState, scanRunning } = snapshot;
         const { format, selected, includeSourcePage: sourceIncluded, view } = snapshot.export;
-        const formats = availableExportFormats(items);
         const selectedItems = items.filter(item => item.selected);
-        renderExtensions(elements.exportOriginalExtension, selectedItems.map(originalItemExtension));
-        renderExtensions(elements.exportRecommendExtension, selectedItems.map(item => recommendedItemFormat(item).toUpperCase()));
-        const hasVideo = formats.includes("mp4");
-        const excludedCount = selectedCount - selected.length;
+        const images = selectedItems.filter(item => item.kind !== "video"), videos = selectedItems.filter(item => item.kind === "video");
+        renderExtensions(elements.exportOriginalExtension, images.map(originalItemExtension));
+        renderExtensions(elements.videoOriginalExtension, videos.map(originalItemExtension));
+        renderExtensions(elements.exportRecommendExtension, images.map(item => recommendedItemFormat(item).toUpperCase()));
+        elements.imageFormatGroup.hidden = items.length > 0 && !items.some(item => item.kind !== "video");
+        elements.videoFormatGroup.hidden = !items.some(item => item.kind === "video");
         exportMediaHint.textContent = [
-            format === "recommend" && selected.some(item => item.kind !== "video") ? t("animatedImageHint") : "",
-            (format === "mp4" && hasVideo) || (format === "recommend" && selected.some(item => item.kind === "video")) ? t("videoConversionHint") : "",
-            excludedCount ? t("mediaExcludedHint", { count: excludedCount, plural: formatPlural(excludedCount), format: format.toUpperCase() }) : "",
+            format !== "original" && images.length ? t("movingImagesGif") : "",
+            snapshot.export.videoFormat !== "original" && videos.length ? t("videoConversionHint") : "",
         ].filter(Boolean).join(" ");
         exportMediaHint.hidden = !exportMediaHint.textContent;
         scanButton.disabled = busy && !scanRunning;
@@ -92,14 +102,18 @@ export function createAppView(elements, positionOf) {
         includeSourcePage.disabled = busy;
         includeSourcePage.checked = sourceIncluded;
         for (const choice of exportFormatInputs) {
-            const hidden = !formats.includes(choice.format);
+            const hidden = false;
             const label = choice.input.closest?.("label");
             if (label)
                 label.hidden = hidden;
             choice.input.disabled = busy || hidden;
             choice.input.checked = choice.format === format;
         }
-        sourcePageOption.hidden = format !== "pdf";
+        for (const choice of elements.videoExportFormatInputs) {
+            choice.input.disabled = busy;
+            choice.input.checked = choice.format === snapshot.export.videoFormat;
+        }
+        sourcePageOption.hidden = format !== "pdf" || (items.length > 0 && !items.some(isStillImage));
         scanButton.dataset["scanning"] = String(scanRunning);
         setButtonLabel(scanButton, t(scanRunning ? "scanStop" : "scan"));
         if (scanRunning)

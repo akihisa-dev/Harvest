@@ -179,3 +179,9 @@ fetchのRequest形式では本文を複製から読み、元のRequestを消費�
 一覧構造の確認元（2026年10月3日に開いているXのscript参照から確認）: [Xのmainスクリプト](https://abs.twimg.com/responsive-web/client-web/main.bbbbbc3a3b2a833ba.js)、[Historyスクリプト](https://abs.twimg.com/responsive-web/client-web/bundle.History.83142327f5c44202a.js)。配信コードの変更で取得できなくなった場合は部分取得として扱います。
 
 本文、JSON文字列、汎用属性からGIF URLを抽出する際も、一般画像URLと同じ括弧・句読点の境界判定を使います。クエリ・fragment内の末尾記号はURLの一部として保持し、切れた別URLを追加しません。GIFの分類と通常の文章括弧の除去は維持します。
+
+## 画像と動画の独立保存
+
+`browser/split-export-preferences.ts`は画像/動画の独立した形式キーを読み、旧形式を移行します。旧キーと出典設定は削除しません。`panel/split-export-session.ts`は全選択項目、順序、両形式、出典設定のスナップショットを一つの保存要求として管理します。タイプが非表示になったり再解析したりしても形式は維持し、変更・中止・クリア後の古い成功表示を拒否します。
+
+`media/mixed-export-preparation.ts`は最大3取得・1変換、動画/GIF/原本を含む場合は1取得で、静止PDFページと個別ファイルを準備します。動く画像は画像のoriginal以外でGIFへ分岐します。解決済み取得結果の参照は各変換後に解放し、同じ設定と選択順の失敗のみを再試行します。`panel/mixed-export-controller.ts`が静止PDFを集約し、必要ならGIF・動画と一つのZIPにします。すべての準備とZIP32容量確認が成功するまでダウンロードを始めません。動画のみのMP4保存は管理済みダウンロードの順次完了確認を維持します。従来の個別PDF/画像コントローラーAPIは互換呼び出し用に保持します。

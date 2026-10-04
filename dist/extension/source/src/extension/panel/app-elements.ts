@@ -1,4 +1,4 @@
-import { exportFormats } from "../../core/export-formats.js";
+import {imageExportFormats,videoExportFormats} from "../../core/split-export-formats.js";
 
 function required<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -18,7 +18,11 @@ export function queryAppElements() {
     exportMediaHint: required<HTMLParagraphElement>("#export-media-hint"),
     exportOriginalExtension: required<HTMLSpanElement>("#export-original-extension"),
     exportRecommendExtension: required<HTMLSpanElement>("#export-recommend-extension"),
-    exportFormatInputs: exportFormats.map(format => ({format, input: required<HTMLInputElement>(`#export-format-${format}`)})),
+    exportFormatInputs: imageExportFormats.map(format => ({format, input: required<HTMLInputElement>(`#export-format-${format}`)})),
+    videoExportFormatInputs: videoExportFormats.map(format => ({format,input:required<HTMLInputElement>(`#video-export-format-${format}`)})),
+    imageFormatGroup: required<HTMLFieldSetElement>("#image-export-formats"),
+    videoFormatGroup: required<HTMLFieldSetElement>("#video-export-formats"),
+    videoOriginalExtension: required<HTMLSpanElement>("#video-original-extension"),
     sourcePageOption: required<HTMLLabelElement>(".source-page-option"),
     includeSourcePage: required<HTMLInputElement>("#include-source-page"),
     viewerToggleButton: required<HTMLButtonElement>("#viewer-toggle"),

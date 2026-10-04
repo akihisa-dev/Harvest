@@ -14,6 +14,7 @@ interface ResultSessionOptions {
   readonly viewer: Pick<ViewerController, "setOpen" | "clearCurrentPage">;
   readonly previews: Pick<ImagePreviewLoader, "clear">;
   readonly getPreferredFormat: () => ExportFormat;
+  readonly preserveFormat?: boolean;
   readonly clearAnalyzedUrl: () => void;
   readonly resetScan: () => void;
   readonly fallbackTitle: string;
@@ -32,7 +33,7 @@ export function createResultSession(options: ResultSessionOptions) {
     get title() { return title; },
     commit(nextTitle: string, initialGroup: string | null, sourcePage: string): void {
       // The scan owns atomic collection replacement; dependent state follows only a successful result.
-      options.exportSession.setFormat(initialExportFormat(options.collection.items, options.getPreferredFormat()));
+      if (!options.preserveFormat) options.exportSession.setFormat(initialExportFormat(options.collection.items, options.getPreferredFormat()));
       title = nextTitle;
       options.sourceInput.commitResult(sourcePage);
       options.previews.clear();

@@ -90,7 +90,7 @@ test('実拡張機能でWebMの末尾・VFR・音声をMP4とrecommend保存で�
     } finally { URL.revokeObjectURL(element.src); element.remove(); }
   }, {bytes: [...bytes], type});
   const save = async (format, title) => {
-    await page.locator(`#export-format-${format}`).check();
+    await page.locator(`#video-export-format-${format}`).check();
     const count = await page.evaluate(() => window.ownDownloads.length);
     await page.locator('#export').click();
     await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'success');

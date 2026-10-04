@@ -136,12 +136,13 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   assert.equal(captionPosition, true, '解像度はファイル名の文字の上へ重ねる');
   assert.equal(await page.locator('#export-format-pdf').isChecked(), true);
   assert.equal(await page.locator('#export-format-jxl').isVisible(), true);
-  assert.equal(await page.locator('#export-format-mp4').isVisible(), false);
-  assert.equal(await page.locator('#export-format-gif').isVisible(), false);
+  assert.equal(await page.locator('#video-export-format-mp4').isVisible(), false);
+  assert.equal(await page.locator('#export-format-gif').count(), 0);
   assert.equal(await page.locator('#export-format-original').isVisible(), true);
   assert.equal(await page.locator('#export-format-recommend').isVisible(), true);
   await scan([photo, animation], [{url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
-  assert.equal(await page.locator('#export-format-mp4').isChecked(), true);
+  assert.equal(await page.locator('#video-export-format-recommend').isChecked(), true);
+  assert.equal(await page.locator('#export-format-pdf').isChecked(), true);
   const groups = page.locator('#groups .group-label');
   assert.deepEqual(await groups.allTextContents(), ['MP4\n(1件)', 'GIF\n(1件)', 'その他\nPNG\n(1枚)']);
   const gifGroup = page.locator('#groups .group-chip').filter({hasText: 'GIF'});
@@ -151,11 +152,13 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   assert.equal(await page.locator('#images > li').count(), 2, 'GIFだけの表示切替を動画とは独立に行う');
   await page.locator('#all-selection').check();
   await page.locator('#export-format-pdf').check();
-  assert.match(await page.locator('#export-media-hint').textContent(), /選択中の2件は対象外/);
+  assert.doesNotMatch(await page.locator('#export-media-hint').textContent(), /対象外/);
+  assert.match(await page.locator('#export').textContent(), /3件/);
   assert.equal(await page.locator('#export').isDisabled(), false);
-  await page.locator('#export-format-mp4').check();
+  await page.locator('#video-export-format-mp4').check();
   const save = async (format, count = 1, outputFormat = format) => {
-    await page.locator(`#export-format-${format}`).check();
+    const videosOnly=await page.locator('#image-export-formats').isHidden();
+    await page.locator(format === 'mp4' || (videosOnly&&format === 'recommend') ? `#video-export-format-${format === 'mp4' ? 'mp4' : 'recommend'}` : `#export-format-${format === 'gif' ? 'recommend' : format}`).check();
     const individual = outputFormat === 'mp4' || count === 1;
     const received = [];
     let collect, timer;
@@ -209,6 +212,7 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
       return window.originalBlobRead.call(this);
     };
   });
+  await scan([], [{url: movie,kind:'video'}]);
   const videos = await save('mp4');
   assert.equal(await page.evaluate(() => window.mp4ValidationReads), 1, 'MP4保存では同じBlobの完全性検査を1回だけ行う');
   await page.evaluate(() => { Blob.prototype.arrayBuffer = window.originalBlobRead; });
@@ -228,6 +232,7 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   assert.deepEqual(uniqueVideos.map(entry => entry.name), ['001.mp4', '002.mp4']);
   await scan([photo, animation], [{url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
   await page.locator('#all-selection').check();
+  await scan([animation],[{url:animation,kind:'gif'}]);
   const gifs = await save('gif');
   assert.deepEqual(gifs.map(e => e.name), ['001.gif']);
   assert.deepEqual(gifs[0].data, gif);
@@ -239,6 +244,7 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
     const good = format === 'gif' ? animation : movie;
     const bad = `https://files.example.test/broken-${name}.${format}`;
     await scan(format === 'gif' ? [good, bad] : [], [{url: good, kind: format === 'gif' ? 'gif' : 'video'}, {url: bad, kind: format === 'gif' ? 'gif' : 'video'}]);
+    await page.locator(format === 'mp4' ? '#video-export-format-mp4' : '#export-format-recommend').check();
     const before = downloads;
     await page.locator('#export').click();
     await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'error');
@@ -252,18 +258,19 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   }
   await scan([photo, animation], [{url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
   await page.locator('#all-selection').check();
+  await scan([photo],[]);
   const images = await save('png');
   assert.deepEqual(images.map(e => e.name), ['001.png']);
   assert.deepEqual(images[0].data, png);
   await scan([], [{url: movie, kind: 'video'}]);
-  assert.equal(await page.locator('#export-format-mp4').isChecked(), true);
+  assert.equal(await page.locator('#video-export-format-mp4').isChecked(), true);
   for (const format of ['pdf', 'jpg', 'png', 'jxl'])
     assert.equal(await page.locator(`#export-format-${format}`).isVisible(), false);
   assert.equal(await page.locator('#export').isDisabled(), false);
-  assert.equal(await page.locator('#export-format-gif').isVisible(), false);
+  assert.equal(await page.locator('#export-format-gif').count(), 0);
   await page.waitForFunction(() => / B$| KB$| MB$/.test(document.querySelector('#images .item-resolution')?.textContent ?? ''));
   assert.equal(await page.locator('#images .item-resolution').isVisible(), true, '動画には代替画像の解像度ではなく元ファイルのサイズを表示する');
-  assert.match(await page.locator('#export').textContent(), /MP4/);
+  assert.match(await page.locator('#export').textContent(), /1件/);
   const webmUrl = 'https://files.example.test/movie.webm';
   const failures = await page.evaluate(async bytes => {
     const {prepareMp4} = await import('./media/mp4-conversion.js');
@@ -321,7 +328,7 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   for (const urls of [[webmUrl], [movie, webmUrl]]) {
     await scan([], urls.map(url => ({url, kind: 'video'})));
     await page.locator('#all-selection').check();
-    assert.equal(await page.locator('#export-format-mp4').isChecked(), true);
+    assert.equal(await page.locator('#video-export-format-mp4').isChecked(), true);
     assert.match(await page.locator('#export-media-hint').textContent(), /WebMは変換/);
     const entries = await save('mp4', urls.length);
     assert.deepEqual(entries.map(entry => entry.name), urls.map((_, i) => `${String(i + 1).padStart(3, '0')}.mp4`));
@@ -336,18 +343,18 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
     assert.ok(info.audioFrames > 0);
   }
   await scan([], [{url: webmUrl, kind: 'video'}]);
-  await page.locator('#export-format-recommend').check();
-  assert.equal(await page.locator('#export-original-extension').textContent(), '(WEBM)');
-  assert.equal(await page.locator('#export-recommend-extension').textContent(), '(MP4)');
+  await page.locator('#video-export-format-recommend').check();
+  assert.equal(await page.locator('#video-original-extension').textContent(), '(WEBM)');
   const recommendedVideo = await save('recommend', 1, 'mp4');
   const recommendedInfo = await inspectMp4(recommendedVideo[0].data);
   assert.equal(recommendedInfo.video, 'avc');
   assert.equal(recommendedInfo.audio, 'aac');
-  await page.locator('#export-format-mp4').check();
+  await page.locator('#video-export-format-mp4').check();
   await scan([animation], [{url: animation, kind: 'gif'}]);
-  assert.equal(await page.locator('#export-format-gif').isChecked(), true);
-  assert.equal(await page.locator('#export-format-mp4').isVisible(), false);
-  assert.match(await page.locator('#export').textContent(), /GIF/);
+  assert.equal(await page.locator('#export-format-png').isChecked(), true);
+  assert.equal(await page.locator('#video-export-format-mp4').isVisible(), false);
+  assert.match(await page.locator('#export').textContent(), /1件/);
+  assert.match(await page.locator('#export-media-hint').textContent(), /動く画像はGIF/);
   const gifUrls = [
     animation,
     ...['format=gif', 'fmt=gif', 'fm=gif', 'FORMAT=GIF', 'Fmt=GiF', 'FM=GIF']
@@ -370,12 +377,13 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
     }
   }, {urls: gifUrls, source: scanSource});
   await sourcePage.close();
+  await page.locator("#export-format-recommend").check();
   for (const url of gifUrls) {
     assert.ok(gifScan.images.includes(url), url);
     const media = gifScan.media.filter(item => item.url === url);
     assert.deepEqual(media, [{url, kind: 'gif'}]);
     await scan([url], media);
-    assert.equal(await page.locator('#export-format-gif').isChecked(), true, url);
+    assert.equal(await page.locator('#export-format-recommend').isChecked(), true, url);
     assert.equal(await page.locator('#export').isDisabled(), false, url);
     const entries = await save('gif');
     assert.deepEqual(entries.map(entry => entry.name), ['001.gif']);

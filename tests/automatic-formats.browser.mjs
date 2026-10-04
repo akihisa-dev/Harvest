@@ -83,7 +83,7 @@ for (const language of ["ja", "en"]) test(`${language}: 元形式・推奨形式
     await page.waitForFunction(() => document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled);
   };
   const save = async (format, filename) => {
-    await page.locator(`#export-format-${format}`).check();
+    await page.locator((await page.locator("#image-export-formats").isHidden()) ? `#video-export-format-${format}` : `#export-format-${format}`).check();
     const downloadPromise = page.waitForEvent("download");
     await page.locator("#export").click();
     const download = await downloadPromise;
@@ -100,7 +100,7 @@ for (const language of ["ja", "en"]) test(`${language}: 元形式・推奨形式
   assert.equal(await page.locator("#export-recommend-extension").textContent(), "(PNG)");
   for (const [width, height] of [[1280, 800], [768, 600], [360, 640]]) {
     await page.setViewportSize({width, height});
-    const layout = await page.locator(".export-formats").evaluate(group => {
+    const layout = await page.locator("#image-export-formats").evaluate(group => {
       const auto = group.querySelector(".export-auto-formats").getBoundingClientRect();
       const explicit = group.querySelector(".export-explicit-formats").getBoundingClientRect();
       return {bottom: auto.bottom, top: explicit.top, overflow: group.scrollWidth - group.clientWidth,
@@ -121,7 +121,7 @@ for (const language of ["ja", "en"]) test(`${language}: 元形式・推奨形式
   assert.equal(await page.locator("#export-recommend-extension").textContent(), "(GIF)");
   assert.deepEqual(await save("recommend", "automatic.gif"), gifBytes);
   await scan([video]);
-  assert.equal(await page.locator("#export-recommend-extension").textContent(), "(MP4)");
+  assert.equal(await page.locator("#video-export-format-recommend + span").textContent(), "recommend(MP4)");
   assert.deepEqual(await save("recommend", "automatic.mp4"), mp4Bytes);
   await scan([image, gif, video]);
   await page.locator("#all-selection").check();
