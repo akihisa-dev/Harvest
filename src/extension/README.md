@@ -124,6 +124,8 @@ source要素は所有要素と明示された種類を確認し、audio内のsou
 
 解析中のvideo配下の子要素追加・削除・交換では親videoも再収集します。source変更やload()の後にcurrentSrcだけが非同期で更新される場合に備え、監視終了時に接続中のvideoの根拠を再構築します。旧URLはそのvideoの根拠だけを外し、別の現存要素や現在のsourceが参照していれば候補を保持します。監視期間を延長せず、終了時点で読み取れるcurrentSrcを反映します。
 
+imgも結果確定前に接続中の要素の根拠を再収集し、src・srcset変更やpicture配下のsource交換・削除・media変更に伴って非同期で切り替わるcurrentSrcを反映します。旧表示URLに他の根拠がなければ候補から外し、共有URLとsrcsetの最大候補は保持します。画像の読み込みを追加で待たず、通常DOMとopen Shadow DOMで同じ最終照合を使います。
+
 ## 動画・GIFの保存とXの追加解析
 
 動画・originalの取得は [media-fetch.ts](media/media-fetch.ts)、その他の画像取得は [image-fetch.ts](media/image-fetch.ts) が担当します。[src/core/media-types.ts](../core/media-types.ts) とGIF構造・デコード検査で実データの種類を検証し、[mixed-export-controller.ts](panel/mixed-export-controller.ts) が全選択項目の出力を構成します。MP4とGIFは元データを保ち、WebMは[mp4-conversion.ts](media/mp4-conversion.ts)から専用Workerを起動して[mp4-codec.ts](workers/mp4-codec.ts)でH.264/AACのMP4へ変換します。

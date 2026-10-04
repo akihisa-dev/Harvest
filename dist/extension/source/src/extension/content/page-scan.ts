@@ -1034,8 +1034,9 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
       const [element, previous] = snapshots[index]!;
       checkDeadline();
       // currentSrc can change asynchronously after source mutation/load() without
-      // another DOM record. Reconcile connected videos at the observation boundary.
-      if (observation.contains(element) && (element.tagName.toLowerCase() === "video" || backgroundFor(element) !== previous)) collectElement(element);
+      // another DOM record. Reconcile connected images and videos at the observation boundary.
+      const tagName = element.tagName.toLowerCase();
+      if (observation.contains(element) && (tagName === "img" || tagName === "video" || backgroundFor(element) !== previous)) collectElement(element);
       if ((index + 1) % chunkSize === 0 && index + 1 < snapshots.length) await yieldToPage();
     }
   };
