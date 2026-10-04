@@ -1,3 +1,4 @@
+import { resolveImageExportFormat } from "../../core/export-recommendations.js";
 import { createPdf } from "../../core/pdf.js";
 import { originalMediaType } from "../../core/media-types.js";
 import { indexedExportFilename, pdfSourceFilename, splitSettingsMatch } from "../../core/split-export-formats.js";
@@ -33,7 +34,7 @@ export function createMixedExportController(options) {
         clear: operation.clear, abort: operation.abort, discardIfSelectionChanged: operation.discardIfSelectionChanged,
         async export(settings) {
             await operation.start({
-                createWork: selected => ({ ...settings, selected, prepared: new Map(), failed: new Map(), saved: new Set() }),
+                createWork: selected => ({ ...settings, selected, resolvedImageFormat: settings.resolvedImageFormat ?? resolveImageExportFormat(settings.imageFormat, selected), prepared: new Map(), failed: new Map(), saved: new Set() }),
                 isCompatible: pending => splitSettingsMatch(pending, settings),
                 preparationMessage: (retry, completed, total) => t(retry ? "retryFiles" : "prepareFiles", { completed, total }),
                 async run(run) {

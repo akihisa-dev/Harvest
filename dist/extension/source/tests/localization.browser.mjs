@@ -60,9 +60,12 @@ test("日英の操作・動画保存失敗・ライセンス画面が同じ表�
       await page.waitForFunction(() => (document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled));
       await page.locator("#all-selection").check();
       await page.locator("#video-export-format-mp4").check();
-      assert.equal(await page.locator("#export-media-hint").textContent(), ja
-        ? "動く画像はGIF。 動画はMP4で保存します。WebMは変換し、MP4は元データを使います。"
-        : "Animated images use GIF. Videos are saved as MP4. WebM is converted; existing MP4 data is preserved.");
+      const hint = await page.locator("#export-media-hint").textContent();
+      assert.match(hint, ja ? /original: 各ファイルをそのまま残す/ : /original: keep each file unchanged/);
+      assert.match(hint, ja
+        ? /動画はMP4で保存します。WebMは変換し、MP4は元データを使います。/
+        : /Videos are saved as MP4\. WebM is converted; existing MP4 data is preserved\./);
+      assert.doesNotMatch(hint, /動く画像はGIF|Animated images use GIF/, "推奨の画像保存は原本を保持する");
       await page.locator("#export").click();
       await page.waitForFunction(() => !document.querySelector("#failures").hidden);
       assert.equal(await page.locator("#failures-heading").textContent(), ja ? "保存できなかったファイル" : "Files that could not be saved");

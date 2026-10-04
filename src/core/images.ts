@@ -6,6 +6,8 @@ export interface ImageItem {
   previewUrl?: string;
   /** Verified response format for recommend labels; panel memory only. */
   recommendedFormat?: "png" | "gif";
+  /** Validated response extension; never persisted outside this panel. */
+  originalExtension?: string;
 }
 
 export interface ImageGroup {

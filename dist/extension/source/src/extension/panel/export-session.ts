@@ -1,4 +1,5 @@
 import type {VideoExportFormat} from "../../core/split-export-formats.js";
+import type {ResolvedImageExportFormat} from "../../core/export-recommendations.js";
 import type { ExportFormat, ImageArchiveFormat } from "../../core/export-formats.js";
 import type { ImageItem } from "../../core/images.js";
 import { mediaExportSelection } from "../../core/media-selection.js";
@@ -29,6 +30,7 @@ export interface ExportSessionOptions {
 }
 
 export interface ExportSessionState {
+  readonly resolvedImageFormat?: ResolvedImageExportFormat;
   readonly videoFormat?: VideoExportFormat;
   readonly format: ExportFormat;
   readonly includeSourcePage: boolean;

@@ -29,13 +29,13 @@
 
 [application.ts](panel/application.ts) はパネルごとに状態と各担当を生成し、操作の購読と終了時の解放を受け持ちます。[result-session.ts](panel/result-session.ts) は確定した結果のタイトルと、その結果に対応する出典・表示グループ・プレビューの公開とリセットをまとめます。解析の失敗時には結果の公開を呼ばず、前の結果を維持します。
 
-[split-export-session.ts](panel/split-export-session.ts) が両形式・出典設定・開始時の全保存対象・完了記録を所有し、選択変更による再試行データの破棄は操作の経路から明示的に行います。保存完了は各保存処理から通知し、ステータスの文言には依存しません。[app-view.ts](panel/app-view.ts) は渡された状態をDOMへ表示するだけで、描画による作業データの変更や収集先への通知は行いません。
+[split-export-session.ts](panel/split-export-session.ts) が両形式・出典設定・開始時の全保存対象・実際の画像形式`resolvedImageFormat`・完了記録を所有し、選択変更による再試行データの破棄は操作の経路から明示的に行います。recommendedから決めた`resolvedImageFormat`は開始時に固定し、取得で項目の情報が更新されても再試行・完了まで維持します。保存完了は各保存処理から通知し、ステータスの文言には依存しません。[app-view.ts](panel/app-view.ts) は渡された状態をDOMへ表示するだけで、描画による作業データの変更や収集先への通知は行いません。
 
 DOM要素の契約は [app-elements.ts](panel/app-elements.ts)、設定保存を呼ぶ操作は [export-preferences-controller.ts](panel/export-preferences-controller.ts)、設定の読み書きは [export-preferences.ts](browser/export-preferences.ts)、表示状態の導出とファイル名・Sourceプレビューは [export-presentation.ts](panel/export-presentation.ts)、解析の開始・中断・収集結果の確定は [scan-session-controller.ts](panel/scan-session-controller.ts) が所有します。
 
 [image-list-view.ts](panel/image-list-view.ts) は画像グループの表示、選択操作、キー操作による並べ替えと一覧DOMを担当します。[image-drag-controller.ts](panel/image-drag-controller.ts) はドラッグ中の一時順序、計測済み座標、スクロール・サイズ変更の監視を所有し、確定結果だけを画像集合へ渡します。DOMを使わない挿入位置の計算は [src/core/image-reorder.ts](../core/image-reorder.ts) に置きます。
 
-Sourceプレビューも通常画像と同じ一覧の更新管理へ含め、件数・順序が変わらない選択更新では行を切り離さず再利用します。Sourceの内容が変わった場合は既存のプレビュー画像を更新します。
+Sourceプレビューも通常画像と同じ一覧の更新管理へ含め、件数・順序が変わらない選択更新では行を切り離さず再利用します。Sourceの内容が変わった場合は既存のプレビュー画像を更新します。出典ページ設定、PDF名、Sourceプレビューは`resolvedImageFormat`に従い、recommendedがPDFとなる場合も適用します。
 
 [viewer-controller.ts](panel/viewer-controller.ts) はプレビュー操作を担当します。サムネイルの順序・件数が変わらない更新では行を文書から外さず、Enter・Space選択後のフォーカスを保ちます。構造変更では同じボタンへ、削除時には現在表示する残存項目へフォーカスを戻し、全件削除では空状態へ移します。
 
@@ -130,7 +130,9 @@ source要素は所有要素と明示された種類を確認し、audio内のsou
 
 取得後のMIMEと内容を検査し、変換時に映像・音声が脱落する場合は失敗として扱います。変換は120秒・出力64 MiBとZIP残量の小さい方を上限にし、完了・失敗・中止でWorkerを終了します。
 
-画像と動画の形式欄は独立し、種類がない欄だけを隠して選択値を保持します。recommendedは静止画像をPNG、動く画像をGIF、動画をMP4で保存する固定の方針で、どの項目でも最高画質や最小容量になるという意味ではありません。画像のoriginal以外では動く画像をGIFにし、静止PDFと個別GIF・動画を一つのZIPへまとめるため、形式によって選択項目を除外しません。ファイルの種類とサムネイルURLは収集結果の一部としてメモリに保持します。
+画像と動画の形式欄は独立し、種類がない欄だけを隠して選択値を保持します。[export-recommendations.ts](../core/export-recommendations.ts)の`imageRecommendations()`は選択画像に原本保持のoriginalを推奨します。選択中の静止画像が2枚以上あり、一覧と同じURLパターン・形式によるグループ判定で一つのシリーズまたはセット（priority 1/2）になる場合は、一冊として読むPDFも推奨します。静止画像の単枚・複数グループ・cover/others/uploadにはPDFを推奨しません。動画・動画像が混在しても静止画像のまとまりで判定し、目のボタンの表示状態は参照しません。動画には原本保持のoriginalと再生用MP4を推奨します。各候補には用途を示す★を表示します。
+
+`resolveImageExportFormat()`は画像recommendedを上記のシリーズ条件ならPDF、それ以外ならoriginalへ解決します。original相当なら動くWebP・APNGも元データを保持し、動画recommendedは従来どおりMP4です。推奨候補と実際の保存形式は別に扱い、一度に原本とPDFなどを重複保存しません。画像形式がPDF・JPG・PNG・JXLの場合とrecommendedがPDFになる場合は動く画像をGIFにし、静止PDFと個別GIF・動画を一つのZIPへまとめます。ファイルの種類、検証済みの`originalExtension`、サムネイルURLは収集結果の一部としてパネル内メモリだけに保持し、再解析・結果の消去・パネル終了で破棄します。
 
 Xの追加解析は [x-media-scan.ts](content/x-media-scan.ts) をページの実行環境で実行し、投稿と動画要素に紐づく既存データの必要なフィールドだけを読みます。getterを実行せず、投稿本文・ユーザー情報・認証情報は出力対象に含めません。属性の補完ではstore・cacheを丸ごと走査しません。投稿IDと一致する祖先までで探索を止め、1回の読み取りは2.5秒・18,000ノード・文字列合計1,000,000文字・投稿ごと80要素・祖先40段・データ深さ36段・配列256要素を上限にします。画面上のメディアを全投稿から先に収集し、その後に既存データから補完します。投稿数による打ち切りは行いません。祖先40段で投稿データが見つからない場合は補完を止めるだけで、取得済みのDOM画像を失敗にしません。補完の処理予算を使い切った場合も取得済みの候補を返し、件数診断で不完全であることを区別します。
 
@@ -182,6 +184,8 @@ fetchのRequest形式では本文を複製から読み、元のRequestを消費�
 
 ## 画像と動画の独立保存
 
-`browser/split-export-preferences.ts`は画像/動画の独立した形式キーを読み、旧形式を移行します。旧キーと出典設定は削除しません。`panel/split-export-session.ts`は全選択項目、順序、両形式、出典設定のスナップショットを一つの保存要求として管理します。タイプが非表示になったり再解析したりしても形式は維持し、変更・中止・クリア後の古い成功表示を拒否します。
+`browser/split-export-preferences.ts`は出典ページ設定だけを読み、画像・動画を毎回recommendedで初期化します。旧形式キーは参照・削除・上書きしません。`panel/split-export-session.ts`は全選択項目、順序、両形式、出典設定と開始時に解決した`resolvedImageFormat`のスナップショットを一つの保存要求として管理し、同じ解決済み形式を再試行と完了表示にも使います。タイプが非表示になったり再解析したりしても形式は維持し、変更・中止・クリア後の古い成功表示を拒否します。
 
-`media/mixed-export-preparation.ts`は最大3取得・1変換、動画/GIF/原本を含む場合は1取得で、静止PDFページと個別ファイルを準備します。動く画像は画像のoriginal以外でGIFへ分岐します。解決済み取得結果の参照は各変換後に解放し、同じ設定と選択順の失敗のみを再試行します。`panel/mixed-export-controller.ts`が静止PDFを集約し、必要ならGIF・動画と一つのZIPにします。すべての準備とZIP32容量確認が成功するまでダウンロードを始めません。動画のみのMP4保存は管理済みダウンロードの順次完了確認を維持します。従来の個別PDF/画像コントローラーAPIは互換呼び出し用に保持します。
+`media/mixed-export-preparation.ts`は最大3取得・1変換、動画/GIF/原本を含む場合は1取得で、静止PDFページと個別ファイルを準備します。動く画像は`resolvedImageFormat`がoriginalなら原本を保持し、それ以外ならGIFへ分岐します。解決済み取得結果の参照は各変換後に解放し、同じ設定と選択順の失敗のみを再試行します。`panel/mixed-export-controller.ts`が静止PDFを集約し、必要ならGIF・動画と一つのZIPにします。すべての準備とZIP32容量確認が成功するまでダウンロードを始めません。動画のみのMP4保存は管理済みダウンロードの順次完了確認を維持します。従来の個別PDF/画像コントローラーAPIは互換呼び出し用に保持します。
+
+項目数はZIPの既存上限65,535件を取得前に確認します。上限を超えた場合は保存を開始せず、選択スナップショットと準備データを解放します。対象を減らすと新しい保存を開始できます。

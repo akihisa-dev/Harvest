@@ -1,5 +1,6 @@
-import { isMediaArchiveFormat, originalItemExtension, recommendedItemFormat } from "../../core/export-formats.js";
-import { isStillImage } from "../../core/split-export-formats.js";
+import { isMediaArchiveFormat, originalItemExtension } from "../../core/export-formats.js";
+import { isImageExportFormat, isStillImage } from "../../core/split-export-formats.js";
+import { imageRecommendations, videoRecommendations, resolveImageExportFormat } from "../../core/export-recommendations.js";
 import { setButtonLabel } from "./button-state.js";
 import { createEmptyStateView } from "./empty-state.js";
 import { imageFilename } from "./export-presentation.js";
@@ -39,6 +40,23 @@ function renderExtensions(element, extensions) {
     const label = values.length > 1 ? t("exportMixedFormats") : values[0] ?? "—";
     element.textContent = `(${label})`;
     element.title = values.join(" / ");
+}
+function renderRecommendations(choices, recommendations) {
+    const reasons = recommendations.map(({ format, reason }) => ({ format, text: t(reason === "series" ? "recommendationSeries" : reason === "playback" ? "recommendationPlayback" : "recommendationPreserve") }));
+    for (const { format, input } of choices) {
+        const reason = reasons.find(candidate => candidate.format === format);
+        const description = reason ? t("recommendation", { reason: reason.text }) : "";
+        const label = input.closest?.("label");
+        if (label) {
+            label.dataset["recommended"] = String(Boolean(reason));
+            label.title = description;
+        }
+        if (description)
+            input.setAttribute("aria-description", description);
+        else
+            input.removeAttribute("aria-description");
+    }
+    return reasons.map(reason => reason.text);
 }
 /** Displays snapshots; changing export work and notifying the page belong to application events. */
 export function createAppView(elements, positionOf) {
@@ -85,13 +103,21 @@ export function createAppView(elements, positionOf) {
         const { format, selected, includeSourcePage: sourceIncluded, view } = snapshot.export;
         const selectedItems = items.filter(item => item.selected);
         const images = selectedItems.filter(item => item.kind !== "video"), videos = selectedItems.filter(item => item.kind === "video");
+        const outputFormat = snapshot.export.resolvedImageFormat ?? (isImageExportFormat(format) ? resolveImageExportFormat(format, selectedItems) : format);
+        const recommendedFormat = format === "recommend" ? outputFormat : resolveImageExportFormat("recommend", selectedItems);
+        const reasons = [...new Set([
+                ...renderRecommendations(exportFormatInputs, imageRecommendations(selectedItems)),
+                ...renderRecommendations(elements.videoExportFormatInputs, videoRecommendations(selectedItems)),
+            ])];
         renderExtensions(elements.exportOriginalExtension, images.map(originalItemExtension));
         renderExtensions(elements.videoOriginalExtension, videos.map(originalItemExtension));
-        renderExtensions(elements.exportRecommendExtension, images.map(item => recommendedItemFormat(item).toUpperCase()));
+        renderExtensions(elements.exportRecommendExtension, images.map(item => recommendedFormat === "original"
+            ? originalItemExtension(item) : isStillImage(item) ? "PDF" : "GIF"));
         elements.imageFormatGroup.hidden = items.length > 0 && !items.some(item => item.kind !== "video");
         elements.videoFormatGroup.hidden = !items.some(item => item.kind === "video");
         exportMediaHint.textContent = [
-            format !== "original" && images.length ? t("movingImagesGif") : "",
+            reasons.length ? `★ ${t("recommendation", { reason: reasons.join(" / ") })}` : "",
+            outputFormat !== "original" && images.length ? t("movingImagesGif") : "",
             snapshot.export.videoFormat !== "original" && videos.length ? t("videoConversionHint") : "",
         ].filter(Boolean).join(" ");
         exportMediaHint.hidden = !exportMediaHint.textContent;
@@ -114,7 +140,7 @@ export function createAppView(elements, positionOf) {
             choice.input.disabled = busy;
             choice.input.checked = choice.format === snapshot.export.videoFormat;
         }
-        sourcePageOption.hidden = format !== "pdf" || (items.length > 0 && !items.some(isStillImage));
+        sourcePageOption.hidden = outputFormat !== "pdf" || (items.length > 0 && !items.some(isStillImage));
         scanButton.dataset["scanning"] = String(scanRunning);
         setButtonLabel(scanButton, t(scanRunning ? "scanStop" : "scan"));
         if (scanRunning)

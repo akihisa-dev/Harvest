@@ -1,4 +1,5 @@
 import type {ImageItem} from "../../core/images.js";
+import {resolveImageExportFormat, type ResolvedImageExportFormat} from "../../core/export-recommendations.js";
 import {createPdf} from "../../core/pdf.js";
 import type {PdfImagePage} from "../../core/pdf-types.js";
 import {originalMediaType} from "../../core/media-types.js";
@@ -34,9 +35,9 @@ export function createMixedExportController(options: MixedExportControllerOption
     get isRunning() {return operation.isRunning;},
     get progress() {return operation.progress;},
     clear:operation.clear,abort:operation.abort,discardIfSelectionChanged:operation.discardIfSelectionChanged,
-    async export(settings: SplitExportSettings): Promise<void> {
+    async export(settings: SplitExportSettings & {readonly resolvedImageFormat?: ResolvedImageExportFormat}): Promise<void> {
       await operation.start({
-        createWork:selected => ({...settings,selected,prepared:new Map<ImageItem,PreparedMixedItem>(),failed:new Map<ImageItem,string>(),saved:new Set<ImageItem>()}),
+        createWork:selected => ({...settings,selected,resolvedImageFormat:settings.resolvedImageFormat ?? resolveImageExportFormat(settings.imageFormat,selected),prepared:new Map<ImageItem,PreparedMixedItem>(),failed:new Map<ImageItem,string>(),saved:new Set<ImageItem>()}),
         isCompatible:pending => splitSettingsMatch(pending,settings),
         preparationMessage:(retry,completed,total) => t(retry ? "retryFiles" : "prepareFiles",{completed,total}),
         async run(run) {

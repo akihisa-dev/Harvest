@@ -48,3 +48,81 @@ test('出典プレビューと実PDFは直接名またはZIP内番号名の共�
   selected=items;const source=decodeURIComponent(presentation.sourcePreview.url);assert.ok(source.includes(name));assert.ok(decodeURIComponent(presentation.viewerPages.at(-1).url).includes(name));assert.equal(pdfSourceFilename(items.length,index,other,'layout.pdf'),name);
  }
 });
+
+test('推奨の実形式は保存と再試行の間固定し、選択変更後に判定し直す', async () => {
+ const {createSplitExportSession} = await import('../dist/extension/app/panel/split-export-session.js');
+ const {createExportPresentation} = await import('../dist/extension/app/panel/export-presentation.js');
+ const items = [1, 2].map(index => ({url:`https://example.test/pages/${index}.png`, sourcePage:'https://example.test/series', selected:true}));
+ let selected = items, finish;
+ const snapshots = [];
+ const controller = {
+  pending:null, isRunning:false, progress:'', clear(){this.pending=null;}, abort(){},
+  discardIfSelectionChanged(){this.pending=null; return true;},
+  async export(snapshot) {
+   snapshots.push(snapshot); this.isRunning=true;
+   this.pending={...snapshot, failed:new Map([[items[0], 'retry']])};
+   await new Promise(resolve => {finish=resolve;}); this.isRunning=false;
+  },
+ };
+ const session = createSplitExportSession({imageFormat:'recommend', videoFormat:'recommend', includeSourcePage:true,
+  getSelectedItems:()=>selected, getController:()=>controller, isBusy:()=>false});
+ const presentation = createExportPresentation({getTitle:()=> 'series', getSelection:()=>({...session.state}), fallbackTitle:'Harvest', sourceHeading:'Source'});
+ assert.equal(session.resolvedImageFormat, 'pdf');
+ assert.equal(presentation.resultFilename, 'series.pdf');
+ assert.ok(presentation.sourcePreview);
+ let work=session.start();
+ items[1].recommendedFormat='gif';
+ assert.equal(session.resolvedImageFormat, 'pdf', '取得後に動く画像と判明しても進行中の実形式を切り替えない');
+ assert.equal(presentation.resultFilename, 'series.zip', '実際の静止PDFと動く画像の混在を反映する');
+ finish(); await work;
+ assert.equal(session.state.view.phase, 'retry-required');
+ assert.equal(session.resolvedImageFormat, 'pdf');
+ work=session.start();
+ assert.equal(snapshots[1].resolvedImageFormat, 'pdf', '再試行でも準備済みPDFを再利用できる');
+ session.complete();controller.pending=null;finish();await work;
+ assert.equal(session.state.view.phase, 'saved');assert.equal(session.resolvedImageFormat, 'pdf');
+ selected=[items[0]];session.selectionChanged();
+ assert.equal(session.resolvedImageFormat, 'original');
+ assert.equal(presentation.resultFilename, 'series.png');
+ assert.equal(presentation.sourcePreview, null);
+ assert.equal(session.format, 'recommend', '自動選択モードは維持する');
+});
+
+test('中止で準備済みPDFを破棄した最後の描画から、判明した画像の種類に合う推奨へ戻す', async () => {
+ const {createSplitExportSession} = await import('../dist/extension/app/panel/split-export-session.js');
+ const {createExportPresentation} = await import('../dist/extension/app/panel/export-presentation.js');
+ const {createExportLifecycle} = await import('../dist/extension/app/panel/export-lifecycle.js');
+ const selected = [1, 2].map(index => ({url:`https://example.test/pages/${index}.png`, sourcePage:'https://example.test/series', selected:true}));
+ let busy = false, finish, lastRendered;
+ const snapshots = [];
+ const lifecycle = createExportLifecycle({
+  cancelledMessage:'cancelled', isBusy:()=>busy, isDisposed:()=>false, onStatus(){}, onScrollToFailures(){},
+  onBusyChange(value) {
+   busy=value;
+   if (!value) lastRendered={phase:session.state.view.phase, format:session.resolvedImageFormat, source: presentation.sourcePreview};
+  },
+ });
+ const controller = {
+  get pending(){return lifecycle.pending;}, get isRunning(){return lifecycle.isRunning;}, get progress(){return lifecycle.progress;},
+  clear:lifecycle.clear, abort:lifecycle.abort, discardIfSelectionChanged:lifecycle.discardIfSelectionChanged,
+  async export(snapshot) {
+   snapshots.push(snapshot);
+   const work=lifecycle.resolveWork(snapshot.selected, ()=>({...snapshot, prepared:new Map(), failed:new Map()}));
+   await lifecycle.run(work, 'preparing', '0 / 2', async ()=>new Promise(resolve=>{finish=resolve;}));
+  },
+ };
+ const session = createSplitExportSession({imageFormat:'recommend', videoFormat:'recommend', includeSourcePage:true,
+  getSelectedItems:()=>selected, getController:()=>controller, isBusy:()=>busy});
+ const presentation = createExportPresentation({getTitle:()=> 'series', getSelection:()=>({...session.state}), fallbackTitle:'Harvest', sourceHeading:'Source'});
+ const work=session.start();
+ assert.equal(session.resolvedImageFormat, 'pdf');
+ selected[1].recommendedFormat='gif';
+ assert.equal(session.resolvedImageFormat, 'pdf', '保存処理が動いている間はPDFを維持する');
+ session.abort();finish();await work;
+ assert.equal(lifecycle.pending, null, '中止した準備データは再利用しない');
+ assert.deepEqual(lastRendered, {phase:'ready', format:'original', source:null}, '保存終了を描画する時点で旧PDFの形式と出典ページを残さない');
+ assert.equal(session.resolvedImageFormat, lastRendered.format, '描画後のセッション状態も一致する');
+ const next=session.start();
+ assert.equal(snapshots[1].resolvedImageFormat, lastRendered.format, '次の保存は表示された推奨形式で始める');
+ finish();await next;
+});

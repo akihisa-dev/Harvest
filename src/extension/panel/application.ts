@@ -86,7 +86,7 @@ export function createPanelApplication(elements: AppElements) {
 
   const exportPresentation = createExportPresentation({
     getTitle: () => results.title,
-    getSelection: () => ({format: exportSession.format, videoFormat: exportSession.videoFormat, includeSourcePage: exportSession.includeSourcePage, selected: exportSession.selectedItems}),
+    getSelection: () => ({format: exportSession.format, resolvedImageFormat: exportSession.resolvedImageFormat, videoFormat: exportSession.videoFormat, includeSourcePage: exportSession.includeSourcePage, selected: exportSession.selectedItems}),
     fallbackTitle: t("imageFallback"),
     sourceHeading: t("sourceHeading"),
   });

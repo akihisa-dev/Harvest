@@ -245,7 +245,7 @@ section, aside {
 
 .export-auto-formats {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.2fr);
   gap: 4px;
 }
 
@@ -265,12 +265,14 @@ section, aside {
 
 @container (max-width: 140px) {
   .export-auto-formats {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 2px;
   }
   .export-auto-formats label {
-    font-size: 9px;
+    justify-content: flex-start;
+    font-size: 10px;
   }
+  .export-auto-formats label > span > span { display: inline; }
 }
 
 .export-explicit-formats {
@@ -295,6 +297,13 @@ section, aside {
 
 .export-formats input:disabled, .export-formats input:disabled + span {
   cursor: default;
+}
+
+.export-formats label[data-recommended="true"]::after {
+  content: "★";
+  flex: none;
+  font-size: 9px;
+  color: var(--ink);
 }
 
 .export-control #export {
@@ -1753,6 +1762,10 @@ button[data-shown="false"] .eye-slash, button[data-shown="false"] .eye-slash-gap
 
 .export-media-hint {
   margin: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   font-size: 0.75rem;
   line-height: 1.5;
   color: var(--muted);
@@ -1760,3 +1773,7 @@ button[data-shown="false"] .eye-slash, button[data-shown="false"] .eye-slash-gap
 
 /* Independent media choices remain readable in the narrow side panel. */
 .export-formats[hidden] {display:none;}
+.export-media-hint[hidden] {display:none;}
+@media (max-height: 540px) {
+  .export-media-hint {-webkit-line-clamp: 1;}
+}

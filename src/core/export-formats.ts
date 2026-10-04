@@ -62,6 +62,7 @@ export function itemArchiveFormat(format: ImageArchiveFormat, item: ImageItem): 
 
 /** URL-derived labels are hints; original downloads use their validated response MIME type. */
 export function originalItemExtension(item: ImageItem): string | null {
+  if (item.originalExtension) return item.originalExtension.toUpperCase();
   if (item.kind === "gif") return "GIF";
   const {extension} = mediaFormat(item.url);
   return extension === "不明" ? null : extension;

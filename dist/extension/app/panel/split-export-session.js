@@ -1,5 +1,6 @@
 import { isImageExportFormat, splitSettingsMatch } from "../../core/split-export-formats.js";
 import { selectionsMatch } from "./export-lifecycle.js";
+import { resolveImageExportFormat } from "../../core/export-recommendations.js";
 /** One request snapshot owns both media choices, selection order, cancellation and completion. */
 export function createSplitExportSession(options) {
     let settings = { imageFormat: options.imageFormat, videoFormat: options.videoFormat, includeSourcePage: options.includeSourcePage };
@@ -15,8 +16,20 @@ export function createSplitExportSession(options) {
         if (!options.getController()?.isRunning)
             options.getController()?.clear();
     }
+    function resolvedFormat() {
+        const selected = options.getSelectedItems();
+        const controller = options.getController();
+        const snapshots = [controller?.isRunning ? active?.snapshot : undefined, completed, controller?.pending];
+        for (const snapshot of snapshots) {
+            if (snapshot && splitSettingsMatch(settings, snapshot) && selectionsMatch(selected, snapshot.selected)) {
+                return snapshot.resolvedImageFormat;
+            }
+        }
+        return resolveImageExportFormat(settings.imageFormat, selected);
+    }
     return {
         get format() { return settings.imageFormat; },
+        get resolvedImageFormat() { return resolvedFormat(); },
         get videoFormat() { return settings.videoFormat; },
         get includeSourcePage() { return settings.includeSourcePage; },
         get selectedItems() { return options.getSelectedItems(); },
@@ -27,7 +40,7 @@ export function createSplitExportSession(options) {
                 : pending?.failed.size ? { phase: "retry-required", pending, progress: "" }
                     : saved ? { phase: "saved", pending: null, progress: "" }
                         : { phase: selected.length ? "ready" : "empty", pending: null, progress: "" };
-            return { format: settings.imageFormat, videoFormat: settings.videoFormat, includeSourcePage: settings.includeSourcePage, selected, view };
+            return { format: settings.imageFormat, resolvedImageFormat: resolvedFormat(), videoFormat: settings.videoFormat, includeSourcePage: settings.includeSourcePage, selected, view };
         },
         setFormat(format) {
             if (!isImageExportFormat(format))
@@ -60,7 +73,7 @@ export function createSplitExportSession(options) {
             const selected = [...options.getSelectedItems()], controller = options.getController();
             if (!selected.length || !controller)
                 return;
-            const snapshot = { ...settings, selected }, request = { snapshot, abort: () => controller.abort(), acceptsCompletion: true };
+            const snapshot = { ...settings, selected, resolvedImageFormat: resolvedFormat() }, request = { snapshot, abort: () => controller.abort(), acceptsCompletion: true };
             completed = null;
             active = request;
             try {

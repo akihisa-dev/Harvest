@@ -19,11 +19,12 @@ test('拡張子なしGIFを実レスポンスで確認し、推奨単体/選択�
   assert.equal(await page.locator('#export-recommend-extension').textContent(),'(GIF)');
   assert.deepEqual((await saved('original')).bytes,animatedGif);
   await scan(['/unknown','/static.webp','/animation.gif','/apng.png']);await page.locator('#groups .group-chip').filter({hasText:'PNG'}).locator('button').click();await page.locator('#images > li[data-focus-url$="/apng.png"]').click();
-  const entries=storedEntries((await saved('recommend')).bytes);assert.deepEqual(entries.map(entry=>entry.name),['001.gif','002.png','003.gif']);assert.deepEqual(entries[0].bytes,animatedGif);assert.deepEqual(entries[2].bytes,animatedGif);
+  const entries=storedEntries((await saved('recommend')).bytes);assert.deepEqual(entries.map(entry=>entry.name),['001.gif','002.webp','003.gif']);assert.deepEqual(entries[0].bytes,animatedGif);assert.deepEqual(entries[1].bytes,staticWebp);assert.deepEqual(entries[2].bytes,animatedGif);
   for(const [body,type] of [[animatedGif,'image/png'],[staticWebp,'image/gif'],[animatedGif.subarray(0,animatedGif.length-1),'image/gif']]){
-    assets.set('/unknown',[body,type]);await scan(['/unknown','/static.webp']);await page.locator('#export-format-recommend').check();assert.match(await failed(),/一致しません|不完全|破損/);
-    assets.set('/unknown',[animatedGif,'image/gif']);const retry=storedEntries((await saved('recommend')).bytes);assert.deepEqual(retry[0].bytes,animatedGif);assert.equal(retry[0].name,'001.gif');
+    assets.set('/unknown',[body,type]);await scan(['/unknown','/static.webp']);await page.locator('#export-format-png').check();assert.match(await failed(),/一致しません|不完全|破損/);
+    assets.set('/unknown',[animatedGif,'image/gif']);const retry=storedEntries((await saved('png')).bytes);assert.deepEqual(retry[0].bytes,animatedGif);assert.equal(retry[0].name,'001.gif');
   }
   await scan(['/unknown']);assert.match((await saved('png')).filename,/\.gif$/);assert.deepEqual((await saved('png')).bytes,animatedGif);assert.deepEqual((await saved('recommend')).bytes,animatedGif);
+  await page.locator('#export-format-png').check();
   const before=await count();await page.evaluate(()=>{document.querySelector('#export').click();document.querySelector('#export').click();});await page.waitForFunction(()=>document.querySelector('#export').dataset.saving==='false');assert.equal(await count(),before);
 });

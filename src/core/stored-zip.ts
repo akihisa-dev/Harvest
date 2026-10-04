@@ -4,7 +4,7 @@ export interface StoredZipEntry {
 }
 
 const ZIP32_MAX = 0xffff_ffff;
-const ZIP_ENTRY_MAX = 0xffff;
+export const storedZipEntryLimit = 0xffff;
 const LOCAL_HEADER_SIZE = 30;
 const CENTRAL_HEADER_SIZE = 46;
 const DIRECTORY_END_SIZE = 22;
@@ -133,7 +133,7 @@ function directoryEnd(entryCount: number, directorySize: number, localOffset: nu
 
 /** Maximum payload bytes after reserving all ZIP headers, names, and the directory. */
 export function storedZipDataLimit(filenames: readonly string[]): number {
-  if (filenames.length > ZIP_ENTRY_MAX) throw new RangeError("ZIPに含められる画像数の上限を超えています。");
+  if (filenames.length > storedZipEntryLimit) throw new RangeError("ZIPに含められる画像数の上限を超えています。");
   const names = new Set<string>();
   let overhead = DIRECTORY_END_SIZE;
   for (const filename of filenames) {

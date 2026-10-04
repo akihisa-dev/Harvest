@@ -1,5 +1,6 @@
+import { originalMediaType } from "../../core/media-types.js";
 import { indexedExportFilename } from "../../core/split-export-formats.js";
-import { storedZipDataLimit } from "../../core/stored-zip.js";
+import { storedZipDataLimit, storedZipEntryLimit } from "../../core/stored-zip.js";
 import { ImageArchiveLimitError } from "../../core/image-archive.js";
 import { createPreparationWorkers, waitForPreparation } from "../../core/preparation-workers.js";
 import { DEFAULT_MEDIA_TIMEOUT_MS, fetchOriginalMedia } from "./media-fetch.js";
@@ -14,7 +15,10 @@ function preparedSize(value) {
 }
 /** One bounded fetch window and one conversion, retaining successful source items for retry. */
 export async function prepareMixedExport(work, options) {
+    const imageFormat = work.resolvedImageFormat;
     const remaining = work.selected.filter(item => !work.prepared.has(item));
+    if (work.selected.length > storedZipEntryLimit)
+        throw new ImageArchiveLimitError();
     const limit = storedZipDataLimit(work.selected.map((_, index) => indexedExportFilename(index, work.selected.length, "webm")));
     let size = [...work.prepared.values()].reduce((total, value) => total + preparedSize(value), 0);
     if (size > limit)
@@ -28,11 +32,11 @@ export async function prepareMixedExport(work, options) {
         const promise = new Promise(done => { resolve = done; });
         return { promise, resolve };
     });
-    const concurrency = remaining.some(item => item.kind === "video" || item.kind === "gif" || item.recommendedFormat === "gif" || work.imageFormat === "original") ? 1 : 3;
+    const concurrency = remaining.some(item => item.kind === "video" || item.kind === "gif" || item.recommendedFormat === "gif" || imageFormat === "original") ? 1 : 3;
     const workers = createPreparationWorkers(remaining.length, concurrency, options.signal, async (index, signal, release) => {
         const item = remaining[index];
         try {
-            const original = item.kind === "video" || work.imageFormat === "original";
+            const original = item.kind === "video" || imageFormat === "original";
             if (original)
                 results[index].resolve({ kind: "media", blob: await fetchOriginalMedia(item.url, item.kind ?? "image", { signal, sourcePage: item.sourcePage }), release });
             else {
@@ -55,6 +59,14 @@ export async function prepareMixedExport(work, options) {
                     return;
                 if (outcome.kind === "error")
                     throw outcome.error;
+                if (outcome.kind === "media") {
+                    const type = originalMediaType(outcome.blob.type);
+                    if (type) {
+                        item.originalExtension = type.extension;
+                        if (type.kind === "gif")
+                            item.recommendedFormat = "gif";
+                    }
+                }
                 let prepared;
                 if (item.kind === "video") {
                     if (outcome.kind !== "media")
@@ -62,7 +74,7 @@ export async function prepareMixedExport(work, options) {
                     const input = outcome.blob;
                     prepared = { blob: work.videoFormat === "original" ? input : await prepareMp4(input, options.signal, limit - size) };
                 }
-                else if (work.imageFormat === "original") {
+                else if (imageFormat === "original") {
                     if (outcome.kind !== "media")
                         throw new Error("選択項目と保存データの形式が一致しません。");
                     prepared = { blob: outcome.blob };
@@ -77,8 +89,11 @@ export async function prepareMixedExport(work, options) {
                     const animation = originalGif ?? await prepareAnimatedImage(fetched, options.signal, limit - size);
                     item.recommendedFormat = animation ? "gif" : "png";
                     prepared = animation ? { blob: animation }
-                        : work.imageFormat === "pdf" ? { page: await decodeImage(fetched, { signal: options.signal }) }
-                            : { blob: await convertImage(fetched, work.imageFormat === "recommend" ? "png" : work.imageFormat, options.signal) };
+                        : imageFormat === "pdf" ? { page: await decodeImage(fetched, { signal: options.signal }) }
+                            : { blob: await convertImage(fetched, imageFormat, options.signal) };
+                    const originalExtension = fetched.kind === "original" ? "jpg" : originalMediaType(fetched.blob.type)?.extension;
+                    if (originalExtension)
+                        item.originalExtension = originalExtension;
                 }
                 if (options.isStopped())
                     return;

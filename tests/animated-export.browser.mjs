@@ -12,18 +12,19 @@ async function inspect(page,bytes,type) {
     const result={frames,repeats:track.repetitionCount};decoder.close();return result;
   },{bytes:[...bytes],type});
 }
-test('アニメWebP/APNGを全フレーム・時間・有限ループ付きGIFへ保存し、原本/静止対照/破損/再試行を維持する', {timeout:90000},async t=>{
+test('推奨でアニメWebP/APNGの原本を保ち、画像変換では全フレーム・時間・有限ループ付きGIFと失敗/再試行を維持する', {timeout:90000},async t=>{
   const assets=new Map([['/a.webp',[animatedWebp,'image/webp']],['/a.png',[apng,'image/png']],['/s.webp',[staticWebp,'image/webp']],['/g.gif',[animatedGif,'image/gif']]]);
   const {page,scan,saved,failed,count}=await animationPanel(t,assets);
   for(const [path,source,type] of [['/a.webp',animatedWebp,'image/webp'],['/a.png',apng,'image/png']]){
-    await scan([path]);await page.locator('#export-format-recommend').check();const output=await saved('recommend');assert.match(output.filename,/\.gif$/);
+    await scan([path]);const recommended=await saved('recommend');assert.match(recommended.filename,path.endsWith('.webp')?/\.webp$/:/\.png$/);assert.deepEqual(recommended.bytes,source,'推奨は動く原本も再変換しない');
+    const output=await saved('png');assert.match(output.filename,/\.gif$/);
     const original=await inspect(page,source,type),converted=await inspect(page,output.bytes,'image/gif');assert.deepEqual(converted,original);assert.equal(converted.frames.length,3);assert.deepEqual(converted.frames.map(frame=>frame.duration),[100000,200000,300000]);assert.deepEqual((await saved('original')).bytes,source);
   }
-  for(const [path,source,type] of [['/opaque-clear.webp',opaqueClearWebp,'image/webp'],['/opaque-clear.png',opaqueClearPng,'image/png'],['/clear-opaque.webp',clearOpaqueWebp,'image/webp'],['/clear-opaque.png',clearOpaquePng,'image/png']]){assets.set(path,[source,type]);await scan([path]);const output=await saved('recommend');assert.deepEqual(await inspect(page,output.bytes,'image/gif'),await inspect(page,source,type));}
+  for(const [path,source,type] of [['/opaque-clear.webp',opaqueClearWebp,'image/webp'],['/opaque-clear.png',opaqueClearPng,'image/png'],['/clear-opaque.webp',clearOpaqueWebp,'image/webp'],['/clear-opaque.png',clearOpaquePng,'image/png']]){assets.set(path,[source,type]);await scan([path]);assert.deepEqual((await saved('recommend')).bytes,source);const output=await saved('png');assert.deepEqual(await inspect(page,output.bytes,'image/gif'),await inspect(page,source,type));}
   await scan(['/a.webp','/s.webp','/g.gif']);assert.match((await saved('recommend')).filename,/\.zip$/);
-  assets.set('/a.webp',[animatedWebp.subarray(0,animatedWebp.length-8),'image/webp']);await scan(['/a.webp','/s.webp']);await page.locator('#export-format-recommend').check();assert.match(await failed(),/不完全|破損/);
-  assets.set('/a.webp',[animatedWebp,'image/webp']);assert.match((await saved('recommend')).filename,/\.zip$/);
-  await scan(['/s.webp']);assert.match((await saved('recommend')).filename,/\.png$/);
+  assets.set('/a.webp',[animatedWebp.subarray(0,animatedWebp.length-8),'image/webp']);await scan(['/a.webp','/s.webp']);await page.locator('#export-format-png').check();assert.match(await failed(),/不完全|破損/);
+  assets.set('/a.webp',[animatedWebp,'image/webp']);assert.match((await saved('png')).filename,/\.zip$/);
+  await scan(['/s.webp']);const still=await saved('recommend');assert.match(still.filename,/\.webp$/);assert.deepEqual(still.bytes,staticWebp);
   const colors=await page.evaluate(async()=>{
     const {GifEncoder}=await import('../core/gif-encoder.js');
     const results=[];
@@ -38,5 +39,5 @@ test('アニメWebP/APNGを全フレーム・時間・有限ループ付きGIF�
   });
   assert.deepEqual(colors.map(result=>result.exact),[true,true]);
 
-  await scan(['/a.webp']);await page.locator('#export-format-recommend').check();const before=await count();await page.evaluate(()=>{document.querySelector('#export').click();document.querySelector('#export').click();});await page.waitForFunction(()=>document.querySelector('#export').dataset.saving==='false');assert.equal(await count(),before);
+  await scan(['/a.webp']);await page.locator('#export-format-png').check();const before=await count();await page.evaluate(()=>{document.querySelector('#export').click();document.querySelector('#export').click();});await page.waitForFunction(()=>document.querySelector('#export').dataset.saving==='false');assert.equal(await count(),before);
 });

@@ -97,7 +97,10 @@ for (const language of ["ja", "en"]) test(`${language}: 元形式・推奨形式
   await scan([image]);
   assert.equal(await page.locator("#export-format-recommend").isChecked(), true, "解析後も動的な推奨形式を選択する");
   assert.equal(await page.locator("#export-original-extension").textContent(), "(JPG)");
-  assert.equal(await page.locator("#export-recommend-extension").textContent(), "(PNG)");
+  assert.equal(await page.locator("#export-recommend-extension").textContent(), "(JPG)");
+  assert.equal(await page.locator('label:has(#export-format-original)').getAttribute("data-recommended"), "true");
+  assert.match(await page.locator("#export-format-original").getAttribute("aria-description"), language === "ja" ? /各ファイルをそのまま残す/ : /keep each file unchanged/);
+  assert.notEqual(await page.locator('label:has(#export-format-pdf)').getAttribute("data-recommended"), "true", "単独画像をシリーズPDFとして推奨しない");
   for (const [width, height] of [[1280, 800], [768, 600], [360, 640]]) {
     await page.setViewportSize({width, height});
     const layout = await page.locator("#image-export-formats").evaluate(group => {
@@ -114,8 +117,7 @@ for (const language of ["ja", "en"]) test(`${language}: 元形式・推奨形式
   await page.locator("#export-format-original").check();
   assert.equal(await page.locator("#source-drop").textContent(), "automatic.jpg");
   assert.deepEqual(await save("original", "automatic.jpg"), jpeg, "元のJPEGをそのまま保存する");
-  const converted = await save("recommend", "automatic.png");
-  assert.deepEqual(converted.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  assert.deepEqual(await save("recommend", "automatic.jpg"), jpeg, "推奨でも単独JPEGを再変換せず保存する");
   await scan([gif]);
   assert.equal(await page.locator("#export-format-recommend").isChecked(), true);
   assert.equal(await page.locator("#export-recommend-extension").textContent(), "(GIF)");
@@ -127,7 +129,8 @@ for (const language of ["ja", "en"]) test(`${language}: 元形式・推奨形式
   await page.locator("#all-selection").check();
   assert.equal(await page.locator("#export-recommend-extension").textContent(), language === "ja" ? "(混在)" : "(mixed)");
   const mixed = zipEntries(await save("recommend", "automatic.zip"));
-  assert.deepEqual(mixed.map(entry => entry.name.split(".").pop()).sort(), ["gif", "mp4", "png"]);
+  assert.deepEqual(mixed.map(entry => entry.name.split(".").pop()).sort(), ["gif", "jpg", "mp4"]);
+  assert.deepEqual(mixed.find(entry => entry.name.endsWith(".jpg")).bytes, jpeg);
   assert.deepEqual(mixed.find(entry => entry.name.endsWith(".mp4")).bytes, mp4Bytes);
   assert.deepEqual(mixed.find(entry => entry.name.endsWith(".gif")).bytes, gifBytes);
   const originals = zipEntries(await save("original", "automatic.zip"));

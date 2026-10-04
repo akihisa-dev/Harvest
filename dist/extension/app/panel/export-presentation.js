@@ -1,5 +1,6 @@
 import { createSourcePageLayout } from "../../core/pdf.js";
-import { isStillImage, pdfSourceFilename } from "../../core/split-export-formats.js";
+import { isImageExportFormat, isStillImage, pdfSourceFilename } from "../../core/split-export-formats.js";
+import { resolveImageExportFormat } from "../../core/export-recommendations.js";
 import { itemArchiveFormat, originalItemExtension } from "../../core/export-formats.js";
 import { selectionsMatch } from "./export-lifecycle.js";
 import { replaceLoneSurrogates } from "../../core/source-text.js";
@@ -39,6 +40,10 @@ export function createSourcePreview(selected, format, includeSourcePage, heading
 }
 /** Keeps output labels and both preview surfaces tied to the same export selection rules. */
 export function createExportPresentation(options) {
+    function outputFormat(selection) {
+        return selection.videoFormat !== undefined && isImageExportFormat(selection.format)
+            ? selection.resolvedImageFormat ?? resolveImageExportFormat(selection.format, selection.selected) : selection.format;
+    }
     function filename(extension) {
         return `${exportFileBaseName(options.getTitle(), options.fallbackTitle)}.${extension}`;
     }
@@ -46,13 +51,15 @@ export function createExportPresentation(options) {
         const still = selection.videoFormat === undefined ? selection.selected : selection.selected.filter(isStillImage);
         const sourceFilename = selection.videoFormat === undefined ? filename("pdf")
             : pdfSourceFilename(selection.selected.length, selection.selected.indexOf(still[0]), selection.selected.length - still.length, filename("pdf"));
-        return createSourcePreview(still, selection.format, selection.includeSourcePage, options.sourceHeading, sourceFilename);
+        return createSourcePreview(still, outputFormat(selection), selection.includeSourcePage, options.sourceHeading, sourceFilename);
     }
     return {
         get pdfFilename() { return filename("pdf"); },
         get zipFilename() { return filename("zip"); },
         get resultFilename() {
-            const { format, selected, videoFormat } = options.getSelection();
+            const selection = options.getSelection();
+            const { selected, videoFormat } = selection;
+            const format = outputFormat(selection);
             if (videoFormat !== undefined) {
                 if (!selected.length)
                     return filename(format === "pdf" ? "pdf" : "zip");

@@ -53,6 +53,8 @@ export function itemArchiveFormat(format, item) {
 }
 /** URL-derived labels are hints; original downloads use their validated response MIME type. */
 export function originalItemExtension(item) {
+    if (item.originalExtension)
+        return item.originalExtension.toUpperCase();
     if (item.kind === "gif")
         return "GIF";
     const { extension } = mediaFormat(item.url);

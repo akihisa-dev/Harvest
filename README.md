@@ -52,7 +52,7 @@ Saved filenames use the page title. Unsupported filename symbols and control cha
 
 #### PDF source page
 
-**Add a source page at the end** applies to the aggregated still-image PDF when at least one still image is selected. When enabled, it appends one page containing the **Source** heading, saved PDF filename, and source page URL. Text, including Japanese and emoji, can be displayed, selected, and copied. The source page also appears at the end of the image list and viewer thumbnails and can be previewed in the viewer. Other formats hide this setting and omit the source page. Returning to PDF restores the saved setting. This source-page setting is stored in the browser and retained the next time the panel opens. Both image and video formats start at recommended whenever the panel opens. Page URLs and collected results are not stored as preferences.
+**Add a source page at the end** applies when the chosen format produces a still-image PDF, including when recommended resolves to PDF. When enabled, it appends one page containing the **Source** heading, saved PDF filename, and source page URL. Text, including Japanese and emoji, can be displayed, selected, and copied. The source page also appears at the end of the image list and viewer thumbnails and can be previewed in the viewer. When the output format is not PDF, this setting is hidden and the source page is omitted. Returning to PDF, including through recommended, restores the saved setting and preview. This source-page setting is stored in the browser and retained the next time the panel opens. Both image and video formats start at recommended whenever the panel opens. Page URLs and collected results are not stored as preferences.
 
 #### PDF quality and retries
 
@@ -66,7 +66,7 @@ Retry fetches only failed images and saves the PDF once all are ready. Changing 
 
 Video thumbnails show the file size before conversion, or **Size unknown** when the server does not provide it. Successful reanalysis refreshes size information even for an unchanged video URL. This is not the size of the converted video or ZIP.
 
-Image formats are original, recommended, PDF, JPG, PNG, and JXL; video formats are original, recommended, and MP4. The two choices are independent. An absent media type hides its format section without changing its choice in the open panel. GIF detection recognizes a `.gif` URL suffix or `format=gif`, `fmt=gif`, or `fm=gif`, ignoring case in parameter names and values. Format parameters take precedence over the extension, and saving also validates the fetched data. GIFs belong to the image section. Except for original, every image format preserves animation as a GIF rather than a still image.
+Image formats are original, recommended, PDF, JPG, PNG, and JXL; video formats are original, recommended, and MP4. The two choices are independent. An absent media type hides its format section without changing its choice in the open panel. GIF detection recognizes a `.gif` URL suffix or `format=gif`, `fmt=gif`, or `fm=gif`, ignoring case in parameter names and values. Format parameters take precedence over the extension, and saving also validates the fetched data. GIFs belong to the image section. Choosing PDF, JPG, PNG, or JXL preserves animation as a GIF. Recommended preserves source bytes unless the selected still images qualify for a series PDF.
 
 Video-only recommended/MP4 exports save each selected video separately, using the page title for one file and the title plus sequence numbers for multiple files. Mixed image/video exports and multiple original video outputs use one ZIP. A single output downloads directly.
 
@@ -86,11 +86,15 @@ Conversion workers terminate on success, failure, cancellation, or timeout. Conv
 
 #### Saving original or recommended formats
 
-Within the image section, the first row offers `original(extension)` and `recommended(extension)`; PDF, JPG, PNG, and JXL remain on the second row. The video section offers original, recommended, and MP4 independently. Labels follow the selection, showing “mixed” or “unknown” when needed, with the full list in a tooltip. Original extensions are URL hints; saved extensions use the validated response type.
+Within the image section, `original(extension)` and `recommended(extension)` appear above PDF, JPG, PNG, and JXL. In narrow panels, original and recommended stack vertically so the text and recommendation marks fit. The video section offers original, recommended, and MP4 independently. Labels follow the selection, showing “mixed” or “unknown” when needed, with the full list in a tooltip. Original extensions use the validated response type when available, otherwise URL hints. Saved extensions use the validated response type.
 
-Original preserves source bytes. For every other image choice, animated WebP, APNG, and supported animated AVIF become GIFs using a local worker, preserving composed frames, order, and repetitions. Recommended uses a fixed format policy: PNG for still images, GIF for animated images, and MP4 for videos. It does not guarantee the highest quality or smallest file for every item. Video original preserves source bytes; video recommended/MP4 converts WebM to MP4 and retains existing MP4 bytes. All selected items are prepared before any download starts.
+Image formats marked with ★ are suitable for different uses. Original is recommended to keep each file unchanged. PDF is also recommended to read a series in one document when at least two selected still images belong to one series or set under the list's existing URL-pattern and format grouping. A single still image, multiple still-image groups, covers, miscellaneous images, and uploads do not trigger the PDF recommendation. Recommendations follow selection; the eye buttons only change visibility.
 
-PDF combines only still images in selection order, with the optional source page last. When GIFs or videos are also selected, that PDF and the individual media files share one ZIP. ZIP entry numbers follow the source selection; the PDF uses the first still image's number, so numbering can have gaps. One output downloads directly. Video-only recommended/MP4 exports retain sequential managed downloads. Selection, order, both formats, and the source-page setting are fixed when saving starts. A retry with the same settings reuses successful preparations; changing settings, selection, or order invalidates them. Cancellation, Clear, rescanning, and panel closure do not accept an old completion as success.
+The image recommended option saves that series as PDF when it qualifies; otherwise it preserves original image bytes, including animated WebP and APNG. Video recommended uses MP4. Video original and MP4 both receive ★ with their purposes: keeping each file unchanged and playback, respectively. These marks describe alternatives; saving uses one chosen format per media type without also creating the other recommended version. Recommendations do not guarantee the highest quality or smallest file.
+
+Choosing PDF, JPG, PNG, or JXL, or using recommended when it resolves to PDF, converts animated WebP, APNG, and supported animated AVIF to GIFs using a local worker, preserving composed frames, order, and repetitions. Video original preserves source bytes; video recommended/MP4 converts WebM to MP4 and retains existing MP4 bytes. All selected items are prepared before any download starts.
+
+PDF combines only still images in selection order, with the optional source page last. When GIFs or videos are also selected, that PDF and the individual media files share one ZIP. ZIP entry numbers follow the source selection; the PDF uses the first still image's number, so numbering can have gaps. One output downloads directly. Video-only recommended/MP4 exports retain sequential managed downloads. Selection, order, both chosen formats, the resolved image output format, and the source-page setting are fixed when saving starts. Retries and completion retain that resolved format even if fetching reveals more information about an image. A retry with the same settings reuses successful preparations; changing settings, selection, or order invalidates them. Cancellation, Clear, rescanning, and panel closure do not accept an old completion as success.
 
 Whenever the side panel opens, both image and video formats start at recommended. Changes remain in memory for that panel, including after rescanning or when a media section is hidden or unselected. Format choices are not written to browser storage. Existing `harvest.exportFormat`, `harvest.imageExportFormat`, and `harvest.videoExportFormat` entries are ignored and left unchanged. Only the source-page preference continues to be saved in `harvest.includeSourcePage`; a failure to save it is reported.
 
@@ -98,7 +102,7 @@ GIF conversion preserves exact frame RGB with up to 256 colors per frame when no
 
 Each frame receives a 20 ms minimum before cumulative end times are rounded to 10 ms units, to avoid players stretching 10 ms GIF frames to 100 ms. Short frames can therefore slow down: 17 ms × 3 becomes 20/20/20 ms, changing a 51 ms cycle to 60 ms. Added time is not subtracted from later frames. The rounding error is at most 5 ms relative to the times after applying the minimum, not relative to the original animation with short frames. Actual playback timing depends on the player. Frames shorter than 10 ms, unrepresentable timing/loops, damaged data, unavailable decoders, and limit violations stop saving instead of flattening the image. Limits remain 64 MiB output, 120 seconds, 10,000 frames, and 64 million decoded pixels in total.
 
-Every non-original image choice verifies fetched MIME and GIF structure and preserves existing GIF bytes even without a GIF URL hint. A URL classified as GIF that returns a different media type fails explicitly. Filenames, ZIP entries, and recommended labels follow the verified format. Only the source-page setting persists; format choices, page URLs, and collected results do not.
+When the resolved image output format is PDF, JPG, PNG, or JXL, fetched MIME and GIF structure are verified, and existing GIF bytes are preserved even without a GIF URL hint. A URL classified as GIF that returns a different media type fails explicitly. Filenames, ZIP entries, and original/recommended labels follow the verified format. Confirmed original extensions are held only in panel memory and discarded on rescanning, Clear, or panel closure. Only the source-page setting persists; format choices, page URLs, and collected results do not.
 
 #### Saving JPG, PNG, and JXL
 
@@ -208,7 +212,7 @@ Xのブックマークでは、Xが受信した一覧の投稿IDとメディア�
 
 #### PDFの出典ページ
 
-「末尾に出典ページを追加」は静止画像を含むPDF選択で使える機能です。オンにすると、画像ページの後に「Source」の見出し、保存したPDFのファイル名、画像を見つけた元ページのURLを1ページに載せます。日本語や絵文字を含む文字も表示でき、選択・コピーできます。オンの場合は画像一覧とビュアーのサムネイルにもSourceページを末尾に表示し、ビュアーで内容を確認できます。PDF以外を選ぶとこの設定は隠れ、出典ページは追加しません。PDFへ戻すと、保存していた設定が再び表示されます。この出典ページ設定はブラウザー内に保存され、次回パネルを開いても維持されます。画像・動画の保存形式は、パネルを開くたびに両方ともrecommendedで始まります。ページURLや画像の収集結果は設定として保存しません。
+「末尾に出典ページを追加」は静止画像をPDFへまとめる場合に使える機能で、recommendedの保存形式がPDFとなる場合も対象です。オンにすると、画像ページの後に「Source」の見出し、保存したPDFのファイル名、画像を見つけた元ページのURLを1ページに載せます。日本語や絵文字を含む文字も表示でき、選択・コピーできます。オンの場合は画像一覧とビュアーのサムネイルにもSourceページを末尾に表示し、ビュアーで内容を確認できます。実際の保存形式がPDF以外になるとこの設定は隠れ、出典ページは追加しません。recommendedを含めてPDFへ戻ると、保存していた設定とプレビューが再び表示されます。この出典ページ設定はブラウザー内に保存され、次回パネルを開いても維持されます。画像・動画の保存形式は、パネルを開くたびに両方ともrecommendedで始まります。ページURLや画像の収集結果は設定として保存しません。
 
 #### PDFの画質と再試行
 
@@ -222,7 +226,7 @@ PDFは画像の元の大きさに合わせて1枚ずつページを作成しま�
 
 動画のサムネイルには、変換前のファイルサイズを表示します。配信元からサイズ情報を取得できない場合は「サイズ不明」と表示します。再解析が成功したときは、同じ動画URLでもサイズ情報を取得し直します。変換後の動画やZIPのサイズとは異なります。
 
-静止画像にはPDF・JPG・PNG・JXL、動画にはMP4を選べます。動く画像は画像側の形式で扱い、original以外ではGIFとして保持します。GIFはURL末尾の `.gif` または `format=gif`・`fmt=gif`・`fm=gif` から判定し、パラメーター名・値の大文字と小文字を区別しません。形式指定がある場合は拡張子より優先し、保存時には実際のデータ形式も検査します。MP4を選ぶと選択した動画を個別のMP4ファイルとして保存します。1件ならページ名、複数ならページ名に連番を付けます。GIFは1枚ならGIFファイルを直接保存し、複数枚なら連番ファイルを1つのZIPへまとめます。
+静止画像にはPDF・JPG・PNG・JXL、動画にはMP4を選べます。動く画像は画像側の形式で扱い、PDF・JPG・PNG・JXLではGIFとして保持します。recommendedは静止画像のシリーズをPDFにする条件に合う場合を除き、動く画像も原本を保持します。GIFはURL末尾の `.gif` または `format=gif`・`fmt=gif`・`fm=gif` から判定し、パラメーター名・値の大文字と小文字を区別しません。形式指定がある場合は拡張子より優先し、保存時には実際のデータ形式も検査します。MP4を選ぶと選択した動画を個別のMP4ファイルとして保存します。1件ならページ名、複数ならページ名に連番を付けます。GIFは1枚ならGIFファイルを直接保存し、複数枚なら連番ファイルを1つのZIPへまとめます。
 
 動画のみのrecommended/MP4はChromeのダウンロード管理機能で1件ずつ保存し、全件の完了を確認してから「保存しました」と表示します。保存先の選択やChromeの確認が必要な場合は完了するまで待ちます。拒否・失敗・中止があった場合は成功扱いにせず、未保存分だけを元の連番で再試行できます。完了済みのファイルは取り消しません。同名の既存ファイルは上書きせず、Chromeが重複を避ける名前に変更します。
 
@@ -242,15 +246,17 @@ Xは取得できるMP4候補の中から最も高いビットレートを選び�
 
 #### original・recommendedの保存
 
-画像欄の1行目に`original（拡張子）`と`recommended（拡張子）`、2行目にPDF・JPG・PNG・JXLを表示します。動画欄には独立したoriginal・recommended・MP4を表示します。括弧内は選択中の項目に合わせて更新します。元の拡張子はURLから分かる範囲の目安で、判別できない場合は「不明」、複数形式なら「混在」と表示し、ポインターを重ねると形式一覧を確認できます。保存時は取得したデータの種類を検証して拡張子を決めます。
+画像欄の上側に`original（拡張子）`と`recommended（拡張子）`、その下にPDF・JPG・PNG・JXLを表示します。狭いパネルではoriginalとrecommendedを縦に並べ、文字と推奨の印を収めます。動画欄には独立したoriginal・recommended・MP4を表示します。括弧内は選択中の項目に合わせて更新します。元の拡張子は取得済みのデータ形式を優先し、未取得ならURLから分かる範囲の目安を使います。判別できない場合は「不明」、複数形式なら「混在」と表示し、ポインターを重ねると形式一覧を確認できます。保存時は取得したデータの種類を検証して拡張子を決めます。
 
-画像の保存形式（original・recommended・PDF・JPG・PNG・JXL）と動画の保存形式（original・recommended・MP4）は別々に選び、保存ボタンで全選択項目を処理します。画像のoriginalは原本を保持し、それ以外の画像形式では動く画像を個別のGIFとして保存します。recommendedは静止画像をPNG、動く画像をGIF、動画をMP4で保存する固定の方針で、どの項目でも最高画質や最小容量になるという意味ではありません。動画のoriginalは原本を保持し、recommendedとMP4はMP4へ変換します。対象外として項目を除外しません。
+画像と動画の形式は別々に選び、保存ボタンで全選択項目を処理します。★は用途に合う候補を示します。画像のoriginalは「各ファイルをそのまま残す」ための推奨です。選択中の静止画像が2枚以上あり、一覧と同じURLのパターン・形式の判定で一つのシリーズまたはセットに属する場合は、「シリーズを一冊にまとめて読む」ためにPDFも推奨します。静止画像が単枚、複数グループ、表紙・その他・アップロード画像の場合はPDFを自動で推奨しません。判定には保存対象の選択を使い、目のボタンによる表示・非表示は影響しません。
 
-PDFは選択順に静止画像だけを一つのPDFにまとめ、出典ページを有効にした場合はその末尾へ追加します。GIFや動画が混在すると、そのPDFと個別GIF/動画を一つのZIPへ格納します。全項目の準備が成功するまでダウンロードを始めません。ZIPの連番は元の選択順を使い、集約PDFには最初の静止画像の番号を使うため番号が飛ぶ場合があります。PDF内の静止画像の順序は維持します。一つの出力だけなら直接保存し、動画のみのrecommended/MP4は従来どおり順次個別保存して完了を確認します。選択・順序・両形式・出典設定を保存開始時に固定し、同じ条件の再試行では成功した準備を再利用します。設定変更・中止・パネル終了・クリア・再解析後には古い成功表示を使いません。
+画像のrecommendedでは、上記のシリーズ条件に合えばPDF、それ以外はoriginalとして保存します。original相当の場合は動くWebP・APNGを含めて元データを保持します。動画のrecommendedはMP4で保存します。動画のoriginalとMP4には、それぞれ「各ファイルをそのまま残す」「再生用に使う」という用途付きの★を表示します。★が複数あっても、保存するのは選択した形式だけで、原本とPDFなどを重複して作りません。推奨は用途に応じた候補で、どの項目でも最高画質や最小容量になるという意味ではありません。
+
+PDFは選択順に静止画像だけを一つのPDFにまとめ、出典ページを有効にした場合はその末尾へ追加します。GIFや動画が混在すると、そのPDFと個別GIF/動画を一つのZIPへ格納します。全項目の準備が成功するまでダウンロードを始めません。ZIPの連番は元の選択順を使い、集約PDFには最初の静止画像の番号を使うため番号が飛ぶ場合があります。PDF内の静止画像の順序は維持します。一つの出力だけなら直接保存し、動画のみのrecommended/MP4は従来どおり順次個別保存して完了を確認します。選択・順序・両形式・recommendedから決めた実際の画像形式・出典設定を保存開始時に固定し、同じ条件の再試行では成功した準備を再利用します。取得によって画像の情報が増えても、再試行と完了表示は開始時に決めた形式を維持します。設定変更・中止・パネル終了・クリア・再解析後には古い成功表示を使いません。
 
 サイドパネルを開くたびに、画像・動画ともrecommendedで始まります。変更した形式は同じパネル内のメモリに保持し、再解析や、種類が隠れる・未選択になる操作では変えません。形式をブラウザー内へ新たに記録せず、既存の`harvest.exportFormat`・`harvest.imageExportFormat`・`harvest.videoExportFormat`は参照・削除・上書きしません。出典ページ設定だけを従来どおり`harvest.includeSourcePage`へ保存し、その記録に失敗した場合は画面で通知します。
 
-`original`は選択した項目を変換せず保存します。画像のoriginal以外はアニメWebP・APNG・対応デコーダーのあるアニメAVIFをローカルWorkerでGIFへ変換し、合成済みの全フレーム・順序・繰り返し回数を保持します。アニメ全体に透明画素（alphaが128未満）がなければ最大256色の元のRGBを保持します。その透明画素を含むアニメは全フレームで透明indexを予約し、不透明フレームも255色＋透明が上限になります。上限を超える色は適応的なmedian-cut減色を行います。透過判定の事前走査とGIF変換をそれぞれ1フレームずつ行い、全フレームの画素配列は保持しません。2値の透過（alphaが128未満なら透明）を使い、実際のGIF再生で10msが100msへ補正されることを避けるため、各フレームの最低表示時間を20msにした後、その累積終端を10ms刻みで丸めます。短いフレームは遅くなる場合があります。例えば17ms×3は20/20/20msとなり、1周51msが60msになります。増えた時間を後の長いフレームから差し引きません。丸めによる累積誤差は下限適用後の時間に対して最大5msであり、元の短いフレームを含む時間全体には適用できません。プレーヤーによって実際の表示時間は変わります。10ms未満のフレーム、GIFで表せない時間・ループ、破損、未対応デコーダー、制限超過では静止化せず保存を止めます。変換上限は出力64 MiB・120秒・10,000フレーム・累積展開6,400万画素で、1フレームずつ処理します。originalは原本保持です。画像のoriginal以外は取得済みレスポンスのMIMEとGIF構造を検証し、拡張子などのURLヒントがないGIFも元バイト列を保持します。保存ファイル名・ZIP項目・推奨ラベルには確認できた形式を反映します。`recommended`は各項目の種類を判定し、静止画像はPNG、GIFはGIF、動画はMP4として保存します。混在時も全選択項目を保存します。1件なら直接保存、複数ならZIPにまとめます。ただし`recommended`で動画だけを選んだ場合は、従来のMP4と同じく個別に保存し、完了を確認します。変換や取得に失敗した項目は再試行でき、失敗が残る間は保存を開始しません。
+`original`は選択した項目を変換せず保存します。画像のPDF・JPG・PNG・JXL、およびrecommendedがPDFとなる場合は、アニメWebP・APNG・対応デコーダーのあるアニメAVIFをローカルWorkerでGIFへ変換し、合成済みの全フレーム・順序・繰り返し回数を保持します。アニメ全体に透明画素（alphaが128未満）がなければ最大256色の元のRGBを保持します。その透明画素を含むアニメは全フレームで透明indexを予約し、不透明フレームも255色＋透明が上限になります。上限を超える色は適応的なmedian-cut減色を行います。透過判定の事前走査とGIF変換をそれぞれ1フレームずつ行い、全フレームの画素配列は保持しません。2値の透過（alphaが128未満なら透明）を使い、実際のGIF再生で10msが100msへ補正されることを避けるため、各フレームの最低表示時間を20msにした後、その累積終端を10ms刻みで丸めます。短いフレームは遅くなる場合があります。例えば17ms×3は20/20/20msとなり、1周51msが60msになります。増えた時間を後の長いフレームから差し引きません。丸めによる累積誤差は下限適用後の時間に対して最大5msであり、元の短いフレームを含む時間全体には適用できません。プレーヤーによって実際の表示時間は変わります。10ms未満のフレーム、GIFで表せない時間・ループ、破損、未対応デコーダー、制限超過では静止化せず保存を止めます。変換上限は出力64 MiB・120秒・10,000フレーム・累積展開6,400万画素で、1フレームずつ処理します。originalは原本保持です。実際の画像形式がPDF・JPG・PNG・JXLの場合は取得済みレスポンスのMIMEとGIF構造を検証し、拡張子などのURLヒントがないGIFも元バイト列を保持します。保存ファイル名・ZIP項目・originalとrecommendedのラベルには確認できた形式を反映します。確認した原本の拡張子はパネル内メモリだけに保持し、再解析・結果の消去・パネル終了で破棄します。混在時も全選択項目を保存します。出力が1ファイルなら直接保存し、複数ファイルならZIPにまとめます。ただし`recommended`で動画だけを選んだ場合は、従来のMP4と同じく個別に保存し、完了を確認します。変換や取得に失敗した項目は再試行でき、失敗が残る間は保存を開始しません。
 
 出典ページ設定だけをブラウザー内に記録します。選択した形式や利用者データは永続化せず、外部送信先も追加しません。
 
