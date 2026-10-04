@@ -48,3 +48,9 @@ export function isZipChecksumReply(value) {
     return failure(value, "checksum") || (value["error"] === undefined && typeof checksum === "number"
         && Number.isInteger(checksum) && checksum >= 0 && checksum <= 0xffff_ffff);
 }
+export function isAnimationConversionRequest(value) {
+    return record(value) && value["blob"] instanceof Blob && value["blob"].size > 0 && typeof value["maxBytes"] === "number" && Number.isSafeInteger(value["maxBytes"]) && value["maxBytes"] > 0;
+}
+export function isAnimationConversionReply(value) {
+    return record(value) && (failure(value, "blob") || (value["error"] === undefined && (value["blob"] === null || (value["blob"] instanceof Blob && value["blob"].type === "image/gif" && value["blob"].size > 0))));
+}

@@ -6,6 +6,7 @@ import type {ImageItem} from "../../core/images.js";
 import type {MutablePendingExport} from "../contracts/export-contracts.js";
 import type {FetchedImage} from "../contracts/image-data-contract.js";
 import {fetchImage} from "./image-fetch.js";
+import {prepareAnimatedImage} from "./animated-image.js";
 import {prepareRecommendedGif} from "./recommended-gif.js";
 import {convertImage} from "./image-format.js";
 import {fetchOriginalMedia} from "./media-fetch.js";
@@ -86,7 +87,7 @@ export async function prepareImageArchive(
         let blob: Blob;
         if (format === "recommend" && (item.kind ?? "image") === "image") {
           const fetched = outcome.fetched as FetchedImage;
-          const gif = await prepareRecommendedGif(fetched, options.signal);
+          const gif = await prepareRecommendedGif(fetched, options.signal) ?? await prepareAnimatedImage(fetched, options.signal, plan.remainingBytes);
           blob = gif ?? await convertImage(fetched, "png", options.signal);
           item.recommendedFormat = gif ? "gif" : "png";
         } else {

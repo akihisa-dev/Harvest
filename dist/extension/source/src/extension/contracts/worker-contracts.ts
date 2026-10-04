@@ -87,3 +87,12 @@ export function isZipChecksumReply(value: unknown): value is ZipChecksumReply {
   return failure(value, "checksum") || (value["error"] === undefined && typeof checksum === "number"
     && Number.isInteger(checksum) && checksum >= 0 && checksum <= 0xffff_ffff);
 }
+
+export interface AnimationConversionRequest {readonly blob:Blob;readonly maxBytes:number;}
+export type AnimationConversionReply={readonly blob:Blob|null;readonly error?:never}|{readonly error:string;readonly blob?:never};
+export function isAnimationConversionRequest(value:unknown):value is AnimationConversionRequest {
+  return record(value) && value["blob"] instanceof Blob && value["blob"].size>0 && typeof value["maxBytes"]==="number" && Number.isSafeInteger(value["maxBytes"]) && value["maxBytes"]>0;
+}
+export function isAnimationConversionReply(value:unknown):value is AnimationConversionReply {
+  return record(value) && (failure(value,"blob") || (value["error"]===undefined && (value["blob"]===null || (value["blob"] instanceof Blob && value["blob"].type==="image/gif" && value["blob"].size>0))));
+}

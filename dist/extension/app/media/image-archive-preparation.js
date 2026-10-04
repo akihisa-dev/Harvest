@@ -2,6 +2,7 @@ import { isMediaArchiveFormat, itemArchiveFormat } from "../../core/export-forma
 import { ImageArchiveLimitError, ImageArchivePlan } from "../../core/image-archive.js";
 import { createPreparationWorkers, waitForPreparation } from "../../core/preparation-workers.js";
 import { fetchImage } from "./image-fetch.js";
+import { prepareAnimatedImage } from "./animated-image.js";
 import { prepareRecommendedGif } from "./recommended-gif.js";
 import { convertImage } from "./image-format.js";
 import { fetchOriginalMedia } from "./media-fetch.js";
@@ -59,7 +60,7 @@ export async function prepareImageArchive(work, options) {
                 let blob;
                 if (format === "recommend" && (item.kind ?? "image") === "image") {
                     const fetched = outcome.fetched;
-                    const gif = await prepareRecommendedGif(fetched, options.signal);
+                    const gif = await prepareRecommendedGif(fetched, options.signal) ?? await prepareAnimatedImage(fetched, options.signal, plan.remainingBytes);
                     blob = gif ?? await convertImage(fetched, "png", options.signal);
                     item.recommendedFormat = gif ? "gif" : "png";
                 }

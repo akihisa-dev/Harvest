@@ -109,6 +109,7 @@ export function createAppView(elements: AppElements, positionOf: (item: ImageIte
     const hasVideo = formats.includes("mp4");
     const excludedCount = selectedCount - selected.length;
     exportMediaHint.textContent = [
+      format === "recommend" && selected.some(item => item.kind !== "video") ? t("animatedImageHint") : "",
       (format === "mp4" && hasVideo) || (format === "recommend" && selected.some(item => item.kind === "video")) ? t("videoConversionHint") : "",
       excludedCount ? t("mediaExcludedHint", {count: excludedCount, plural: formatPlural(excludedCount), format: format.toUpperCase()}) : "",
     ].filter(Boolean).join(" ");
