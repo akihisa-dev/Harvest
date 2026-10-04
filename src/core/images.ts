@@ -4,6 +4,8 @@ export interface ImageItem {
   selected: boolean;
   kind?: "image" | "gif" | "video";
   previewUrl?: string;
+  /** Verified response format for recommend labels; panel memory only. */
+  recommendedFormat?: "png" | "gif";
 }
 
 export interface ImageGroup {

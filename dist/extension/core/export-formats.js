@@ -46,7 +46,7 @@ export function availableExportFormats(items) {
     });
 }
 export function recommendedItemFormat(item) {
-    return item.kind === "video" ? "mp4" : item.kind === "gif" ? "gif" : "png";
+    return item.kind === "video" ? "mp4" : item.kind === "gif" ? "gif" : item.recommendedFormat ?? "png";
 }
 export function itemArchiveFormat(format, item) {
     return format === "recommend" ? recommendedItemFormat(item) : format;

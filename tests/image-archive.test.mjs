@@ -149,3 +149,12 @@ test("準備開始直後の中止では通信も進捗通知も開始しない",
     globalThis.fetch = previousFetch;
   }
 });
+
+test('実レスポンスで確認したGIFの推奨形式を単体/ZIP名へ反映し、明示PNGは変えない', () => {
+  const image = {...item('no-extension', 'image'), recommendedFormat: 'gif'};
+  const png = {...item('static.webp', 'image'), recommendedFormat: 'png'};
+  const prepared = new Map([[image,new Blob([gif],{type:'image/gif'})],[png,new Blob(['png'],{type:'image/png'})]]);
+  assert.deepEqual(createImageZipEntries([image,png],prepared,'recommend').map(entry=>entry.filename),['001.gif','002.png']);
+  assert.equal(createImageZipEntries([image],new Map([[image,new Blob(['png'],{type:'image/png'})]]),'png')[0].filename,'001.png');
+  assert.throws(()=>createImageZipEntries([image],new Map([[image,new Blob(['png'],{type:'image/png'})]]),'recommend'),/一致しません/);
+});

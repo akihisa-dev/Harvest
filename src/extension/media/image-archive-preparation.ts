@@ -6,6 +6,7 @@ import type {ImageItem} from "../../core/images.js";
 import type {MutablePendingExport} from "../contracts/export-contracts.js";
 import type {FetchedImage} from "../contracts/image-data-contract.js";
 import {fetchImage} from "./image-fetch.js";
+import {prepareRecommendedGif} from "./recommended-gif.js";
 import {convertImage} from "./image-format.js";
 import {fetchOriginalMedia} from "./media-fetch.js";
 import {prepareMp4} from "./mp4-conversion.js";
@@ -56,7 +57,8 @@ export async function prepareImageArchive(
   const fetchedResults: Array<Deferred<ImageFetchOutcome & {release: () => void}> | undefined> = remaining.map(() => createDeferred());
   const workers = createPreparationWorkers(remaining.length, hasMedia ? 1 : IMAGE_FETCH_CONCURRENCY, options.signal, async (index, signal, release) => {
     const item = remaining[index]!;
-    const isOriginalMedia = isMediaArchiveFormat(itemArchiveFormat(format, item));
+    const isOriginalMedia = !(format === "recommend" && (item.kind ?? "image") === "image")
+      && isMediaArchiveFormat(itemArchiveFormat(format, item));
     let outcome: ImageFetchOutcome;
     try {
       outcome = {
@@ -81,9 +83,17 @@ export async function prepareImageArchive(
       const itemFormat = itemArchiveFormat(format, item);
       try {
         if (!outcome.ok) throw outcome.error;
-        let blob = isMediaArchiveFormat(itemFormat)
-          ? outcome.fetched as Blob
-          : await convertImage(outcome.fetched as FetchedImage, itemFormat, options.signal);
+        let blob: Blob;
+        if (format === "recommend" && (item.kind ?? "image") === "image") {
+          const fetched = outcome.fetched as FetchedImage;
+          const gif = await prepareRecommendedGif(fetched, options.signal);
+          blob = gif ?? await convertImage(fetched, "png", options.signal);
+          item.recommendedFormat = gif ? "gif" : "png";
+        } else {
+          blob = isMediaArchiveFormat(itemFormat)
+            ? outcome.fetched as Blob
+            : await convertImage(outcome.fetched as FetchedImage, itemFormat, options.signal);
+        }
         if (itemFormat === "mp4") blob = await prepareMp4(blob, options.signal, plan.remainingBytes);
         if (options.isStopped()) return null;
         plan.retain(item, blob);

@@ -2,6 +2,7 @@ import { isMediaArchiveFormat, itemArchiveFormat } from "../../core/export-forma
 import { ImageArchiveLimitError, ImageArchivePlan } from "../../core/image-archive.js";
 import { createPreparationWorkers, waitForPreparation } from "../../core/preparation-workers.js";
 import { fetchImage } from "./image-fetch.js";
+import { prepareRecommendedGif } from "./recommended-gif.js";
 import { convertImage } from "./image-format.js";
 import { fetchOriginalMedia } from "./media-fetch.js";
 import { prepareMp4 } from "./mp4-conversion.js";
@@ -25,7 +26,8 @@ export async function prepareImageArchive(work, options) {
     const fetchedResults = remaining.map(() => createDeferred());
     const workers = createPreparationWorkers(remaining.length, hasMedia ? 1 : IMAGE_FETCH_CONCURRENCY, options.signal, async (index, signal, release) => {
         const item = remaining[index];
-        const isOriginalMedia = isMediaArchiveFormat(itemArchiveFormat(format, item));
+        const isOriginalMedia = !(format === "recommend" && (item.kind ?? "image") === "image")
+            && isMediaArchiveFormat(itemArchiveFormat(format, item));
         let outcome;
         try {
             outcome = {
@@ -54,9 +56,18 @@ export async function prepareImageArchive(work, options) {
             try {
                 if (!outcome.ok)
                     throw outcome.error;
-                let blob = isMediaArchiveFormat(itemFormat)
-                    ? outcome.fetched
-                    : await convertImage(outcome.fetched, itemFormat, options.signal);
+                let blob;
+                if (format === "recommend" && (item.kind ?? "image") === "image") {
+                    const fetched = outcome.fetched;
+                    const gif = await prepareRecommendedGif(fetched, options.signal);
+                    blob = gif ?? await convertImage(fetched, "png", options.signal);
+                    item.recommendedFormat = gif ? "gif" : "png";
+                }
+                else {
+                    blob = isMediaArchiveFormat(itemFormat)
+                        ? outcome.fetched
+                        : await convertImage(outcome.fetched, itemFormat, options.signal);
+                }
                 if (itemFormat === "mp4")
                     blob = await prepareMp4(blob, options.signal, plan.remainingBytes);
                 if (options.isStopped())

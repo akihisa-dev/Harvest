@@ -53,7 +53,7 @@ export function availableExportFormats(items: readonly ImageItem[]): readonly Ex
 }
 
 export function recommendedItemFormat(item: ImageItem): "png" | "gif" | "mp4" {
-  return item.kind === "video" ? "mp4" : item.kind === "gif" ? "gif" : "png";
+  return item.kind === "video" ? "mp4" : item.kind === "gif" ? "gif" : item.recommendedFormat ?? "png";
 }
 
 export function itemArchiveFormat(format: ImageArchiveFormat, item: ImageItem): Exclude<ImageArchiveFormat, "recommend"> {

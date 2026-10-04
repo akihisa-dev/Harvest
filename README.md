@@ -86,7 +86,7 @@ Conversion workers terminate on success, failure, cancellation, or timeout. Conv
 
 #### Saving original or recommended formats
 
-The first format row offers `original(extension)` and `recommend(extension)`; explicit formats remain on the second row. Labels follow the selection, showing “mixed” or “unknown” when needed, with the full list in a tooltip. Original extensions are URL hints; downloads use the validated response type. `original` preserves source bytes. `recommend` saves still images as PNG, GIFs as GIF, and videos as MP4, including every selected item in mixed selections. One file downloads directly; multiple files use ZIP, except video-only recommended exports, which use the existing managed individual MP4 downloads. Both choices persist in the existing format preference and survive rescanning; the first-use default is recommend; an explicitly saved format remains unchanged.
+The first format row offers `original(extension)` and `recommend(extension)`; explicit formats remain on the second row. Labels follow the selection, showing “mixed” or “unknown” when needed, with the full list in a tooltip. Original extensions are URL hints; downloads use the validated response type. `original` preserves source bytes. Recommended export verifies the fetched MIME and GIF structure, preserving GIF bytes even when the URL has no GIF hint; downloaded filenames, ZIP entries, and the recommended label follow the verified format. `recommend` saves still images as PNG, GIFs as GIF, and videos as MP4, including every selected item in mixed selections. One file downloads directly; multiple files use ZIP, except video-only recommended exports, which use the existing managed individual MP4 downloads. Both choices persist in the existing format preference and survive rescanning; the first-use default is recommend; an explicitly saved format remains unchanged.
 
 #### Saving JPG, PNG, and JXL
 
@@ -232,7 +232,7 @@ Xは取得できるMP4候補の中から最も高いビットレートを選び�
 
 保存形式の1行目に`original（拡張子）`と`recommend（拡張子）`、2行目に従来の形式を表示します。括弧内は選択中の項目に合わせて更新します。元の拡張子はURLから分かる範囲の目安で、判別できない場合は「不明」、複数形式なら「混在」と表示し、ポインターを重ねると形式一覧を確認できます。保存時は取得したデータの種類を検証して拡張子を決めます。
 
-`original`は選択した項目を変換せず保存します。`recommend`は各項目の種類を判定し、静止画像はPNG、GIFはGIF、動画はMP4として保存します。混在時も全選択項目を保存します。1件なら直接保存、複数ならZIPにまとめます。ただし`recommend`で動画だけを選んだ場合は、従来のMP4と同じく個別に保存し、完了を確認します。変換や取得に失敗した項目は再試行でき、失敗が残る間は保存を開始しません。
+`original`は選択した項目を変換せず保存します。recommendは取得済みレスポンスのMIMEとGIF構造を検証し、拡張子などのURLヒントがないGIFも元バイト列を保持します。保存ファイル名・ZIP項目・推奨ラベルには確認できた形式を反映します。`recommend`は各項目の種類を判定し、静止画像はPNG、GIFはGIF、動画はMP4として保存します。混在時も全選択項目を保存します。1件なら直接保存、複数ならZIPにまとめます。ただし`recommend`で動画だけを選んだ場合は、従来のMP4と同じく個別に保存し、完了を確認します。変換や取得に失敗した項目は再試行でき、失敗が残る間は保存を開始しません。
 
 初回や有効な保存設定がない場合の選択は`recommend`です。利用者が明示的に保存した形式は維持します。`original`・`recommend`も従来と同じ設定場所に記録し、次回の解析でも維持します。新しい保存情報や外部送信先は追加しません。
 
