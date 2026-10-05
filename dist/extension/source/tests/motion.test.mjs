@@ -87,6 +87,7 @@ test("reduced motionでは位置アニメーションを発生させない", asy
   const element = parent.children[0];
   reconcileKeyedChildren(parent, [{id: "a"}], item => item.id, () => new MotionElement(), (current, _item, index) => { current.style.order = String(index); });
   assert.equal(element.animations.length, 0);
+  assert.equal(element.rectReads, 0, "reduced motion does not measure unused geometry");
 });
 
 test("移動途中の再操作は現在の見た目から開始し、色の切替を取り消さない", async () => {

@@ -222,6 +222,20 @@ export function createImagePreviewLoader() {
             else if (eager || !observer)
                 start(entry);
         },
+        retainImage(source, copy) {
+            const binding = bindings.get(source);
+            const entry = binding ? entries.get(binding.key) : undefined;
+            if (!entry?.objectUrl)
+                return () => { };
+            release(copy);
+            entry.elements.add(copy);
+            bindings.set(copy, { key: entry.key, visible: false, eager: true });
+            cachedEntries.delete(entry.key);
+            if (copy.src !== entry.objectUrl)
+                copy.src = entry.objectUrl;
+            copy.dataset["previewUrl"] = entry.item.url;
+            return () => clearImage(copy);
+        },
         clearImage,
         clear() {
             generation += 1;

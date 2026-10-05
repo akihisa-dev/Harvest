@@ -80,7 +80,12 @@ export function createImageDragController(options: ImageDragOptions): ImageDragC
     });
     previewOrder = order;
     const updatedRects = animateLayoutChange(changedRows, () => {
-      order.forEach((item, index) => { rows.get(item.url)!.style.order = String(index); });
+      const positions = new Map(order.map((item, index) => [item, index]));
+      changedItems.forEach(item => {
+        const row = rows.get(item.url)!;
+        const order = String(positions.get(item));
+        if (row.style.order !== order) row.style.order = order;
+      });
     }, session ? rows.get(session.item.url) : undefined);
     for (const item of changedItems) {
       const row = rows.get(item.url);

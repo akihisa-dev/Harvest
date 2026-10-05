@@ -15,6 +15,8 @@ export function createImageListView(options) {
     const imageRowParts = new WeakMap();
     let visibleImages = [];
     let rows = new Map();
+    // Detached templates belong only to URLs still present in the current result.
+    const rowCache = new Map();
     let renderedListKeys = [];
     const drag = createImageDragController({
         imagesElement,
@@ -264,7 +266,17 @@ export function createImageListView(options) {
             item.kind, item.sourcePage, item.previewUrl, options.previewLoader.generation];
         if (drag.draggedImage !== item)
             setClass(row, "dragging", false);
-        if (parts.rendered?.every((value, position) => value === state[position]))
+        const unchanged = parts.rendered?.every((value, position) => value === state[position]);
+        const prior = parts.previewState;
+        const previewChanged = !prior || prior[0] !== item.kind || prior[1] !== item.sourcePage || prior[2] !== item.previewUrl || prior[3] !== options.previewLoader.generation;
+        if (unchanged && !previewChanged)
+            return;
+        if (previewChanged) {
+            options.previewLoader.set(parts.preview, item);
+            parts.previewState = [item.kind, item.sourcePage, item.previewUrl, options.previewLoader.generation];
+        }
+        parts.updateResolution();
+        if (unchanged)
             return;
         parts.rendered = state;
         if (row.style.order !== String(index))
@@ -288,12 +300,6 @@ export function createImageListView(options) {
         setAttribute(row, "aria-label", t("imageRowAria", {
             filename, index: overallIndex + 1, failed: formatFailedAria(failed),
         }));
-        const prior = parts.previewState;
-        if (!prior || prior[0] !== item.kind || prior[1] !== item.sourcePage || prior[2] !== item.previewUrl || prior[3] !== options.previewLoader.generation) {
-            options.previewLoader.set(parts.preview, item);
-            parts.previewState = [item.kind, item.sourcePage, item.previewUrl, options.previewLoader.generation];
-        }
-        parts.updateResolution();
         setAttribute(parts.preview, "alt", t("imageAlt", { index: index + 1 }));
         setText(parts.order, `${overallIndex + 1}`);
         setAttribute(parts.order, "aria-label", t("imagePosition", { index: overallIndex + 1 }));
@@ -305,18 +311,38 @@ export function createImageListView(options) {
     }
     function renderImages(failedItems, sourcePreview) {
         const previousRows = rows;
+        for (const url of rowCache.keys())
+            if (!collection.itemForUrl(url))
+                rowCache.delete(url);
         const listItems = visibleImages.map(image => ({ kind: "image", image }));
         if (sourcePreview)
             listItems.push({ kind: "source", image: sourcePreview });
         const nextKeys = listItems.map(listItemKey);
         const layoutChanged = renderedListKeys.length !== nextKeys.length ||
             nextKeys.some((key, index) => renderedListKeys[index] !== key);
-        const nextListRows = reconcileKeyedChildren(imagesElement, listItems, listItemKey, item => item.kind === "image" ? createImageRow(item.image) : document.createElement("li"), (row, listItem, index) => {
+        const nextListRows = reconcileKeyedChildren(imagesElement, listItems, listItemKey, item => {
+            if (item.kind === "source")
+                return document.createElement("li");
+            let row = rowCache.get(item.image.url);
+            if (!row) {
+                row = createImageRow(item.image);
+                rowCache.set(item.image.url, row);
+            }
+            return row;
+        }, (row, listItem, index) => {
             if (listItem.kind === "source")
                 renderSourceRow(row, listItem.image, index);
             else
                 renderImageRow(row, listItem.image, index, failedItems);
-        }, { animateLayout: layoutChanged });
+        }, { animateLayout: layoutChanged, visibleLayoutOnly: true,
+            retainExit(row, ghost) {
+                const parts = imageRowParts.get(row);
+                const copy = ghost.querySelector("img.preview");
+                if (!parts || !copy)
+                    return;
+                return options.previewLoader.retainImage?.(parts.preview, copy);
+            },
+        });
         renderedListKeys = nextKeys;
         const nextRows = new Map();
         for (const item of visibleImages) {
@@ -330,6 +356,7 @@ export function createImageListView(options) {
             const parts = imageRowParts.get(row);
             if (parts) {
                 options.previewLoader.clearImage(parts.preview);
+                delete parts.previewState;
                 videoSizes.release(parts.resolution);
             }
         }

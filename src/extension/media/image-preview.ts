@@ -30,6 +30,8 @@ export interface ImagePreviewLoader {
   readonly diagnostics: {bound: number; ready: number; failed: number; pending: number};
   /** Attach a local image or schedule a network preview; eager previews start immediately. */
   set(image: HTMLImageElement, item: ImageItem, eager?: boolean): void;
+  /** Retain an already loaded preview for a transient copy, without starting a fetch. */
+  retainImage(source: HTMLImageElement, copy: HTMLImageElement): () => void;
   /** Release one image element's fetch and object URL reference. */
   clearImage(image: HTMLImageElement): void;
   /** Cancel pending previews and release every object URL owned by this loader. */
@@ -239,6 +241,18 @@ export function createImagePreviewLoader(): ImagePreviewLoader {
         image.src = entry.objectUrl;
         if (isPinned(entry)) cachedEntries.delete(entry.key);
       } else if (eager || !observer) start(entry);
+    },
+    retainImage(source, copy) {
+      const binding = bindings.get(source);
+      const entry = binding ? entries.get(binding.key) : undefined;
+      if (!entry?.objectUrl) return () => {};
+      release(copy);
+      entry.elements.add(copy);
+      bindings.set(copy, {key: entry.key, visible: false, eager: true});
+      cachedEntries.delete(entry.key);
+      if (copy.src !== entry.objectUrl) copy.src = entry.objectUrl;
+      copy.dataset["previewUrl"] = entry.item.url;
+      return () => clearImage(copy);
     },
     clearImage,
     clear() {

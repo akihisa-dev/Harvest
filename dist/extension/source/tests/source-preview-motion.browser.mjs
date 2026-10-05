@@ -65,15 +65,16 @@ test("Source row entry and removal animate while selection updates reuse layout"
   await page.waitForFunction(() => Boolean(window.__fixture));
   const baseline = await page.evaluate(() => {
     const fixture = window.__fixture;
+    const initialMeasurements = fixture.rowMeasurements;
     fixture.images = [...fixture.imagesElement.children];
     fixture.collection.toggleSelected(fixture.urls[0]);
     fixture.view.render();
-    const afterSelection = fixture.rowMeasurements;
+    const afterSelection = fixture.rowMeasurements - initialMeasurements;
     fixture.view.render(new Set(), fixture.source);
-    const afterSourceEntry = fixture.rowMeasurements;
+    const afterSourceEntry = fixture.rowMeasurements - initialMeasurements;
     fixture.collection.toggleSelected(fixture.urls[1]);
     fixture.view.render(new Set(), fixture.source);
-    const afterStableRender = fixture.rowMeasurements;
+    const afterStableRender = fixture.rowMeasurements - initialMeasurements;
     const sourceEntryAnimated = fixture.animations.some(animation => animation.className === "source-preview");
     fixture.view.render(new Set(), null);
     return {
