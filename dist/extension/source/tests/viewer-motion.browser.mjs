@@ -67,7 +67,7 @@ async function serve(t, {sharedPoster = false} = {}) {
             };
             let controller;
             controller = createViewerController({
-              elements, getPages: () => pages, getPageLabel: item => item.url, isBusy: () => false,
+              elements, getPages: () => {window.__pageReads=(window.__pageReads??0)+1;return [...pages];}, getPageLabel: item => item.url, isBusy: () => false,
               getImageCount: () => pages.length, previewLoader, onChange: () => controller.render(),
             });
             window.__viewerReady = controller;
@@ -371,4 +371,28 @@ test("viewer retargeting, failed previews and clearing release obsolete image bi
   assert.equal(await page.locator("#image").getAttribute("src"), null, "late preview loads cannot restore cleared content");
   assert.equal(await page.locator("#image").getAttribute("data-motion"), null);
   assert.deepEqual(errors, []);
+});
+
+test("navigation reuses one fresh page snapshot and preserves focus, Source and zoom reset", async t => {
+  const {url}=await serve(t),browser=await launchBrowser(t),page=await browser.newPage();
+  await page.goto(url);await page.waitForFunction(()=>Boolean(window.__viewerReady));
+  const read=()=>page.evaluate(()=>({reads:window.__pageReads,position:document.querySelector('#position').textContent,url:document.querySelector('#image').dataset.previewUrl,zoom:document.querySelector('#zoom-reset').textContent,focus:document.activeElement?.id}));
+  await page.locator('#zoom-in').click();assert.equal((await read()).zoom,'125%');
+  await page.evaluate(()=>window.__pageReads=0);await page.locator('#next').click();
+  assert.deepEqual(await read(),{reads:1,position:'2 / 2',url:'https://images.example.test/2.jpg',zoom:'100%',focus:'next'});
+  await page.evaluate(()=>window.__pageReads=0);await page.locator('#previous').click();
+  assert.equal((await read()).reads,1);assert.equal((await read()).position,'1 / 2');
+  await page.evaluate(()=>{
+    window.__viewerFixture.pages.push({url:'data:image/svg+xml,Source',sourcePage:'https://source.example.test/',selected:false});
+    window.__pageReads=0;
+  });
+  await page.locator('#next').click();assert.equal((await read()).position,'2 / 3');assert.equal((await read()).reads,1);
+  await page.evaluate(()=>window.__pageReads=0);await page.locator('#next').click();
+  assert.equal((await read()).position,'3 / 3');assert.equal((await read()).url,'data:image/svg+xml,Source');assert.equal((await read()).reads,1);
+  await page.evaluate(()=>{window.__viewerFixture.pages.shift();window.__pageReads=0;});
+  await page.locator('#previous').click();assert.equal((await read()).position,'1 / 2');assert.equal((await read()).reads,1);
+  await page.waitForTimeout(350);await page.evaluate(()=>window.__pageReads=0);
+  await page.locator('#thumbnails img').first().hover();await page.mouse.wheel(0,160);
+  await page.waitForFunction(()=>document.querySelector('#position').textContent==='2 / 2');
+  assert.equal((await read()).reads,1);assert.equal((await read()).url,'data:image/svg+xml,Source');
 });

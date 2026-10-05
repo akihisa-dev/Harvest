@@ -4,9 +4,9 @@ import {isStillImage, type ImageExportFormat} from "./split-export-formats.js";
 export type ResolvedImageExportFormat = Exclude<ImageExportFormat, "recommend">;
 
 /** A series defaults to a reading copy; other selections preserve their originals. */
-export function resolveImageExportFormat(format: ImageExportFormat, selected: readonly ImageItem[]): ResolvedImageExportFormat {
+export function resolveImageExportFormat(format: ImageExportFormat, selected: readonly ImageItem[], recommendations?: readonly ImageRecommendation[]): ResolvedImageExportFormat {
   if (format !== "recommend") return format;
-  return imageRecommendations(selected).some(candidate => candidate.format === "pdf") ? "pdf" : "original";
+  return (recommendations ?? imageRecommendations(selected)).some(candidate => candidate.format === "pdf") ? "pdf" : "original";
 }
 
 type OriginalRecommendation = {readonly format: "original"; readonly reason: "preserve"};

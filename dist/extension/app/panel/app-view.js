@@ -1,6 +1,6 @@
 import { isMediaArchiveFormat, originalItemExtension } from "../../core/export-formats.js";
 import { isStillImage } from "../../core/split-export-formats.js";
-import { imageRecommendations, videoRecommendations, resolveImageExportFormat } from "../../core/export-recommendations.js";
+import { videoRecommendations } from "../../core/export-recommendations.js";
 import { setButtonLabel } from "./button-state.js";
 import { createEmptyStateView } from "./empty-state.js";
 import { imageFilename } from "./export-presentation.js";
@@ -82,12 +82,12 @@ export function createAppView(elements, positionOf) {
     function render(snapshot) {
         const { busy, items, selectedCount, scanState, scanRunning } = snapshot;
         const { format, selected, includeSourcePage: sourceIncluded, view } = snapshot.export;
-        const selectedItems = items.filter(item => item.selected);
+        const selectedItems = selected;
         const images = selectedItems.filter(item => item.kind !== "video"), videos = selectedItems.filter(item => item.kind === "video");
         const outputFormat = snapshot.export.resolvedImageFormat;
-        const recommendedFormat = format === "recommend" ? outputFormat : resolveImageExportFormat("recommend", selectedItems);
+        const recommendedFormat = format === "recommend" ? outputFormat : snapshot.export.recommendedImageFormat;
         const reasons = [...new Set([
-                ...renderRecommendations(exportFormatInputs, imageRecommendations(selectedItems)),
+                ...renderRecommendations(exportFormatInputs, snapshot.export.recommendations),
                 ...renderRecommendations(elements.videoExportFormatInputs, videoRecommendations(selectedItems)),
             ])];
         renderExtensions(elements.exportOriginalExtension, images.map(originalItemExtension));

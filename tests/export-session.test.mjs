@@ -96,3 +96,20 @@ for(const archiveFormat of ["png","jpg","jxl"]){
     });
   }
 }
+
+
+test("描画スナップショットは一度の選択取得を共有し可変メタデータを次回再評価する",()=>{
+  let reads=0;
+  const selected=[1,2].map(i=>image(`pages/${i}`));
+  const session=createSplitExportSession({imageFormat:"recommend",videoFormat:"recommend",includeSourcePage:true,
+    getSelectedItems:()=>{reads++;return selected;},getController:()=>null,isBusy:()=>false});
+  const first=session.renderState;
+  assert.equal(reads,1);assert.equal(first.resolvedImageFormat,"pdf");
+  assert.equal(first.recommendedImageFormat,"pdf");assert.equal(first.recommendations.some(r=>r.format==="pdf"),true);
+  selected[1].recommendedFormat="gif";
+  const next=session.renderState;
+  assert.equal(reads,2);assert.equal(next.recommendedImageFormat,"original");assert.equal(next.resolvedImageFormat,"original");
+  assert.equal(first.recommendedImageFormat,"pdf","前回判定値は可変項目の変更で書き換わらない");
+  session.setFormat("png");assert.equal(session.renderState.resolvedImageFormat,"png");
+  assert.equal(session.renderState.recommendedImageFormat,"original","手動形式でも推奨は現在の対象から独立に算出する");
+});

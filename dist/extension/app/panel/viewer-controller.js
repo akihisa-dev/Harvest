@@ -137,8 +137,8 @@ export function createViewerController(options) {
                     || performance.now() - lastThumbnailWheelAt < 200 ? "instant" : "smooth" });
         }
     }
-    function render() {
-        const pages = options.getPages();
+    // Navigation passes only its current event snapshot; a new render reads fresh pages.
+    function render(pages = options.getPages()) {
         const index = pages.findIndex(item => item.url === currentUrl);
         const currentIndex = index < 0 ? 0 : index;
         const current = pages[currentIndex];
@@ -192,7 +192,7 @@ export function createViewerController(options) {
         const index = pages.findIndex(item => item.url === currentUrl);
         if (index > 0) {
             currentUrl = pages[index - 1].url;
-            render();
+            render(pages);
         }
     });
     elements.next.addEventListener("click", () => {
@@ -200,7 +200,7 @@ export function createViewerController(options) {
         const index = pages.findIndex(item => item.url === currentUrl);
         if (index >= 0 && index < pages.length - 1) {
             currentUrl = pages[index + 1].url;
-            render();
+            render(pages);
         }
     });
     elements.thumbnails.addEventListener("wheel", event => {
@@ -217,7 +217,7 @@ export function createViewerController(options) {
         event.preventDefault();
         lastThumbnailWheelAt = event.timeStamp;
         currentUrl = pages[nextIndex].url;
-        render();
+        render(pages);
     }, { passive: false });
     elements.zoomIn.addEventListener("click", () => zoomBy(1.25));
     elements.zoomOut.addEventListener("click", () => zoomBy(1 / 1.25));

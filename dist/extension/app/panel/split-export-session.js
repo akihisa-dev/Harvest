@@ -1,6 +1,6 @@
 import { isImageExportFormat, splitSettingsMatch } from "../../core/split-export-formats.js";
 import { selectionsMatch } from "./export-lifecycle.js";
-import { resolveImageExportFormat } from "../../core/export-recommendations.js";
+import { imageRecommendations, resolveImageExportFormat } from "../../core/export-recommendations.js";
 /** One request snapshot owns both media choices, selection order, cancellation and completion. */
 export function createSplitExportSession(options) {
     let settings = { imageFormat: options.imageFormat, videoFormat: options.videoFormat, includeSourcePage: options.includeSourcePage };
@@ -16,8 +16,7 @@ export function createSplitExportSession(options) {
         if (!options.getController()?.isRunning)
             options.getController()?.clear();
     }
-    function resolvedFormat() {
-        const selected = options.getSelectedItems();
+    function resolvedFormat(selected = options.getSelectedItems(), recommendations) {
         const controller = options.getController();
         const snapshots = [controller?.isRunning ? active?.snapshot : undefined, completed, controller?.pending];
         for (const snapshot of snapshots) {
@@ -25,7 +24,16 @@ export function createSplitExportSession(options) {
                 return snapshot.resolvedImageFormat;
             }
         }
-        return resolveImageExportFormat(settings.imageFormat, selected);
+        return resolveImageExportFormat(settings.imageFormat, selected, recommendations);
+    }
+    function readState(selected, recommendations) {
+        const controller = options.getController(), pending = controller?.pending ?? null;
+        const saved = completed !== null && splitSettingsMatch(settings, completed) && selectionsMatch(selected, completed.selected);
+        const view = controller?.isRunning ? { phase: "running", pending, progress: controller.progress }
+            : pending?.failed.size ? { phase: "retry-required", pending, progress: "" }
+                : saved ? { phase: "saved", pending: null, progress: "" }
+                    : { phase: selected.length ? "ready" : "empty", pending: null, progress: "" };
+        return { format: settings.imageFormat, resolvedImageFormat: resolvedFormat(selected, recommendations), videoFormat: settings.videoFormat, includeSourcePage: settings.includeSourcePage, selected, view };
     }
     return {
         get format() { return settings.imageFormat; },
@@ -33,14 +41,11 @@ export function createSplitExportSession(options) {
         get videoFormat() { return settings.videoFormat; },
         get includeSourcePage() { return settings.includeSourcePage; },
         get selectedItems() { return options.getSelectedItems(); },
-        get state() {
-            const selected = options.getSelectedItems(), controller = options.getController(), pending = controller?.pending ?? null;
-            const saved = completed !== null && splitSettingsMatch(settings, completed) && selectionsMatch(selected, completed.selected);
-            const view = controller?.isRunning ? { phase: "running", pending, progress: controller.progress }
-                : pending?.failed.size ? { phase: "retry-required", pending, progress: "" }
-                    : saved ? { phase: "saved", pending: null, progress: "" }
-                        : { phase: selected.length ? "ready" : "empty", pending: null, progress: "" };
-            return { format: settings.imageFormat, resolvedImageFormat: resolvedFormat(), videoFormat: settings.videoFormat, includeSourcePage: settings.includeSourcePage, selected, view };
+        get state() { return readState(options.getSelectedItems()); },
+        get renderState() {
+            const selected = options.getSelectedItems(), recommendations = imageRecommendations(selected);
+            return { ...readState(selected, recommendations), recommendations,
+                recommendedImageFormat: resolveImageExportFormat("recommend", selected, recommendations) };
         },
         setFormat(format) {
             if (!isImageExportFormat(format))
@@ -73,7 +78,7 @@ export function createSplitExportSession(options) {
             const selected = [...options.getSelectedItems()], controller = options.getController();
             if (!selected.length || !controller)
                 return;
-            const snapshot = { ...settings, selected, resolvedImageFormat: resolvedFormat() }, request = { snapshot, abort: () => controller.abort(), acceptsCompletion: true };
+            const snapshot = { ...settings, selected, resolvedImageFormat: resolvedFormat(selected) }, request = { snapshot, abort: () => controller.abort(), acceptsCompletion: true };
             completed = null;
             active = request;
             try {

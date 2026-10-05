@@ -1,10 +1,10 @@
 import { groupMediaImages } from "./images.js";
 import { isStillImage } from "./split-export-formats.js";
 /** A series defaults to a reading copy; other selections preserve their originals. */
-export function resolveImageExportFormat(format, selected) {
+export function resolveImageExportFormat(format, selected, recommendations) {
     if (format !== "recommend")
         return format;
-    return imageRecommendations(selected).some(candidate => candidate.format === "pdf") ? "pdf" : "original";
+    return (recommendations ?? imageRecommendations(selected)).some(candidate => candidate.format === "pdf") ? "pdf" : "original";
 }
 /** Recommendations describe suitable uses; the caller still chooses one output format. */
 export function imageRecommendations(selected) {

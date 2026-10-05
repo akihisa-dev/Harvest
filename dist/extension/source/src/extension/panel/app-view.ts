@@ -1,12 +1,12 @@
 import { isMediaArchiveFormat, originalItemExtension } from "../../core/export-formats.js";
 import {isStillImage} from "../../core/split-export-formats.js";
-import {imageRecommendations, videoRecommendations, resolveImageExportFormat} from "../../core/export-recommendations.js";
+import {videoRecommendations} from "../../core/export-recommendations.js";
 import type { ImageItem } from "../../core/images.js";
 import type { AppElements } from "./app-elements.js";
 import { setButtonLabel } from "./button-state.js";
 import { createEmptyStateView } from "./empty-state.js";
 import { imageFilename } from "./export-presentation.js";
-import type { ExportSessionState } from "./split-export-session.js";
+import type { ExportSessionState, ExportRenderState } from "./split-export-session.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 import { setMotionText } from "./motion.js";
 import type { ScanState } from "./scan-session-controller.js";
@@ -24,6 +24,7 @@ interface ExportControlsState {
 }
 
 export interface AppViewState extends ExportControlsState {
+  readonly export: ExportRenderState;
   readonly items: readonly ImageItem[];
   readonly selectedCount: number;
   readonly initialOrderAndSelection: boolean;
@@ -114,12 +115,12 @@ export function createAppView(elements: AppElements, positionOf: (item: ImageIte
   function render(snapshot: AppViewState): void {
     const {busy, items, selectedCount, scanState, scanRunning} = snapshot;
     const {format, selected, includeSourcePage: sourceIncluded, view} = snapshot.export;
-    const selectedItems = items.filter(item => item.selected);
+    const selectedItems = selected;
     const images=selectedItems.filter(item=>item.kind !== "video"),videos=selectedItems.filter(item=>item.kind === "video");
     const outputFormat = snapshot.export.resolvedImageFormat;
-    const recommendedFormat = format === "recommend" ? outputFormat : resolveImageExportFormat("recommend", selectedItems);
+    const recommendedFormat = format === "recommend" ? outputFormat : snapshot.export.recommendedImageFormat;
     const reasons = [...new Set([
-      ...renderRecommendations(exportFormatInputs, imageRecommendations(selectedItems)),
+      ...renderRecommendations(exportFormatInputs, snapshot.export.recommendations),
       ...renderRecommendations(elements.videoExportFormatInputs, videoRecommendations(selectedItems)),
     ])];
     renderExtensions(elements.exportOriginalExtension, images.map(originalItemExtension));

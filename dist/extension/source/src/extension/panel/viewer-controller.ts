@@ -177,8 +177,8 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
     }
   }
 
-  function render(): void {
-    const pages = options.getPages();
+  // Navigation passes only its current event snapshot; a new render reads fresh pages.
+  function render(pages: readonly ImageItem[] = options.getPages()): void {
     const index = pages.findIndex(item => item.url === currentUrl);
     const currentIndex = index < 0 ? 0 : index;
     const current = pages[currentIndex];
@@ -230,7 +230,7 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
     const index = pages.findIndex(item => item.url === currentUrl);
     if (index > 0) {
       currentUrl = pages[index - 1]!.url;
-      render();
+      render(pages);
     }
   });
   elements.next.addEventListener("click", () => {
@@ -238,7 +238,7 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
     const index = pages.findIndex(item => item.url === currentUrl);
     if (index >= 0 && index < pages.length - 1) {
       currentUrl = pages[index + 1]!.url;
-      render();
+      render(pages);
     }
   });
   elements.thumbnails.addEventListener("wheel", event => {
@@ -252,7 +252,7 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
     event.preventDefault();
     lastThumbnailWheelAt = event.timeStamp;
     currentUrl = pages[nextIndex]!.url;
-    render();
+    render(pages);
   }, {passive: false});
   elements.zoomIn.addEventListener("click", () => zoomBy(1.25));
   elements.zoomOut.addEventListener("click", () => zoomBy(1 / 1.25));

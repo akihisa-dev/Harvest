@@ -3,7 +3,7 @@ import {isImageExportFormat, splitSettingsMatch, type SplitExportSettings, type 
 import type {ExportViewState} from "./export-presentation.js";
 import type {createMixedExportController} from "./mixed-export-controller.js";
 import {selectionsMatch} from "./export-lifecycle.js";
-import {resolveImageExportFormat, type ResolvedImageExportFormat} from "../../core/export-recommendations.js";
+import {imageRecommendations, resolveImageExportFormat, type ImageRecommendation, type ResolvedImageExportFormat} from "../../core/export-recommendations.js";
 
 export interface ExportSessionState {
   readonly format: ImageExportFormat;
@@ -12,6 +12,11 @@ export interface ExportSessionState {
   readonly includeSourcePage: boolean;
   readonly selected: readonly ImageItem[];
   readonly view: ExportViewState;
+}
+
+export interface ExportRenderState extends ExportSessionState {
+  readonly recommendations: readonly ImageRecommendation[];
+  readonly recommendedImageFormat: ResolvedImageExportFormat;
 }
 
 type Controller = ReturnType<typeof createMixedExportController>;
@@ -35,8 +40,7 @@ export function createSplitExportSession(options: Options) {
     settings=next;invalidateCompletion();
     if (!options.getController()?.isRunning) options.getController()?.clear();
   }
-  function resolvedFormat(): ResolvedImageExportFormat {
-    const selected = options.getSelectedItems();
+  function resolvedFormat(selected = options.getSelectedItems(), recommendations?: readonly ImageRecommendation[]): ResolvedImageExportFormat {
     const controller = options.getController();
     const snapshots = [controller?.isRunning ? active?.snapshot : undefined, completed, controller?.pending];
     for (const snapshot of snapshots) {
@@ -44,7 +48,16 @@ export function createSplitExportSession(options: Options) {
         return snapshot.resolvedImageFormat;
       }
     }
-    return resolveImageExportFormat(settings.imageFormat, selected);
+    return resolveImageExportFormat(settings.imageFormat, selected, recommendations);
+  }
+  function readState(selected: readonly ImageItem[], recommendations?: readonly ImageRecommendation[]): ExportSessionState {
+    const controller=options.getController(),pending=controller?.pending??null;
+    const saved=completed!==null&&splitSettingsMatch(settings,completed)&&selectionsMatch(selected,completed.selected);
+    const view: ExportSessionState["view"] = controller?.isRunning ? {phase:"running",pending,progress:controller.progress}
+      : pending?.failed.size ? {phase:"retry-required",pending,progress:""}
+      : saved ? {phase:"saved",pending:null,progress:""}
+      : {phase:selected.length ? "ready" : "empty",pending:null,progress:""};
+    return {format:settings.imageFormat,resolvedImageFormat:resolvedFormat(selected,recommendations),videoFormat:settings.videoFormat,includeSourcePage:settings.includeSourcePage,selected,view};
   }
   return {
     get format() {return settings.imageFormat;},
@@ -52,14 +65,11 @@ export function createSplitExportSession(options: Options) {
     get videoFormat() {return settings.videoFormat;},
     get includeSourcePage() {return settings.includeSourcePage;},
     get selectedItems() {return options.getSelectedItems();},
-    get state(): ExportSessionState {
-      const selected=options.getSelectedItems(),controller=options.getController(),pending=controller?.pending??null;
-      const saved=completed!==null&&splitSettingsMatch(settings,completed)&&selectionsMatch(selected,completed.selected);
-      const view: ExportSessionState["view"] = controller?.isRunning ? {phase:"running",pending,progress:controller.progress}
-        : pending?.failed.size ? {phase:"retry-required",pending,progress:""}
-        : saved ? {phase:"saved",pending:null,progress:""}
-        : {phase:selected.length ? "ready" : "empty",pending:null,progress:""};
-      return {format:settings.imageFormat,resolvedImageFormat:resolvedFormat(),videoFormat:settings.videoFormat,includeSourcePage:settings.includeSourcePage,selected,view};
+    get state(): ExportSessionState {return readState(options.getSelectedItems());},
+    get renderState(): ExportRenderState {
+      const selected=options.getSelectedItems(),recommendations=imageRecommendations(selected);
+      return {...readState(selected,recommendations),recommendations,
+        recommendedImageFormat:resolveImageExportFormat("recommend",selected,recommendations)};
     },
     setFormat(format: ImageExportFormat): void {
       if (!isImageExportFormat(format)) throw new Error("画像の保存形式が不正です。");
@@ -83,7 +93,7 @@ export function createSplitExportSession(options: Options) {
       if (options.isBusy()||active) return;
       const selected=[...options.getSelectedItems()],controller=options.getController();
       if (!selected.length||!controller) return;
-      const snapshot={...settings,selected,resolvedImageFormat:resolvedFormat()},request={snapshot,abort:()=>controller.abort(),acceptsCompletion:true};
+      const snapshot={...settings,selected,resolvedImageFormat:resolvedFormat(selected)},request={snapshot,abort:()=>controller.abort(),acceptsCompletion:true};
       completed=null;active=request;
       try {await controller.export(snapshot);} finally {if (active===request) active=null;}
     },

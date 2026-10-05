@@ -64,9 +64,10 @@ export function createPanelApplication(elements) {
     function scrollToFailures() {
         failuresElement.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth" });
     }
+    let renderSnapshot = null;
     const exportPresentation = createExportPresentation({
         getTitle: () => results.title,
-        getSelection: () => ({ format: exportSession.format, resolvedImageFormat: exportSession.resolvedImageFormat, videoFormat: exportSession.videoFormat, includeSourcePage: exportSession.includeSourcePage, selected: exportSession.selectedItems }),
+        getSelection: () => renderSnapshot ?? ({ format: exportSession.format, resolvedImageFormat: exportSession.resolvedImageFormat, videoFormat: exportSession.videoFormat, includeSourcePage: exportSession.includeSourcePage, selected: exportSession.selectedItems }),
         fallbackTitle: t("imageFallback"),
         sourceHeading: t("sourceHeading"),
     });
@@ -77,21 +78,28 @@ export function createPanelApplication(elements) {
         return item.url.startsWith("data:image/svg+xml;") ? "Source" : imageFilename(item.url);
     }
     function render() {
-        sourceInput.render();
-        const exportState = exportSession.state;
-        appView.render({
-            export: exportState,
-            busy,
-            status,
-            items: imageCollection.items,
-            selectedCount: imageCollection.selectedItems.length,
-            initialOrderAndSelection: imageCollection.matchesInitialOrderAndSelection(),
-            scanState: scanSessionController.state,
-            scanRunning: scanSessionController.isRunning,
-        });
-        const pending = exportState.view.pending;
-        imageListView.render(pending ? new Set(pending.failed.keys()) : undefined, exportPresentation.sourcePreview);
-        viewerController.render();
+        const previousSnapshot = renderSnapshot;
+        const exportState = exportSession.renderState;
+        renderSnapshot = exportState;
+        try {
+            sourceInput.render();
+            appView.render({
+                export: exportState,
+                busy,
+                status,
+                items: imageCollection.items,
+                selectedCount: exportState.selected.length,
+                initialOrderAndSelection: imageCollection.matchesInitialOrderAndSelection(),
+                scanState: scanSessionController.state,
+                scanRunning: scanSessionController.isRunning,
+            });
+            const pending = exportState.view.pending;
+            imageListView.render(pending ? new Set(pending.failed.keys()) : undefined, exportPresentation.sourcePreview);
+            viewerController.render();
+        }
+        finally {
+            renderSnapshot = previousSnapshot;
+        }
     }
     function selectionChanged() {
         if (exportSession.selectionChanged() && !busy)

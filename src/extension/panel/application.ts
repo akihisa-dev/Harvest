@@ -9,7 +9,7 @@ import { createImagePreviewLoader } from "../media/image-preview.js";
 import {createMixedExportController} from "./mixed-export-controller.js";
 import type { AppElements } from "./app-elements.js";
 import { createAppView, type AppStatus } from "./app-view.js";
-import {createSplitExportSession} from "./split-export-session.js";
+import {createSplitExportSession, type ExportRenderState} from "./split-export-session.js";
 import {loadSplitExportPreferences} from "../browser/split-export-preferences.js";
 import {
   createExportPresentation,
@@ -84,9 +84,10 @@ export function createPanelApplication(elements: AppElements) {
     failuresElement.scrollIntoView({block: "start", behavior: prefersReducedMotion() ? "instant" : "smooth"});
   }
 
+  let renderSnapshot: ExportRenderState | null = null;
   const exportPresentation = createExportPresentation({
     getTitle: () => results.title,
-    getSelection: () => ({format: exportSession.format, resolvedImageFormat: exportSession.resolvedImageFormat, videoFormat: exportSession.videoFormat, includeSourcePage: exportSession.includeSourcePage, selected: exportSession.selectedItems}),
+    getSelection: () => renderSnapshot ?? ({format: exportSession.format, resolvedImageFormat: exportSession.resolvedImageFormat, videoFormat: exportSession.videoFormat, includeSourcePage: exportSession.includeSourcePage, selected: exportSession.selectedItems}),
     fallbackTitle: t("imageFallback"),
     sourceHeading: t("sourceHeading"),
   });
@@ -100,21 +101,27 @@ export function createPanelApplication(elements: AppElements) {
   }
 
   function render(): void {
-    sourceInput.render();
-    const exportState = exportSession.state;
-    appView.render({
-      export: exportState,
-      busy,
-      status,
-      items: imageCollection.items,
-      selectedCount: imageCollection.selectedItems.length,
-      initialOrderAndSelection: imageCollection.matchesInitialOrderAndSelection(),
-      scanState: scanSessionController.state,
-      scanRunning: scanSessionController.isRunning,
-    });
-    const pending = exportState.view.pending;
-    imageListView.render(pending ? new Set(pending.failed.keys()) : undefined, exportPresentation.sourcePreview);
-    viewerController.render();
+    const previousSnapshot = renderSnapshot;
+    const exportState = exportSession.renderState;
+    renderSnapshot = exportState;
+    try {
+      sourceInput.render();
+      appView.render({
+        export: exportState,
+        busy,
+        status,
+        items: imageCollection.items,
+        selectedCount: exportState.selected.length,
+        initialOrderAndSelection: imageCollection.matchesInitialOrderAndSelection(),
+        scanState: scanSessionController.state,
+        scanRunning: scanSessionController.isRunning,
+      });
+      const pending = exportState.view.pending;
+      imageListView.render(pending ? new Set(pending.failed.keys()) : undefined, exportPresentation.sourcePreview);
+      viewerController.render();
+    } finally {
+      renderSnapshot = previousSnapshot;
+    }
   }
 
   function selectionChanged(): void {
