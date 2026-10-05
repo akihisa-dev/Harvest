@@ -103,3 +103,33 @@ test("row snapshots retain mutable metadata, busy, failed, order and preview cha
   assert.deepEqual(state.final, {busy: "false", failed: false, name: "changed", number: "2"});
   assert.equal(state.identity, true);
 });
+
+test("rescanning the same public page reconnects reused list and viewer previews", async t => {
+  const {url}=await serveExtension(t),browser=await launchBrowser(t),page=await browser.newPage({viewport:{width:1220,height:800}});
+  const errors=[];page.on("pageerror",error=>errors.push(error.message));
+  await page.addInitScript(()=>{
+    localStorage.setItem("harvest.includeSourcePage","false");
+    window.chrome={runtime:{onConnect:{addListener(){}}},i18n:{getUILanguage:()=>"ja-JP"},
+      tabs:{query:async()=>[{id:7,url:"https://source.example.test/gallery"}],get:async()=>({id:7,url:"https://source.example.test/gallery"}),onRemoved:{addListener(){},removeListener(){}}},
+      scripting:{executeScript:async()=>[{result:{images:Array.from({length:200},(_,i)=>`https://images.example.test/set/page-${i}.jpg`),url:"https://source.example.test/gallery",title:"Same result"}}]}};
+  });
+  await page.route("https://images.example.test/**",route=>route.fulfill({contentType:"image/png",body:png}));
+  await page.goto(url);await page.locator("#scan").click();
+  const waitReady=selector=>page.waitForFunction(selector=>{
+    const image=document.querySelector(selector);return image?.dataset.previewUrl&&image.src.startsWith('blob:')&&image.complete&&image.naturalWidth>0;
+  },selector,{timeout:3000});
+  await waitReady("#images > li:first-child img");
+  await page.locator("#viewer-toggle").click();await waitReady("#viewer-image");
+  await waitReady("#viewer-thumbnails > li:first-child img");
+  await page.locator("#viewer-toggle").click();
+  await page.evaluate(()=>{window.originalRow=document.querySelector('#images > li');});
+  for(let i=0;i<2;i++){
+    await page.locator("#scan").click();await page.locator("#scan[data-scanning=false]").waitFor();
+    assert.equal(await page.evaluate(()=>originalRow===document.querySelector('#images > li')),true,"same URL reuses the list row");
+    await waitReady("#images > li:first-child img");
+    await page.locator("#viewer-toggle").click();await waitReady("#viewer-image");
+    await waitReady("#viewer-thumbnails > li:first-child img");
+    await page.locator("#viewer-toggle").click();
+  }
+  assert.deepEqual(errors,[]);
+});

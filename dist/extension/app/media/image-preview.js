@@ -15,6 +15,7 @@ export function createImagePreviewLoader() {
     const bindings = new Map();
     const cachedEntries = new Map();
     const queue = [];
+    let generation = 0;
     let activeFetches = 0;
     let retainedPreviewCount = 0;
     const observer = typeof IntersectionObserver === "undefined"
@@ -159,6 +160,7 @@ export function createImagePreviewLoader() {
         delete image.dataset["previewFailed"];
     }
     return {
+        get generation() { return generation; },
         get diagnostics() {
             let ready = 0, failed = 0;
             for (const entry of entries.values()) {
@@ -222,6 +224,7 @@ export function createImagePreviewLoader() {
         },
         clearImage,
         clear() {
+            generation += 1;
             for (const image of [...bindings.keys()])
                 clearImage(image);
             for (const entry of entries.values()) {

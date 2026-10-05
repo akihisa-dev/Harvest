@@ -24,6 +24,8 @@ interface BoundPreview {
 }
 
 export interface ImagePreviewLoader {
+  /** Invalidate display snapshots after releasing all preview bindings. */
+  readonly generation: number;
   /** Counts remote preview resources only; no URLs or persisted telemetry. */
   readonly diagnostics: {bound: number; ready: number; failed: number; pending: number};
   /** Attach a local image or schedule a network preview; eager previews start immediately. */
@@ -52,6 +54,7 @@ export function createImagePreviewLoader(): ImagePreviewLoader {
   const bindings = new Map<HTMLImageElement, BoundPreview>();
   const cachedEntries = new Map<string, PreviewEntry>();
   const queue: PreviewEntry[] = [];
+  let generation = 0;
   let activeFetches = 0;
   let retainedPreviewCount = 0;
   const observer = typeof IntersectionObserver === "undefined"
@@ -183,6 +186,7 @@ export function createImagePreviewLoader(): ImagePreviewLoader {
   }
 
   return {
+    get generation() {return generation;},
     get diagnostics() {
       let ready = 0, failed = 0;
       for (const entry of entries.values()) {
@@ -238,6 +242,7 @@ export function createImagePreviewLoader(): ImagePreviewLoader {
     },
     clearImage,
     clear() {
+      generation += 1;
       for (const image of [...bindings.keys()]) clearImage(image);
       for (const entry of entries.values()) {
         entry.controller.abort();

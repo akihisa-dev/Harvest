@@ -10,7 +10,7 @@ import {setText, setAttribute, setHidden, setClass} from "./dom-updates.js";
 
 interface ImageRowParts {
   rendered?: readonly (string | number | boolean | undefined)[];
-  previewState?: readonly (string | undefined)[];
+  previewState?: readonly (string | number | undefined)[];
   preview: HTMLImageElement;
   resolution: HTMLSpanElement;
   order: HTMLSpanElement;
@@ -293,7 +293,7 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     const filename = options.getFilename(item.url);
     // Capture mutable media fields as values, not the mutable ImageItem identity.
     const state = [index, overallIndex, item.selected, failed, busy, filename,
-      item.kind, item.sourcePage, item.previewUrl];
+      item.kind, item.sourcePage, item.previewUrl, options.previewLoader.generation];
     if (drag.draggedImage !== item) setClass(row, "dragging", false);
     if (parts.rendered?.every((value, position) => value === state[position])) return;
     parts.rendered = state;
@@ -314,9 +314,9 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
       filename, index: overallIndex + 1, failed: formatFailedAria(failed),
     }));
     const prior = parts.previewState;
-    if (!prior || prior[0] !== item.kind || prior[1] !== item.sourcePage || prior[2] !== item.previewUrl) {
+    if (!prior || prior[0] !== item.kind || prior[1] !== item.sourcePage || prior[2] !== item.previewUrl || prior[3] !== options.previewLoader.generation) {
       options.previewLoader.set(parts.preview, item);
-      parts.previewState = [item.kind, item.sourcePage, item.previewUrl];
+      parts.previewState = [item.kind, item.sourcePage, item.previewUrl, options.previewLoader.generation];
     }
     parts.updateResolution();
     setAttribute(parts.preview, "alt", t("imageAlt", {index: index + 1}));
