@@ -4,6 +4,8 @@
 
 ## English
 
+Harvest is a stable release, versioned from 1.0.0. Versioning rules are defined in [AGENTS.md](AGENTS.md#バージョン管理).
+
 Harvest is a Chrome extension that collects images, GIFs, and videos from a page and saves selected items as PDF, JPG, PNG, JXL, MP4, or GIF. Every selected item is included. Still images can form one PDF; mixed outputs are packaged in one ZIP. A lone output downloads directly, while video-only recommended/MP4 exports use individual downloads. You can analyze the current page or enter a URL, browse groups, select individual items, and change their order. Collection is limited to the page you specify.
 
 ### How to use
@@ -161,6 +163,8 @@ The ZIP submitted to the store includes the full license, corresponding source, 
 The initial screen displays `assets/brand/harvest-geometric-logo.svg` in the center. The build copies it into the extension's `brand/` directory and bundled source.
 
 ## 日本語
+
+Harvestは1.0.0を起点とする正式版です。版番号の管理規則は[AGENTS.md](AGENTS.md#バージョン管理)に定めています。
 
 Harvestは、Chromeで開いているページの画像・GIF・動画を集め、選択した項目をPDF、JPG、PNG、JXL、MP4、GIFで保存するChrome拡張機能です。全選択項目を処理し、静止画像は一つのPDFへ、混在する出力は一つのZIPへまとめます。一つの出力は直接保存し、動画のみのrecommended/MP4は個別保存します。現在のページの解析とURLの直接入力に対応し、画像のまとまりごとの表示、個別選択、順序の変更ができます。画像の収集対象は指定したページだけです。
 

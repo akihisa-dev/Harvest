@@ -2,7 +2,7 @@
 
 1. 変更の目的と利用者への影響を書き、独立した目的ごとに作業とcommitを分けます。作業はmainで行い、新しいブランチは作成しません。別作業との重複回避を理由にブランチへ分離することも禁止します。
 2. 変更・必要な文書・生成物・versionを揃え、commit前に変更リスクに応じて`pnpm verify`または`pnpm verify:full`のどちらか一つを実行します。成功した同一HEAD・同一条件の検証結果は再利用し、両方を続けて実行しません。
-3. commitごとにversionをSemVerに従って更新します。`pnpm version:next -- patch`などで次の候補を表示できます（ファイルは自動変更しません）。利用者向けの後方互換性のない変更はMAJOR、互換性を保った機能追加はMINOR、不具合修正や文書・test・build・保守変更はPATCHです。commit typeとversion区分は独立して決めます。
+3. commitごとにversionを更新します。正式版1.0.0を起点とする区分の判断・同期規則は[AGENTS.mdのバージョン管理](AGENTS.md#バージョン管理)を参照してください。`pnpm version:next -- patch`などで次の候補を表示できます（ファイルは自動変更しません）。
 4. `package.json`、`manifest.template.json`、生成済み`dist/extension/manifest.json`の同じversionを同一commitに含めます。ソース変更で生成物が変わる場合は`dist/extension/`を`pnpm build`で更新し、同じcommitに含めます。`dist/extension/`以外の`dist/`生成物はcommitしません。
 5. stageするpathを明示し、`git add .`と`git add -A`は使いません。秘密情報、無関係な変更を含めません。
 6. レビューの指摘を解決してから取り込みます。
