@@ -2,6 +2,7 @@ import { createVideoSizeLoader } from "../media/video-size.js";
 import { reconcileKeyedChildren } from "./motion.js";
 import { formatFailedAria, formatGroupLabel, t } from "./localization.js";
 import { createImageDragController } from "./image-drag-controller.js";
+import { setText, setAttribute, setHidden, setClass } from "./dom-updates.js";
 function listItemKey(item) {
     return item.kind === "source" ? "source-preview" : `image:${item.image.url}`;
 }
@@ -177,8 +178,8 @@ export function createImageListView(options) {
             // A video's poster or placeholder is not the video's resolution.
             const ready = item && preview.dataset["previewUrl"] === item.url
                 && preview.complete && preview.naturalWidth > 0 && preview.naturalHeight > 0;
-            resolution.hidden = !ready;
-            resolution.textContent = ready ? `${preview.naturalWidth} × ${preview.naturalHeight}` : "";
+            setHidden(resolution, !ready);
+            setText(resolution, ready ? `${preview.naturalWidth} × ${preview.naturalHeight}` : "");
         };
         preview.addEventListener("load", updateResolution);
         preview.addEventListener("error", () => {
@@ -186,8 +187,8 @@ export function createImageListView(options) {
                 updateResolution();
                 return;
             }
-            resolution.hidden = true;
-            resolution.textContent = "";
+            setHidden(resolution, true);
+            setText(resolution, "");
         });
         const selectedMark = document.createElement("span");
         selectedMark.className = "item-selected";
@@ -255,41 +256,52 @@ export function createImageListView(options) {
         if (!parts)
             return;
         const overallIndex = collection.positionOf(item);
-        row.style.order = String(index);
-        if (item.selected)
-            row.classList.remove("unselected");
-        else
-            row.classList.add("unselected");
+        const busy = options.isBusy();
         const failed = failedItems.has(item);
-        if (failed)
-            row.classList.add("failed");
-        else
-            row.classList.remove("failed");
+        const filename = options.getFilename(item.url);
+        // Capture mutable media fields as values, not the mutable ImageItem identity.
+        const state = [index, overallIndex, item.selected, failed, busy, filename,
+            item.kind, item.sourcePage, item.previewUrl];
         if (drag.draggedImage !== item)
-            row.classList.remove("dragging");
-        row.setAttribute("role", "button");
-        row.setAttribute("aria-pressed", String(item.selected));
-        row.setAttribute("aria-disabled", String(options.isBusy()));
-        row.draggable = !options.isBusy();
-        row.tabIndex = 0;
-        row.title = t("imageRowTitle");
-        row.dataset["dropLabel"] = t("dropImage");
-        row.setAttribute("data-focus-kind", "image");
-        row.setAttribute("data-focus-url", item.url);
-        row.setAttribute("data-focus-action", "drag");
-        row.setAttribute("aria-label", t("imageRowAria", {
-            filename: options.getFilename(item.url), index: overallIndex + 1,
-            failed: formatFailedAria(failed),
+            setClass(row, "dragging", false);
+        if (parts.rendered?.every((value, position) => value === state[position]))
+            return;
+        parts.rendered = state;
+        if (row.style.order !== String(index))
+            row.style.order = String(index);
+        setClass(row, "unselected", !item.selected);
+        setClass(row, "failed", failed);
+        setAttribute(row, "role", "button");
+        setAttribute(row, "aria-pressed", String(item.selected));
+        setAttribute(row, "aria-disabled", String(busy));
+        if (row.draggable !== !busy)
+            row.draggable = !busy;
+        if (row.tabIndex !== 0)
+            row.tabIndex = 0;
+        if (row.title !== t("imageRowTitle"))
+            row.title = t("imageRowTitle");
+        if (row.dataset["dropLabel"] !== t("dropImage"))
+            row.dataset["dropLabel"] = t("dropImage");
+        setAttribute(row, "data-focus-kind", "image");
+        setAttribute(row, "data-focus-url", item.url);
+        setAttribute(row, "data-focus-action", "drag");
+        setAttribute(row, "aria-label", t("imageRowAria", {
+            filename, index: overallIndex + 1, failed: formatFailedAria(failed),
         }));
-        options.previewLoader.set(parts.preview, item);
+        const prior = parts.previewState;
+        if (!prior || prior[0] !== item.kind || prior[1] !== item.sourcePage || prior[2] !== item.previewUrl) {
+            options.previewLoader.set(parts.preview, item);
+            parts.previewState = [item.kind, item.sourcePage, item.previewUrl];
+        }
         parts.updateResolution();
-        parts.preview.alt = t("imageAlt", { index: index + 1 });
-        parts.order.textContent = `${overallIndex + 1}`;
-        parts.order.setAttribute("aria-label", t("imagePosition", { index: overallIndex + 1 }));
-        parts.name.textContent = (item.kind === "gif" ? "GIF · " : item.kind === "video" ? t("mediaKindVideo") + " · " : "") + options.getFilename(item.url);
-        parts.name.title = item.url;
-        parts.selectedMark.hidden = false;
-        parts.failedMark.hidden = !failed;
+        setAttribute(parts.preview, "alt", t("imageAlt", { index: index + 1 }));
+        setText(parts.order, `${overallIndex + 1}`);
+        setAttribute(parts.order, "aria-label", t("imagePosition", { index: overallIndex + 1 }));
+        setText(parts.name, (item.kind === "gif" ? "GIF · " : item.kind === "video" ? t("mediaKindVideo") + " · " : "") + filename);
+        if (parts.name.title !== item.url)
+            parts.name.title = item.url;
+        setHidden(parts.selectedMark, false);
+        setHidden(parts.failedMark, !failed);
     }
     function renderImages(failedItems, sourcePreview) {
         const previousRows = rows;

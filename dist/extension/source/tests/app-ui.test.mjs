@@ -20,6 +20,13 @@ class StubElement {
     this.className = "";
     this.style = {order: ""};
     this.classList = {
+      contains: name => this.className.split(" ").includes(name),
+      toggle: (name, force) => {
+        const enabled = force ?? !this.classList.contains(name);
+        if (enabled && !this.classList.contains(name)) this.classList.add(name);
+        else if (!enabled) this.classList.remove(name);
+        return enabled;
+      },
       add: name => { this.className += this.className ? ` ${name}` : name; },
       remove: name => { this.className = this.className.split(" ").filter(value => value !== name).join(" "); }
     };

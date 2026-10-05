@@ -1,5 +1,6 @@
 import { t } from "./localization.js";
 import { createViewerImageTransition } from "./viewer-image-transition.js";
+import { setText, setAttribute } from "./dom-updates.js";
 export function createViewerController(options) {
     const elements = options.elements;
     let open = false;
@@ -10,6 +11,7 @@ export function createViewerController(options) {
     let pointer = null;
     let lastThumbnailWheelAt = -Infinity;
     const thumbnailRows = new Map();
+    const thumbnailStates = new WeakMap();
     const imageTransition = createViewerImageTransition({
         stage: elements.stage,
         image: elements.image,
@@ -100,11 +102,24 @@ export function createViewerController(options) {
             }
             const button = row.children[0];
             const number = button.children[1];
-            button.setAttribute("aria-current", String(item.url === activeUrl));
-            button.setAttribute("aria-label", t("thumbnailAria", { index: index + 1, filename: options.getPageLabel(item) }));
             const thumbnail = button.children[0];
-            options.previewLoader.set(thumbnail, item, item.url === activeUrl);
-            number.textContent = String(index + 1);
+            const active = item.url === activeUrl;
+            const label = options.getPageLabel(item);
+            const state = [index, active, label, item.kind, item.sourcePage, item.previewUrl];
+            const prior = thumbnailStates.get(row);
+            if (!prior?.every((value, position) => value === state[position])) {
+                setAttribute(button, "aria-current", String(active));
+                setAttribute(button, "aria-label", t("thumbnailAria", { index: index + 1, filename: label }));
+                if (!prior || prior[1] !== active || prior[3] !== item.kind || prior[4] !== item.sourcePage || prior[5] !== item.previewUrl) {
+                    options.previewLoader.set(thumbnail, item, active);
+                }
+                setText(number, String(index + 1));
+                thumbnailStates.set(row, state);
+            }
+            else if (active && thumbnail.dataset["previewFailed"] === "true") {
+                // Preserve the loader's delayed retry for an eager failed preview.
+                options.previewLoader.set(thumbnail, item, true);
+            }
             return row;
         });
         const previousRows = Array.from(elements.thumbnails.children);

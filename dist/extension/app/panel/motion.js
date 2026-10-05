@@ -69,7 +69,8 @@ export function reconcileKeyedChildren(parent, items, keyOf, create, update, opt
     items.forEach((item, index) => {
         const key = keyOf(item);
         const element = existing.get(key) ?? create(item);
-        element.dataset["motionKey"] = key;
+        if (element.dataset["motionKey"] !== key)
+            element.dataset["motionKey"] = key;
         update(element, item, index);
         next.set(key, element);
     });
