@@ -12,15 +12,24 @@ function readStaged(file) {
   }
 }
 
-for (const file of requiredFiles) {
-  if (!staged.includes(file)) throw new Error(`同一commitに${file}を含めてください。`);
-}
-
 const packageJson = JSON.parse(readStaged("package.json"));
 const template = JSON.parse(readStaged("manifest.template.json"));
 const generated = JSON.parse(readStaged("dist/extension/manifest.json"));
 const versions = [packageJson.version, template.version, generated.version];
 if (!versions.every((version) => version === packageJson.version)) {
   throw new Error(`stageしたversionが一致しません: package=${packageJson.version}, template=${template.version}, generated=${generated.version}`);
+}
+const versionChanged = requiredFiles.some((file, index) => {
+  try {
+    const previous = JSON.parse(execFileSync("git", ["show", `HEAD:${file}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }));
+    return previous.version !== versions[index];
+  } catch {
+    return true;
+  }
+});
+if (versionChanged) {
+  for (const file of requiredFiles) {
+    if (!staged.includes(file)) throw new Error(`番号更新時は同一commitに${file}を含めてください。`);
+  }
 }
 console.log(`staged version ok: ${packageJson.version}`);

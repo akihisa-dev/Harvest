@@ -1,0 +1,3 @@
+interface:
+  display_name: "コミット管理"
+  short_description: "変更内容を検証し、目的ごとに日本語のコミットを作成します"

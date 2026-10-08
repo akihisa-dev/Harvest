@@ -1,9 +1,9 @@
 # 開発への参加
 
 1. 変更の目的と利用者への影響を書き、独立した目的ごとに作業とcommitを分けます。作業はmainで行い、新しいブランチは作成しません。別作業との重複回避を理由にブランチへ分離することも禁止します。
-2. 変更・必要な文書・生成物・versionを揃え、commit前に変更リスクに応じて`pnpm verify`または`pnpm verify:full`のどちらか一つを実行します。成功した同一HEAD・同一条件の検証結果は再利用し、両方を続けて実行しません。
-3. commitごとにversionを更新します。正式版1.0.0を起点とする区分の判断・同期規則は[AGENTS.mdのバージョン管理](AGENTS.md#バージョン管理)を参照してください。`pnpm version:next -- patch`などで次の候補を表示できます（ファイルは自動変更しません）。
-4. `package.json`、`manifest.template.json`、生成済み`dist/extension/manifest.json`の同じversionを同一commitに含めます。ソース変更で生成物が変わる場合は`dist/extension/`を`pnpm build`で更新し、同じcommitに含めます。`dist/extension/`以外の`dist/`生成物はcommitしません。
+2. 変更・必要な文書・生成物を揃え、commit前に変更リスクに応じて`pnpm verify`または`pnpm verify:full`のどちらか一つを実行します。成功した同一HEAD・同一条件の検証結果は再利用し、両方を続けて実行しません。
+3. 通常の実装・修正・Issue対応ではversionを更新しません。明示されたバージョン更新時に、未反映のコミットを古い順に読み、各区分を順次加算して専用コミットにまとめます。正式版1.0.0を起点とする判断・同期規則は[AGENTS.mdのバージョン管理](AGENTS.md#バージョン管理)を参照してください。`pnpm version:next -- patch minor patch`などで次の候補を表示できます（ファイルは自動変更しません）。
+4. バージョン更新時は`package.json`、`manifest.template.json`、生成済み`dist/extension/manifest.json`の同じversionを専用コミットに含めます。ソース変更で生成物が変わる場合は`dist/extension/`を`pnpm build`で更新し、同じcommitに含めます。`dist/extension/`以外の`dist/`生成物はcommitしません。
 5. stageするpathを明示し、`git add .`と`git add -A`は使いません。秘密情報、無関係な変更を含めません。
 6. レビューの指摘を解決してから取り込みます。
 
@@ -13,13 +13,13 @@ pnpmは`package.json`の`packageManager`と`pnpm-lock.yaml`で12.5.1に固定し
 
 ## コミットとタグ
 
-commit件名は`<type>[!]: <version> <日本語の説明>`です。typeは`feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`、`revert`から選びます。複数ファイル、version更新、運用変更を含むcommitの本文には`scope:`、`目的:`、`内容:`、`確認:`、`影響:`を記載します。
+通常のcommit件名は`<type>[!]: <日本語の説明>`とし、番号・採番区分・将来の更新予定を記載しません。バージョン更新専用コミットは`chore: <更新後のversion> <日本語の説明>`とし、本文に加算前の版、反映範囲の開始・終了コミットID、各区分を記録します。更新済みの範囲と専用コミット自身を次回に再加算しません。typeは`feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`、`revert`から選びます。複数ファイル、version更新、運用変更を含むcommitの本文には`scope:`、`目的:`、`内容:`、`確認:`、`影響:`を記載します。
 
 通常のcommitではGit tagを作りません。tagまたはreleaseは明示依頼がある場合だけ行い、実施前に`pnpm verify:release`を通します。tagはpackage versionと一致する未使用の`v<version>`を対象commitへ注釈付きで作成します。commit後はcommit IDと残存差分を確認します。
 
 ## Gitフック
 
-Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion一致・同一commit登録を確認し、`pre-push`で`pnpm verify:full`を実行します。新しいcloneでhookを有効にするには`pnpm setup:hooks`を実行してください。`pnpm verify`などの通常確認も、hook未設定または別の場所を指している場合は`pnpm setup:hooks`の実行方法を案内して停止します。GitHub Actionsは使いません。release前は`pnpm verify:release`を実行します。
+Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion一致と、番号更新時の同一commit登録を確認し、`pre-push`で`pnpm verify:full`を実行します。新しいcloneでhookを有効にするには`pnpm setup:hooks`を実行してください。`pnpm verify`などの通常確認も、hook未設定または別の場所を指している場合は`pnpm setup:hooks`の実行方法を案内して停止します。GitHub Actionsは使いません。release前は`pnpm verify:release`を実行します。
 
 ## ビルド処理の構成
 
