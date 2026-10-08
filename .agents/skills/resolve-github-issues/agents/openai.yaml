@@ -1,3 +1,0 @@
-interface:
-  display_name: "GitHub Issue対応"
-  short_description: "Issueの妥当性を判断し、丁寧なコメントとクローズまで完了します"

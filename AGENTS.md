@@ -6,7 +6,7 @@
 
 - 結果を左右する未指定事項は推測で埋めず、その判断に依存する部分だけユーザーへ質問します。独立して進められる作業は続けます。
 - 製品機能、画面、対象サイト、保存情報、外部送信、権限、公開先、配布方法は、明示依頼がない限り追加しません。
-- コミット・バージョン管理とGitHub Issue対応は、`commit-version-workflow`と`github-issue-workflow`プラグインの現在のスキルを参照元にします。リポジトリ内の[コミット管理](.agents/skills/commit-version-workflow/SKILL.md)、[バージョン更新](.agents/skills/version-update/SKILL.md)、[Issue対応](.agents/skills/resolve-github-issues/SKILL.md)は参照先への入口とし、共通手順を重複管理しません。参照元固有の製品仕様や配置・コマンドは適用しません。
+- コミット・バージョン管理とGitHub Issue対応は、グローバルの個人スキル`commit-version-workflow`、`version-update`、`resolve-github-issues`に従います。リポジトリ内には同じスキルを置かず、Harvest固有の制約と検証手順を定めます。
 - GitHubへの新規リポジトリ作成、remote設定、公開、push、release、tag、ブランチ保護設定は明示依頼がある場合だけ行います。
 
 ## Chrome拡張機能と安全性

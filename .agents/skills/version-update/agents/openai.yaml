@@ -1,3 +1,0 @@
-interface:
-  display_name: "バージョンアップ"
-  short_description: "未反映のコミット履歴から採番し、番号の同期と検証を行います"
