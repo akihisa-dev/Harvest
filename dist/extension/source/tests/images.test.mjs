@@ -5,9 +5,32 @@ import {
   defaultSelectedImageGroups,
   filterImagesByGroup,
   groupImages,
+  groupMediaImages,
   imageGroupLabel,
   normalizeImageUrls
 } from "../dist/extension/core/images.js";
+import {ImageCollection} from "../dist/extension/core/image-collection.js";
+
+test("本文と動画・GIFの混在では本文を表示・選択し、本文なしではメディアを優先する", () => {
+  const body = ["https://example.test/pages/body-01.jpg", "https://example.test/pages/body-02.jpg"];
+  const video = "https://example.test/clip.mp4";
+  const gif = "https://example.test/animation.gif";
+  for (const media of [[{url: video, kind: "video"}], [{url: gif, kind: "gif"}],
+    [{url: video, kind: "video"}, {url: gif, kind: "gif"}]]) {
+    for (const images of [body, [], ["https://example.test/photo.jpg"]]) {
+      const urls = [...images, ...media.map(item => item.url)];
+      const groups = groupMediaImages(urls, media);
+      const expected = images === body ? body : [media[0].url];
+      assert.deepEqual(groups[defaultDisplayedImageGroup(groups)].items, expected);
+      const collection = new ImageCollection();
+      collection.replace(urls, "https://example.test/view", media);
+      assert.deepEqual(collection.selectedItems.map(item => item.url), expected);
+    }
+  }
+  const uploaded = "data:image/jpeg;base64,AA==";
+  const groups = groupMediaImages([uploaded, ...body, video], [{url: video, kind: "video"}]);
+  assert.deepEqual(groups[defaultDisplayedImageGroup(groups)].items, [uploaded]);
+});
 
 test("画像候補を元ページから解決し、重複と実行できないURLを除く", () => {
   assert.deepEqual(normalizeImageUrls([

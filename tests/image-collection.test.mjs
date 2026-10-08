@@ -114,7 +114,7 @@ test("画像・動画・GIFを形式別に分け、並べ替えと復元後も�
   assert.equal(gif[1].label, "GIF (1件)");
   assert.notEqual(png[0], webp[0]);
   assert.notEqual(mp4[0], webm[0]);
-  assert.deepEqual(collection.items.map(item => item.selected), [false, false, false, true, false, false]);
+  assert.deepEqual(collection.items.map(item => item.selected), [true, true, false, false, false, false]);
 
   collection.setSelected(mediaUrls[0], true);
   const pngItems = collection.visibleItems(png[0]);
@@ -123,7 +123,7 @@ test("画像・動画・GIFを形式別に分け、並べ替えと復元後も�
   collection.resetOrder();
   assert.deepEqual(collection.itemsInGroup(png[0]).map(item => item.url), [mediaUrls[0], mediaUrls[1]]);
   assert.equal(collection.itemForUrl(mediaUrls[0]).selected, true);
-  assert.equal(collection.itemForUrl(mediaUrls[3]).selected, true);
+  assert.equal(collection.itemForUrl(mediaUrls[3]).selected, false);
 });
 
 test("形式がクエリやdata URL MIMEにある画像も形式別にまとめる", () => {

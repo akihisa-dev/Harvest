@@ -11,6 +11,7 @@ export interface ImageItem {
 }
 
 export interface ImageGroup {
+  readonly kind?: "gif" | "video";
   readonly label: string;
   readonly priority: number;
   readonly items: readonly string[];
@@ -45,7 +46,7 @@ export function groupMediaImages(urls: readonly string[], metadata: readonly Med
       if (kind === "video" || kind === "gif") {
         const key = `0_${bucketKey}`;
         const label = kind === "gif" ? "GIF" : bucket.extension === "不明" ? "動画" : bucket.extension;
-        groups[key] = {label: `${label} (${bucket.urls.length}件)`, priority: 0, items: bucket.urls, isMangaBody: false};
+        groups[key] = {kind, label: `${label} (${bucket.urls.length}件)`, priority: 0, items: bucket.urls, isMangaBody: false};
         continue;
       }
       const legacy = groupImages(bucket.urls);
@@ -193,7 +194,10 @@ export function groupImages(images: readonly string[]): ImageGroups {
 }
 
 export function defaultDisplayedImageGroup(groups: ImageGroups): string | null {
-  const entries = Object.entries(groups).sort(([, left], [, right]) => {
+  const hasBody = Object.values(groups).some(group => group.isMangaBody);
+  const entries = Object.entries(groups)
+    .filter(([, group]) => !hasBody || !group.kind)
+    .sort(([, left], [, right]) => {
     if (left.priority === 0 || right.priority === 0) return left.priority - right.priority;
     if (left.isMangaBody !== right.isMangaBody) return left.isMangaBody ? -1 : 1;
     return left.priority - right.priority || right.items.length - left.items.length;
