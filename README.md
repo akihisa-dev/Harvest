@@ -6,7 +6,9 @@
 
 Harvest is a stable release, versioned from 1.0.0. Versioning rules are defined in [AGENTS.md](AGENTS.md#バージョン管理).
 
-Harvest is a Chrome extension that collects images, GIFs, and videos from a page and saves selected items as PDF, JPG, PNG, JXL, MP4, or GIF. Every selected item is included. Still images can form one PDF; mixed outputs are packaged in one ZIP. A lone output downloads directly, while video-only recommended/MP4 exports use individual downloads. You can analyze the current page or enter a URL, browse groups, select individual items, and change their order. Collection is limited to the page you specify.
+Harvest is a Chrome extension that collects images, GIFs, and videos from a page and saves selected items as PDF, JPG, PNG, JXL, MP4, or GIF. Every selected item is included. Still images can form one PDF; mixed outputs are packaged in one ZIP. A lone output downloads directly, while video-only recommended/MP4 exports use individual downloads. You can analyze the current page or enter a URL, browse groups, select individual items, and change their order. Collection is limited to the specified page and its accessible embedded frames.
+
+On ordinary pages, same-origin and cross-origin iframes are scanned within existing Chrome permissions. The outer page keeps its initial selection when it has candidates; frame candidates remain available for manual selection. If the outer page is empty, a frame with a body image series is preferred. Unreadable frames do not discard the outer result. X retains its existing post and bookmark boundaries.
 
 ### How to use
 
@@ -166,7 +168,9 @@ The initial screen displays `assets/brand/harvest-geometric-logo.svg` in the cen
 
 Harvestは1.0.0を起点とする正式版です。版番号の管理規則は[AGENTS.md](AGENTS.md#バージョン管理)に定めています。
 
-Harvestは、Chromeで開いているページの画像・GIF・動画を集め、選択した項目をPDF、JPG、PNG、JXL、MP4、GIFで保存するChrome拡張機能です。全選択項目を処理し、静止画像は一つのPDFへ、混在する出力は一つのZIPへまとめます。一つの出力は直接保存し、動画のみのrecommended/MP4は個別保存します。現在のページの解析とURLの直接入力に対応し、画像のまとまりごとの表示、個別選択、順序の変更ができます。画像の収集対象は指定したページだけです。
+Harvestは、Chromeで開いているページの画像・GIF・動画を集め、選択した項目をPDF、JPG、PNG、JXL、MP4、GIFで保存するChrome拡張機能です。全選択項目を処理し、静止画像は一つのPDFへ、混在する出力は一つのZIPへまとめます。一つの出力は直接保存し、動画のみのrecommended/MP4は個別保存します。現在のページの解析とURLの直接入力に対応し、画像のまとまりごとの表示、個別選択、順序の変更ができます。画像の収集対象は指定したページと、その中に読み込まれたアクセス可能なフレームです。
+
+一般ページでは、ページ内のiframeに表示された画像・GIF・直接取得可能な動画も解析します。同一サイト・別サイトともChromeが読み取りを許可する範囲が対象です。外側のページに候補があれば初期選択を維持し、iframeの候補は追加で選択できます。外側が空なら本文画像のシリーズがあるiframeを優先します。読めないiframeがあっても外側の結果は利用できます。Xの投稿・ブックマーク解析は従来の投稿範囲を維持します。
 
 ### 使い方
 

@@ -7,7 +7,21 @@ import type {PageScan} from "../contracts/page-contracts.js";
  * every helper inside the function so Chrome can serialize and run it without
  * resolving an import or a module-level variable in the extension context.
  */
-export async function scanDocument(targetPostId?: string): Promise<PageScan> {
+export async function scanDocument(targetPostId?: string, framesOnly = false): Promise<PageScan> {
+  // An all-frame pass supplements a separately retained top-level result.
+  if (framesOnly && window === window.top) return {url: location.href, title: document.title, images: []};
+  const framePath: number[] = [];
+  if (framesOnly) {
+    let current: Window = window;
+    while (current !== current.top) {
+      const parent = current.parent;
+      let index = 0;
+      while (index < parent.length && parent[index] !== current) index++;
+      if (index === parent.length) throw new Error("Frame detached");
+      framePath.unshift(index);
+      current = parent;
+    }
+  }
   const sourceUrl = location.href;
   const sourceDocument = document;
   const sourceRoot = document.documentElement;
@@ -1074,5 +1088,7 @@ export async function scanDocument(targetPostId?: string): Promise<PageScan> {
   checkDeadline();
   const media = registry.media();
   checkDeadline();
-  return {url: sourceUrl, title: document.title, images, ...(media.length > 0 ? {media} : {})};
+  const hasFrames = observation.elements(root, false).some(element => /^(?:iframe|frame)$/i.test(element.tagName));
+  return {url: sourceUrl, title: document.title, images, ...(media.length > 0 ? {media} : {}),
+    ...(hasFrames ? {hasFrames: true} : {}), ...(framesOnly ? {framePath} : {})};
 }

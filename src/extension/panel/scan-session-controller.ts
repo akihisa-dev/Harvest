@@ -1,6 +1,7 @@
 import type { XScanDiagnostics } from "../../core/x-media.js";
 import type { ImageCollection } from "../../core/image-collection.js";
-import { defaultDisplayedImageGroup, normalizeImageUrls } from "../../core/images.js";
+import { defaultDisplayedImageGroup } from "../../core/images.js";
+import { collectPageMedia } from "../../core/page-media.js";
 import { localizeErrorMessage, t } from "./localization.js";
 import { scanTab, scanUrl } from "../browser/page-access.js";
 
@@ -94,19 +95,16 @@ export function createScanSessionController(options: ScanSessionControllerOption
         result = await scanTab(activeTab.id, controller.signal, activeTab.url, scanOptions);
       }
       if (options.isDisposed() || controller.signal.aborted || activeController !== controller) return;
-      const urls = normalizeImageUrls([...result.images, ...(result.media ?? []).map(item => item.url)], result.url);
-      // Publish usable media, with an explicit notice when X supplementation is incomplete.
-      const media = (result.media ?? []).flatMap(item => {
-        const normalized = normalizeImageUrls([item.url], result.url)[0];
-        return normalized ? [{...item, url: normalized}] : [];
-      });
-      const rejected = (result.media ?? []).length - media.length;
+      const {urls, media, rejected, initial} = collectPageMedia(result, result.frames);
       diagnostics = {...(result.xDiagnostics ? {scan: result.xDiagnostics} : {}), normalized: urls.length, rejected};
       if (result.xDiagnostics && rejected && !urls.length) throw new Error(t("errorXIncomplete"));
-      options.collection.replace(urls, result.url, media);
+      options.collection.replace(urls, result.url, media, result.frames?.length ? initial : undefined);
       if (collectionLink) options.markAnalyzedUrl(collectionLink, session);
       state = options.collection.items.length ? "results" : "empty";
-      options.onResults(result.title || t("imageFallback"), result.xDiagnostics ? null : defaultDisplayedImageGroup(options.collection.groups), result.url);
+      const initialGroup = result.frames?.length
+        ? Object.entries(options.collection.groups).find(([, group]) => group.items.includes(initial.selectedUrls[0] ?? ""))?.[0] ?? null
+        : defaultDisplayedImageGroup(options.collection.groups);
+      options.onResults(result.title || t("imageFallback"), result.xDiagnostics ? null : initialGroup, result.url);
       const partial = result.xDiagnostics && (result.xDiagnostics.limited || result.xDiagnostics.unresolved || rejected);
       options.onStatus(result.xDiagnostics?.bookmarkStopped ? t("scanBookmarksStopped") : result.xDiagnostics?.bookmarkIncomplete ? t("scanBookmarksIncomplete") : result.xDiagnostics?.bookmarkCaptureMissing ? t("scanXBookmarksReload") : partial ? t("scanXPartial") : options.collection.items.length ? "" : t("scanEmpty"), "info");
     } catch (error) {

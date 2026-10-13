@@ -21,6 +21,9 @@ export function isPageScan(value) {
         return false;
     const images = value["images"], media = value["media"];
     return Array.isArray(images) && images.every(item => typeof item === "string")
+        && optionalBoolean(value["hasFrames"])
+        && (value["framePath"] === undefined || (Array.isArray(value["framePath"])
+            && value["framePath"].every(item => Number.isSafeInteger(item) && item >= 0)))
         && (value["xDiagnostics"] === undefined || diagnostics(value["xDiagnostics"]))
         && (media === undefined || (Array.isArray(media) && media.every(item => record(item)
             && typeof item["url"] === "string" && (item["kind"] === "image" || item["kind"] === "gif" || item["kind"] === "video")

@@ -2,6 +2,51 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {scanTab, scanUrl} from "../dist/extension/app/browser/page-access.js";
 
+for (const outcome of ['ok', 'denied', 'reload', 'detach', 'timeout', 'abort', 'top-moved']) {
+  test(`iframe補完で外側の結果と解析の寿命を保護する: ${outcome}`, async t => {
+    const url = 'https://example.com/page';
+    const state = fixture(t);
+    const controller = new AbortController();
+    let resolveFrames;
+    let allReads = 0;
+    if (outcome === 'timeout') t.mock.timers.enable({apis: ['setTimeout']});
+    chrome.scripting.executeScript = async ({target, func}) => {
+      if (!target.allFrames) return [{documentId: outcome === 'top-moved' && allReads ? 'new' : 'top',
+        result: func.name === 'scanDocument' ? {url, title: 'outer', images: [url + '.jpg'], hasFrames: true} : url}];
+      allReads++;
+      if (allReads === 1) {
+        if (outcome === 'denied') throw new Error('permission denied');
+        if (outcome === 'abort' || outcome === 'timeout') return new Promise(resolve => {resolveFrames = resolve;});
+        return [2, 1].map(id => ({frameId: id, documentId: `frame${id}`, result: {
+          url: `${url}/frame${id}`, title: 'frame', images: [`${url}/${id}.jpg`], framePath: [id - 1],
+        }}));
+      }
+      return outcome === 'detach' ? [] : [1, 2].map(id => ({frameId: id,
+        documentId: outcome === 'reload' ? 'new' : `frame${id}`, result: `${url}/frame${id}`}));
+    };
+    const work = scanTab(8, controller.signal);
+    if (outcome === 'abort' || outcome === 'timeout') {
+      for (let i = 0; i < 15 && !resolveFrames; i++) await Promise.resolve();
+      assert.ok(resolveFrames);
+      if (outcome === 'abort') controller.abort();
+      else t.mock.timers.tick(20_000);
+    }
+    if (outcome === 'abort' || outcome === 'top-moved') await assert.rejects(work, /終了|ページが移動/);
+    else {
+      const result = await work;
+      assert.deepEqual(result.images, [url + '.jpg']);
+      assert.deepEqual(result.frames.map(frame => frame.images[0]), outcome === 'ok' ? [`${url}/1.jpg`, `${url}/2.jpg`] : []);
+    }
+    if (resolveFrames) {
+      resolveFrames([]);
+      await Promise.resolve();
+      await Promise.resolve();
+      assert.equal(allReads, 1, '中止・時間切れの後に再注入しない');
+    }
+    assert.equal(state.removed.size, 0);
+  });
+}
+
 function mediaSnapshot(url, candidates = [], observed = []) {
   return {url, limited: false, posts: [{key: 'post:123', postId: '123', observed,
     roots: [{requireIdentity: false, player: false, value: {tweet: {rest_id: '123', legacy: {extended_entities: {

@@ -7,6 +7,10 @@ export interface PageScan {
   xDiagnostics?: XScanDiagnostics;
   images: string[];
   media?: Array<{url: string; kind: "image" | "gif" | "video"; previewUrl?: string}>;
+  hasFrames?: boolean;
+  framePath?: number[];
+  /** Added by the extension after verifying each frame's document identity. */
+  frames?: PageScan[];
 }
 
 export interface XPageState {
@@ -43,6 +47,9 @@ export function isPageScan(value: unknown): value is PageScan {
   if (!record(value) || typeof value["url"] !== "string" || typeof value["title"] !== "string") return false;
   const images = value["images"], media = value["media"];
   return Array.isArray(images) && images.every(item => typeof item === "string")
+    && optionalBoolean(value["hasFrames"])
+    && (value["framePath"] === undefined || (Array.isArray(value["framePath"])
+      && value["framePath"].every(item => Number.isSafeInteger(item) && item >= 0)))
     && (value["xDiagnostics"] === undefined || diagnostics(value["xDiagnostics"]))
     && (media === undefined || (Array.isArray(media) && media.every(item => record(item)
       && typeof item["url"] === "string" && (item["kind"] === "image" || item["kind"] === "gif" || item["kind"] === "video")

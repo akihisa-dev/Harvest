@@ -20,16 +20,17 @@ export class ImageCollection {
     urls: readonly string[],
     sourcePage: string,
     media: readonly MediaImageMetadata[] = [],
+    initial?: {selectedUrls: readonly string[]; sourcePages: ReadonlyMap<string, string>},
   ): void {
     const groups = groupMediaImages(urls, media);
     const selectedGroups = defaultSelectedImageGroups(groups);
-    const selectedUrls = new Set(Object.entries(groups).flatMap(([key, group]) => selectedGroups[key] ? group.items : []));
+    const selectedUrls = new Set(initial?.selectedUrls ?? Object.entries(groups).flatMap(([key, group]) => selectedGroups[key] ? group.items : []));
     const metadata = new Map(media.map(item => [item.url, item]));
     this.orderedItems = urls.map(url => {
       const details = metadata.get(url);
       return {
         url,
-        sourcePage,
+        sourcePage: initial?.sourcePages.get(url) ?? sourcePage,
         selected: selectedUrls.has(url),
         ...(details ? {kind: details.kind} : {}),
         ...(details?.previewUrl ? {previewUrl: details.previewUrl} : {}),

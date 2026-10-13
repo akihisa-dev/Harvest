@@ -99,6 +99,47 @@ export class PageReadSession {
     });
   }
 
+  async scanFrames(): Promise<PageScan[]> {
+    try {
+      return await bounded<PageScan[]>((resolve, reject) => {
+        let active = true;
+        const onRemoved = (id: number): void => {
+          if (id === this.tabId) reject(new Error(closedMessage));
+        };
+        chrome.tabs.onRemoved.addListener(onRemoved);
+        void (async () => {
+          const scans = await chrome.scripting.executeScript({
+            target: {tabId: this.tabId, allFrames: true}, func: scanDocument, args: ["", true],
+          });
+          if (!active) return;
+          // Same-URL reloads and detached frames must not publish stale candidates.
+          const current = await chrome.scripting.executeScript({
+            target: {tabId: this.tabId, allFrames: true}, func: () => location.href,
+          });
+          if (!active) return;
+          const frames = scans.filter(entry => entry.frameId !== undefined && entry.frameId !== 0
+            && entry.documentId && isPageScan(entry.result) && entry.result.framePath?.length
+            && current.some(now => now.frameId === entry.frameId && now.documentId === entry.documentId
+              && typeof now.result === "string" && now.result.split("#")[0] === entry.result.url.split("#")[0]))
+            .map(entry => entry.result);
+          frames.sort((a, b) => {
+            const left = a.framePath!, right = b.framePath!;
+            for (let i = 0; i < Math.min(left.length, right.length); i++) {
+              if (left[i] !== right[i]) return left[i]! - right[i]!;
+            }
+            return left.length - right.length;
+          });
+          resolve(frames);
+        })().catch(error => reject(error instanceof Error ? error : new Error("Frame scan failed")));
+        return () => { active = false; chrome.tabs.onRemoved.removeListener(onRemoved); };
+      }, this.signal);
+    } catch (error) {
+      if (this.signal?.aborted) throw error;
+      // Frame access is optional. The retained main document is verified separately.
+      return [];
+    }
+  }
+
   waitForPost(expectVideo: boolean, targetPostId?: string): Promise<XPageState> {
     return this.read({
       func: waitForXPage, args: targetPostId ? [expectVideo, 10_000, targetPostId] : [expectVideo, 10_000],
