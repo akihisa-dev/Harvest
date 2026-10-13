@@ -96,13 +96,27 @@ test("収集発光は出入りと状態を滑らかにつなぎ、追従を遅�
   assert.ok(earlyMarkerMidpoint > 0 && earlyMarkerMidpoint < 1, `解析済みマーカーの初回表示もopacityの中間値を通ります (${earlyMarkerMidpoint})`);
   await page.waitForFunction(() => Number(getComputedStyle(document.querySelector("[data-harvest-collection-hover]:not([data-harvest-collection-motion-ghost])")).opacity) > .95);
 
+  // Observe and pause the transition in the input event itself. A busy browser
+  // can finish the 160ms transition before a separate Playwright call arrives.
+  await page.evaluate(() => {
+    const observeRetarget = event => {
+      if (!event.target.closest?.("#second")) return;
+      document.removeEventListener("pointermove", observeRetarget, true);
+      const element = document.querySelector("[data-harvest-collection-hover]:not([data-harvest-collection-motion-ghost])");
+      const opacity = Number(getComputedStyle(element).opacity);
+      for (const animation of element.getAnimations()) animation.pause();
+      const ghost = document.querySelector("[data-harvest-collection-motion-ghost]");
+      for (const animation of ghost?.getAnimations() ?? []) animation.pause();
+      window.retargetedGlow = {
+        left: element.style.left, opacity,
+        ghosts: document.querySelectorAll("[data-harvest-collection-motion-ghost]").length,
+        ghostLeft: ghost?.style.left,
+      };
+    };
+    document.addEventListener("pointermove", observeRetarget, true);
+  });
   await page.mouse.move(310, 70);
-  const retargeted = await page.locator(hoverSelector).evaluate(element => ({
-    left: element.style.left,
-    opacity: Number(getComputedStyle(element).opacity),
-    ghosts: document.querySelectorAll("[data-harvest-collection-motion-ghost]").length,
-    ghostLeft: document.querySelector("[data-harvest-collection-motion-ghost]")?.style.left,
-  }));
+  const retargeted = await page.evaluate(() => window.retargetedGlow);
   assert.equal(retargeted.left, "300px", "新しい対象の座標はすぐ反映する");
   assert.ok(retargeted.opacity < 1, `新しい対象は透明から現れます (${retargeted.opacity})`);
   assert.equal(retargeted.ghosts, 1, "旧対象の発光を別要素で短く消す");
@@ -121,6 +135,11 @@ test("収集発光は出入りと状態を滑らかにつなぎ、追従を遅�
   });
   assert.ok(hoverMidpoint > 0 && hoverMidpoint < 1, `新しい対象はopacityの中間値を通ります (${hoverMidpoint})`);
   await page.locator(hoverSelector).evaluate(element => element.getAnimations().find(animation => animation.transitionProperty === "opacity")?.finish());
+  await page.evaluate(() => {
+    for (const ghost of document.querySelectorAll("[data-harvest-collection-motion-ghost]")) {
+      for (const animation of ghost.getAnimations()) animation.finish();
+    }
+  });
   await page.evaluate(() => {
     for (let index = 0; index < 8; index += 1) {
       document.querySelector(index % 2 ? "#first" : "#second").dispatchEvent(new PointerEvent("pointermove", {bubbles: true}));
