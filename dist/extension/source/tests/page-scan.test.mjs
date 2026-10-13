@@ -1045,7 +1045,7 @@ async function scanWithMutation(root, mutate) {
   });
 }
 
-test("同じ候補から画像は表示位置順、メディアは検出順で返し、GIFの種類を優先する", async () => {
+test("画像とメディアを同じ表示位置順で返し、位置がない候補は末尾でGIFの種類を保持する", async () => {
   const base = "https://cdn.example.test/media/";
   const bottom = new FixtureElement("img", {src: `${base}bottom.jpg`}, [], {rect: {top: 100, left: 0, width: 10, height: 10}});
   const video = new FixtureElement("video", {src: `${base}movie.mp4`});
@@ -1057,9 +1057,9 @@ test("同じ候補から画像は表示位置順、メディアは検出順で�
   const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
   assert.deepEqual(result.images, [`${base}top.jpg`, `${base}bottom.jpg`, `${base}animation.gif`, "mailto:unfetchable"]);
   assert.deepEqual(result.media, [
+    {url: `${base}top.jpg`, kind: "image"},
     {url: `${base}bottom.jpg`, kind: "image"},
     {url: `${base}movie.mp4`, kind: "video"},
-    {url: `${base}top.jpg`, kind: "image"},
     {url: `${base}animation.gif`, kind: "gif"},
   ]);
 });

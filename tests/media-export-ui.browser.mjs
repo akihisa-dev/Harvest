@@ -140,7 +140,7 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   assert.equal(await page.locator('#export-format-gif').count(), 0);
   assert.equal(await page.locator('#export-format-original').isVisible(), true);
   assert.equal(await page.locator('#export-format-recommend').isVisible(), true);
-  await scan([photo, animation], [{url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
+  await scan([photo, animation], [{url: photo, kind: 'image'}, {url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
   assert.equal(await page.locator('#video-export-format-recommend').isChecked(), true);
   assert.equal(await page.locator('#export-format-pdf').isChecked(), true);
   const groups = page.locator('#groups .group-label');
@@ -230,7 +230,7 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   assert.deepEqual(await groups.allTextContents(), ['MP4\n(2件)']);
   const uniqueVideos = await save('mp4', 2);
   assert.deepEqual(uniqueVideos.map(entry => entry.name), ['001.mp4', '002.mp4']);
-  await scan([photo, animation], [{url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
+  await scan([photo, animation], [{url: photo, kind: 'image'}, {url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
   await page.locator('#all-selection').check();
   await scan([animation],[{url:animation,kind:'gif'}]);
   const gifs = await save('gif');
@@ -256,7 +256,7 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
     assert.deepEqual(retried.map(entry => entry.data), [format === 'gif' ? gif : mp4, format === 'gif' ? gif : mp4]);
     assert.equal(downloads, before + (format === 'mp4' ? 2 : 1));
   }
-  await scan([photo, animation], [{url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
+  await scan([photo, animation], [{url: photo, kind: 'image'}, {url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
   await page.locator('#all-selection').check();
   await scan([photo],[]);
   const images = await save('png');
@@ -389,7 +389,7 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
     assert.deepEqual(entries.map(entry => entry.name), ['001.gif']);
     assert.deepEqual(entries[0].data, gif);
   }
-  await scan([photo, animation], [{url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
+  await scan([photo, animation], [{url: photo, kind: 'image'}, {url: animation, kind: 'gif'}, {url: movie, kind: 'video'}]);
   await page.locator('#all-selection').check();
   await page.locator('#all-visibility').click();
   await page.waitForFunction(() => [...document.querySelectorAll('#images > li img')].slice(0, 2).every(image => image.complete && image.naturalWidth > 0));

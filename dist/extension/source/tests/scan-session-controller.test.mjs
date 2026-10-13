@@ -68,6 +68,27 @@ test("解析controller自身が多重開始を防ぎ、完了結果を一度だ�
   assert.deepEqual(fixture.busy, [true, false]);
 });
 
+test('Xブックマークの混在投稿順をパネル公開後と初期順序復元まで保持する', async t => {
+  const fixture = setup(t), url = 'https://x.com/i/bookmarks';
+  fixture.query = async () => [{id: 7, url}];
+  chrome.tabs.get = async () => ({url});
+  const expected = ['https://video.twimg.com/first.mp4', 'https://pbs.twimg.com/media/second?format=jpg&name=orig', 'https://video.twimg.com/third.mp4'];
+  fixture.read = async ({func}) => [{result: func.name === 'scanXMedia' ? {url, limited: false,
+    posts: expected.map((mediaUrl, index) => ({key: `post:${index + 1}`, postId: String(index + 1), observed: [],
+      roots: [{requireIdentity: false, player: false, value: {tweet: {rest_id: String(index + 1), legacy: {extended_entities: {media: [index === 1
+        ? {type: 'photo', media_url_https: mediaUrl}
+        : {type: 'video', video_info: {variants: [{url: mediaUrl, content_type: 'video/mp4', bitrate: 10}]}}]}}}}}]}))}
+    : {url, title: 'Bookmarks', images: []}}];
+  await fixture.controller.start();
+  assert.equal(fixture.results.length, 1);
+  assert.deepEqual(fixture.collection.items.map(item => item.url), expected);
+  fixture.collection.setAllSelected(true);
+  assert.deepEqual(fixture.collection.selectedItems.map(item => item.url), expected);
+  fixture.collection.moveVisible(fixture.collection.items, fixture.collection.items[0], fixture.collection.items[2]);
+  fixture.collection.restoreInitialOrderAndSelection();
+  assert.deepEqual(fixture.collection.items.map(item => item.url), expected);
+});
+
 for (const action of ["reset", "dispose"]) {
   test(`${action}後に返ったタブで解析を始めず、以前の結果を維持する`, async t => {
     const fixture = setup(t);

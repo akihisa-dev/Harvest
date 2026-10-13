@@ -181,17 +181,22 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
         }
         return images;
       },
-      media(): Array<{url: string; kind: MediaKind}> {
-        const media: Array<{url: string; kind: MediaKind; order: number}> = [];
+      media(): Array<{url: string; kind: MediaKind; detectionOrder: number; positions: Element[]}> {
+        const media: Array<{url: string; kind: MediaKind; detectionOrder: number; positions: Element[]}> = [];
         for (const record of records.values()) {
           checkDeadline();
-          if (record.media) media.push({url: record.url, ...record.media});
+          if (!record.media) continue;
+          const positions: Element[] = [];
+          for (const [source, evidence] of record.sources) {
+            checkDeadline();
+            if (!evidence.media) continue;
+            if (evidence.image?.position) positions.push(evidence.image.position);
+            else if (source?.tagName.toLowerCase() === "video") positions.push(source);
+            else if (source?.tagName.toLowerCase() === "source" && source.parentElement?.tagName.toLowerCase() === "video") positions.push(source.parentElement);
+          }
+          media.push({url: record.url, kind: record.media.kind, detectionOrder: record.media.order, positions});
         }
-        return media.sort((a, b) => {
-          checkDeadline();
-          return a.order - b.order;
-        })
-          .map(({url, kind}) => ({url, kind}));
+        return media;
       },
     };
   })();
@@ -583,7 +588,7 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
   };
 
   // Visual ordering is resolved only after all candidate evidence is current.
-  const orderedImages = (): string[] => {
+  const orderedCandidates = (records: Array<{url: string; detectionOrder: number; positions: Element[]}>): string[] => {
     const documentOrder = new Map<Element, number>();
     for (const [index, element] of observation.elements(root, false).entries()) {
       checkDeadline();
@@ -633,7 +638,7 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
       return result;
     };
 
-    const ordered = registry.images()
+    const ordered = records
       .map(record => ({
         record,
         position: record.positions
@@ -1084,9 +1089,11 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
     // A node can be moved into another post during the short observation window.
     registry.retainElements(inTargetPost);
   }
-  const images = orderedImages();
+  const images = orderedCandidates(registry.images());
   checkDeadline();
-  const media = registry.media();
+  const candidates = registry.media();
+  const byUrl = new Map(candidates.map(({url, kind}) => [url, {url, kind}]));
+  const media = orderedCandidates(candidates).map(url => byUrl.get(url)!);
   checkDeadline();
   const hasFrames = observation.elements(root, false).some(element => /^(?:iframe|frame)$/i.test(element.tagName));
   return {url: sourceUrl, title: document.title, images, ...(media.length > 0 ? {media} : {}),

@@ -9,7 +9,7 @@ interface DocumentMedia {
 /** Keep document provenance and selection independent from the combined URL groups. */
 export function collectPageMedia(page: DocumentMedia, frames: readonly DocumentMedia[] = []) {
   const documents = [page, ...frames].map(document => {
-    const urls = normalizeImageUrls([...document.images, ...(document.media ?? []).map(item => item.url)], document.url);
+    const urls = normalizeImageUrls([...(document.media ?? []).map(item => item.url), ...document.images], document.url);
     const media = (document.media ?? []).flatMap(item => {
       const url = normalizeImageUrls([item.url], document.url)[0];
       return url ? [{...item, url}] : [];
