@@ -1,4 +1,5 @@
 import {gifBytes} from './media-fixtures.mjs';
+import {pngBytes} from './original-fixtures.mjs';
 import assert from "node:assert/strict";
 import test from "node:test";
 import {ImageArchiveLimitError} from "../dist/extension/core/image-archive.js";
@@ -45,7 +46,7 @@ test("mixed ZIP容量は再試行の成功分を加算し、超過画像を保�
   const limit = storedZipDataLimit(["001.webm", "002.webm"]);
   const controller = new AbortController();
   const options = {signal: controller.signal, isStopped: () => false, onProgress() {}};
-  const response = new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], {type: "image/png"});
+  const response = new Blob([pngBytes], {type: "image/png"});
   t.mock.method(globalThis, "fetch", async () => new Response(response));
   const existing = {blob: fakeSizedBlob(limit - response.size + 1)};
   const work = mixedWork(selected);
@@ -160,7 +161,7 @@ test("準備開始直後の中止では通信も進捗通知も開始しない",
 
 test("mixed推奨の原本経路は実レスポンスのGIF/PNGと元Blobを保持する", async t => {
   const selected = [item("no-extension", "image"), item("static.webp", "image")];
-  const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  const png = pngBytes;
   t.mock.method(globalThis, "fetch", async url => new Response(url === selected[0].url ? gif : png, {headers: {"content-type": url === selected[0].url ? "image/gif" : "image/png"}}));
   const work = {...mixedWork(selected), imageFormat: "recommend", resolvedImageFormat: "original"};
   await prepareMixedExport(work, {signal: new AbortController().signal, isStopped: () => false, onProgress() {}});

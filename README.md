@@ -90,6 +90,8 @@ Conversion workers terminate on success, failure, cancellation, or timeout. Conv
 
 #### Saving original or recommended formats
 
+JPEG, PNG, and WebM originals are checked for required structures and complete data boundaries. Header-only or structurally truncated responses remain retryable failures; valid originals retain their bytes without re-encoding. These checks do not guarantee that every pixel or video frame can be decoded. WebM Segment and Cluster elements with unknown sizes are supported.
+
 Within the image section, `original(extension)` and `recommended(extension)` appear above PDF, JPG, PNG, and JXL. In narrow panels, original and recommended stack vertically so the text and recommendation marks fit. The video section offers original, recommended, and MP4 independently. Labels follow the selection, showing “mixed” or “unknown” when needed, with the full list in a tooltip. Original extensions use the validated response type when available, otherwise URL hints. Saved extensions use the validated response type.
 
 Image formats marked with ★ are suitable for different uses. Original is recommended to keep each file unchanged. PDF is also recommended to read a series in one document when at least two selected still images belong to one series or set under the list's existing URL-pattern and format grouping. A single still image, multiple still-image groups, covers, miscellaneous images, and uploads do not trigger the PDF recommendation. Recommendations follow selection; the eye buttons only change visibility.
@@ -253,6 +255,8 @@ Xは取得できるMP4候補の中から最も高いビットレートを選び�
 変換完了・失敗・中止・時間切れのいずれでもWorkerを終了します。変換用の外部送信や永続保存は行いません。
 
 #### original・recommendedの保存
+
+JPEG・PNG・WebMの原本保存では、形式ごとの必須構造とデータの境界を確認します。ヘッダーだけの応答や構造途中で切れたデータを保存成功にせず、失敗項目を再試行できます。正常な原本は再エンコードせず、元のバイト列を保持します。検査はコンテナー構造を対象とし、すべての画素・映像の復号成功を保証するものではありません。WebMの長さ未確定のSegment・Clusterにも対応します。
 
 画像欄の上側に`original（拡張子）`と`recommended（拡張子）`、その下にPDF・JPG・PNG・JXLを表示します。狭いパネルではoriginalとrecommendedを縦に並べ、文字と推奨の印を収めます。動画欄には独立したoriginal・recommended・MP4を表示します。括弧内は選択中の項目に合わせて更新します。元の拡張子は取得済みのデータ形式を優先し、未取得ならURLから分かる範囲の目安を使います。判別できない場合は「不明」、複数形式なら「混在」と表示し、ポインターを重ねると形式一覧を確認できます。保存時は取得したデータの種類を検証して拡張子を決めます。
 

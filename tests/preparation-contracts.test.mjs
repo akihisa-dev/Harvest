@@ -6,12 +6,13 @@ import {ImageDataError} from "../dist/extension/app/contracts/image-data-contrac
 import {prepareMixedExport} from "../dist/extension/app/media/mixed-export-preparation.js";
 const pdfWork = selected => ({selected, imageFormat: "pdf", resolvedImageFormat: "pdf", videoFormat: "original", includeSourcePage: false, prepared: new Map(), failed: new Map(), saved: new Set()});
 import {baselineJpeg} from "./jpeg-fixtures.mjs";
+import {pngBytes} from "./original-fixtures.mjs";
 
 const fetchers = [
   {name: "画像", timeout: 20_000, fetch: options => fetchImage("https://example.test/image", options)},
   {name: "メディア", timeout: 120_000, fetch: options => fetchOriginalMedia("https://example.test/image", "image", options)},
 ];
-const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+const png = pngBytes;
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 test("画像とメディアの既定期限・HTTP理由・取得後のsignal解放を維持する", async () => {

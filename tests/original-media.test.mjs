@@ -1,3 +1,5 @@
+import {baselineJpeg, progressiveJpeg, exifJpeg} from './jpeg-fixtures.mjs';
+import {webmBytes, pngBytes} from './original-fixtures.mjs';
 import {gifBytes, mp4Bytes, fragmentedMp4, brokenMedia} from "./media-fixtures.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -48,8 +50,7 @@ function unzipStored(blob) {
 }
 
 test("original media preserves GIF and MP4 bytes with MIME-based ZIP extensions", async () => {
-  const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
-  const webmBytes = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 1, 2, 3, 4]);
+  const jpegBytes = baselineJpeg;
   const items = [
     {url: "https://media.test/photo.jpg", sourcePage: "https://media.test/page", selected: true, kind: "image"},
     {url: "https://media.test/animation.gif", sourcePage: "https://media.test/page", selected: true, kind: "gif"},
@@ -111,7 +112,7 @@ test("original media preserves GIF and MP4 bytes with MIME-based ZIP extensions"
 });
 
 test("original media uses existing credentials and private-target rules", async () => {
-  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+  const jpeg = baselineJpeg;
   const requests = [];
   globalThis.fetch = async (url, options) => {
     requests.push({url, options});
@@ -132,6 +133,60 @@ test("original media uses existing credentials and private-target rules", async 
     assert.equal(requests.length, 2, "private cross-origin URLs are rejected before fetch");
   } finally {
     globalThis.fetch = previous.fetch;
+  }
+});
+
+test('JPEG・PNG・WebMの原本はヘッダーのみと途中切断を拒否し、正常なバイト列を保つ', async () => {
+  try {
+    for (const [type, kind, variants, header] of [
+      ['image/jpeg', 'image', [baselineJpeg, progressiveJpeg, exifJpeg], 3],
+      ['image/png', 'image', [pngBytes], 8],
+      ['video/webm', 'video', [webmBytes], 4],
+    ]) {
+      for (const bytes of variants) {
+        globalThis.fetch = async () => fakeResponse(bytes, type);
+        const blob = await fetchOriginalMedia('https://media.test/valid', kind);
+        assert.deepEqual(new Uint8Array(await blob.arrayBuffer()), new Uint8Array(bytes));
+        for (const cut of [header, Math.floor(bytes.length / 2), bytes.length - 1]) {
+          globalThis.fetch = async () => fakeResponse(bytes.subarray(0, cut), type);
+          await assert.rejects(fetchOriginalMedia('https://media.test/broken', kind), error => error.kind === 'invalid-image', `${type}: ${cut}`);
+        }
+      }
+    }
+  } finally {globalThis.fetch = previous.fetch;}
+});
+
+test('原本の混在保存は破損時にダウンロードせず成功項目を保持し、失敗分だけ再試行する', async () => {
+  const assets = [[baselineJpeg, 'image/jpeg', 'image'], [pngBytes, 'image/png', 'image'], [webmBytes, 'video/webm', 'video']];
+  const items = assets.map(([, , kind], index) => ({url: `https://media.test/${index}`, sourcePage: 'https://media.test/', selected: true, kind}));
+  const archives = [], requests = [];
+  let broken = true, completed = 0;
+  globalThis.window = {setTimeout};
+  globalThis.document = {body: {append() {}}, createElement: () => ({click() {}, remove() {}})};
+  globalThis.fetch = async url => {
+    const index = Number(url.split('/').at(-1)); requests.push(index);
+    const [bytes, type] = assets[index];
+    return fakeResponse(broken && index > 0 ? bytes.subarray(0, 8) : bytes, type);
+  };
+  URL.createObjectURL = blob => {archives.push(blob); return 'blob:archive';};
+  URL.revokeObjectURL = () => {};
+  try {
+    const controller = createMixedExportController({getSelectedItems: () => items, getZipFilename: () => 'Original.zip',
+      getPdfFilename: () => 'images.pdf', isBusy: () => false, isDisposed: () => false, onBusyChange() {}, onStatus() {},
+      onCloseViewer() {}, onClearSourceUrl() {}, onScrollToFailures() {}, onCompleted() {completed++;}});
+    const settings = {imageFormat: 'original', videoFormat: 'original', includeSourcePage: false};
+    await controller.export(settings);
+    assert.equal(archives.length, 0); assert.equal(completed, 0);
+    assert.equal(controller.pending.failed.size, 2);
+    assert.equal(controller.pending.prepared.size, 1);
+    broken = false; requests.length = 0;
+    await controller.export(settings);
+    assert.deepEqual(requests, [1, 2]);
+    assert.equal(completed, 1); assert.equal(controller.pending, null);
+    assert.deepEqual((await unzipStored(archives[0])).map(entry => [...entry.data]), assets.map(([bytes]) => [...bytes]));
+  } finally {
+    Object.assign(globalThis, {document: previous.document, window: previous.window, fetch: previous.fetch});
+    URL.createObjectURL = previous.createObjectURL; URL.revokeObjectURL = previous.revokeObjectURL;
   }
 });
 
@@ -204,7 +259,7 @@ test("現行取得境界は不明MIMEと媒体不一致を拒否し、検証済�
 
 test("MP4 export retains an unconvertible WebM as a retryable failure without creating an archive", async () => {
   const item = {url: "https://example.test/wrong.mp4", sourcePage: "https://example.test", selected: true, kind: "video"};
-  const webm = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 1, 2, 3, 4]);
+  const webm = webmBytes;
   const archives = [];
   globalThis.fetch = async () => fakeResponse(webm, "video/webm");
   URL.createObjectURL = blob => {
