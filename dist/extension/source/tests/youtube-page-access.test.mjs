@@ -104,7 +104,18 @@ for(const outcome of ['success','shape','navigation','closed','abort'])test(`You
   assert.deepEqual(fixture.removed,[8]);assert.equal(fixture.onRemoved.listeners.size,0);assert.equal(fixture.onUpdated.listeners.size,0);
 });
 
-for(const bodyKind of ['buffer','blob','request'])test(`先読み済みでも監視後の再読み込みから認証を読み取り、元要求を維持する: ${bodyKind}`,async t=>{
+test('開いている動画の保存ではフレームを作成せず、再生状態の復元を指定する',async t=>{
+  let fixture;fixture=chromeFixture(t,async request=>{
+    assert.notEqual(request.func.name,'manageYoutubeFrame');assert.equal(request.target.allFrames,undefined);
+    if(request.func.name==='readYoutubePage'){assert.deepEqual(request.args,[videoId,true,'',true]);return [{documentId:'doc',result:{videoId,title:'open',previewUrl:'',formats:[video,audio],capture:{url,body:[...template]}}}];}
+    return [{documentId:'doc',result:fixture.address}];
+  });
+  chrome.tabs.query=async()=>[{id:8,url:fixture.address,active:true}];
+  assert.ok((await acquireYoutubeEvidence(videoId,true)).capture);assert.deepEqual(fixture.removed,[]);
+});
+
+for(const mode of ['frame','playing','paused','failure','navigation'])for(const bodyKind of (mode==='navigation'?['buffer']:['buffer','blob','request']))test(`先読み済みでも監視後の再読み込みから認証を読み取り、元要求を維持する: ${bodyKind}, mode=${mode}`,async t=>{
+  const restore=mode!=='frame',shouldRestore=restore&&mode!=='navigation';
   const previous={location:globalThis.location,document:globalThis.document,window:globalThis.window,XMLHttpRequest:globalThis.XMLHttpRequest};
   t.after(()=>{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}});
   const address=`https://www.youtube.com/watch?v=${videoId}`;
@@ -116,16 +127,22 @@ for(const bodyKind of ['buffer','blob','request'])test(`先読み済みでも監
   globalThis.XMLHttpRequest=Request;globalThis.window={fetch:originalFetch};
   const native=f=>({itag:f.itag,lastModified:f.lastModified,mimeType:f.mimeType,approxDurationMs:String(f.durationMs),height:f.height,fps:f.fps,bitrate:f.bitrate,contentLength:String(f.contentLength),...(f.defaultAudio?{audioTrack:{id:f.language,audioIsDefault:true}}:{})});
   const response={videoDetails:{videoId,title:'fixture',thumbnail:{thumbnails:[{url:`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}]}},playabilityStatus:{status:'OK'},streamingData:{adaptiveFormats:[native(video),native(audio)]}};
-  let reloaded=0,muted=0;
-  const player={getPlayerResponse:()=>response,mute(){muted++;},loadVideoById(id,start){
+  let reloaded=0,muted=0,unmuted=0,played=0,seek;
+  const player={getPlayerResponse:()=>response,mute(){muted++;},unMute(){unmuted++;},seekTo(time){seek=time;},loadVideoById(id,start){
     assert.equal(id,videoId);assert.equal(start,0);assert.equal(muted,1);reloaded++;
+    if(mode==='failure')throw new Error('Native load failed');
     if(bodyKind==='request'){void window.fetch(new globalThis.Request(url,{method:'POST',body:template}));}
     else {const request=new Request();request.open('POST',url);request.send(bodyKind==='blob'?new Blob([template]):template);}
-  }},element={muted:false,play(){throw new Error('Buffered playback should not be relied upon');},pause(){paused++;}};
+    if(mode==='navigation')location.href='https://www.youtube.com/watch?v=01234567890';
+  }},element={currentTime:14,volume:0.4,playbackRate:1.5,paused:mode==='paused',muted:mode==='paused',play(){played++;return Promise.resolve();},pause(){paused++;}};
   globalThis.document={title:'fixture',getElementById:()=>player,querySelector:()=>element};
-  const result=await readYoutubePage(videoId,true);
-  assert.equal(reloaded,1);assert.equal(muted,1);
+  let result;
+  if(mode==='failure')await assert.rejects(readYoutubePage(videoId,true,'',restore),/Native load failed/);
+  else result=await readYoutubePage(videoId,true,'',restore);
+  assert.equal(reloaded,1);assert.equal(muted,mode==='paused'?2:1);
+  assert.equal(played,shouldRestore&&mode!=='paused'?1:0);assert.equal(unmuted,shouldRestore&&mode!=='paused'?1:0);assert.equal(seek,shouldRestore?14:undefined);assert.equal(element.muted,!shouldRestore||mode==='paused');assert.equal(element.volume,0.4);assert.equal(element.playbackRate,1.5);
   if(fetchedRequest){assert.equal(fetchedRequest.bodyUsed,false);assert.deepEqual([...new Uint8Array(await fetchedRequest.arrayBuffer())],[...template]);}
+  if(mode==='failure'||mode==='navigation'){assert.equal(Request.prototype.open,originalOpen);assert.equal(Request.prototype.send,originalSend);assert.equal(window.fetch,originalFetch);assert.equal(paused,mode==='navigation'?0:1);return;}
   assert.equal(result.capture.url,url);assert.deepEqual(result.capture.body,[...template]);assert.equal(sent,1);assert.equal(paused,1);
   assert.equal(Request.prototype.open,originalOpen);assert.equal(Request.prototype.send,originalSend);assert.equal(window.fetch,originalFetch);
   assert.equal(result.previewUrl,`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);

@@ -1,5 +1,5 @@
-/** Playback changes are confined to an owned frame. Helpers survive Chrome serialization. */
-export async function readYoutubePage(videoId, capturePlayback, owner) {
+/** Captures in an owned frame or restores an existing player. Helpers survive serialization. */
+export async function readYoutubePage(videoId, capturePlayback, owner, restorePlayback = false) {
     if (owner && window.name !== owner && location.hash !== `#${owner}`)
         return undefined;
     const empty = (error) => ({ videoId, title: "", previewUrl: "", formats: [], error });
@@ -184,6 +184,7 @@ export async function readYoutubePage(videoId, capturePlayback, owner) {
     const video = document.querySelector("#movie_player video");
     if (!video)
         return empty("YouTubeの動画プレイヤーを読み取れませんでした。");
+    const playback = { time: video.currentTime, muted: video.muted, volume: video.volume, rate: video.playbackRate, paused: video.paused };
     try {
         XMLHttpRequest.prototype.open = open;
         XMLHttpRequest.prototype.send = send;
@@ -209,15 +210,37 @@ export async function readYoutubePage(videoId, capturePlayback, owner) {
         return { ...evidence, capture };
     }
     finally {
-        video.pause();
         const currentVideo = document.querySelector("#movie_player video");
-        if (currentVideo && currentVideo !== video)
-            currentVideo.pause();
+        if (!restorePlayback || location.href === initialUrl) {
+            video.pause();
+            if (currentVideo && currentVideo !== video)
+                currentVideo.pause();
+        }
         if (XMLHttpRequest.prototype.open === open)
             XMLHttpRequest.prototype.open = originalOpen;
         if (XMLHttpRequest.prototype.send === send)
             XMLHttpRequest.prototype.send = originalSend;
         if (window.fetch === fetcher)
             window.fetch = originalFetch;
+        if (restorePlayback && location.href === initialUrl) {
+            const restored = currentVideo ?? video;
+            restored.muted = playback.muted;
+            restored.volume = playback.volume;
+            restored.playbackRate = playback.rate;
+            const player = document.getElementById("movie_player");
+            try {
+                if (player?.seekTo)
+                    player.seekTo(playback.time, true);
+                else
+                    restored.currentTime = playback.time;
+            }
+            catch { /* Navigation/loading may prevent seeking. */ }
+            if (playback.muted)
+                player?.mute?.();
+            else
+                player?.unMute?.();
+            if (!playback.paused)
+                void restored.play().catch(() => { });
+        }
     }
 }

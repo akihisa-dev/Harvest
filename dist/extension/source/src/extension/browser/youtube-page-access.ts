@@ -13,7 +13,7 @@ export async function acquireYoutubeEvidence(videoId:string, capture:boolean, si
   const web=tabs.filter(tab=>tab.id!==undefined&&tab.url?.startsWith("https://"));
   const existing=web.filter(tab=>{try{const url=new URL(tab.url!);return url.origin==="https://www.youtube.com"&&url.pathname==="/watch"&&youtubeVideoId(url.href)===videoId;}catch{return false;}})
     .sort((a,b)=>Number(Boolean(b.active))-Number(Boolean(a.active)))[0];
-  if(!capture&&existing?.id!==undefined)return readExistingYoutube(existing.id,videoId,signal);
+  if(existing?.id!==undefined)return readExistingYoutube(existing.id,videoId,signal,capture);
   const tab=web.find(tab=>{try{return new URL(tab.url!).origin==="https://www.youtube.com";}catch{return false;}})
     ??web.find(tab=>tab.active)??web[0];
   if(tab?.id===undefined)throw new Error("YouTubeの取得にはWebページを開いたタブが必要です。");
@@ -64,8 +64,8 @@ export async function acquireYoutubeEvidence(videoId:string, capture:boolean, si
   }
 }
 
-/** Analysis of an open watch page is read-only and creates no player/frame. */
-async function readExistingYoutube(tabId:number,videoId:string,signal?:AbortSignal):Promise<YoutubePageEvidence>{
+/** Reuse an open player; capture restores playback and never loads a nested watch page. */
+async function readExistingYoutube(tabId:number,videoId:string,signal?:AbortSignal,capture=false):Promise<YoutubePageEvidence>{
   let timeout:ReturnType<typeof setTimeout>|undefined,reject!:(error:Error)=>void;
   const interrupted=new Promise<never>((_,no)=>{reject=no;});
   let stopped=false;
@@ -73,11 +73,11 @@ async function readExistingYoutube(tabId:number,videoId:string,signal?:AbortSign
   const abort=()=>stop(new Error("ページの解析を終了しました。"));
   const removed=(id:number)=>{if(id===tabId)stop(new Error("解析中のタブが閉じられました。"));};
   signal?.addEventListener("abort",abort,{once:true});chrome.tabs.onRemoved.addListener(removed);
-  timeout=setTimeout(()=>stop(new Error("YouTubeの動画情報の読み取りが時間切れになりました。")),20000);
+  timeout=setTimeout(()=>stop(new Error("YouTubeの動画情報の読み取りが時間切れになりました。")),capture?45000:20000);
   try{
     if(signal?.aborted)abort();
     const operation=(async()=>{
-      const [entry]=await chrome.scripting.executeScript({target:{tabId},world:"MAIN",func:readYoutubePage,args:[videoId,false]});
+      const [entry]=await chrome.scripting.executeScript({target:{tabId},world:"MAIN",func:readYoutubePage,args:capture?[videoId,true,"",true]:[videoId,false]});
       if(stopped)throw new Error("ページの解析を終了しました。");
       if(!entry?.documentId||!isYoutubePageEvidence(entry.result)||entry.result.videoId!==videoId)throw new Error("YouTubeの動画情報を確認できませんでした。");
       if(entry.result.error)throw new Error(entry.result.error);
