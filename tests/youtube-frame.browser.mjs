@@ -14,7 +14,7 @@ for(const host of [`https://www.youtube.com/watch?v=${videoId}&t=14s`,'https://e
   const native=f=>({itag:f.itag,lastModified:f.lastModified,mimeType:f.mimeType,contentLength:String(f.contentLength),approxDurationMs:String(f.durationMs),height:f.height,fps:f.fps,bitrate:f.bitrate,...(f.defaultAudio?{audioTrack:{id:f.language,audioIsDefault:true}}:{})});
   const response={playerConfig:{mediaCommonConfig:{mediaUstreamerRequestConfig:{videoPlaybackUstreamerConfig:'AQID'}}},videoDetails:{videoId,title:'fixture'},playabilityStatus:{status:'OK'},streamingData:{adaptiveFormats:[native(video),native(audio)]}};
   await context.route('https://www.youtube.com/**',route=>{
-    if(!route.request().frame().parentFrame())return route.fulfill({contentType:'text/html',body:`<div id="movie_player"><video></video></div><script>window.playerCalls=0;const player=document.getElementById("movie_player");player.getPlayerResponse=()=>(${JSON.stringify(response)});player.mute=()=>{document.querySelector("video").muted=true;};player.unMute=()=>{document.querySelector("video").muted=false;};player.seekTo=time=>{window.restoredTime=time;};player.loadVideoById=()=>{window.playerCalls++;const request=new XMLHttpRequest();request.open("POST",${JSON.stringify(url)});request.send(new Uint8Array(${JSON.stringify([...template])}));};</script>`});
+    if(!route.request().frame().parentFrame())return route.fulfill({contentType:'text/html',body:`<div id="movie_player"><video></video></div><script>window.playerCalls=0;const player=document.getElementById("movie_player");player.getPlayerResponse=()=>(${JSON.stringify(response)});player.mute=()=>{document.querySelector("video").muted=true;};player.unMute=()=>{document.querySelector("video").muted=false;};player.seekTo=time=>{window.restoredTime=time;};player.loadVideoById=()=>{window.playerCalls++;const request=new XMLHttpRequest();request.open("POST",${JSON.stringify(url)});setTimeout(()=>request.send(new Uint8Array(${JSON.stringify([...template])})),200);};</script>`});
     return route.fulfill({contentType:'text/html',headers:{'x-frame-options':'SAMEORIGIN'},body:`<div id="movie_player"><video></video></div><script>
       const player=document.getElementById('movie_player');player.getPlayerResponse=()=>(${JSON.stringify(response)});player.mute=()=>{document.querySelector('video').muted=true;};
       player.loadVideoById=()=>{const request=new XMLHttpRequest();request.open('POST',${JSON.stringify(url)});request.send(new Uint8Array(${JSON.stringify([...template])}));};
@@ -40,13 +40,17 @@ for(const host of [`https://www.youtube.com/watch?v=${videoId}&t=14s`,'https://e
     assert.equal(await page.locator('iframe').count(),0,'解析だけではフレームも追加しない');
     assert.equal(await page.evaluate(()=>window.playerCalls),0);
   }
-  const result=await panel.evaluate(async videoId=>{
+  const result=await panel.evaluate(async ({videoId,duplicate})=>{
     const {acquireYoutubeEvidence}=await import(chrome.runtime.getURL('app/browser/youtube-page-access.js'));
     const before=await chrome.tabs.query({});
-    const evidence=await acquireYoutubeEvidence(videoId,true);
+    const results=await Promise.allSettled(Array.from({length:duplicate?2:1},()=>acquireYoutubeEvidence(videoId,true)));
+    const evidence=results.find(row=>row.status==='fulfilled')?.value;
+    const rejected=results.filter(row=>row.status==='rejected').map(row=>row.reason.message);
     const after=await chrome.tabs.query({});
-    return {evidence,before:before.map(t=>t.id),after:after.map(t=>t.id)};
-  },videoId);
+    return {evidence,rejected,before:before.map(t=>t.id),after:after.map(t=>t.id)};
+  },{videoId,duplicate:host.startsWith('https://www.youtube.com')});
+  assert.equal(result.rejected.length,host.startsWith('https://www.youtube.com')?1:0);
+  if(result.rejected.length)assert.match(result.rejected[0],/保存準備が続いて/);
   assert.equal(result.evidence.videoId,videoId);assert.deepEqual(result.evidence.capture.body,[...template]);
   assert.deepEqual(result.before,result.after);assert.equal(opened,0);assert.deepEqual(context.pages(),pages);assert.equal(page.url(),beforeUrl);
   assert.equal(await page.locator('iframe[id^="harvest-youtube-"]').count(),0);

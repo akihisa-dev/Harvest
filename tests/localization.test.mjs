@@ -245,6 +245,7 @@ for (const [language, expected] of [["ja", "ja"], ["ja-JP", "ja"], ["JA-jp", "ja
         ["保存するデータの形式を確認できません。", "errorMediaFormat"],
         ["JXLの変換結果が空です。", "errorJxlEncode"],
         ["ZIPのCRC確認に失敗しました。", "errorZipCreate"],
+        ["YouTubeの保存準備が続いています。少し待ってからもう一度保存してください。", "errorYoutubeBusy"],
       ]) assert.equal(localizeErrorMessage(message, "errorFileSave", true), t(key));
       assert.equal(localizeErrorMessage("Unknown native error", "errorFileSave", true), t("errorFileSave"));
       for (const count of [0, 1, 2]) {

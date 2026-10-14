@@ -1,12 +1,16 @@
 import type {YoutubePageEvidence} from "../contracts/youtube-contracts.js";
 
 /** Captures in an owned frame or restores an existing player. Helpers survive serialization. */
-export async function readYoutubePage(videoId: string, capturePlayback: boolean, owner?:string, restorePlayback=false): Promise<YoutubePageEvidence|undefined> {
+export async function readYoutubePage(videoId: string, capturePlayback: boolean, owner?:string, restorePlayback=false, requestOwner?:string): Promise<YoutubePageEvidence|undefined> {
   if(owner&&window.name!==owner&&location.hash!==`#${owner}`)return undefined;
   const empty=(error: string): YoutubePageEvidence=>({videoId,title:"",previewUrl:"",formats:[],error});
   const watch=location.pathname==="/watch"&&new URL(location.href).searchParams.get("v")===videoId;
   const embed=Boolean(owner)&&location.pathname===`/embed/${videoId}`;
   if(location.origin!=="https://www.youtube.com"||(!watch&&!embed))return owner?undefined:empty("YouTubeの対象動画を確認できませんでした。");
+  const controls=(window as unknown as Record<symbol,Map<string,{cancelled:boolean}>|undefined>)[Symbol.for("harvest.youtube.capture.controls")];
+  const control=requestOwner?controls?.get(requestOwner):undefined;
+  const cancelled=():boolean=>Boolean(requestOwner&&(!control||control.cancelled));
+  if(cancelled())return empty("ページの解析を終了しました。");
   const initialUrl=location.href;
   const record=(value: unknown): Record<string,unknown>|undefined=>value&&typeof value==="object"&&!Array.isArray(value)?value as Record<string,unknown>:undefined;
   const source=(): Record<string,unknown>|undefined=>{
@@ -17,6 +21,7 @@ export async function readYoutubePage(videoId: string, capturePlayback: boolean,
   const wait=():Promise<void>=>new Promise(resolve=>setTimeout(resolve,100));
   let response: Record<string,unknown>|undefined;
   while(performance.now()<deadline){
+    if(cancelled())return empty("ページの解析を終了しました。");
     if(location.href!==initialUrl)return empty("解析中にページが移動しました。もう一度解析してください。");
     response=source();
     if(record(response?.["videoDetails"])?.["videoId"]===videoId)break;
@@ -51,7 +56,7 @@ export async function readYoutubePage(videoId: string, capturePlayback: boolean,
   if(!capturePlayback)return evidence;
 
   let capture: YoutubePageEvidence["capture"];
-  // Recognize a usable, non-cold-start proof token without retaining arbitrary request fields.
+  // Keep a bounded native proof token; downstream responses validate authorization.
   const tokenLength=(data:Uint8Array,fieldId:number):Uint8Array|undefined=>{
     let offset=0;
     const integer=():number=>{let value=0,mul=1;for(let i=0;i<10&&offset<data.length;i++){const byte=data[offset++]!;value+=(byte&127)*mul;if(byte<128)return value;mul*=128;}throw new Error("Invalid wire");};
@@ -61,6 +66,7 @@ export async function readYoutubePage(videoId: string, capturePlayback: boolean,
   };
   const inspect=(url:string,body:unknown):void=>{
     try{
+      if(cancelled())return;
       const target=new URL(url,location.href);
       if(location.href!==initialUrl||target.protocol!=="https:"||!target.hostname.endsWith(".googlevideo.com")||target.pathname!=="/videoplayback"||target.searchParams.get("sabr")!=="1")return;
       const bytes=body instanceof ArrayBuffer?new Uint8Array(body):ArrayBuffer.isView(body)?new Uint8Array(body.buffer,body.byteOffset,body.byteLength):undefined;
@@ -113,7 +119,13 @@ export async function readYoutubePage(videoId: string, capturePlayback: boolean,
   };
   const video=document.querySelector<HTMLVideoElement>("#movie_player video");
   if(!video)return empty("YouTubeの動画プレイヤーを読み取れませんでした。");
+  // Injected readers can outlive their cancelled caller. Never nest wrappers or
+  // let one capture restore playback while another capture is still running.
+  const captureKey=Symbol.for("harvest.youtube.capture");
+  const captures=window as unknown as Record<symbol,boolean|undefined>;
+  if(captures[captureKey])return empty("YouTubeの保存準備が続いています。少し待ってからもう一度保存してください。");
   const playback={time:video.currentTime,muted:video.muted,volume:video.volume,rate:video.playbackRate,paused:video.paused};
+  captures[captureKey]=true;
   try{
     XMLHttpRequest.prototype.open=open;XMLHttpRequest.prototype.send=send;window.fetch=fetcher;
     video.muted=true;
@@ -123,25 +135,28 @@ export async function readYoutubePage(videoId: string, capturePlayback: boolean,
     if(player?.loadVideoById&&player.mute){player.mute();player.loadVideoById(videoId,0);}
     else void video.play().catch(()=>{});
     const captureDeadline=performance.now()+15000;
-    while(performance.now()<captureDeadline&&!capture){if(location.href!==initialUrl)return empty("解析中にページが移動しました。もう一度解析してください。");await wait();}
+    while(performance.now()<captureDeadline&&!capture){if(cancelled())return empty("ページの解析を終了しました。");if(location.href!==initialUrl)return empty("解析中にページが移動しました。もう一度解析してください。");await wait();}
     if(!capture)return empty("YouTubeの取得用認証を読み取れませんでした。もう一度保存をお試しください。");
     return {...evidence,capture};
   }finally{
-    const currentVideo=document.querySelector<HTMLVideoElement>("#movie_player video");
-    if(!restorePlayback||location.href===initialUrl){
-      video.pause();
-      if(currentVideo&&currentVideo!==video)currentVideo.pause();
-    }
+    // Restore wrappers and release ownership before fallible player operations.
     if(XMLHttpRequest.prototype.open===open)XMLHttpRequest.prototype.open=originalOpen;
     if(XMLHttpRequest.prototype.send===send)XMLHttpRequest.prototype.send=originalSend;
     if(window.fetch===fetcher)window.fetch=originalFetch;
+    delete captures[captureKey];
+    const attempt=(action:()=>void):void=>{try{action();}catch{/* A detached/loading player must not prevent cleanup. */}};
+    const currentVideo=document.querySelector<HTMLVideoElement>("#movie_player video");
+    if(!restorePlayback||location.href===initialUrl){
+      attempt(()=>video.pause());
+      if(currentVideo&&currentVideo!==video)attempt(()=>currentVideo.pause());
+    }
     if(restorePlayback&&location.href===initialUrl){
       const restored=currentVideo??video;
       restored.muted=playback.muted;restored.volume=playback.volume;restored.playbackRate=playback.rate;
       const player=document.getElementById("movie_player") as HTMLElement&{seekTo?:(time:number,allowSeekAhead:boolean)=>void;mute?:()=>void;unMute?:()=>void}|null;
       try{if(player?.seekTo)player.seekTo(playback.time,true);else restored.currentTime=playback.time;}catch{/* Navigation/loading may prevent seeking. */}
-      if(playback.muted)player?.mute?.();else player?.unMute?.();
-      if(!playback.paused)void restored.play().catch(()=>{});
+      attempt(()=>{if(playback.muted)player?.mute?.();else player?.unMute?.();});
+      if(!playback.paused)attempt(()=>{void restored.play().catch(()=>{});});
     }
   }
 }

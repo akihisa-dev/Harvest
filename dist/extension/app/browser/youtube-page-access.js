@@ -1,8 +1,9 @@
 import { selectYoutubeFormats, youtubeVideoId, youtubeVideoUrl } from "../../core/youtube.js";
 import { readYoutubePage } from "../content/youtube-page.js";
 import { manageYoutubeFrame } from "../content/youtube-frame.js";
+import { controlYoutubeCapture } from "../content/youtube-capture-control.js";
 import { isYoutubePageEvidence } from "../contracts/youtube-contracts.js";
-/** Own a disposable frame, leaving the host tab and its player untouched. */
+/** Reuse a matching watch page or own a disposable frame without opening tabs. */
 export async function acquireYoutubeEvidence(videoId, capture, signal) {
     signal?.throwIfAborted();
     youtubeVideoUrl(videoId);
@@ -87,15 +88,35 @@ export async function acquireYoutubeEvidence(videoId, capture, signal) {
         signal?.removeEventListener("abort", abort);
         chrome.tabs.onRemoved.removeListener(removed);
         chrome.tabs.onUpdated.removeListener(moved);
-        // Wait for creation even after cancellation so a late frame is removed too.
+        const cleanup = async () => {
+            try {
+                if (parentDocument)
+                    await chrome.scripting.executeScript({ target: { tabId, documentIds: [parentDocument] }, func: manageYoutubeFrame, args: [videoId, owner, true] });
+            }
+            catch { /* The owning document may already be gone. */ }
+        };
+        // A stuck Chrome request must not defeat cancellation or the read deadline.
+        // Creation that finishes later still owns a cleanup continuation.
         if (!parentDocument)
-            await operation.catch(() => undefined);
-        if (parentDocument)
-            await chrome.scripting.executeScript({ target: { tabId, documentIds: [parentDocument] }, func: manageYoutubeFrame, args: [videoId, owner, true] }).catch(() => undefined);
+            void operation.then(cleanup, cleanup);
+        else
+            await new Promise(resolve => {
+                const timer = setTimeout(resolve, 1000);
+                void cleanup().finally(() => { clearTimeout(timer); resolve(); });
+            });
     }
 }
 /** Reuse an open player; capture restores playback and never loads a nested watch page. */
 async function readExistingYoutube(tabId, videoId, signal, capture = false) {
+    const requestOwner = capture ? `harvest-youtube-${crypto.randomUUID()}` : undefined;
+    let captureDocument;
+    const release = async () => {
+        try {
+            if (requestOwner && captureDocument)
+                await chrome.scripting.executeScript({ target: { tabId, documentIds: [captureDocument] }, world: "MAIN", func: controlYoutubeCapture, args: [requestOwner, false] });
+        }
+        catch { /* A closed or replaced document needs no cancellation. */ }
+    };
     let timeout, reject;
     const interrupted = new Promise((_, no) => { reject = no; });
     let stopped = false;
@@ -110,7 +131,19 @@ async function readExistingYoutube(tabId, videoId, signal, capture = false) {
         if (signal?.aborted)
             abort();
         const operation = (async () => {
-            const [entry] = await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: readYoutubePage, args: capture ? [videoId, true, "", true] : [videoId, false] });
+            if (stopped)
+                throw new Error("ページの解析を終了しました。");
+            if (requestOwner) {
+                const [ready] = await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: controlYoutubeCapture, args: [requestOwner, true] });
+                captureDocument = ready?.documentId;
+                if (stopped) {
+                    void release();
+                    throw new Error("ページの解析を終了しました。");
+                }
+                if (!captureDocument || youtubeVideoId(String(ready?.result)) !== videoId)
+                    throw new Error("解析中にページが移動しました。もう一度解析してください。");
+            }
+            const [entry] = await chrome.scripting.executeScript({ target: captureDocument ? { tabId, documentIds: [captureDocument] } : { tabId }, world: "MAIN", func: readYoutubePage, args: requestOwner ? [videoId, true, "", true, requestOwner] : [videoId, false] });
             if (stopped)
                 throw new Error("ページの解析を終了しました。");
             if (!entry?.documentId || !isYoutubePageEvidence(entry.result) || entry.result.videoId !== videoId)
@@ -130,6 +163,7 @@ async function readExistingYoutube(tabId, videoId, signal, capture = false) {
             clearTimeout(timeout);
         signal?.removeEventListener("abort", abort);
         chrome.tabs.onRemoved.removeListener(removed);
+        void release();
     }
 }
 export async function scanYoutube(videoId, signal) {

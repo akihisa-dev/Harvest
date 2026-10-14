@@ -1,5 +1,5 @@
 /** Captures in an owned frame or restores an existing player. Helpers survive serialization. */
-export async function readYoutubePage(videoId, capturePlayback, owner, restorePlayback = false) {
+export async function readYoutubePage(videoId, capturePlayback, owner, restorePlayback = false, requestOwner) {
     if (owner && window.name !== owner && location.hash !== `#${owner}`)
         return undefined;
     const empty = (error) => ({ videoId, title: "", previewUrl: "", formats: [], error });
@@ -7,6 +7,11 @@ export async function readYoutubePage(videoId, capturePlayback, owner, restorePl
     const embed = Boolean(owner) && location.pathname === `/embed/${videoId}`;
     if (location.origin !== "https://www.youtube.com" || (!watch && !embed))
         return owner ? undefined : empty("YouTubeの対象動画を確認できませんでした。");
+    const controls = window[Symbol.for("harvest.youtube.capture.controls")];
+    const control = requestOwner ? controls?.get(requestOwner) : undefined;
+    const cancelled = () => Boolean(requestOwner && (!control || control.cancelled));
+    if (cancelled())
+        return empty("ページの解析を終了しました。");
     const initialUrl = location.href;
     const record = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
     const source = () => {
@@ -22,6 +27,8 @@ export async function readYoutubePage(videoId, capturePlayback, owner, restorePl
     const wait = () => new Promise(resolve => setTimeout(resolve, 100));
     let response;
     while (performance.now() < deadline) {
+        if (cancelled())
+            return empty("ページの解析を終了しました。");
         if (location.href !== initialUrl)
             return empty("解析中にページが移動しました。もう一度解析してください。");
         response = source();
@@ -72,7 +79,7 @@ export async function readYoutubePage(videoId, capturePlayback, owner, restorePl
     if (!capturePlayback)
         return evidence;
     let capture;
-    // Recognize a usable, non-cold-start proof token without retaining arbitrary request fields.
+    // Keep a bounded native proof token; downstream responses validate authorization.
     const tokenLength = (data, fieldId) => {
         let offset = 0;
         const integer = () => { let value = 0, mul = 1; for (let i = 0; i < 10 && offset < data.length; i++) {
@@ -108,6 +115,8 @@ export async function readYoutubePage(videoId, capturePlayback, owner, restorePl
     };
     const inspect = (url, body) => {
         try {
+            if (cancelled())
+                return;
             const target = new URL(url, location.href);
             if (location.href !== initialUrl || target.protocol !== "https:" || !target.hostname.endsWith(".googlevideo.com") || target.pathname !== "/videoplayback" || target.searchParams.get("sabr") !== "1")
                 return;
@@ -197,7 +206,14 @@ export async function readYoutubePage(videoId, capturePlayback, owner, restorePl
     const video = document.querySelector("#movie_player video");
     if (!video)
         return empty("YouTubeの動画プレイヤーを読み取れませんでした。");
+    // Injected readers can outlive their cancelled caller. Never nest wrappers or
+    // let one capture restore playback while another capture is still running.
+    const captureKey = Symbol.for("harvest.youtube.capture");
+    const captures = window;
+    if (captures[captureKey])
+        return empty("YouTubeの保存準備が続いています。少し待ってからもう一度保存してください。");
     const playback = { time: video.currentTime, muted: video.muted, volume: video.volume, rate: video.playbackRate, paused: video.paused };
+    captures[captureKey] = true;
     try {
         XMLHttpRequest.prototype.open = open;
         XMLHttpRequest.prototype.send = send;
@@ -214,6 +230,8 @@ export async function readYoutubePage(videoId, capturePlayback, owner, restorePl
             void video.play().catch(() => { });
         const captureDeadline = performance.now() + 15000;
         while (performance.now() < captureDeadline && !capture) {
+            if (cancelled())
+                return empty("ページの解析を終了しました。");
             if (location.href !== initialUrl)
                 return empty("解析中にページが移動しました。もう一度解析してください。");
             await wait();
@@ -223,18 +241,24 @@ export async function readYoutubePage(videoId, capturePlayback, owner, restorePl
         return { ...evidence, capture };
     }
     finally {
-        const currentVideo = document.querySelector("#movie_player video");
-        if (!restorePlayback || location.href === initialUrl) {
-            video.pause();
-            if (currentVideo && currentVideo !== video)
-                currentVideo.pause();
-        }
+        // Restore wrappers and release ownership before fallible player operations.
         if (XMLHttpRequest.prototype.open === open)
             XMLHttpRequest.prototype.open = originalOpen;
         if (XMLHttpRequest.prototype.send === send)
             XMLHttpRequest.prototype.send = originalSend;
         if (window.fetch === fetcher)
             window.fetch = originalFetch;
+        delete captures[captureKey];
+        const attempt = (action) => { try {
+            action();
+        }
+        catch { /* A detached/loading player must not prevent cleanup. */ } };
+        const currentVideo = document.querySelector("#movie_player video");
+        if (!restorePlayback || location.href === initialUrl) {
+            attempt(() => video.pause());
+            if (currentVideo && currentVideo !== video)
+                attempt(() => currentVideo.pause());
+        }
         if (restorePlayback && location.href === initialUrl) {
             const restored = currentVideo ?? video;
             restored.muted = playback.muted;
@@ -248,12 +272,12 @@ export async function readYoutubePage(videoId, capturePlayback, owner, restorePl
                     restored.currentTime = playback.time;
             }
             catch { /* Navigation/loading may prevent seeking. */ }
-            if (playback.muted)
+            attempt(() => { if (playback.muted)
                 player?.mute?.();
             else
-                player?.unMute?.();
+                player?.unMute?.(); });
             if (!playback.paused)
-                void restored.play().catch(() => { });
+                attempt(() => { void restored.play().catch(() => { }); });
         }
     }
 }

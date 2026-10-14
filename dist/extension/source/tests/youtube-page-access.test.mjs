@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {scanYoutube,acquireYoutubeEvidence} from '../dist/extension/app/browser/youtube-page-access.js';
 import {replaceWire,encodeBytes} from '../dist/extension/core/youtube-wire.js';
+import {controlYoutubeCapture} from '../dist/extension/app/content/youtube-capture-control.js';
 import {readYoutubePage} from '../dist/extension/app/content/youtube-page.js';
 import {scanTab,scanUrl} from '../dist/extension/app/browser/page-access.js';
 import {videoId,video,audio,template,url} from './support/youtube-fixture.mjs';
@@ -14,7 +15,7 @@ function chromeFixture(t,behavior){
     query:async()=>[{id:8,url:'https://www.youtube.com/',active:true}],create:async()=>{throw new Error('Must not open a tab');},remove:async()=>{throw new Error('Must not close a tab');},onRemoved,onUpdated,get:async()=>({status:'complete',url:address})},
     scripting:{executeScript:async request=>{
       if(request.func.name==='manageYoutubeFrame'){if(request.args[2])removed.push(request.target.tabId);return [{documentId:'host',result:address}];}
-      if(request.target.documentIds)return [{documentId:request.target.documentIds[0],result:true}];
+      if(request.target.documentIds&&request.func.name!=='readYoutubePage'&&request.func.name!=='controlYoutubeCapture')return [{documentId:request.target.documentIds[0],result:true}];
       const rows=await behavior(request);
       if(request.target.tabId===8&&!request.target.allFrames)return rows.map(row=>({...row,documentId:['doc','temporary'].includes(row.documentId)?'host':row.documentId}));
       return rows;
@@ -66,6 +67,7 @@ for(const outcome of ['create-abort','frame-timeout','create-failure'])test(`取
   if(outcome==='create-abort'){controller.abort();created();}
   if(outcome==='frame-timeout')t.mock.timers.tick(90000);
   await rejected;
+  for(let i=0;i<20;i++)await Promise.resolve();
   assert.deepEqual(fixture.removed,outcome==='create-failure'?[]:[8]);assert.equal(fixture.onRemoved.listeners.size,0);assert.equal(fixture.onUpdated.listeners.size,0);
 });
 for(const requested of [false,true])for(const outcome of ['success','navigation','reload','closed'])test(`現在のYouTubeタブの文書を解析前後に確認する: requested=${requested}, ${outcome}`,async t=>{
@@ -108,14 +110,14 @@ for(const outcome of ['success','shape','navigation','closed','abort'])test(`You
 test('開いている動画の保存ではフレームを作成せず、再生状態の復元を指定する',async t=>{
   let fixture;fixture=chromeFixture(t,async request=>{
     assert.notEqual(request.func.name,'manageYoutubeFrame');assert.equal(request.target.allFrames,undefined);
-    if(request.func.name==='readYoutubePage'){assert.deepEqual(request.args,[videoId,true,'',true]);return [{documentId:'doc',result:{videoId,title:'open',previewUrl:'',formats:[video,audio],capture:{url,body:[...template]}}}];}
+    if(request.func.name==='readYoutubePage'){assert.deepEqual(request.args.slice(0,4),[videoId,true,'',true]);assert.match(request.args[4],/^harvest-youtube-/);return [{documentId:'doc',result:{videoId,title:'open',previewUrl:'',formats:[video,audio],capture:{url,body:[...template]}}}];}
     return [{documentId:'doc',result:fixture.address}];
   });
   chrome.tabs.query=async()=>[{id:8,url:fixture.address,active:true}];
   assert.ok((await acquireYoutubeEvidence(videoId,true)).capture);assert.deepEqual(fixture.removed,[]);
 });
 
-for(const mode of ['frame','playing','paused','failure','navigation'])for(const bodyKind of (mode==='navigation'?['buffer']:['buffer','blob','request']))test(`先読み済みでも監視後の再読み込みから認証を読み取り、元要求を維持する: ${bodyKind}, mode=${mode}`,async t=>{
+for(const mode of ['frame','playing','paused','failure','navigation','pause-error','cancel'])for(const bodyKind of (['navigation','cancel'].includes(mode)?['buffer']:['buffer','blob','request']))test(`先読み済みでも監視後の再読み込みから認証を読み取り、元要求を維持する: ${bodyKind}, mode=${mode}`,async t=>{
   const restore=mode!=='frame',shouldRestore=restore&&mode!=='navigation';
   const previous={location:globalThis.location,document:globalThis.document,window:globalThis.window,XMLHttpRequest:globalThis.XMLHttpRequest};
   t.after(()=>{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}});
@@ -125,29 +127,83 @@ for(const mode of ['frame','playing','paused','failure','navigation'])for(const 
   class Request {open(){}send(){sent++;}}
   let fetchedRequest;
   const originalOpen=Request.prototype.open,originalSend=Request.prototype.send,originalFetch=input=>{fetchedRequest=input;sent++;return Promise.resolve({});};
-  globalThis.XMLHttpRequest=Request;globalThis.window={fetch:originalFetch};
+  globalThis.XMLHttpRequest=Request;globalThis.window={fetch:originalFetch,setTimeout};
   const native=f=>({itag:f.itag,lastModified:f.lastModified,mimeType:f.mimeType,approxDurationMs:String(f.durationMs),height:f.height,fps:f.fps,bitrate:f.bitrate,contentLength:String(f.contentLength),...(f.defaultAudio?{audioTrack:{id:f.language,audioIsDefault:true}}:{})});
   const response={playerConfig:{mediaCommonConfig:{mediaUstreamerRequestConfig:{videoPlaybackUstreamerConfig:'AQID'}}},videoDetails:{videoId,title:'fixture',thumbnail:{thumbnails:[{url:`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}]}},playabilityStatus:{status:'OK'},streamingData:{adaptiveFormats:[native(video),native(audio)]}};
-  let reloaded=0,muted=0,unmuted=0,played=0,seek;
+  let reloaded=0,muted=0,unmuted=0,played=0,seek,overlap;
   const player={getPlayerResponse:()=>response,mute(){muted++;},unMute(){unmuted++;},seekTo(time){seek=time;},loadVideoById(id,start){
     assert.equal(id,videoId);assert.equal(start,0);assert.equal(muted,1);reloaded++;
     if(mode==='failure')throw new Error('Native load failed');
+    if(mode==='cancel'){controlYoutubeCapture('unit-capture',false);return;}
+    overlap=readYoutubePage(videoId,true,'',restore);
     const recommendation=new Request();recommendation.open('POST',url);recommendation.send(replaceWire(template,new Map([[5,[encodeBytes(5,new Uint8Array([4,5,6]))]]])));
     if(bodyKind==='request'){void window.fetch(new globalThis.Request(url,{method:'POST',body:template}));}
     else {const request=new Request();request.open('POST',url);request.send(bodyKind==='blob'?new Blob([template]):template);}
     if(mode==='navigation')location.href='https://www.youtube.com/watch?v=01234567890';
-  }},element={currentTime:14,volume:0.4,playbackRate:1.5,paused:mode==='paused',muted:mode==='paused',play(){played++;return Promise.resolve();},pause(){paused++;}};
+  }},element={currentTime:14,volume:0.4,playbackRate:1.5,paused:mode==='paused',muted:mode==='paused',play(){played++;return Promise.resolve();},pause(){paused++;if(mode==='pause-error')throw Error('Detached player');}};
   globalThis.document={title:'fixture',getElementById:()=>player,querySelector:()=>element};
+  if(mode==='cancel')controlYoutubeCapture('unit-capture',true);
   let result;
   if(mode==='failure')await assert.rejects(readYoutubePage(videoId,true,'',restore),/Native load failed/);
-  else result=await readYoutubePage(videoId,true,'',restore);
+  else result=await readYoutubePage(videoId,true,'',restore,mode==='cancel'?'unit-capture':undefined);
+  if(overlap)assert.match((await overlap).error,/保存準備が続いて/);
+  assert.equal(window[Symbol.for('harvest.youtube.capture')],undefined);
   assert.equal(reloaded,1);assert.equal(muted,mode==='paused'?2:1);
   assert.equal(played,shouldRestore&&mode!=='paused'?1:0);assert.equal(unmuted,shouldRestore&&mode!=='paused'?1:0);assert.equal(seek,shouldRestore?14:undefined);assert.equal(element.muted,!shouldRestore||mode==='paused');assert.equal(element.volume,0.4);assert.equal(element.playbackRate,1.5);
   if(fetchedRequest){assert.equal(fetchedRequest.bodyUsed,false);assert.deepEqual([...new Uint8Array(await fetchedRequest.arrayBuffer())],[...template]);}
+  if(mode==='cancel'){assert.match(result.error,/終了/);assert.equal(window.fetch,originalFetch);assert.equal(Request.prototype.open,originalOpen);assert.equal(Request.prototype.send,originalSend);assert.equal(sent,0);return;}
   if(mode==='failure'||mode==='navigation'){assert.equal(Request.prototype.open,originalOpen);assert.equal(Request.prototype.send,originalSend);assert.equal(window.fetch,originalFetch);assert.equal(paused,mode==='navigation'?0:1);return;}
   assert.equal(result.capture.url,url);assert.deepEqual(result.capture.body,[...template]);assert.equal(sent,2);assert.equal(paused,1);
   assert.equal(Request.prototype.open,originalOpen);assert.equal(Request.prototype.send,originalSend);assert.equal(window.fetch,originalFetch);
   assert.equal(result.previewUrl,`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
   response.videoDetails.isLive=true;
   assert.match((await readYoutubePage(videoId,true)).error,/ライブ/);assert.equal(sent,2);
+});
+
+for(const pending of ['creation','removal'])test(`フレームの${pending}が応答しなくても中止が完了し、遅い作成結果も解放する`,{timeout:2000},async t=>{
+  const controller=new AbortController(),fixture=chromeFixture(t,async()=>new Promise(()=>{}));
+  const execute=chrome.scripting.executeScript;let finish;
+  if(pending==='removal')t.mock.timers.enable({apis:['setTimeout']});
+  chrome.scripting.executeScript=async request=>{
+    if(request.func.name==='manageYoutubeFrame'&&!request.args[2]&&pending==='creation')return new Promise(resolve=>{finish=()=>{void execute(request).then(resolve);};});
+    const result=await execute(request);
+    if(request.func.name==='manageYoutubeFrame'&&request.args[2]&&pending==='removal')return new Promise(resolve=>{finish=()=>resolve(result);});
+    return result;
+  };
+  const work=acquireYoutubeEvidence(videoId,false,controller.signal);
+  const rejected=assert.rejects(work,/終了/);
+  for(let i=0;i<20;i++)await Promise.resolve();
+  controller.abort();
+  for(let i=0;i<20;i++)await Promise.resolve();
+  if(pending==='removal')t.mock.timers.tick(1000);
+  await rejected;
+  assert.equal(fixture.onRemoved.listeners.size,0);assert.equal(fixture.onUpdated.listeners.size,0);
+  finish();
+  for(let i=0;i<20;i++)await Promise.resolve();
+  assert.deepEqual(fixture.removed,[8]);
+});
+
+for(const state of ['cancelled','missing'])test(`中止済みの遅い注入ではプレイヤーに触れない: ${state}`,async t=>{
+  const previous={window:globalThis.window,document:globalThis.document,location:globalThis.location};
+  t.after(()=>{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}});
+  globalThis.window={setTimeout};
+  globalThis.document={getElementById(){throw Error('Must not read or alter the player');}};
+  globalThis.location={origin:'https://www.youtube.com',pathname:'/watch',href:`https://www.youtube.com/watch?v=${videoId}`};
+  if(state==='cancelled'){controlYoutubeCapture('late-job',true);controlYoutubeCapture('late-job',false);}
+  const result=await readYoutubePage(videoId,true,'',true,'late-job');
+  assert.match(result.error,/終了/);assert.equal(result.capture,undefined);
+  assert.equal(window[Symbol.for('harvest.youtube.capture.controls')],undefined);
+});
+
+test('動画情報を待つ間の中止では、その後に再生操作を開始しない',{timeout:1000},async t=>{
+  const previous={window:globalThis.window,document:globalThis.document,location:globalThis.location};
+  t.after(()=>{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}});
+  globalThis.window={setTimeout};
+  globalThis.document={getElementById:()=>({getPlayerResponse:()=>undefined}),querySelector(){throw Error('Must not begin playback capture');}};
+  globalThis.location={origin:'https://www.youtube.com',pathname:'/watch',href:`https://www.youtube.com/watch?v=${videoId}`};
+  controlYoutubeCapture('waiting-job',true);
+  const pending=readYoutubePage(videoId,true,'',true,'waiting-job');
+  controlYoutubeCapture('waiting-job',false);
+  assert.match((await pending).error,/終了/);
+  assert.equal(window[Symbol.for('harvest.youtube.capture.controls')],undefined);
 });
