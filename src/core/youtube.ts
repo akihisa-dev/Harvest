@@ -5,6 +5,12 @@ export interface YoutubeSource {
   readonly quality: string;
 }
 
+/** Track-specific endpoints; legitimate video/audio durations need not match. */
+export interface YoutubeTrackDurations {
+  readonly videoMs: number;
+  readonly audioMs: number;
+}
+
 export function youtubeVideoId(value: string): string | null {
   try {
     const url = new URL(value);

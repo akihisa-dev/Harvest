@@ -1,8 +1,9 @@
 import {BlobSource,BufferTarget,EncodedAudioPacketSource,EncodedPacketSink,EncodedVideoPacketSource,Input,MP4,Mp4OutputFormat,Output} from "harvest-vendor-mediabunny";
 import {hasCompleteMp4Boxes} from "../../core/original-media-structure.js";
+import type {YoutubeTrackDurations} from "../../core/youtube.js";
 
 /** Copy encoded AVC/AAC packets into one MP4, preserving timestamps and avoiding recompression. */
-export async function muxYoutube(video:Blob,audio:Blob,durationMs:number,maxBytes:number):Promise<Blob>{
+export async function muxYoutube(video:Blob,audio:Blob,durations:YoutubeTrackDurations,maxBytes:number):Promise<Blob>{
   if(video.size+audio.size>maxBytes)throw new Error("YouTube動画が保存容量の上限を超えています。");
   for(const blob of [video,audio])if(!hasCompleteMp4Boxes(new Uint8Array(await blob.arrayBuffer())))throw new Error("YouTube動画の分割データが不完全または未対応です。");
   const inputs=[video,audio].map(blob=>new Input({formats:[MP4],source:new BlobSource(blob)}));
@@ -18,6 +19,7 @@ export async function muxYoutube(video:Blob,audio:Blob,durationMs:number,maxByte
     const tracks=[v,a];
     for(let index=0;index<tracks.length;index++){
       const track=tracks[index]!,sink=new EncodedPacketSink(track);
+      const durationMs=index===0?durations.videoMs:durations.audioMs;
       let previous:object|undefined,count=0,end=0,start=Infinity;
       for await(const metadata of sink.packets(undefined,undefined,{metadataOnly:true})){
         const packet=previous?await sink.getNextPacket(previous):await sink.getFirstPacket();

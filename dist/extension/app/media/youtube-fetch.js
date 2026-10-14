@@ -22,7 +22,7 @@ function delay(ms, signal) {
             abort();
     });
 }
-export function prepareYoutubeMp4(video, audio, durationMs, signal) {
+export function prepareYoutubeMp4(video, audio, durations, signal) {
     checkCancelled(signal);
     return new Promise((resolve, reject) => {
         const worker = new Worker(new URL("../workers/youtube-mux-worker.js", import.meta.url), { type: "module" });
@@ -48,7 +48,7 @@ export function prepareYoutubeMp4(video, audio, durationMs, signal) {
             return;
         }
         try {
-            worker.postMessage({ video, audio, durationMs, maxBytes: MAX_IMAGE_BYTES });
+            worker.postMessage({ video, audio, durations, maxBytes: MAX_IMAGE_BYTES });
         }
         catch {
             finish(new Error("YouTube動画の映像と音声をまとめられませんでした。"));
@@ -69,12 +69,12 @@ export async function fetchYoutubeVideo(source, signal) {
                 throw new Error("YouTube動画の画質情報が変わりました。もう一度解析してください。");
             const session = new YoutubeSabrSession(source.videoId, evidence.capture.url, new Uint8Array(evidence.capture.body), video, audio, MAX_IMAGE_BYTES);
             const started = performance.now();
-            let stalled = 0, totalTransferred = 0;
+            let lastProgressAt = started, totalTransferred = 0;
             for (let request = 0; request < 2048 && !session.complete; request++) {
                 checkCancelled(signal);
                 if (performance.now() - started > 120000)
                     throw new Error("メディアの取得がタイムアウトしました。");
-                const before = session.downloadedBytes, endpoint = new URL(youtubeStreamingUrl(session.url));
+                const before = session.receivedBytes, endpoint = new URL(youtubeStreamingUrl(session.url));
                 endpoint.searchParams.set("alr", "no");
                 endpoint.searchParams.set("rn", String(request));
                 const bytes = await fetchResponse(endpoint.href, { method: "POST", body: session.request(Math.round(performance.now() - started)), timeoutMs: Math.min(30000, Math.max(1, 120000 - (performance.now() - started))), ...(signal ? { signal } : {}) }, errors, async (response) => {
@@ -87,15 +87,17 @@ export async function fetchYoutubeVideo(source, signal) {
                 if (totalTransferred > MAX_IMAGE_BYTES * 3)
                     throw new Error("YouTubeの動画配信が取得を継続できませんでした。");
                 session.ingest(bytes);
-                stalled = session.downloadedBytes === before ? stalled + 1 : 0;
-                if (stalled > 5)
+                const progressed = session.receivedBytes > before;
+                if (progressed)
+                    lastProgressAt = performance.now();
+                if (!session.complete && performance.now() - lastProgressAt >= 30000)
                     throw new Error("YouTubeの動画配信が取得を継続できませんでした。");
                 if (!session.complete)
-                    await delay(Math.max(session.backoffMs, stalled ? 500 : 0), signal);
+                    await delay(Math.max(session.backoffMs, progressed ? 0 : 500), signal);
             }
             const output = session.output();
             checkCancelled(signal);
-            const blob = await prepareYoutubeMp4(new Blob([output.video], { type: "video/mp4" }), new Blob([output.audio], { type: "audio/mp4" }), output.durationMs, signal);
+            const blob = await prepareYoutubeMp4(new Blob([output.video], { type: "video/mp4" }), new Blob([output.audio], { type: "audio/mp4" }), output.durations, signal);
             await validateOriginalMedia(blob, signal);
             return blob;
         }

@@ -1,4 +1,4 @@
-import {selectYoutubeFormats,youtubeStreamingUrl,type YoutubeSource} from "../../core/youtube.js";
+import {selectYoutubeFormats,youtubeStreamingUrl,type YoutubeSource,type YoutubeTrackDurations} from "../../core/youtube.js";
 import {YoutubeSabrSession,youtubeAuthenticationError} from "../../core/youtube-sabr.js";
 import {acquireYoutubeEvidence} from "../browser/youtube-page-access.js";
 import {checkCancelled,MAX_IMAGE_BYTES} from "../contracts/image-data-contract.js";
@@ -21,7 +21,7 @@ function delay(ms:number,signal?:AbortSignal):Promise<void>{
     signal?.addEventListener("abort",abort,{once:true});if(signal?.aborted)abort();
   });
 }
-export function prepareYoutubeMp4(video:Blob,audio:Blob,durationMs:number,signal?:AbortSignal):Promise<Blob>{
+export function prepareYoutubeMp4(video:Blob,audio:Blob,durations:YoutubeTrackDurations,signal?:AbortSignal):Promise<Blob>{
   checkCancelled(signal);
   return new Promise((resolve,reject)=>{
     const worker=new Worker(new URL("../workers/youtube-mux-worker.js",import.meta.url),{type:"module"});
@@ -36,7 +36,7 @@ export function prepareYoutubeMp4(video:Blob,audio:Blob,durationMs:number,signal
     };
     worker.onerror=worker.onmessageerror=()=>finish(new Error("YouTube動画の映像と音声をまとめられませんでした。"));
     signal?.addEventListener("abort",abort,{once:true});if(signal?.aborted){abort();return;}
-    try{worker.postMessage({video,audio,durationMs,maxBytes:MAX_IMAGE_BYTES} satisfies YoutubeMuxRequest);}catch{finish(new Error("YouTube動画の映像と音声をまとめられませんでした。"));}
+    try{worker.postMessage({video,audio,durations,maxBytes:MAX_IMAGE_BYTES} satisfies YoutubeMuxRequest);}catch{finish(new Error("YouTube動画の映像と音声をまとめられませんでした。"));}
   });
 }
 
@@ -51,11 +51,11 @@ export async function fetchYoutubeVideo(source:YoutubeSource,signal?:AbortSignal
       const {video,audio}=selectYoutubeFormats(evidence.formats);
       if(`${video.height}p${video.fps>30?video.fps:""}`!==source.quality)throw new Error("YouTube動画の画質情報が変わりました。もう一度解析してください。");
       const session=new YoutubeSabrSession(source.videoId,evidence.capture.url,new Uint8Array(evidence.capture.body),video,audio,MAX_IMAGE_BYTES);
-      const started=performance.now();let stalled=0,totalTransferred=0;
+      const started=performance.now();let lastProgressAt=started,totalTransferred=0;
       for(let request=0;request<2048&&!session.complete;request++){
         checkCancelled(signal);
         if(performance.now()-started>120000)throw new Error("メディアの取得がタイムアウトしました。");
-        const before=session.downloadedBytes,endpoint=new URL(youtubeStreamingUrl(session.url));
+        const before=session.receivedBytes,endpoint=new URL(youtubeStreamingUrl(session.url));
         endpoint.searchParams.set("alr","no");endpoint.searchParams.set("rn",String(request));
         const bytes=await fetchResponse(endpoint.href,{method:"POST",body:session.request(Math.round(performance.now()-started)),timeoutMs:Math.min(30000,Math.max(1,120000-(performance.now()-started))),...(signal?{signal}:{})},errors,async response=>{
           const type=response.headers.get("content-type")?.split(";")[0]?.trim();
@@ -64,12 +64,13 @@ export async function fetchYoutubeVideo(source:YoutubeSource,signal?:AbortSignal
         });
         totalTransferred+=bytes.length;if(totalTransferred>MAX_IMAGE_BYTES*3)throw new Error("YouTubeの動画配信が取得を継続できませんでした。");
         session.ingest(bytes);
-        stalled=session.downloadedBytes===before?stalled+1:0;
-        if(stalled>5)throw new Error("YouTubeの動画配信が取得を継続できませんでした。");
-        if(!session.complete)await delay(Math.max(session.backoffMs,stalled?500:0),signal);
+        const progressed=session.receivedBytes>before;
+        if(progressed)lastProgressAt=performance.now();
+        if(!session.complete&&performance.now()-lastProgressAt>=30000)throw new Error("YouTubeの動画配信が取得を継続できませんでした。");
+        if(!session.complete)await delay(Math.max(session.backoffMs,progressed?0:500),signal);
       }
       const output=session.output();checkCancelled(signal);
-      const blob=await prepareYoutubeMp4(new Blob([output.video],{type:"video/mp4"}),new Blob([output.audio],{type:"audio/mp4"}),output.durationMs,signal);
+      const blob=await prepareYoutubeMp4(new Blob([output.video],{type:"video/mp4"}),new Blob([output.audio],{type:"audio/mp4"}),output.durations,signal);
       await validateOriginalMedia(blob,signal);return blob;
     }catch(error){lastError=error;if(signal?.aborted||!(error instanceof Error)||error.message!==youtubeAuthenticationError)throw error;}
   }

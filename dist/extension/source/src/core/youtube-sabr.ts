@@ -1,4 +1,4 @@
-import {youtubeStreamingUrl, type YoutubeFormat} from "./youtube.js";
+import {youtubeStreamingUrl, type YoutubeFormat, type YoutubeTrackDurations} from "./youtube.js";
 import {encodeBytes, encodeNumber, encodeText, joinBytes, readUmp, readWire, replaceWire, wireBytes, wireNumber, wireText, type WireField} from "./youtube-wire.js";
 
 interface Segment {readonly sequence: number; readonly start: number; readonly duration: number; readonly data: Uint8Array;}
@@ -11,6 +11,8 @@ interface Track {
 }
 interface PartialSegment {readonly track: Track; readonly sequence: number; readonly init: boolean; readonly start: number; readonly duration: number; readonly expected: number; readonly chunks: Uint8Array[]; bytes: number;}
 const invalid = (): Error => new Error("YouTube動画の分割データが不完全または未対応です。");
+// SABR's enum uses 0 for both tracks; it is not an audio/video bitwise OR.
+const VIDEO_AND_AUDIO = 0;
 export const youtubeAuthenticationError = "YouTubeの取得用認証を更新できませんでした。もう一度保存をお試しください。";
 
 function formatId(format: YoutubeFormat): Uint8Array {
@@ -42,7 +44,9 @@ export class YoutubeSabrSession {
   private readonly tracks: [Track,Track];
   private readonly partials=new Map<number,PartialSegment>();
   private readonly contexts=new Map<number,Uint8Array>();
+  private readonly initialContexts=new Map<number,Uint8Array>();
   private readonly activeContexts=new Set<number>();
+  private readonly unsentContexts=new Set<number>();
   private cookie: Uint8Array|undefined;
   private total=0;
   private partialBytes=0;
@@ -56,14 +60,26 @@ export class YoutubeSabrSession {
     const request=readWire(template);
     this.abr=wireBytes(request,1)??new Uint8Array();
     this.context=wireBytes(request,19)??new Uint8Array();
-    const token=wireBytes(readWire(this.context),2);
-    if(!wireBytes(request,5)?.length||!token||token.length<16||!wireBytes(readWire(this.context),1))throw new Error(youtubeAuthenticationError);
+    const context=readWire(this.context),token=wireBytes(context,2);
+    if(!wireBytes(request,5)?.length||!token||token.length<16||!wireBytes(context,1))throw new Error(youtubeAuthenticationError);
+    this.cookie=wireBytes(context,3)?.slice();
+    for(const field of context.filter(f=>f.id===5)){
+      if(field.wire!==2||this.contexts.size>=128)throw invalid();
+      const raw=field.value as Uint8Array,fields=readWire(raw),id=wireNumber(fields,1),value=wireBytes(fields,2);
+      if(!value||this.contexts.has(id))throw invalid();
+      this.contexts.set(id,value.slice());this.initialContexts.set(id,raw.slice());this.activeContexts.add(id);
+    }
+    for(const id of packed(context,6)){
+      if(!this.activeContexts.has(id))this.unsentContexts.add(id);
+    }
     this.tracks=[{format:video,segments:new Map()},{format:audio,segments:new Map()}];
     if(video.contentLength+audio.contentLength>maxBytes)throw new Error("YouTube動画が保存容量の上限を超えています。");
   }
   get url(): string {return this.endpoint;}
   get backoffMs(): number {return this.waitMs;}
   get downloadedBytes(): number {return this.total;}
+  /** Count valid in-progress fragments too; an HTTP response need not finish a segment. */
+  get receivedBytes(): number {return this.total+this.partialBytes;}
   private covered(track: Track): number {
     let end=0,sequence=1;
     while(track.segments.has(sequence)){
@@ -82,12 +98,12 @@ export class YoutubeSabrSession {
     const progress=this.progressMs;
     const changes=new Map<number,readonly Uint8Array[]>([
       [21,[encodeNumber(21,this.tracks[0].format.height)]],[28,[encodeNumber(28,Math.round(progress))]],
-      [29,[encodeNumber(29,elapsedMs)]],[36,[encodeNumber(36,elapsedMs)]],[39,[encodeNumber(39,elapsedMs)]],[40,[encodeNumber(40,3)]],
+      [29,[encodeNumber(29,elapsedMs)]],[36,[encodeNumber(36,elapsedMs)]],[39,[encodeNumber(39,elapsedMs)]],[40,[encodeNumber(40,VIDEO_AND_AUDIO)]],
     ]);
     const contextChanges=new Map<number,readonly Uint8Array[]>([
       [3,this.cookie?[encodeBytes(3,this.cookie)]:[]],
-      [5,[...this.contexts].filter(([id])=>this.activeContexts.has(id)).map(([id,data])=>encodeBytes(5,joinBytes([encodeNumber(1,id),encodeBytes(2,data)])))],
-      [6,[...this.contexts.keys()].filter(id=>!this.activeContexts.has(id)).map(id=>encodeNumber(6,id))],
+      [5,[...this.contexts].filter(([id])=>this.activeContexts.has(id)).map(([id,data])=>encodeBytes(5,this.initialContexts.get(id)??joinBytes([encodeNumber(1,id),encodeBytes(2,data)])))],
+      [6,[...new Set([...this.unsentContexts,...[...this.contexts.keys()].filter(id=>!this.activeContexts.has(id))])].filter(id=>!this.activeContexts.has(id)).map(id=>encodeNumber(6,id))],
     ]);
     const ranges=this.tracks.filter(t=>t.init&&t.segments.size).map(t=>encodeBytes(3,joinBytes([
       encodeBytes(1,formatId(t.format)),encodeNumber(2,0),encodeNumber(3,Math.round(this.covered(t))),
@@ -113,7 +129,7 @@ export class YoutubeSabrSession {
       else if(part.type===42)this.initialize(fields);
       else if(part.type===35){
         const id=wireText(fields,8);if(id&&id!==this.videoId)throw invalid();
-        this.cookie=wireBytes(fields,7)?.slice();this.waitMs=wireNumber(fields,4);
+        const cookie=wireBytes(fields,7);if(cookie)this.cookie=cookie.slice();this.waitMs=wireNumber(fields,4);
         if(this.waitMs>30000)throw new Error("YouTubeの動画配信が待機状態になりました。もう一度保存してください。");
       } else if(part.type===43)this.endpoint=youtubeStreamingUrl(wireText(fields,1));
       else if(part.type===44||part.type===45)throw new Error("YouTubeの動画配信が取得を継続できませんでした。");
@@ -121,12 +137,12 @@ export class YoutubeSabrSession {
       else if(part.type===58){if(wireNumber(fields,1)>=3)throw new Error(youtubeAuthenticationError);}
       else if(part.type===57){
         const id=wireNumber(fields,1),data=wireBytes(fields,3),policy=wireNumber(fields,5);
-        if(data){if(this.contexts.size>=128&&!this.contexts.has(id))throw invalid();if(policy!==2||!this.contexts.has(id))this.contexts.set(id,data.slice());}
-        if(wireNumber(fields,4))this.activeContexts.add(id);
+        if(data){if(this.contexts.size>=128&&!this.contexts.has(id))throw invalid();if(policy!==2||!this.contexts.has(id)){this.contexts.set(id,data.slice());this.initialContexts.delete(id);}}
+        if(wireNumber(fields,4)){this.activeContexts.add(id);this.unsentContexts.delete(id);}
       } else if(part.type===59){
-        for(const id of packed(fields,1))this.activeContexts.add(id);
+        for(const id of packed(fields,1)){this.activeContexts.add(id);this.unsentContexts.delete(id);}
         for(const id of packed(fields,2))this.activeContexts.delete(id);
-        for(const id of packed(fields,3)){this.activeContexts.delete(id);this.contexts.delete(id);}
+        for(const id of packed(fields,3)){this.activeContexts.delete(id);this.contexts.delete(id);this.initialContexts.delete(id);this.unsentContexts.delete(id);}
       }
     }
   }
@@ -174,9 +190,9 @@ export class YoutubeSabrSession {
     }
     this.partialBytes-=partial.bytes;this.partials.delete(data[0]!);
   }
-  output(): {video: Uint8Array<ArrayBuffer>;audio: Uint8Array<ArrayBuffer>;durationMs: number} {
+  output(): {video: Uint8Array<ArrayBuffer>;audio: Uint8Array<ArrayBuffer>;durations: YoutubeTrackDurations} {
     if(!this.complete)throw invalid();
     const result=this.tracks.map(t=>joinBytes([t.init!,...[...t.segments.values()].sort((a,b)=>a.sequence-b.sequence).map(s=>s.data)]));
-    return {video:result[0]!,audio:result[1]!,durationMs:Math.max(...this.tracks.map(t=>t.endMs!))};
+    return {video:result[0]!,audio:result[1]!,durations:{videoMs:this.tracks[0].endMs!,audioMs:this.tracks[1].endMs!}};
   }
 }

@@ -4,7 +4,7 @@ export const videoId='abcdefghijk',url='https://r1-test.googlevideo.com/videopla
 export const video={itag:137,lastModified:'12345',xtags:'',mimeType:'video/mp4; codecs="avc1.640028"',contentLength:8,durationMs:2000,height:1080,fps:30,bitrate:1000,language:'',defaultAudio:false};
 export const audio={...video,itag:140,mimeType:'audio/mp4; codecs="mp4a.40.2"',height:0,fps:0,language:'en.0',defaultAudio:true};
 export const identity=f=>join([n(1,f.itag),n(2,BigInt(f.lastModified)),t(3,f.xtags)]);
-export const template=join([b(1,join([n(28,800),n(40,3)])),b(5,new Uint8Array([1,2,3])),b(19,join([b(1,n(16,1)),b(2,new Uint8Array(32).fill(7))]))]);
+export const template=join([b(1,join([n(28,800),n(40,0)])),b(5,new Uint8Array([1,2,3])),b(19,join([b(1,n(16,1)),b(2,new Uint8Array(32).fill(7))]))]);
 function umpInt(value){
   if(value<128)return new Uint8Array([value]);
   const length=value<16384?2:value<2097152?3:value<268435456?4:5;
