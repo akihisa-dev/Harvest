@@ -114,6 +114,19 @@ export async function readYoutubePage(videoId, capturePlayback, owner, restorePl
             const bytes = body instanceof ArrayBuffer ? new Uint8Array(body) : ArrayBuffer.isView(body) ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength) : undefined;
             if (!bytes || bytes.length > 65536)
                 return;
+            // The watch page also prefetches recommendations. A valid proof token does
+            // not identify the video: bind the request to this player's stream config.
+            const current = source();
+            if (record(current?.["videoDetails"])?.["videoId"] !== videoId)
+                return;
+            const common = record(record(current?.["playerConfig"])?.["mediaCommonConfig"]);
+            const config = record(common?.["mediaUstreamerRequestConfig"])?.["videoPlaybackUstreamerConfig"];
+            if (typeof config !== "string" || config.length > 90000)
+                return;
+            const expected = Uint8Array.from(atob(config.replace(/-/g, "+").replace(/_/g, "/")), char => char.charCodeAt(0));
+            const actual = tokenLength(bytes, 5);
+            if (!actual || !expected.length || actual.length !== expected.length || actual.some((byte, index) => byte !== expected[index]))
+                return;
             const context = tokenLength(bytes, 19), token = context ? tokenLength(context, 2) : undefined;
             if (token && token.length >= 16)
                 capture = { url: target.href, body: Array.from(bytes) };

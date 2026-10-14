@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {scanYoutube,acquireYoutubeEvidence} from '../dist/extension/app/browser/youtube-page-access.js';
+import {replaceWire,encodeBytes} from '../dist/extension/core/youtube-wire.js';
 import {readYoutubePage} from '../dist/extension/app/content/youtube-page.js';
 import {scanTab,scanUrl} from '../dist/extension/app/browser/page-access.js';
 import {videoId,video,audio,template,url} from './support/youtube-fixture.mjs';
@@ -126,11 +127,12 @@ for(const mode of ['frame','playing','paused','failure','navigation'])for(const 
   const originalOpen=Request.prototype.open,originalSend=Request.prototype.send,originalFetch=input=>{fetchedRequest=input;sent++;return Promise.resolve({});};
   globalThis.XMLHttpRequest=Request;globalThis.window={fetch:originalFetch};
   const native=f=>({itag:f.itag,lastModified:f.lastModified,mimeType:f.mimeType,approxDurationMs:String(f.durationMs),height:f.height,fps:f.fps,bitrate:f.bitrate,contentLength:String(f.contentLength),...(f.defaultAudio?{audioTrack:{id:f.language,audioIsDefault:true}}:{})});
-  const response={videoDetails:{videoId,title:'fixture',thumbnail:{thumbnails:[{url:`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}]}},playabilityStatus:{status:'OK'},streamingData:{adaptiveFormats:[native(video),native(audio)]}};
+  const response={playerConfig:{mediaCommonConfig:{mediaUstreamerRequestConfig:{videoPlaybackUstreamerConfig:'AQID'}}},videoDetails:{videoId,title:'fixture',thumbnail:{thumbnails:[{url:`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}]}},playabilityStatus:{status:'OK'},streamingData:{adaptiveFormats:[native(video),native(audio)]}};
   let reloaded=0,muted=0,unmuted=0,played=0,seek;
   const player={getPlayerResponse:()=>response,mute(){muted++;},unMute(){unmuted++;},seekTo(time){seek=time;},loadVideoById(id,start){
     assert.equal(id,videoId);assert.equal(start,0);assert.equal(muted,1);reloaded++;
     if(mode==='failure')throw new Error('Native load failed');
+    const recommendation=new Request();recommendation.open('POST',url);recommendation.send(replaceWire(template,new Map([[5,[encodeBytes(5,new Uint8Array([4,5,6]))]]])));
     if(bodyKind==='request'){void window.fetch(new globalThis.Request(url,{method:'POST',body:template}));}
     else {const request=new Request();request.open('POST',url);request.send(bodyKind==='blob'?new Blob([template]):template);}
     if(mode==='navigation')location.href='https://www.youtube.com/watch?v=01234567890';
@@ -143,9 +145,9 @@ for(const mode of ['frame','playing','paused','failure','navigation'])for(const 
   assert.equal(played,shouldRestore&&mode!=='paused'?1:0);assert.equal(unmuted,shouldRestore&&mode!=='paused'?1:0);assert.equal(seek,shouldRestore?14:undefined);assert.equal(element.muted,!shouldRestore||mode==='paused');assert.equal(element.volume,0.4);assert.equal(element.playbackRate,1.5);
   if(fetchedRequest){assert.equal(fetchedRequest.bodyUsed,false);assert.deepEqual([...new Uint8Array(await fetchedRequest.arrayBuffer())],[...template]);}
   if(mode==='failure'||mode==='navigation'){assert.equal(Request.prototype.open,originalOpen);assert.equal(Request.prototype.send,originalSend);assert.equal(window.fetch,originalFetch);assert.equal(paused,mode==='navigation'?0:1);return;}
-  assert.equal(result.capture.url,url);assert.deepEqual(result.capture.body,[...template]);assert.equal(sent,1);assert.equal(paused,1);
+  assert.equal(result.capture.url,url);assert.deepEqual(result.capture.body,[...template]);assert.equal(sent,2);assert.equal(paused,1);
   assert.equal(Request.prototype.open,originalOpen);assert.equal(Request.prototype.send,originalSend);assert.equal(window.fetch,originalFetch);
   assert.equal(result.previewUrl,`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
   response.videoDetails.isLive=true;
-  assert.match((await readYoutubePage(videoId,true)).error,/ライブ/);assert.equal(sent,1);
+  assert.match((await readYoutubePage(videoId,true)).error,/ライブ/);assert.equal(sent,2);
 });
