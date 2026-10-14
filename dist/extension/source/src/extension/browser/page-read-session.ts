@@ -252,25 +252,45 @@ export async function withTemporaryPage<T>(url: string, signal: AbortSignal | un
   try {
     if (signal?.aborted) throw new Error(abortedMessage);
     if (windowId === undefined || tabId === undefined) throw new Error("指定したページを開けませんでした。");
-    await bounded<void>((resolve, reject) => {
-      const onUpdated = (id: number, change: {status?: string}): void => {
-        if (id === tabId && change.status === "complete") resolve();
-      };
-      const onRemoved = (id: number): void => {
-        if (id === tabId) reject(new Error(closedMessage));
-      };
-      chrome.tabs.onUpdated.addListener(onUpdated);
-      chrome.tabs.onRemoved.addListener(onRemoved);
-      void chrome.tabs.get(tabId).then(current => {
-        if (current.status === "complete") resolve();
-      }, () => reject(new Error("指定したページを開けませんでした。")));
-      return () => {
-        chrome.tabs.onUpdated.removeListener(onUpdated);
-        chrome.tabs.onRemoved.removeListener(onRemoved);
-      };
-    }, signal, loadTimeoutMs);
+    await waitForTemporaryTab(tabId, signal, loadTimeoutMs);
     return await read(tabId);
   } finally {
     if (windowId !== undefined) await chrome.windows.remove(windowId).catch(() => undefined);
   }
+}
+
+/** An inactive tab uses the existing browser window and never takes focus. */
+export async function withTemporaryTab<T>(url: string, signal: AbortSignal | undefined,
+  read: (tabId: number) => Promise<T>, loadTimeoutMs = 20_000): Promise<T> {
+  if (signal?.aborted) throw new Error(abortedMessage);
+  const tab = await chrome.tabs.create({url, active: false});
+  const tabId = tab?.id;
+  try {
+    if (signal?.aborted) throw new Error(abortedMessage);
+    if (tabId === undefined) throw new Error("指定したページを開けませんでした。");
+    await waitForTemporaryTab(tabId, signal, loadTimeoutMs);
+    return await read(tabId);
+  } finally {
+    if (tabId !== undefined) await chrome.tabs.remove(tabId).catch(() => undefined);
+  }
+}
+
+function waitForTemporaryTab(tabId: number, signal: AbortSignal | undefined, loadTimeoutMs: number): Promise<void> {
+  return bounded<void>((resolve, reject) => {
+    const onUpdated = (id: number, change: {status?: string}): void => {
+      if (id === tabId && change.status === "complete") resolve();
+    };
+    const onRemoved = (id: number): void => {
+      if (id === tabId) reject(new Error(closedMessage));
+    };
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.tabs.onRemoved.addListener(onRemoved);
+    void chrome.tabs.get(tabId).then(current => {
+      if (current.status === "complete") resolve();
+    }, () => reject(new Error("指定したページを開けませんでした。")));
+    return () => {
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      chrome.tabs.onRemoved.removeListener(onRemoved);
+    };
+  }, signal, loadTimeoutMs);
 }

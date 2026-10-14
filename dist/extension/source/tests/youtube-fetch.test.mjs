@@ -40,9 +40,9 @@ for(const {refresh,chunked,differentDurations} of [
     }
     assert.ok(responses.length>7);
   }
-  const address=`https://www.youtube.com/watch?v=${videoId}`,closed=[],captures=[],workers=[];let windowId=0,requests=0,responseIndex=0;
+  const address=`https://www.youtube.com/watch?v=${videoId}`,closed=[],captures=[],workers=[];let tabId=0,requests=0,responseIndex=0;
   const event=()=>({addListener(){},removeListener(){}});
-  globalThis.chrome={windows:{create:async()=>({id:++windowId,tabs:[{id:windowId}]}),remove:async id=>closed.push(id)},tabs:{get:async()=>({status:'complete'}),onRemoved:event(),onUpdated:event()},scripting:{executeScript:async request=>{
+  globalThis.chrome={windows:{create:async()=>{throw new Error('No new window');}},tabs:{create:async options=>{assert.equal(options.active,false);return {id:++tabId};},remove:async id=>closed.push(id),get:async()=>({status:'complete'}),onRemoved:event(),onUpdated:event()},scripting:{executeScript:async request=>{
     if(request.func.name!=='readYoutubePage')return [{documentId:'doc',result:address}];
     captures.push(request.args[1]);return [{documentId:'doc',result:{videoId,title:'fixture',previewUrl:'',formats,...(request.args[1]?{capture:{url,body:[...template]}}:{})}}];
   }}};
@@ -70,7 +70,7 @@ test('受信が進まない状態は応答回数でなく30秒の経過で中止
   globalThis.performance={now:()=>now};
   globalThis.setTimeout=(callback,ms,...args)=>{if(ms===500){queueMicrotask(()=>{now+=500;callback(...args);});return -1;}return previous.setTimeout(callback,ms,...args);};
   const event=()=>({addListener(){},removeListener(){}});
-  globalThis.chrome={windows:{create:async()=>({id:1,tabs:[{id:1}]}),remove:async id=>closed.push(id)},tabs:{get:async()=>({status:'complete'}),onRemoved:event(),onUpdated:event()},scripting:{executeScript:async request=>request.func.name==='readYoutubePage'
+  globalThis.chrome={windows:{create:async()=>{throw new Error('No new window');}},tabs:{create:async()=>({id:1}),remove:async id=>closed.push(id),get:async()=>({status:'complete'}),onRemoved:event(),onUpdated:event()},scripting:{executeScript:async request=>request.func.name==='readYoutubePage'
     ?[{documentId:'doc',result:{videoId,title:'fixture',previewUrl:'',formats:[video,audio],capture:{url,body:[...template]}}}]:[{documentId:'doc',result:address}]}};
   globalThis.fetch=async()=>{requests++;return new Response(part(35,new Uint8Array()),{headers:{'content-type':'application/vnd.yt-ump'}});};
   await assert.rejects(fetchYoutubeVideo({videoId,quality:'1080p'}),/継続/);

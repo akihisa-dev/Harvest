@@ -2,11 +2,11 @@ import {selectYoutubeFormats,youtubeVideoUrl,type YoutubeSource} from "../../cor
 import {readYoutubePage} from "../content/youtube-page.js";
 import {isYoutubePageEvidence,type YoutubePageEvidence} from "../contracts/youtube-contracts.js";
 import type {PageScan} from "../contracts/page-contracts.js";
-import {withTemporaryPage} from "./page-read-session.js";
+import {withTemporaryTab} from "./page-read-session.js";
 
-/** Never inject playback observation into a user's tab. The existing owner closes all temporary windows. */
+/** Observe playback only in an owned inactive tab, which is closed on every exit. */
 export async function acquireYoutubeEvidence(videoId:string, capture:boolean, signal?:AbortSignal):Promise<YoutubePageEvidence>{
-  return withTemporaryPage(youtubeVideoUrl(videoId),signal,async tabId=>{
+  return withTemporaryTab(youtubeVideoUrl(videoId),signal,async tabId=>{
     const controller=new AbortController();
     let timeout:ReturnType<typeof setTimeout>|undefined;
     const abort=()=>controller.abort();signal?.addEventListener("abort",abort,{once:true});

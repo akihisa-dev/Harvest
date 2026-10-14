@@ -1,6 +1,6 @@
 import type {YoutubePageEvidence} from "../contracts/youtube-contracts.js";
 
-/** Inject only into an owned temporary page. All helpers must survive Chrome function serialization. */
+/** Inject only into an owned temporary tab. All helpers must survive Chrome function serialization. */
 export async function readYoutubePage(videoId: string, capturePlayback: boolean): Promise<YoutubePageEvidence> {
   const empty=(error: string): YoutubePageEvidence=>({videoId,title:"",previewUrl:"",formats:[],error});
   if(location.origin!=="https://www.youtube.com"||location.pathname!=="/watch"||new URL(location.href).searchParams.get("v")!==videoId)return empty("YouTubeの対象動画を確認できませんでした。");
@@ -66,28 +66,56 @@ export async function readYoutubePage(videoId: string, capturePlayback: boolean)
       if(token&&token.length>=16)capture={url:target.href,body:Array.from(bytes)};
     }catch{/* Observation must never affect native playback. */}
   };
+  const observe=(url:string,body:unknown):void=>{
+    try{const target=new URL(url,location.href);
+      if(target.protocol!=="https:"||!target.hostname.endsWith(".googlevideo.com")||target.pathname!=="/videoplayback"||target.searchParams.get("sabr")!=="1")return;
+    }catch{return;}
+    inspect(url,body);
+    if(body instanceof Blob){if(body.size<=65536)void body.arrayBuffer().then(bytes=>inspect(url,bytes)).catch(()=>{});}
+    else if(typeof Request!=="undefined"&&body instanceof Request){
+      // Read only a bounded clone: consuming the native Request would break playback.
+      void (async()=>{
+        const reader=body.clone().body?.getReader();if(!reader)return;
+        const chunks:Uint8Array[]=[];let length=0;
+        const timer=setTimeout(()=>{void reader.cancel().catch(()=>{});},15000);
+        try{
+          while(true){const {done,value}=await reader.read();if(done)break;
+            if(value.length>65536-length)return;chunks.push(value);length+=value.length;}
+          const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
+          inspect(url,bytes);
+        }finally{clearTimeout(timer);void reader.cancel().catch(()=>{});reader.releaseLock();}
+      })().catch(()=>{});
+    }
+  };
   const originalOpen=XMLHttpRequest.prototype.open,originalSend=XMLHttpRequest.prototype.send,originalFetch=window.fetch;
   const urls=new WeakMap<XMLHttpRequest,string>();
   const open:typeof originalOpen=function(this:XMLHttpRequest,method:string,url:string|URL,async?:boolean,username?:string|null,password?:string|null):void{
     urls.set(this,String(url));Reflect.apply(originalOpen,this,async===undefined?[method,url]:[method,url,async,username,password]);
   };
-  const send=function(this:XMLHttpRequest,body?:Document|XMLHttpRequestBodyInit|null):void{inspect(urls.get(this)??"",body);Reflect.apply(originalSend,this,[body]);};
+  const send=function(this:XMLHttpRequest,body?:Document|XMLHttpRequestBodyInit|null):void{observe(urls.get(this)??"",body);Reflect.apply(originalSend,this,[body]);};
   const fetcher: typeof fetch=function(this:Window,input,init){
     const url=typeof input==="string"?input:input instanceof URL?input.href:input.url;
-    inspect(url,init?.body);
-    // Native Request bodies are not consumed or cloned: common buffer-based playback requests suffice.
+    observe(url,init?.body??input);
     return Reflect.apply(originalFetch,this,[input,init]);
   };
   const video=document.querySelector<HTMLVideoElement>("#movie_player video");
   if(!video)return empty("YouTubeの動画プレイヤーを読み取れませんでした。");
   try{
     XMLHttpRequest.prototype.open=open;XMLHttpRequest.prototype.send=send;window.fetch=fetcher;
-    video.muted=true;void video.play().catch(()=>{});
-    while(performance.now()<deadline&&!capture){if(location.href!==initialUrl)return empty("解析中にページが移動しました。もう一度解析してください。");await wait();}
+    video.muted=true;
+    // Loading may have filled the native buffer before observation began. Merely
+    // playing it again would not issue a request within the capture deadline.
+    const player=document.getElementById("movie_player") as HTMLElement&{mute?:()=>void;loadVideoById?:(id:string,start:number)=>void}|null;
+    if(player?.loadVideoById&&player.mute){player.mute();player.loadVideoById(videoId,0);}
+    else void video.play().catch(()=>{});
+    const captureDeadline=performance.now()+15000;
+    while(performance.now()<captureDeadline&&!capture){if(location.href!==initialUrl)return empty("解析中にページが移動しました。もう一度解析してください。");await wait();}
     if(!capture)return empty("YouTubeの取得用認証を読み取れませんでした。もう一度保存をお試しください。");
     return {...evidence,capture};
   }finally{
     video.pause();
+    const currentVideo=document.querySelector<HTMLVideoElement>("#movie_player video");
+    if(currentVideo&&currentVideo!==video)currentVideo.pause();
     if(XMLHttpRequest.prototype.open===open)XMLHttpRequest.prototype.open=originalOpen;
     if(XMLHttpRequest.prototype.send===send)XMLHttpRequest.prototype.send=originalSend;
     if(window.fetch===fetcher)window.fetch=originalFetch;

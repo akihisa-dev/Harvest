@@ -262,30 +262,52 @@ export async function withTemporaryPage(url, signal, read, loadTimeoutMs = 20_00
             throw new Error(abortedMessage);
         if (windowId === undefined || tabId === undefined)
             throw new Error("指定したページを開けませんでした。");
-        await bounded((resolve, reject) => {
-            const onUpdated = (id, change) => {
-                if (id === tabId && change.status === "complete")
-                    resolve();
-            };
-            const onRemoved = (id) => {
-                if (id === tabId)
-                    reject(new Error(closedMessage));
-            };
-            chrome.tabs.onUpdated.addListener(onUpdated);
-            chrome.tabs.onRemoved.addListener(onRemoved);
-            void chrome.tabs.get(tabId).then(current => {
-                if (current.status === "complete")
-                    resolve();
-            }, () => reject(new Error("指定したページを開けませんでした。")));
-            return () => {
-                chrome.tabs.onUpdated.removeListener(onUpdated);
-                chrome.tabs.onRemoved.removeListener(onRemoved);
-            };
-        }, signal, loadTimeoutMs);
+        await waitForTemporaryTab(tabId, signal, loadTimeoutMs);
         return await read(tabId);
     }
     finally {
         if (windowId !== undefined)
             await chrome.windows.remove(windowId).catch(() => undefined);
     }
+}
+/** An inactive tab uses the existing browser window and never takes focus. */
+export async function withTemporaryTab(url, signal, read, loadTimeoutMs = 20_000) {
+    if (signal?.aborted)
+        throw new Error(abortedMessage);
+    const tab = await chrome.tabs.create({ url, active: false });
+    const tabId = tab?.id;
+    try {
+        if (signal?.aborted)
+            throw new Error(abortedMessage);
+        if (tabId === undefined)
+            throw new Error("指定したページを開けませんでした。");
+        await waitForTemporaryTab(tabId, signal, loadTimeoutMs);
+        return await read(tabId);
+    }
+    finally {
+        if (tabId !== undefined)
+            await chrome.tabs.remove(tabId).catch(() => undefined);
+    }
+}
+function waitForTemporaryTab(tabId, signal, loadTimeoutMs) {
+    return bounded((resolve, reject) => {
+        const onUpdated = (id, change) => {
+            if (id === tabId && change.status === "complete")
+                resolve();
+        };
+        const onRemoved = (id) => {
+            if (id === tabId)
+                reject(new Error(closedMessage));
+        };
+        chrome.tabs.onUpdated.addListener(onUpdated);
+        chrome.tabs.onRemoved.addListener(onRemoved);
+        void chrome.tabs.get(tabId).then(current => {
+            if (current.status === "complete")
+                resolve();
+        }, () => reject(new Error("指定したページを開けませんでした。")));
+        return () => {
+            chrome.tabs.onUpdated.removeListener(onUpdated);
+            chrome.tabs.onRemoved.removeListener(onRemoved);
+        };
+    }, signal, loadTimeoutMs);
 }
