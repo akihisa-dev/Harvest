@@ -8,12 +8,14 @@ export type {ScanOptions} from "./x-page-acquisition.js";
 
 /** Public page access: read, acquire site evidence, then verify before publishing. */
 export async function scanTab(tabId: number, signal?: AbortSignal, requestedUrl?: string, options: ScanOptions = {}): Promise<PageScan> {
-  const requestedVideo = requestedUrl ? youtubeVideoId(requestedUrl) : null;
-  if (requestedVideo) return scanYoutube(requestedVideo, signal);
   const session = new PageReadSession(tabId, signal);
   let result = await session.scanInitialPage();
   const youtube = youtubeVideoId(result.url);
-  if (youtube) return scanYoutube(youtube, signal);
+  if (youtube) {
+    const scan = await scanYoutube(youtube, signal);
+    await session.verifyCurrentPage();
+    return scan;
+  }
   let checkBookmarkList = false;
   const target = xPageTarget(result.url, requestedUrl);
   if (target) ({result, checkBookmarkList} = await acquireXPage(session, result, target, signal, options));

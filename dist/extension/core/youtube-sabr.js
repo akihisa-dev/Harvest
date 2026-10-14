@@ -122,7 +122,7 @@ export class YoutubeSabrSession {
             [5, [...this.contexts].filter(([id]) => this.activeContexts.has(id)).map(([id, data]) => encodeBytes(5, this.initialContexts.get(id) ?? joinBytes([encodeNumber(1, id), encodeBytes(2, data)])))],
             [6, [...new Set([...this.unsentContexts, ...[...this.contexts.keys()].filter(id => !this.activeContexts.has(id))])].filter(id => !this.activeContexts.has(id)).map(id => encodeNumber(6, id))],
         ]);
-        const ranges = this.tracks.filter(t => t.init && t.segments.size).map(t => encodeBytes(3, joinBytes([
+        const ranges = this.tracks.filter(t => t.init && this.contiguousCount(t) > 0).map(t => encodeBytes(3, joinBytes([
             encodeBytes(1, formatId(t.format)), encodeNumber(2, 0), encodeNumber(3, Math.round(this.covered(t))),
             encodeNumber(4, 1), encodeNumber(5, this.contiguousCount(t)),
         ])));

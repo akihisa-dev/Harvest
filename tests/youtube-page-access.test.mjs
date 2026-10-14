@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {scanYoutube,acquireYoutubeEvidence} from '../dist/extension/app/browser/youtube-page-access.js';
 import {readYoutubePage} from '../dist/extension/app/content/youtube-page.js';
+import {scanTab,scanUrl} from '../dist/extension/app/browser/page-access.js';
 import {videoId,video,audio,template,url} from './support/youtube-fixture.mjs';
 
 function events(){const listeners=new Set();return {listeners,addListener:f=>listeners.add(f),removeListener:f=>listeners.delete(f)};}
@@ -12,6 +13,28 @@ function chromeFixture(t,behavior){
   t.after(()=>{if(previous===undefined)delete globalThis.chrome;else globalThis.chrome=previous;});
   return {removed,onRemoved,onUpdated,address};
 }
+for(const requested of [false,true])for(const outcome of ['success','navigation','reload','closed'])test(`現在のYouTubeタブの文書を解析前後に確認する: requested=${requested}, ${outcome}`,async t=>{
+  let fixture,finished=false,sourceReads=0;
+  fixture=chromeFixture(t,async ({target,func})=>{
+    if(target.tabId===9){
+      sourceReads++;
+      return [{documentId:finished&&outcome==='reload'?'reloaded':'source',result:func.name==='scanDocument'?{url:fixture.address,title:'source',images:[]}:finished&&outcome==='navigation'?'https://example.com/':fixture.address}];
+    }
+    if(func.name==='readYoutubePage'){finished=true;return [{documentId:'temporary',result:{videoId,title:'video',previewUrl:'',formats:[video,audio]}}];}
+    return [{documentId:'temporary',result:fixture.address}];
+  });
+  chrome.tabs.get=async id=>{if(id===9&&finished&&outcome==='closed')throw new Error('closed');return {status:'complete',url:fixture.address};};
+  const operation=scanTab(9,undefined,requested?fixture.address:undefined);
+  if(outcome==='success'){assert.equal((await operation).media[0].youtube.videoId,videoId);assert.equal(sourceReads,2);}
+  else await assert.rejects(operation,/移動|閉じ/);
+  assert.deepEqual(fixture.removed,[7]);assert.equal(fixture.onRemoved.listeners.size,0);
+});
+test('入力URLからのYouTube解析は元タブを必要としない',async t=>{
+  let fixture;
+  fixture=chromeFixture(t,async ({func})=>func.name==='readYoutubePage'?[{documentId:'temporary',result:{videoId,title:'video',previewUrl:'',formats:[video,audio]}}]:[{documentId:'temporary',result:fixture.address}]);
+  assert.equal((await scanUrl(fixture.address)).media[0].youtube.videoId,videoId);
+  assert.deepEqual(fixture.removed,[7]);
+});
 for(const outcome of ['success','shape','navigation','closed','abort'])test(`YouTubeの一時ページを解析・中止・異常終了後に解放する: ${outcome}`,async t=>{
   const controller=new AbortController();let fixture;
   fixture=chromeFixture(t,async request=>{

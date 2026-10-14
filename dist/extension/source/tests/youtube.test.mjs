@@ -53,7 +53,12 @@ test('応答をまたぐ断片と同一再送を処理し、欠落・別動画�
   s.ingest(segment(video,2,0));assert.equal(s.downloadedBytes,2);
   s.ingest(join([segment(video,1,2),segment(audio,2,0),segment(audio,2,1),segment(audio,2,2)]));
   assert.equal(s.complete,false);assert.equal(s.progressMs,0);assert.throws(()=>s.output());
+  const ranges=readWire(s.request(0)).filter(field=>field.id===3).map(field=>readWire(field.value));
+  assert.equal(ranges.length,1,'先頭区間が未着の映像範囲は送信しない');
+  assert.equal(wireNumber(readWire(wireBytes(ranges[0],1)),1),audio.itag);
+  assert.equal(wireNumber(ranges[0],4),1);assert.equal(wireNumber(ranges[0],5),2);
   s.ingest(segment(video,1,1));assert.equal(s.complete,true);
+  assert.equal(readWire(s.request(0)).filter(field=>field.id===3).length,2);
   assert.throws(()=>s.ingest(segment(video,1,1,new Uint8Array([9,9]))),/不完全/);
   assert.throws(()=>create().ingest(part(42,join([t(1,'other-video'),b(2,new Uint8Array())]))),/不完全/);
   assert.throws(()=>create().ingest(segment({...video,itag:999},1,0)),/画質/);
