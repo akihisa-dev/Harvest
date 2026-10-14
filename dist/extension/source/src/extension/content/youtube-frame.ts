@@ -12,6 +12,8 @@ export function manageYoutubeFrame(videoId:string,owner:string,remove:boolean):s
   frame.referrerPolicy="no-referrer";
   frame.setAttribute("allow","autoplay");
   frame.style.cssText="position:fixed!important;left:-20000px!important;top:0!important;width:1280px!important;height:720px!important;opacity:0!important;pointer-events:none!important;border:0!important;";
+  // Preserve the native watch authorization path for videos which the embedded
+  // player cannot play. An already-open video's analysis never creates a frame.
   const sameOrigin=location.origin==="https://www.youtube.com";
   const url=new URL(sameOrigin?"/watch":`/embed/${videoId}`,"https://www.youtube.com");
   if(sameOrigin)url.searchParams.set("v",videoId);

@@ -10,6 +10,14 @@ import type {PageScan} from "../contracts/page-contracts.js";
 export async function scanDocument(targetPostId?: string, framesOnly = false): Promise<PageScan> {
   // An all-frame pass supplements a separately retained top-level result.
   if (framesOnly && window === window.top) return {url: location.href, title: document.title, images: []};
+  // YouTube has a dedicated reader. Walking its live DOM/shadow trees here can
+  // occupy the renderer before that reader even starts.
+  if(!framesOnly){
+    const url=new URL(location.href);
+    const id=/^(?:www\.|m\.)?youtube\.com$/.test(url.hostname)
+      ?url.pathname==="/watch"?url.searchParams.get("v"):/^\/(?:shorts|embed)\/([^/]+)\/?$/.exec(url.pathname)?.[1]:undefined;
+    if(id&&/^[\w-]{11}$/.test(id))return {url:location.href,title:document.title,images:[]};
+  }
   const framePath: number[] = [];
   if (framesOnly) {
     let current: Window = window;

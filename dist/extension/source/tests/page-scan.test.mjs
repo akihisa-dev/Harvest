@@ -3,6 +3,16 @@ import test from "node:test";
 import {scanDocument} from "../dist/extension/app/content/page-scan.js";
 import {groupMediaImages} from "../dist/extension/core/images.js";
 
+test('YouTube動画の初回解析はDOM・Shadow DOMの走査や監視に入らない',async t=>{
+  const previous={location:globalThis.location,document:globalThis.document,window:globalThis.window};
+  t.after(()=>{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}});
+  globalThis.window={};
+  globalThis.document={title:'video',get documentElement(){throw new Error('Must not traverse YouTube DOM');},querySelectorAll(){throw new Error('Must not traverse YouTube DOM');}};
+  for(const url of ['https://www.youtube.com/watch?v=2FF0Wc6ckQY','https://www.youtube.com/shorts/2FF0Wc6ckQY','https://m.youtube.com/watch?v=2FF0Wc6ckQY','https://www.youtube.com/embed/2FF0Wc6ckQY']){
+    globalThis.location={href:url};assert.deepEqual(await scanDocument(),{url,title:'video',images:[]});
+  }
+});
+
 class FixtureElement {
   constructor(tagName, attributes = {}, children = [], properties = {}) {
     this.tagName = tagName.toUpperCase();

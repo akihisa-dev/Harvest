@@ -42,7 +42,7 @@ for(const {refresh,chunked,differentDurations} of [
   }
   const address=`https://www.youtube.com/watch?v=${videoId}`,closed=[],captures=[],workers=[];let requests=0,responseIndex=0;
   const event=()=>({addListener(){},removeListener(){}});
-  globalThis.chrome={windows:{create:async()=>{throw new Error('No new window');}},tabs:{query:async()=>[{id:1,url:address}],create:async()=>{throw new Error('No new tab');},remove:async()=>{throw new Error('Do not close host tab');},get:async()=>({status:'complete'}),onRemoved:event(),onUpdated:event()},scripting:{executeScript:async request=>{
+  globalThis.chrome={windows:{create:async()=>{throw new Error('No new window');}},tabs:{query:async()=>[{id:1,url:'https://www.youtube.com/'}],create:async()=>{throw new Error('No new tab');},remove:async()=>{throw new Error('Do not close host tab');},get:async()=>({status:'complete'}),onRemoved:event(),onUpdated:event()},scripting:{executeScript:async request=>{
     if(request.func.name==='manageYoutubeFrame'){if(request.args[2])closed.push(closed.length+1);return [{documentId:'host',result:address}];}
     if(request.target.documentIds)return [{documentId:'doc',result:true}];
     if(request.func.name!=='readYoutubePage')return [{documentId:'host',result:address}];
@@ -72,7 +72,7 @@ test('受信が進まない状態は応答回数でなく30秒の経過で中止
   globalThis.performance={now:()=>now};
   globalThis.setTimeout=(callback,ms,...args)=>{if(ms===500){queueMicrotask(()=>{now+=500;callback(...args);});return -1;}return previous.setTimeout(callback,ms,...args);};
   const event=()=>({addListener(){},removeListener(){}});
-  globalThis.chrome={windows:{create:async()=>{throw new Error('No new window');}},tabs:{query:async()=>[{id:1,url:address}],create:async()=>{throw new Error('No new tab');},remove:async()=>{throw new Error('Do not close host tab');},get:async()=>({status:'complete'}),onRemoved:event(),onUpdated:event()},scripting:{executeScript:async request=>{
+  globalThis.chrome={windows:{create:async()=>{throw new Error('No new window');}},tabs:{query:async()=>[{id:1,url:'https://www.youtube.com/'}],create:async()=>{throw new Error('No new tab');},remove:async()=>{throw new Error('Do not close host tab');},get:async()=>({status:'complete'}),onRemoved:event(),onUpdated:event()},scripting:{executeScript:async request=>{
     if(request.func.name==='manageYoutubeFrame'){if(request.args[2])closed.push(1);return [{documentId:'host',result:address}];}
     if(request.target.documentIds)return [{documentId:'doc',result:true}];
     return request.func.name==='readYoutubePage'?[{documentId:'doc',result:{videoId,title:'fixture',previewUrl:'',formats:[video,audio],capture:{url,body:[...template]}}}]:[{documentId:'host',result:address}];
