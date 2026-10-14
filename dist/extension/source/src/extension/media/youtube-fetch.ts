@@ -40,8 +40,23 @@ export function prepareYoutubeMp4(video:Blob,audio:Blob,durations:YoutubeTrackDu
   });
 }
 
-/** Refresh playback evidence for each save/retry. A failed partial download is never reused across tokens. */
+/** One deadline covers authorization, retries, transfer, muxing, and validation. */
 export async function fetchYoutubeVideo(source:YoutubeSource,signal?:AbortSignal):Promise<Blob>{
+  checkCancelled(signal);
+  const controller=new AbortController();
+  let reject!:(error:Error)=>void;
+  const interrupted=new Promise<never>((_,no)=>{reject=no;});
+  const abort=()=>{reject(errors.cancelled());controller.abort();};
+  signal?.addEventListener("abort",abort,{once:true});
+  const timer=setTimeout(()=>{reject(errors.timeout());controller.abort();},120000);
+  try{
+    if(signal?.aborted)abort();
+    return await Promise.race([fetchYoutubeWithinDeadline(source,controller.signal),interrupted]);
+  }finally{clearTimeout(timer);signal?.removeEventListener("abort",abort);}
+}
+
+/** Refresh playback evidence per retry; never reuse partial data across tokens. */
+async function fetchYoutubeWithinDeadline(source:YoutubeSource,signal:AbortSignal):Promise<Blob>{
   let lastError:unknown;
   for(let attempt=0;attempt<2;attempt++){
     checkCancelled(signal);

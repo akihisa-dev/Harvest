@@ -81,3 +81,24 @@ test('受信が進まない状態は応答回数でなく30秒の経過で中止
   await assert.rejects(fetchYoutubeVideo({videoId,quality:'1080p'}),/継続/);
   assert.ok(requests>6);assert.equal(now,30000);assert.deepEqual(closed,[1]);
 });
+
+for(const outcome of ['timeout','abort'])test(`認証の読み取りが応答しなくても準備全体の期限・中止で戻り、後続取得を始めない: ${outcome}`,async t=>{
+  const previous={chrome:globalThis.chrome,setTimeout:globalThis.setTimeout,clearTimeout:globalThis.clearTimeout,fetch:globalThis.fetch};
+  t.after(()=>{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}});
+  let deadline,finishRead,requests=0,cleared=false;
+  const token={};
+  globalThis.setTimeout=(callback,ms,...args)=>{if(ms===120000){assert.equal(deadline,undefined,'共通の期限は1回だけ設定する');deadline=callback;return token;}return previous.setTimeout(callback,ms,...args);};
+  globalThis.clearTimeout=handle=>{if(handle===token)cleared=true;else previous.clearTimeout(handle);};
+  const listeners=new Set(),event={addListener:f=>listeners.add(f),removeListener:f=>listeners.delete(f)};
+  globalThis.chrome={tabs:{query:async()=>[{id:1,url:`https://www.youtube.com/watch?v=${videoId}`}],onRemoved:event},scripting:{executeScript:async()=>new Promise(resolve=>{finishRead=resolve;})}};
+  globalThis.fetch=async()=>{requests++;throw Error('Must not fetch after timeout');};
+  const controller=new AbortController();
+  const result=fetchYoutubeVideo({videoId,quality:'1080p'},controller.signal);
+  await new Promise(resolve=>setImmediate(resolve));
+  if(outcome==='timeout')deadline();else controller.abort();
+  await assert.rejects(result,outcome==='timeout'?/タイムアウト/:/中止/);
+  assert.equal(cleared,true);assert.equal(listeners.size,0);
+  finishRead([{documentId:'doc',result:{videoId,title:'late',previewUrl:'',formats:[video,audio],capture:{url,body:[...template]}}}]);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(requests,0);
+});
