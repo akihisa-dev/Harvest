@@ -60,7 +60,7 @@ declare const chrome: {
     };
   };
   scripting: {
-    executeScript<T, A extends unknown[]>(injection: {target: {tabId: number; allFrames?: boolean}; world?: "ISOLATED" | "MAIN"; func: (...args: A) => T; args?: A}): Promise<Array<{result: Awaited<T>; documentId?: string; frameId?: number}>>;
+    executeScript<T, A extends unknown[]>(injection: {target: {tabId: number; allFrames?: boolean; documentIds?:string[]}; world?: "ISOLATED" | "MAIN"; func: (...args: A) => T; args?: A}): Promise<Array<{result: Awaited<T>; documentId?: string; frameId?: number}>>;
   };
   permissions: {
     request(permissions: {origins: string[]}): Promise<boolean>;

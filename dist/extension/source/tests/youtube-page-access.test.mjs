@@ -3,31 +3,43 @@ import assert from 'node:assert/strict';
 import {scanYoutube,acquireYoutubeEvidence} from '../dist/extension/app/browser/youtube-page-access.js';
 import {readYoutubePage} from '../dist/extension/app/content/youtube-page.js';
 import {scanTab,scanUrl} from '../dist/extension/app/browser/page-access.js';
-import {withTemporaryTab} from '../dist/extension/app/browser/page-read-session.js';
 import {videoId,video,audio,template,url} from './support/youtube-fixture.mjs';
 
 function events(){const listeners=new Set();return {listeners,addListener:f=>listeners.add(f),removeListener:f=>listeners.delete(f)};}
 function chromeFixture(t,behavior){
   const previous=globalThis.chrome,removed=[],onRemoved=events(),onUpdated=events();
   const address=`https://www.youtube.com/watch?v=${videoId}`;
-  globalThis.chrome={windows:{create:async()=>{throw new Error('YouTube must not open a window');}},tabs:{create:async options=>{assert.equal(options.active,false);return {id:8};},remove:async id=>removed.push(id),onRemoved,onUpdated,get:async()=>({status:'complete'})},scripting:{executeScript:behavior}};
+  globalThis.chrome={windows:{create:async()=>{throw new Error('Must not open a window');}},tabs:{
+    query:async()=>[{id:8,url:address,active:true}],create:async()=>{throw new Error('Must not open a tab');},remove:async()=>{throw new Error('Must not close a tab');},onRemoved,onUpdated,get:async()=>({status:'complete',url:address})},
+    scripting:{executeScript:async request=>{
+      if(request.func.name==='manageYoutubeFrame'){if(request.args[2])removed.push(request.target.tabId);return [{documentId:'host',result:address}];}
+      if(request.target.documentIds)return [{documentId:request.target.documentIds[0],result:true}];
+      const rows=await behavior(request);
+      if(request.target.tabId===8&&!request.target.allFrames)return rows.map(row=>({...row,documentId:['doc','temporary'].includes(row.documentId)?'host':row.documentId}));
+      return rows;
+    }}};
   t.after(()=>{if(previous===undefined)delete globalThis.chrome;else globalThis.chrome=previous;});
   return {removed,onRemoved,onUpdated,address};
 }
-for(const outcome of ['create-abort','load-abort','load-timeout','load-failure'])test(`背景タブの準備失敗でも所有するタブと待機を解放する: ${outcome}`,async t=>{
-  const controller=new AbortController(),fixture=chromeFixture(t,async()=>{throw new Error('Must not read');});
+for(const outcome of ['create-abort','frame-timeout','create-failure'])test(`取得フレームの準備失敗で既存タブを残し、自分のフレームだけを解放する: ${outcome}`,async t=>{
+  const controller=new AbortController(),fixture=chromeFixture(t,async()=>[]);
   let created;
-  chrome.tabs.create=async()=>{if(outcome==='create-abort')await new Promise(resolve=>{created=resolve;});return {id:8};};
-  chrome.tabs.get=async()=>{if(outcome==='load-failure')throw new Error('closed');return {status:'loading'};};
-  if(outcome==='load-timeout')t.mock.timers.enable({apis:['setTimeout']});
-  const work=withTemporaryTab(fixture.address,controller.signal,async()=>{throw new Error('Must not read');},1000);
-  const rejected=assert.rejects(work,/終了|時間切れ|開けません/);
+  const execute=chrome.scripting.executeScript;
+  chrome.scripting.executeScript=async request=>{
+    if(request.func.name==='manageYoutubeFrame'&&!request.args[2]){
+      if(outcome==='create-failure')throw new Error('YouTubeの動画情報を確認できませんでした。');
+      if(outcome==='create-abort')await new Promise(resolve=>{created=resolve;});
+    }
+    return execute(request);
+  };
+  if(outcome==='frame-timeout')t.mock.timers.enable({apis:['setTimeout']});
+  const work=acquireYoutubeEvidence(videoId,true,controller.signal);
+  const rejected=assert.rejects(work,/終了|時間切れ|確認/);
   for(let i=0;i<10;i++)await Promise.resolve();
   if(outcome==='create-abort'){controller.abort();created();}
-  if(outcome==='load-abort')controller.abort();
-  if(outcome==='load-timeout')t.mock.timers.tick(1000);
+  if(outcome==='frame-timeout')t.mock.timers.tick(90000);
   await rejected;
-  assert.deepEqual(fixture.removed,[8]);assert.equal(fixture.onRemoved.listeners.size,0);assert.equal(fixture.onUpdated.listeners.size,0);
+  assert.deepEqual(fixture.removed,outcome==='create-failure'?[]:[8]);assert.equal(fixture.onRemoved.listeners.size,0);assert.equal(fixture.onUpdated.listeners.size,0);
 });
 for(const requested of [false,true])for(const outcome of ['success','navigation','reload','closed'])test(`現在のYouTubeタブの文書を解析前後に確認する: requested=${requested}, ${outcome}`,async t=>{
   let fixture,finished=false,sourceReads=0;
@@ -45,13 +57,13 @@ for(const requested of [false,true])for(const outcome of ['success','navigation'
   else await assert.rejects(operation,/移動|閉じ/);
   assert.deepEqual(fixture.removed,[8]);assert.equal(fixture.onRemoved.listeners.size,0);
 });
-test('入力URLからのYouTube解析は元タブを必要としない',async t=>{
+test('入力URLからのYouTube解析も既存タブを使い、新しいタブを作らない',async t=>{
   let fixture;
   fixture=chromeFixture(t,async ({func})=>func.name==='readYoutubePage'?[{documentId:'temporary',result:{videoId,title:'video',previewUrl:'',formats:[video,audio]}}]:[{documentId:'temporary',result:fixture.address}]);
   assert.equal((await scanUrl(fixture.address)).media[0].youtube.videoId,videoId);
   assert.deepEqual(fixture.removed,[8]);
 });
-for(const outcome of ['success','shape','navigation','closed','abort'])test(`YouTubeの背景タブを解析・中止・異常終了後に解放する: ${outcome}`,async t=>{
+for(const outcome of ['success','shape','navigation','closed','abort'])test(`YouTubeの取得フレームを解析・中止・異常終了後に解放する: ${outcome}`,async t=>{
   const controller=new AbortController();let fixture;
   fixture=chromeFixture(t,async request=>{
     if(request.func.name!=='readYoutubePage')return [{documentId:outcome==='navigation'?'changed':'doc',result:fixture.address}];

@@ -1,9 +1,12 @@
 import type {YoutubePageEvidence} from "../contracts/youtube-contracts.js";
 
-/** Inject only into an owned temporary tab. All helpers must survive Chrome function serialization. */
-export async function readYoutubePage(videoId: string, capturePlayback: boolean): Promise<YoutubePageEvidence> {
+/** Playback changes are confined to an owned frame. Helpers survive Chrome serialization. */
+export async function readYoutubePage(videoId: string, capturePlayback: boolean, owner?:string): Promise<YoutubePageEvidence|undefined> {
+  if(owner&&window.name!==owner&&location.hash!==`#${owner}`)return undefined;
   const empty=(error: string): YoutubePageEvidence=>({videoId,title:"",previewUrl:"",formats:[],error});
-  if(location.origin!=="https://www.youtube.com"||location.pathname!=="/watch"||new URL(location.href).searchParams.get("v")!==videoId)return empty("YouTubeの対象動画を確認できませんでした。");
+  const watch=location.pathname==="/watch"&&new URL(location.href).searchParams.get("v")===videoId;
+  const embed=Boolean(owner)&&location.pathname===`/embed/${videoId}`;
+  if(location.origin!=="https://www.youtube.com"||(!watch&&!embed))return owner?undefined:empty("YouTubeの対象動画を確認できませんでした。");
   const initialUrl=location.href;
   const record=(value: unknown): Record<string,unknown>|undefined=>value&&typeof value==="object"&&!Array.isArray(value)?value as Record<string,unknown>:undefined;
   const source=(): Record<string,unknown>|undefined=>{

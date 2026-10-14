@@ -40,10 +40,12 @@ for(const {refresh,chunked,differentDurations} of [
     }
     assert.ok(responses.length>7);
   }
-  const address=`https://www.youtube.com/watch?v=${videoId}`,closed=[],captures=[],workers=[];let tabId=0,requests=0,responseIndex=0;
+  const address=`https://www.youtube.com/watch?v=${videoId}`,closed=[],captures=[],workers=[];let requests=0,responseIndex=0;
   const event=()=>({addListener(){},removeListener(){}});
-  globalThis.chrome={windows:{create:async()=>{throw new Error('No new window');}},tabs:{create:async options=>{assert.equal(options.active,false);return {id:++tabId};},remove:async id=>closed.push(id),get:async()=>({status:'complete'}),onRemoved:event(),onUpdated:event()},scripting:{executeScript:async request=>{
-    if(request.func.name!=='readYoutubePage')return [{documentId:'doc',result:address}];
+  globalThis.chrome={windows:{create:async()=>{throw new Error('No new window');}},tabs:{query:async()=>[{id:1,url:address}],create:async()=>{throw new Error('No new tab');},remove:async()=>{throw new Error('Do not close host tab');},get:async()=>({status:'complete'}),onRemoved:event(),onUpdated:event()},scripting:{executeScript:async request=>{
+    if(request.func.name==='manageYoutubeFrame'){if(request.args[2])closed.push(closed.length+1);return [{documentId:'host',result:address}];}
+    if(request.target.documentIds)return [{documentId:'doc',result:true}];
+    if(request.func.name!=='readYoutubePage')return [{documentId:'host',result:address}];
     captures.push(request.args[1]);return [{documentId:'doc',result:{videoId,title:'fixture',previewUrl:'',formats,...(request.args[1]?{capture:{url,body:[...template]}}:{})}}];
   }}};
   globalThis.Worker=class{constructor(){workers.push(this);}terminate(){this.terminated=true;}postMessage(request){this.request=request;void muxYoutube(request.video,request.audio,request.durations,request.maxBytes).then(blob=>{if(!this.terminated)this.onmessage({data:{blob}});}).catch(error=>this.onmessage({data:{error:error.message}}));}};
@@ -63,15 +65,18 @@ for(const {refresh,chunked,differentDurations} of [
   assert.deepEqual(workers[0].request.durations,{videoMs:300,audioMs:formats[1].durationMs});
 });
 
-test('受信が進まない状態は応答回数でなく30秒の経過で中止し、認証用ページも残さない',async tctx=>{
+test('受信が進まない状態は応答回数でなく30秒の経過で中止し、認証用フレームも残さない',async tctx=>{
   const previous={chrome:globalThis.chrome,fetch:globalThis.fetch,performance:globalThis.performance,setTimeout:globalThis.setTimeout};
   tctx.after(()=>{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}});
   let now=0,requests=0;const closed=[],address=`https://www.youtube.com/watch?v=${videoId}`;
   globalThis.performance={now:()=>now};
   globalThis.setTimeout=(callback,ms,...args)=>{if(ms===500){queueMicrotask(()=>{now+=500;callback(...args);});return -1;}return previous.setTimeout(callback,ms,...args);};
   const event=()=>({addListener(){},removeListener(){}});
-  globalThis.chrome={windows:{create:async()=>{throw new Error('No new window');}},tabs:{create:async()=>({id:1}),remove:async id=>closed.push(id),get:async()=>({status:'complete'}),onRemoved:event(),onUpdated:event()},scripting:{executeScript:async request=>request.func.name==='readYoutubePage'
-    ?[{documentId:'doc',result:{videoId,title:'fixture',previewUrl:'',formats:[video,audio],capture:{url,body:[...template]}}}]:[{documentId:'doc',result:address}]}};
+  globalThis.chrome={windows:{create:async()=>{throw new Error('No new window');}},tabs:{query:async()=>[{id:1,url:address}],create:async()=>{throw new Error('No new tab');},remove:async()=>{throw new Error('Do not close host tab');},get:async()=>({status:'complete'}),onRemoved:event(),onUpdated:event()},scripting:{executeScript:async request=>{
+    if(request.func.name==='manageYoutubeFrame'){if(request.args[2])closed.push(1);return [{documentId:'host',result:address}];}
+    if(request.target.documentIds)return [{documentId:'doc',result:true}];
+    return request.func.name==='readYoutubePage'?[{documentId:'doc',result:{videoId,title:'fixture',previewUrl:'',formats:[video,audio],capture:{url,body:[...template]}}}]:[{documentId:'host',result:address}];
+  }}};
   globalThis.fetch=async()=>{requests++;return new Response(part(35,new Uint8Array()),{headers:{'content-type':'application/vnd.yt-ump'}});};
   await assert.rejects(fetchYoutubeVideo({videoId,quality:'1080p'}),/継続/);
   assert.ok(requests>6);assert.equal(now,30000);assert.deepEqual(closed,[1]);

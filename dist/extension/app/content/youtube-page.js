@@ -1,8 +1,12 @@
-/** Inject only into an owned temporary tab. All helpers must survive Chrome function serialization. */
-export async function readYoutubePage(videoId, capturePlayback) {
+/** Playback changes are confined to an owned frame. Helpers survive Chrome serialization. */
+export async function readYoutubePage(videoId, capturePlayback, owner) {
+    if (owner && window.name !== owner && location.hash !== `#${owner}`)
+        return undefined;
     const empty = (error) => ({ videoId, title: "", previewUrl: "", formats: [], error });
-    if (location.origin !== "https://www.youtube.com" || location.pathname !== "/watch" || new URL(location.href).searchParams.get("v") !== videoId)
-        return empty("YouTubeの対象動画を確認できませんでした。");
+    const watch = location.pathname === "/watch" && new URL(location.href).searchParams.get("v") === videoId;
+    const embed = Boolean(owner) && location.pathname === `/embed/${videoId}`;
+    if (location.origin !== "https://www.youtube.com" || (!watch && !embed))
+        return owner ? undefined : empty("YouTubeの対象動画を確認できませんでした。");
     const initialUrl = location.href;
     const record = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
     const source = () => {

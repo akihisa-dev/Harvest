@@ -5,6 +5,7 @@
  */
 
 const english = {
+  errorYoutubeHost: "Keep a web page open to save the YouTube video.",
   errorYoutubeTarget: "Could not verify the target YouTube video.",
   errorYoutubeRead: "Could not read the YouTube video information.",
   errorYoutubeVerify: "Could not verify the YouTube video information.",
@@ -231,6 +232,7 @@ const english = {
 } as const;
 
 const japanese: {[K in keyof typeof english]: string} = {
+  errorYoutubeHost: "YouTubeの取得にはWebページを開いたタブが必要です。",
   errorYoutubeTarget: "YouTubeの対象動画を確認できませんでした。",
   errorYoutubeRead: "YouTubeの動画情報を読み取れませんでした。",
   errorYoutubeVerify: "YouTubeの動画情報を確認できませんでした。",
@@ -495,6 +497,7 @@ export function localizeDocument(root: Document = document): void {
 }
 
 const sourceMessages: Partial<Record<string, TranslationKey>> = {
+  "YouTubeの取得にはWebページを開いたタブが必要です。": "errorYoutubeHost",
   "YouTubeの対象動画を確認できませんでした。": "errorYoutubeTarget",
   "YouTubeの動画情報を読み取れませんでした。": "errorYoutubeRead",
   "YouTubeの動画情報を確認できませんでした。": "errorYoutubeVerify",

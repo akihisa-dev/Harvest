@@ -1,46 +1,88 @@
 import { selectYoutubeFormats, youtubeVideoUrl } from "../../core/youtube.js";
 import { readYoutubePage } from "../content/youtube-page.js";
+import { manageYoutubeFrame } from "../content/youtube-frame.js";
 import { isYoutubePageEvidence } from "../contracts/youtube-contracts.js";
-import { withTemporaryTab } from "./page-read-session.js";
-/** Observe playback only in an owned inactive tab, which is closed on every exit. */
+/** Own a disposable frame, leaving the host tab and its player untouched. */
 export async function acquireYoutubeEvidence(videoId, capture, signal) {
-    return withTemporaryTab(youtubeVideoUrl(videoId), signal, async (tabId) => {
-        const controller = new AbortController();
-        let timeout;
-        const abort = () => controller.abort();
-        signal?.addEventListener("abort", abort, { once: true });
-        let reject;
-        const interrupted = new Promise((_, no) => { reject = no; });
-        const stop = () => reject(new Error("ページの解析を終了しました。"));
-        controller.signal.addEventListener("abort", stop, { once: true });
-        const removed = (id) => { if (id === tabId)
-            reject(new Error("解析中のタブが閉じられました。")); };
-        chrome.tabs.onRemoved.addListener(removed);
-        timeout = setTimeout(() => reject(new Error("YouTubeの動画情報の読み取りが時間切れになりました。")), 20000);
-        try {
-            signal?.throwIfAborted();
-            const operation = (async () => {
-                const [entry] = await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: readYoutubePage, args: [videoId, capture] });
-                signal?.throwIfAborted();
-                if (!entry?.documentId || !isYoutubePageEvidence(entry.result) || entry.result.videoId !== videoId)
+    signal?.throwIfAborted();
+    youtubeVideoUrl(videoId);
+    const tabs = await chrome.tabs.query({});
+    signal?.throwIfAborted();
+    const web = tabs.filter(tab => tab.id !== undefined && tab.url?.startsWith("https://"));
+    const tab = web.find(tab => { try {
+        return new URL(tab.url).origin === "https://www.youtube.com";
+    }
+    catch {
+        return false;
+    } })
+        ?? web.find(tab => tab.active) ?? web[0];
+    if (tab?.id === undefined)
+        throw new Error("YouTubeの取得にはWebページを開いたタブが必要です。");
+    const tabId = tab.id, owner = `harvest-youtube-${crypto.randomUUID()}`;
+    let parentDocument, parentUrl, timeout;
+    let stopped = false, reject;
+    const interrupted = new Promise((_, no) => { reject = no; });
+    const stop = (error) => { stopped = true; reject(error); };
+    const abort = () => stop(new Error("ページの解析を終了しました。"));
+    const removed = (id) => { if (id === tabId)
+        stop(new Error("解析中のタブが閉じられました。")); };
+    const moved = (id, change) => { if (id === tabId && change.status === "loading")
+        stop(new Error("解析中にページが移動しました。もう一度解析してください。")); };
+    signal?.addEventListener("abort", abort, { once: true });
+    chrome.tabs.onRemoved.addListener(removed);
+    chrome.tabs.onUpdated.addListener(moved);
+    timeout = setTimeout(() => stop(new Error("YouTubeの動画情報の読み取りが時間切れになりました。")), 90000);
+    const operation = (async () => {
+        const [created] = await chrome.scripting.executeScript({ target: { tabId }, func: manageYoutubeFrame, args: [videoId, owner, false] });
+        parentDocument = created?.documentId;
+        parentUrl = created?.result;
+        if (stopped || signal?.aborted)
+            return undefined;
+        if (!parentDocument || typeof parentUrl !== "string")
+            throw new Error("YouTubeの動画情報を確認できませんでした。");
+        while (!stopped) {
+            const entries = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, world: "MAIN", func: readYoutubePage, args: [videoId, capture, owner] });
+            if (stopped || signal?.aborted)
+                return undefined;
+            const entry = entries.find(row => row.result !== undefined && row.result !== null);
+            if (entry) {
+                if (!entry.documentId || !isYoutubePageEvidence(entry.result) || entry.result.videoId !== videoId)
                     throw new Error("YouTubeの動画情報を確認できませんでした。");
                 if (entry.result.error)
                     throw new Error(entry.result.error);
                 const [now] = await chrome.scripting.executeScript({ target: { tabId }, func: () => location.href });
-                if (now?.documentId !== entry.documentId || now?.result !== youtubeVideoUrl(videoId))
+                if (stopped || now?.documentId !== parentDocument || now?.result !== parentUrl)
+                    throw new Error("解析中にページが移動しました。もう一度解析してください。");
+                const frames = await chrome.scripting.executeScript({ target: { tabId, documentIds: [entry.documentId] }, world: "MAIN", func: (name) => window.name === name || location.hash === `#${name}`, args: [owner] });
+                if (stopped || frames[0]?.documentId !== entry.documentId || frames[0]?.result !== true)
                     throw new Error("解析中にページが移動しました。もう一度解析してください。");
                 return entry.result;
-            })();
-            return await Promise.race([operation, interrupted]);
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
         }
-        finally {
-            if (timeout)
-                clearTimeout(timeout);
-            signal?.removeEventListener("abort", abort);
-            controller.signal.removeEventListener("abort", stop);
-            chrome.tabs.onRemoved.removeListener(removed);
-        }
-    }, 90000);
+        return undefined;
+    })();
+    try {
+        if (signal?.aborted)
+            abort();
+        const evidence = await Promise.race([operation, interrupted]);
+        if (!evidence)
+            throw new Error("ページの解析を終了しました。");
+        return evidence;
+    }
+    finally {
+        stopped = true;
+        if (timeout)
+            clearTimeout(timeout);
+        signal?.removeEventListener("abort", abort);
+        chrome.tabs.onRemoved.removeListener(removed);
+        chrome.tabs.onUpdated.removeListener(moved);
+        // Wait for creation even after cancellation so a late frame is removed too.
+        if (!parentDocument)
+            await operation.catch(() => undefined);
+        if (parentDocument)
+            await chrome.scripting.executeScript({ target: { tabId, documentIds: [parentDocument] }, func: manageYoutubeFrame, args: [videoId, owner, true] }).catch(() => undefined);
+    }
 }
 export async function scanYoutube(videoId, signal) {
     const evidence = await acquireYoutubeEvidence(videoId, false, signal);

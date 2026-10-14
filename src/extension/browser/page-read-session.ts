@@ -259,22 +259,6 @@ export async function withTemporaryPage<T>(url: string, signal: AbortSignal | un
   }
 }
 
-/** An inactive tab uses the existing browser window and never takes focus. */
-export async function withTemporaryTab<T>(url: string, signal: AbortSignal | undefined,
-  read: (tabId: number) => Promise<T>, loadTimeoutMs = 20_000): Promise<T> {
-  if (signal?.aborted) throw new Error(abortedMessage);
-  const tab = await chrome.tabs.create({url, active: false});
-  const tabId = tab?.id;
-  try {
-    if (signal?.aborted) throw new Error(abortedMessage);
-    if (tabId === undefined) throw new Error("指定したページを開けませんでした。");
-    await waitForTemporaryTab(tabId, signal, loadTimeoutMs);
-    return await read(tabId);
-  } finally {
-    if (tabId !== undefined) await chrome.tabs.remove(tabId).catch(() => undefined);
-  }
-}
-
 function waitForTemporaryTab(tabId: number, signal: AbortSignal | undefined, loadTimeoutMs: number): Promise<void> {
   return bounded<void>((resolve, reject) => {
     const onUpdated = (id: number, change: {status?: string}): void => {
