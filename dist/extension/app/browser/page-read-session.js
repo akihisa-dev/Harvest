@@ -7,7 +7,7 @@ const pageMovedMessage = "解析中にページが移動しました。もう一
 const abortedMessage = "ページの解析を終了しました。";
 const closedMessage = "解析中のタブが閉じられました。";
 /** Each Chrome operation owns its deadline, abort listener, and event cleanup. */
-function bounded(start, signal) {
+function bounded(start, signal, timeoutMs = 20_000) {
     return new Promise((resolve, reject) => {
         let settled = false;
         let cleanup;
@@ -24,7 +24,7 @@ function bounded(start, signal) {
                 resolve(value);
         };
         const onAbort = () => finish(new Error(abortedMessage));
-        const timer = setTimeout(() => finish(new Error("ページの読み取りが時間切れになりました。もう一度お試しください。")), 20_000);
+        const timer = setTimeout(() => finish(new Error("ページの読み取りが時間切れになりました。もう一度お試しください。")), timeoutMs);
         if (signal?.aborted) {
             onAbort();
             return;
@@ -250,7 +250,7 @@ export class PageReadSession {
     }
 }
 /** Keeps a temporary window alive until its reader settles, including cancellation. */
-export async function withTemporaryPage(url, signal, read) {
+export async function withTemporaryPage(url, signal, read, loadTimeoutMs = 20_000) {
     if (signal?.aborted)
         throw new Error(abortedMessage);
     // Wait for create to settle so a window created after cancellation can still be closed.
@@ -281,7 +281,7 @@ export async function withTemporaryPage(url, signal, read) {
                 chrome.tabs.onUpdated.removeListener(onUpdated);
                 chrome.tabs.onRemoved.removeListener(onRemoved);
             };
-        }, signal);
+        }, signal, loadTimeoutMs);
         return await read(tabId);
     }
     finally {

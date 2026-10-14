@@ -6,6 +6,8 @@ export function isMediaArchiveFormat(format) {
 export function originalItemExtension(item) {
     if (item.originalExtension)
         return item.originalExtension.toUpperCase();
+    if (item.youtube)
+        return "MP4";
     if (item.kind === "gif")
         return "GIF";
     const { extension } = mediaFormat(item.url);

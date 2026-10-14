@@ -11,7 +11,8 @@ export function mergeMediaCandidates(
     if (item.kind === "video" && superseded.has(item.url)) continue;
     const previous = byUrl.get(item.url);
     const previewUrl = item.previewUrl ?? previous?.previewUrl;
-    byUrl.set(item.url, {url: item.url, kind: item.kind, ...(previewUrl ? {previewUrl} : {})});
+    const youtube = item.youtube ?? previous?.youtube;
+    byUrl.set(item.url, {url: item.url, kind: item.kind, ...(previewUrl ? {previewUrl} : {}), ...(youtube ? {youtube} : {})});
   }
   return [...byUrl.values()];
 }

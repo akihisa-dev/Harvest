@@ -51,3 +51,11 @@ CRC計算の方法は呼び出し元から渡せます。共通処理はWorker�
 ## 独立した保存形式
 
 [split-export-formats.ts](split-export-formats.ts) は独立形式の検証と設定比較、元の選択順に対応する連番を定義します。静止PDFを集約するときは最初の静止画像の番号を使い、個別GIF・動画を含むZIPの順序を元の選択順に合わせます。
+
+## YouTubeの動画取得
+
+[youtube.ts](youtube.ts) は視聴・短縮・Shorts・埋め込みURLから単一の動画IDを取り出します。映像はH.264のMP4候補を解像度・FPS・ビットレートで並べ、音声はAACの既定トラック、なければ言語指定のない候補を選びます。容量による画質の引き下げは行いません。収集結果の `youtube` は動画ID・画質・元データ容量だけを持ち、配信URLや認証用データは持ちません。
+
+[youtube-wire.ts](youtube-wire.ts) は長さ・整数・探索数を制限してprotobufとUMPの枠を読み取ります。未知のprotobufフィールドは通常再生の要求を作り直す際に維持します。[youtube-sabr.ts](youtube-sabr.ts) は取得処理1回の配信設定・認証・サーバー状態と、映像・音声の分割データを所有します。指定動画・形式の一致、各分割のバイト数、順序、再送内容、映像と音声の終端を照合し、不完全な出力を返しません。配信先の変更は検証済みのHTTPS `*.googlevideo.com/videoplayback` に限定します。
+
+通信形式は [GoogleVideoの公開protobuf定義](https://github.com/LuanRT/googlevideo/tree/main/protos/video_streaming)（MIT）を参照して独自に実装しています。GoogleVideoやyt-dlpの実行コードは同梱していません。プロトコル変更や未対応の制御応答では不完全なデータを保存せず失敗として返し、認証更新要求はブラウザー境界で1回だけ更新します。

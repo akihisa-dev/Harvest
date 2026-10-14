@@ -1,3 +1,11 @@
+export function isYoutubeMuxRequest(value) {
+    if (!record(value))
+        return false;
+    return value["video"] instanceof Blob && value["audio"] instanceof Blob && value["video"].size > 0 && value["audio"].size > 0
+        && typeof value["durationMs"] === "number" && Number.isFinite(value["durationMs"]) && value["durationMs"] > 0
+        && typeof value["maxBytes"] === "number" && Number.isSafeInteger(value["maxBytes"]) && value["maxBytes"] > 0 && value["maxBytes"] <= 64 * 1024 * 1024
+        && value["video"].size + value["audio"].size <= value["maxBytes"];
+}
 // Structured cloning does not validate a payload. Both endpoints must narrow unknown data.
 function record(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);

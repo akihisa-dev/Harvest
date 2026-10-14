@@ -40,7 +40,7 @@ export async function copyRuntimeModules(stage) {
     if (modulePath === "workers/jxl-codec.js") {
       await copyFile(source, destination);
       await rewriteJxlAdapter(destination, "../vendor");
-    } else if (modulePath === "workers/mp4-codec.js" || modulePath === "media/original-media-validation.js") {
+    } else if (["workers/mp4-codec.js", "workers/youtube-mux.js", "media/original-media-validation.js"].includes(modulePath)) {
       const code = await readFile(source, "utf8");
       await writeFile(destination, code.replace('from "harvest-vendor-mediabunny"', 'from "../vendor/mediabunny/index.js"'));
     } else {

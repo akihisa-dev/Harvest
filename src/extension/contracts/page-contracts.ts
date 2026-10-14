@@ -1,4 +1,6 @@
 import type { XMediaSnapshot, XPostSnapshot, XScanDiagnostics } from "../../core/x-media.js";
+import {isYoutubeSource, youtubeVideoId} from "../../core/youtube.js";
+import type {MediaImageMetadata} from "../../core/images.js";
 
 /** Serializable page evidence shared by injected readers and the extension receiver. */
 export interface PageScan {
@@ -6,7 +8,7 @@ export interface PageScan {
   title: string;
   xDiagnostics?: XScanDiagnostics;
   images: string[];
-  media?: Array<{url: string; kind: "image" | "gif" | "video"; previewUrl?: string}>;
+  media?: MediaImageMetadata[];
   hasFrames?: boolean;
   framePath?: number[];
   /** Added by the extension after verifying each frame's document identity. */
@@ -53,7 +55,9 @@ export function isPageScan(value: unknown): value is PageScan {
     && (value["xDiagnostics"] === undefined || diagnostics(value["xDiagnostics"]))
     && (media === undefined || (Array.isArray(media) && media.every(item => record(item)
       && typeof item["url"] === "string" && (item["kind"] === "image" || item["kind"] === "gif" || item["kind"] === "video")
-      && optionalString(item["previewUrl"]))));
+      && optionalString(item["previewUrl"])
+      && (item["youtube"] === undefined || (item["kind"] === "video" && isYoutubeSource(item["youtube"])
+        && youtubeVideoId(item["url"]) === item["youtube"].videoId)))));
 }
 
 export function isXPageState(value: unknown): value is XPageState {

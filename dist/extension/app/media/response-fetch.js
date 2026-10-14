@@ -43,8 +43,9 @@ export async function fetchResponse(url, options, errors, consume) {
             const request = {
                 credentials,
                 ...(options.method ? { method: options.method } : {}),
+                ...(options.body ? { body: options.body } : {}),
                 // Page credentials may never follow a redirect to an unrelated origin.
-                redirect: credentials === "include" ? "error" : "follow",
+                redirect: credentials === "include" || options.method === "POST" ? "error" : "follow",
                 signal: controller.signal,
                 ...(targetAddressSpace ? { targetAddressSpace } : {}),
             };

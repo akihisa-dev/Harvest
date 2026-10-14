@@ -1,3 +1,4 @@
+import { isYoutubeSource, youtubeVideoId } from "../../core/youtube.js";
 function record(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -27,7 +28,9 @@ export function isPageScan(value) {
         && (value["xDiagnostics"] === undefined || diagnostics(value["xDiagnostics"]))
         && (media === undefined || (Array.isArray(media) && media.every(item => record(item)
             && typeof item["url"] === "string" && (item["kind"] === "image" || item["kind"] === "gif" || item["kind"] === "video")
-            && optionalString(item["previewUrl"]))));
+            && optionalString(item["previewUrl"])
+            && (item["youtube"] === undefined || (item["kind"] === "video" && isYoutubeSource(item["youtube"])
+                && youtubeVideoId(item["url"]) === item["youtube"].videoId)))));
 }
 export function isXPageState(value) {
     return record(value) && typeof value["status"] === "string"

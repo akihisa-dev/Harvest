@@ -26,6 +26,7 @@ export class ImageCollection {
                 selected: selectedUrls.has(url),
                 ...(details ? { kind: details.kind } : {}),
                 ...(details?.previewUrl ? { previewUrl: details.previewUrl } : {}),
+                ...(details?.youtube ? { youtube: details.youtube } : {}),
             };
         });
         this.initialItems = [...this.orderedItems];

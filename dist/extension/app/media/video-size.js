@@ -7,6 +7,8 @@ const errors = {
     failure: error => error,
 };
 export async function fetchVideoSize(item, signal) {
+    if (item.youtube)
+        return item.youtube.bytes ?? null;
     return fetchResponse(item.url, { sourcePage: item.sourcePage, ...(signal ? { signal } : {}), method: "HEAD", timeoutMs: 10000 }, errors, async (response) => {
         const type = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
         const encoding = response.headers.get("content-encoding");
@@ -36,7 +38,8 @@ export function createVideoSizeLoader(labels) {
             void fetchVideoSize(entry.item, entry.controller.signal).catch(() => null).then(size => {
                 if (entries.get(element) !== entry)
                     return;
-                element.textContent = size === null ? labels.unknown : formatFileSize(size);
+                const sizeLabel = size === null ? labels.unknown : formatFileSize(size);
+                element.textContent = entry.item.youtube ? `${entry.item.youtube.quality} · ${sizeLabel}` : sizeLabel;
             }).finally(() => { active -= 1; pump(); });
         }
     }

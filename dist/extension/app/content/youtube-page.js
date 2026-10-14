@@ -1,0 +1,159 @@
+/** Inject only into an owned temporary page. All helpers must survive Chrome function serialization. */
+export async function readYoutubePage(videoId, capturePlayback) {
+    const empty = (error) => ({ videoId, title: "", previewUrl: "", formats: [], error });
+    if (location.origin !== "https://www.youtube.com" || location.pathname !== "/watch" || new URL(location.href).searchParams.get("v") !== videoId)
+        return empty("YouTubeの対象動画を確認できませんでした。");
+    const initialUrl = location.href;
+    const record = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
+    const source = () => {
+        const player = document.getElementById("movie_player");
+        try {
+            return record(player?.getPlayerResponse?.());
+        }
+        catch {
+            return undefined;
+        }
+    };
+    const deadline = performance.now() + 15000;
+    const wait = () => new Promise(resolve => setTimeout(resolve, 100));
+    let response;
+    while (performance.now() < deadline) {
+        if (location.href !== initialUrl)
+            return empty("解析中にページが移動しました。もう一度解析してください。");
+        response = source();
+        if (record(response?.["videoDetails"])?.["videoId"] === videoId)
+            break;
+        await wait();
+    }
+    const details = record(response?.["videoDetails"]), status = record(response?.["playabilityStatus"]);
+    if (details?.["videoId"] !== videoId)
+        return empty("YouTubeの動画情報を読み取れませんでした。");
+    if (status?.["status"] !== "OK")
+        return empty("このYouTube動画は通常の公開再生を確認できませんでした。");
+    if (details["isLive"] || details["isLiveContent"] || record(response?.["microformat"])?.["liveBroadcastDetails"])
+        return empty("YouTubeのライブ動画は保存に対応していません。");
+    const formats = [];
+    const adaptive = record(response?.["streamingData"])?.["adaptiveFormats"];
+    if (Array.isArray(adaptive) && adaptive.length <= 128) {
+        for (const raw of adaptive) {
+            const f = record(raw);
+            if (!f)
+                continue;
+            const numeric = (value) => typeof value === "number" ? value : typeof value === "string" && /^\d+$/.test(value) ? Number(value) : 0;
+            const audio = record(f["audioTrack"]);
+            const duration = numeric(f["approxDurationMs"]);
+            if (typeof f["mimeType"] !== "string" || typeof f["lastModified"] !== "string" || duration <= 0)
+                continue;
+            formats.push({ itag: numeric(f["itag"]), lastModified: f["lastModified"], xtags: typeof f["xtags"] === "string" ? f["xtags"] : "",
+                mimeType: f["mimeType"], contentLength: numeric(f["contentLength"]), durationMs: duration, height: numeric(f["height"]), fps: numeric(f["fps"]), bitrate: numeric(f["bitrate"]),
+                language: typeof audio?.["id"] === "string" ? audio["id"] : "", defaultAudio: audio?.["audioIsDefault"] === true });
+        }
+    }
+    const thumbnails = record(details["thumbnail"])?.["thumbnails"];
+    let previewUrl = "";
+    if (Array.isArray(thumbnails))
+        for (const thumbnail of thumbnails) {
+            const url = record(thumbnail)?.["url"];
+            if (typeof url === "string") {
+                try {
+                    const u = new URL(url);
+                    if (u.protocol === "https:" && /^(?:i|i\d)\.ytimg\.com$/.test(u.hostname))
+                        previewUrl = u.href;
+                }
+                catch { /* Ignore malformed previews. */ }
+            }
+        }
+    const title = typeof details["title"] === "string" ? details["title"].slice(0, 4096) : document.title;
+    const evidence = { videoId, title, previewUrl, formats };
+    if (!capturePlayback)
+        return evidence;
+    let capture;
+    // Recognize a usable, non-cold-start proof token without retaining arbitrary request fields.
+    const tokenLength = (data, fieldId) => {
+        let offset = 0;
+        const integer = () => { let value = 0, mul = 1; for (let i = 0; i < 10 && offset < data.length; i++) {
+            const byte = data[offset++];
+            value += (byte & 127) * mul;
+            if (byte < 128)
+                return value;
+            mul *= 128;
+        } throw new Error("Invalid wire"); };
+        while (offset < data.length) {
+            const tag = integer(), kind = tag & 7;
+            let size = 0;
+            if (kind === 0) {
+                integer();
+                continue;
+            }
+            if (kind === 1)
+                size = 8;
+            else if (kind === 5)
+                size = 4;
+            else if (kind === 2)
+                size = integer();
+            else
+                return undefined;
+            if (size < 0 || size > data.length - offset)
+                return undefined;
+            const value = data.subarray(offset, offset + size);
+            offset += size;
+            if (tag >>> 3 === fieldId && kind === 2)
+                return value;
+        }
+        return undefined;
+    };
+    const inspect = (url, body) => {
+        try {
+            const target = new URL(url, location.href);
+            if (location.href !== initialUrl || target.protocol !== "https:" || !target.hostname.endsWith(".googlevideo.com") || target.pathname !== "/videoplayback" || target.searchParams.get("sabr") !== "1")
+                return;
+            const bytes = body instanceof ArrayBuffer ? new Uint8Array(body) : ArrayBuffer.isView(body) ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength) : undefined;
+            if (!bytes || bytes.length > 65536)
+                return;
+            const context = tokenLength(bytes, 19), token = context ? tokenLength(context, 2) : undefined;
+            if (token && token.length >= 16)
+                capture = { url: target.href, body: Array.from(bytes) };
+        }
+        catch { /* Observation must never affect native playback. */ }
+    };
+    const originalOpen = XMLHttpRequest.prototype.open, originalSend = XMLHttpRequest.prototype.send, originalFetch = window.fetch;
+    const urls = new WeakMap();
+    const open = function (method, url, async, username, password) {
+        urls.set(this, String(url));
+        Reflect.apply(originalOpen, this, async === undefined ? [method, url] : [method, url, async, username, password]);
+    };
+    const send = function (body) { inspect(urls.get(this) ?? "", body); Reflect.apply(originalSend, this, [body]); };
+    const fetcher = function (input, init) {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        inspect(url, init?.body);
+        // Native Request bodies are not consumed or cloned: common buffer-based playback requests suffice.
+        return Reflect.apply(originalFetch, this, [input, init]);
+    };
+    const video = document.querySelector("#movie_player video");
+    if (!video)
+        return empty("YouTubeの動画プレイヤーを読み取れませんでした。");
+    try {
+        XMLHttpRequest.prototype.open = open;
+        XMLHttpRequest.prototype.send = send;
+        window.fetch = fetcher;
+        video.muted = true;
+        void video.play().catch(() => { });
+        while (performance.now() < deadline && !capture) {
+            if (location.href !== initialUrl)
+                return empty("解析中にページが移動しました。もう一度解析してください。");
+            await wait();
+        }
+        if (!capture)
+            return empty("YouTubeの取得用認証を読み取れませんでした。もう一度保存をお試しください。");
+        return { ...evidence, capture };
+    }
+    finally {
+        video.pause();
+        if (XMLHttpRequest.prototype.open === open)
+            XMLHttpRequest.prototype.open = originalOpen;
+        if (XMLHttpRequest.prototype.send === send)
+            XMLHttpRequest.prototype.send = originalSend;
+        if (window.fetch === fetcher)
+            window.fetch = originalFetch;
+    }
+}

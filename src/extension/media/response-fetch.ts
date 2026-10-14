@@ -25,7 +25,7 @@ export async function cancelResponse(response: Response | undefined): Promise<vo
 /** Owns the request and response lifetime, including consumption under the same deadline. */
 export async function fetchResponse<T>(
   url: string,
-  options: {readonly timeoutMs: number; readonly method?: "HEAD"; readonly signal?: AbortSignal; readonly sourcePage?: string},
+  options: {readonly timeoutMs: number; readonly method?: "HEAD" | "POST"; readonly body?: Uint8Array<ArrayBuffer>; readonly signal?: AbortSignal; readonly sourcePage?: string},
   errors: ResponseFetchErrors,
   consume: (response: Response, state: ResponseFetchState) => Promise<T>,
 ): Promise<T> {
@@ -57,8 +57,9 @@ export async function fetchResponse<T>(
       const request: RequestInit & {targetAddressSpace?: "public"} = {
         credentials,
         ...(options.method ? {method: options.method} : {}),
+        ...(options.body ? {body: options.body} : {}),
         // Page credentials may never follow a redirect to an unrelated origin.
-        redirect: credentials === "include" ? "error" : "follow",
+        redirect: credentials === "include" || options.method === "POST" ? "error" : "follow",
         signal: controller.signal,
         ...(targetAddressSpace ? {targetAddressSpace} : {}),
       };

@@ -45,6 +45,8 @@ WebMからMP4への変換には`mediabunny` 1.61.0（MPL-2.0）を完全固定�
 
 上流bundleの補正対象が一意に見つからない場合はビルドを停止します。依存を更新する際はこの補正の必要性と位置を再確認してください。MediabunnyのMPL-2.0ライセンスは維持し、補正の定義とヘルパーを配布ソースへ含めます。`tests/webm-tail.browser.mjs`でDefaultDurationの有無、VFR、Opus音声を含む小さいfixtureを実拡張機能のMP4・recommend保存で確認します。
 
+YouTubeの映像・音声結合にも同じMediabunnyを使用します。AVC/AACのパケットを再圧縮せずにMP4へ書き込みます。新規依存・外部実行コード・別アプリは追加せず、`youtube-mux.ts` の同梱ライブラリ参照だけを既存のビルドで解決します。配信処理と一時ページの所有権は [src/extension/README.md](src/extension/README.md#youtube専用の取得経路) に記載しています。`tests/youtube*.test.mjs` は実際の認証データを使わずに取得と結合を検証します。
+
 ## 権限と利用者情報
 
 Chrome権限や対象サイトを広げる場合は必要な操作を説明してください。利用者情報を扱う場合は取得内容、保存先、保持期間、削除方法を文書化します。依存追加前に必要性、保守状況、脆弱性、ライセンスを確認し、版を固定してlockfileを更新します。

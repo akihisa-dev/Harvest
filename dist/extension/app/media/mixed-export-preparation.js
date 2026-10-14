@@ -10,6 +10,7 @@ import { prepareAnimatedImage } from "./animated-image.js";
 import { prepareMp4 } from "./mp4-conversion.js";
 import { convertImage } from "./image-format.js";
 import { decodeImage } from "./image-decode.js";
+import { fetchYoutubeVideo } from "./youtube-fetch.js";
 function preparedSize(value) {
     return "blob" in value ? value.blob.size : "jpeg" in value.page ? value.page.jpeg.byteLength : value.page.rgbFlate.byteLength;
 }
@@ -38,7 +39,7 @@ export async function prepareMixedExport(work, options) {
         try {
             const original = item.kind === "video" || imageFormat === "original";
             if (original)
-                results[index].resolve({ kind: "media", blob: await fetchOriginalMedia(item.url, item.kind ?? "image", { signal, sourcePage: item.sourcePage }), release });
+                results[index].resolve({ kind: "media", blob: item.youtube ? await fetchYoutubeVideo(item.youtube, signal) : await fetchOriginalMedia(item.url, item.kind ?? "image", { signal, sourcePage: item.sourcePage }), release });
             else {
                 const knownGif = item.kind === "gif" || item.recommendedFormat === "gif";
                 results[index].resolve({ kind: "image", fetched: await fetchImage(item.url, { signal, sourcePage: item.sourcePage, ...(knownGif ? { timeoutMs: DEFAULT_MEDIA_TIMEOUT_MS } : {}) }), release });

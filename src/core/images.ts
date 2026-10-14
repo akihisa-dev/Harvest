@@ -1,9 +1,12 @@
+import type {YoutubeSource} from "./youtube.js";
+
 export interface ImageItem {
   url: string;
   sourcePage: string;
   selected: boolean;
   kind?: "image" | "gif" | "video";
   previewUrl?: string;
+  youtube?: YoutubeSource;
   /** Verified response format for recommend labels; panel memory only. */
   recommendedFormat?: "png" | "gif";
   /** Validated response extension; never persisted outside this panel. */
@@ -20,7 +23,7 @@ export interface ImageGroup {
 
 export type ImageGroups = Record<string, ImageGroup>;
 
-export type MediaImageMetadata = {url: string; kind: "image" | "gif" | "video"; previewUrl?: string};
+export type MediaImageMetadata = {url: string; kind: "image" | "gif" | "video"; previewUrl?: string; youtube?: YoutubeSource};
 
 /** Groups collected media by type and file format while retaining image-series grouping. */
 export function groupMediaImages(urls: readonly string[], metadata: readonly MediaImageMetadata[] = []): ImageGroups {

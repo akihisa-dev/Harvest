@@ -84,9 +84,19 @@ For X, Harvest chooses the highest bitrate among available MP4 candidates. After
 
 The bookmarks area of history (`/i/history`) and the older bookmarks page (`/i/bookmarks`) also wait for posts and retry reading, excluding profile images. Data attached to displayed posts supplements photos without image elements and multiple videos, without duplicating photos whose URL formats or display sizes differ. List views include quoted and reposted media. Video thumbnails are distinguished from videos, and quality variants of a video are merged. Harvest compares visible media with results per post and rereads incomplete posts once. Remaining gaps or scan limits produce an explanation and preserve previous results. All collected media groups are initially visible. On bookmark lists, Analyze asks X’s own continuation action to load remaining pages sequentially without scrolling. Stop keeps the collected results; failures leave a partial-result notice. URLs remain only in side-panel memory and are discarded when it closes.
 
-Media cannot be saved if the page exposes no playback information or provides only segmented or live streams. A selection containing videos, known GIFs, or original images is fetched one at a time, with a 64 MiB file limit. Known GIFs, videos, and original-media fetches have a 120-second timeout; still or unclassified image fetches have a 20-second timeout. WebM conversion also runs one at a time, with a 64 MiB output limit and 120-second timeout. Downloads do not start if any file cannot be prepared; failed items can be retried or saving cancelled. Fetched and converted data exists only in panel and worker memory and is discarded on completion, cancellation during preparation, or panel closure. If MP4 saving fails or is cancelled after downloads begin, prepared data and completed item numbers remain in memory for retrying. They are discarded on completion, changes to results/selection/format, Clear, or panel closure.
+Media cannot be saved if the page exposes no playback information or provides only unsupported segmented or live streams. A selection containing videos, known GIFs, or original images is fetched one at a time, with a 64 MiB file limit. Known GIFs, videos, and original-media fetches have a 120-second timeout; still or unclassified image fetches have a 20-second timeout. WebM conversion also runs one at a time, with a 64 MiB output limit and 120-second timeout. Downloads do not start if any file cannot be prepared; failed items can be retried or saving cancelled. Fetched and converted data exists only in panel and worker memory and is discarded on completion, cancellation during preparation, or panel closure. If MP4 saving fails or is cancelled after downloads begin, prepared data and completed item numbers remain in memory for retrying. They are discarded on completion, changes to results/selection/format, Clear, or panel closure.
 
 Conversion workers terminate on success, failure, cancellation, or timeout. Conversion does not send data externally or persist it.
+
+#### YouTube URLs
+
+YouTube watch, youtu.be, Shorts, and embed URLs resolve to one video. Timestamp and playlist parameters do not request a clip or a playlist. Harvest reads public VOD playback information in its own minimized temporary window; it never changes playback in your existing tab. Saving briefly starts muted playback in that temporary window to obtain current authorization, then stops it and closes the window. This is an ordinary visit to YouTube and may affect YouTube's playback history or other normal site behavior. No account login is automated.
+
+Harvest selects the highest resolution, frame rate, then bitrate among AVC (H.264) MP4 video streams, together with the default/original AAC audio track. The row shows this selected quality and the combined source size when known. Higher-resolution AV1/VP9 streams are outside this implementation; the displayed AVC quality is not necessarily YouTube's highest quality. The selected quality is never reduced to meet the size limit. Missing supported streams, live or previously-live content, authorization failure, different-video responses, and incomplete media stop saving with a reason.
+
+Original, recommended, and MP4 all combine those selected streams into one MP4 without re-encoding. Original preserves compressed video/audio packets, not the bytes of a pre-existing combined file. No yt-dlp, FFmpeg, external application, new Chrome permission, or new runtime dependency is required. Signed URLs and authorization data stay only in operation memory; saving refreshes them, and an authorization rejection triggers at most one fresh attempt from the beginning. Preparation cancellation discards partial media. The existing completed-file retry rules still apply after Chrome downloads start.
+
+Both fetched source streams together and the resulting MP4 have a 64 MiB ceiling. The page-load timeout is 90 seconds, playback-information read timeout 20 seconds, media-fetch timeout 120 seconds per attempt, and MP4-assembly timeout 120 seconds. Long videos exceeding these limits are not supported; temporary disk storage has not been added. Automated tests cover synthetic streaming responses and encoded-packet preservation. Final playback and saving on actual YouTube pages still require manual verification.
 
 #### Saving original or recommended formats
 
@@ -246,11 +256,21 @@ PDFは画像の元の大きさに合わせて1枚ずつページを作成しま�
 
 動画はページの動画要素からMP4・WebMのURLを、ページ内の再生情報やXの投稿表示に使われている情報からMP4のURLを取得します。WebMを含む場合も保存形式はMP4で、保存前に変換することを表示します。WebMは映像をH.264、音声をAACに変換し、解像度・フレーム間隔・音声のチャンネル数とサンプルレートを維持します。再圧縮による画質・音質の変化や容量の増減はあり得ます。変換できない映像・音声がある場合は、勝手に取り除かず理由を表示して保存を止めます。
 
+#### YouTubeのURL
+
+YouTubeの視聴URL、youtu.be、Shorts、埋め込みURLから1本の動画を解析します。時刻指定・再生リストのパラメーターがあっても、部分切り出しや再生リスト全体の保存は行いません。Harvest自身の最小化した一時ウィンドウで公開動画の情報を読み取り、利用者が開いているタブの再生状態は変更しません。保存時には一時ウィンドウで短く消音再生して最新の取得用認証を読み取り、停止して閉じます。通常のYouTubeへのアクセス・再生に当たるため、YouTube側の再生履歴など通常のサイト動作へ影響する場合があります。ログイン操作は自動化しません。
+
+H.264（AVC）のMP4候補の中で解像度、フレームレート、ビットレートの順に高い映像を選び、既定・原音のAAC音声と組み合わせます。一覧に選択した画質と、分かる場合は映像・音声を合わせた元データの容量を表示します。AV1・VP9の高解像度候補は今回の対象外なので、表示する画質がYouTube全体の最高画質とは限りません。容量制限へ収めるために画質を下げることはありません。対応候補がない動画、ライブ・過去のライブ動画、取得用認証の失敗、別動画の応答、不完全なデータでは理由を表示して保存を止めます。
+
+original・recommended・MP4はいずれも選択した映像と音声を再圧縮せず一つのMP4へまとめます。YouTubeのoriginalは圧縮済みの映像・音声を保持する意味であり、結合済みの原本ファイルのバイト列を保持する意味ではありません。yt-dlp、FFmpeg、別アプリ、新しいChrome権限、新しい実行時依存は不要です。署名付きURLと認証情報は処理中のメモリだけに保持し、保存時に取り直します。認証の拒否は最大1回だけ取り直して先頭から再取得します。準備中の中止では途中データを破棄し、Chromeの保存開始後は既存の完了済みファイル・再試行の扱いを維持します。
+
+取得する映像・音声の合計と、結合後のMP4はそれぞれ64 MiBが上限です。ページ読み込みは90秒、配信情報の読み取りは20秒、動画取得は1試行120秒、MP4結合は120秒で打ち切ります。上限を超える長い動画には対応せず、一時ディスク保存は追加していません。自動テストでは再現用の配信応答と、映像・音声の圧縮データが保持されることを確認します。実際のYouTubeページでの保存・再生は最終の手動確認が必要です。
+
 Xは取得できるMP4候補の中から最も高いビットレートを選びます。Xの投稿は初期ロード完了後も投稿・動画の表示を待って解析し直し、動画の拡大表示にある再生情報も読み取ります。投稿URLを指定した場合はその投稿IDと一致する本文・画像・動画だけを対象とし、引用・返信・おすすめの投稿は含めません。拡大表示も指定投稿との対応を確認できる場合だけ読み取ります。プロフィール画像は保存対象から除外します。Xの表示制限、投稿の読み込み未完了、動画ページからMP4のURLを読み取れない場合や、取得したデータをMP4として保存できない場合は理由を表示し、プロフィール画像だけを解析の成功結果にしません。
 
 履歴画面のブックマーク欄（`/i/history`）と従来のブックマーク画面（`/i/bookmarks`）でも投稿の表示を待って解析し直し、プロフィール画像を除外します。ページに表示された投稿に付随するデータから、画像要素になっていない写真や複数の動画も補います。同じ写真のURL形式・表示サイズの違いで補完分が重複しないようにします。Xの投稿写真は、一覧の縮小表示用URLから配信元のオリジナルサイズ（`name=orig`）を指定する保存用URLへ統一します。取得できない場合に縮小版へ黙って切り替えることはありません。一覧では引用と再投稿のメディアも対象です。動画のサムネイルと動画本体を区別し、同じ動画の画質違いは1件にまとめます。画面にあるメディアと取得結果を投稿ごとに照合し、不足がある投稿だけを1回読み直します。画面上の画像・動画URLを先に収集し、投稿データから補完します。補完が終わらない場合も取得できた画像・動画を表示し、一部を取得できていないことを案内します。何も取得できなかった場合やページが移動した場合は前の解析結果を残します。解析直後は取得したすべての種類のグループを表示します。ブックマークの解析ではX自身の続き取得処理で追加通信し、未読み込みの投稿も順番に取得します。読み取ったURLは従来どおりサイドパネル内だけで保持し、閉じると破棄します。
 
-ページが再生情報を公開していない場合や、分割配信・ライブ配信だけの場合は保存できません。動画・既知GIF・画像のoriginalを含む選択では1件ずつ取得し、1ファイル64 MiBを上限にします。既知GIF・動画・originalの取得は120秒、静止・未分類画像の取得は20秒です。WebMの変換も1件ずつ行い、変換後64 MiB、変換120秒を上限とします。取得できないファイルがある場合はダウンロードを開始せず、失敗分の再試行または中止ができます。取得済みファイルと変換結果はパネルと変換用Workerのメモリだけに保持し、保存完了・準備中の中止・パネル終了で破棄します。MP4の保存開始後に失敗・中止した場合は再試行のために準備済みデータと完了済み番号をメモリに保持し、保存完了、解析結果・選択・形式の変更、クリア、パネル終了で破棄します。
+ページが再生情報を公開していない場合や、未対応の分割配信・ライブ配信だけの場合は保存できません。動画・既知GIF・画像のoriginalを含む選択では1件ずつ取得し、1ファイル64 MiBを上限にします。既知GIF・動画・originalの取得は120秒、静止・未分類画像の取得は20秒です。WebMの変換も1件ずつ行い、変換後64 MiB、変換120秒を上限とします。取得できないファイルがある場合はダウンロードを開始せず、失敗分の再試行または中止ができます。取得済みファイルと変換結果はパネルと変換用Workerのメモリだけに保持し、保存完了・準備中の中止・パネル終了で破棄します。MP4の保存開始後に失敗・中止した場合は再試行のために準備済みデータと完了済み番号をメモリに保持し、保存完了、解析結果・選択・形式の変更、クリア、パネル終了で破棄します。
 
 変換完了・失敗・中止・時間切れのいずれでもWorkerを終了します。変換用の外部送信や永続保存は行いません。
 

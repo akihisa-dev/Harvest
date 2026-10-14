@@ -7,7 +7,8 @@ export function mergeMediaCandidates(base, preferred) {
             continue;
         const previous = byUrl.get(item.url);
         const previewUrl = item.previewUrl ?? previous?.previewUrl;
-        byUrl.set(item.url, { url: item.url, kind: item.kind, ...(previewUrl ? { previewUrl } : {}) });
+        const youtube = item.youtube ?? previous?.youtube;
+        byUrl.set(item.url, { url: item.url, kind: item.kind, ...(previewUrl ? { previewUrl } : {}), ...(youtube ? { youtube } : {}) });
     }
     return [...byUrl.values()];
 }
