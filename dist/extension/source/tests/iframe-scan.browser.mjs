@@ -126,3 +126,55 @@ test('継承about文書は検証済みの親を出典に使い、sandboxと別or
   assert.ok(result.frames.some(frame => frame.url === 'about:blank' && frame.sourcePage === 'https://outer.test/book'));
   assert.ok(result.frames.some(frame => frame.sourcePage === 'https://other.test/viewer'));
 });
+
+test('親DOMの読み取りが許可されても実オリジンの異なるabout文書へ出典を付けない', {timeout: 30000}, async t => {
+  const temporary = await temporaryDirectory(t, join(tmpdir(), 'harvest-frame-origin-'));
+  const context = await launchExtensionContext(t, join(temporary, 'profile'));
+  const cdp = await resourcesFor(t).acquire(() => context.browser().newBrowserCDPSession(), session => session.detach());
+  const {id} = await cdp.send('Extensions.loadUnpacked', {path: resolve('dist/extension')});
+  await context.route('https://**/*', route => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('.png')) return route.fulfill({contentType: 'image/png', body: png});
+    const target = url.searchParams.get('target');
+    const body = target ? `<iframe src="${target}/child"></iframe>`
+      : '<script>document.domain="review.test"</script><iframe></iframe>';
+    return route.fulfill({headers: {'Origin-Agent-Cluster': '?0'}, contentType: 'text/html', body: `<!doctype html>${body}`});
+  });
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${id}/app/index.html`);
+  for (const target of ['https://b.review.test', 'https://a.review.test:8443']) {
+    const page = await context.newPage();
+    const url = `https://a.review.test/parent?target=${encodeURIComponent(target)}`;
+    await page.goto(url);
+    await page.evaluate(() => { frames[0].frames[0].location = 'about:blank'; });
+    await page.waitForFunction(() => {
+      try { return frames[0].frames[0].document.readyState === 'complete'; } catch { return false; }
+    });
+    await page.evaluate(target => {
+      const doc = frames[0].frames[0].document;
+      doc.body.innerHTML = `<img src="${target}/fixture.png">`;
+      doc.domain = 'review.test';
+    }, target);
+    const result = await panel.evaluate(async ({url, target}) => {
+      const {scanTab} = await import(chrome.runtime.getURL('app/browser/page-access.js'));
+      const {collectPageMedia} = await import(chrome.runtime.getURL('core/page-media.js'));
+      const {getImageFetchCredentials} = await import(chrome.runtime.getURL('app/media/image-fetch-policy.js'));
+      const [tab] = await chrome.tabs.query({url});
+      const details = await chrome.scripting.executeScript({target: {tabId: tab.id, allFrames: true}, func: () => {
+        if (location.href !== 'about:blank') return null;
+        return {origin: window.origin, parentUrl: parent.document.location.href};
+      }});
+      const scan = await scanTab(tab.id);
+      const collected = collectPageMedia(scan, scan.frames);
+      const sourcePage = collected.initial.sourcePages.get(`${target}/fixture.png`);
+      return {details: details.map(entry => entry.result).filter(Boolean), sourcePage,
+        credentials: getImageFetchCredentials(`${target}/fixture.png`, sourcePage)};
+    }, {url, target});
+    assert.equal(result.details.length, 1);
+    assert.equal(result.details[0].origin, 'https://a.review.test');
+    assert.equal(new URL(result.details[0].parentUrl).origin, target);
+    assert.equal(result.sourcePage, 'about:blank');
+    assert.equal(result.credentials, 'omit');
+    await page.close();
+  }
+});

@@ -2,6 +2,8 @@
 export function readFrameLocation(): {url: string; sourcePage?: string} {
   const url = location.href;
   if (!/^about:(?:srcdoc|blank)(?:[?#]|$)/.test(url)) return {url};
+  const origin = window.origin;
+  if (origin === "null") return {url};
   try {
     let current: Window = window;
     while (current !== current.parent) {
@@ -10,7 +12,10 @@ export function readFrameLocation(): {url: string; sourcePage?: string} {
       // origins. Stay isolated so page scripts cannot replace window.parent.
       const parentDocument = current.document;
       const parentUrl = parentDocument.location.href;
-      if (/^https?:\/\//.test(parentUrl)) return {url, sourcePage: parentUrl};
+      if (/^https?:\/\//.test(parentUrl)) {
+        // DOM access can be relaxed independently of the actual origin.
+        return new URL(parentUrl).origin === origin ? {url, sourcePage: parentUrl} : {url};
+      }
       if (!/^about:(?:srcdoc|blank)(?:[?#]|$)/.test(parentUrl)) break;
     }
   } catch {
