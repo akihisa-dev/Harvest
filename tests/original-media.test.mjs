@@ -1,5 +1,7 @@
 import {baselineJpeg, progressiveJpeg, exifJpeg} from './jpeg-fixtures.mjs';
 import {webmBytes, pngBytes} from './original-fixtures.mjs';
+import {staticWebp, animatedWebp} from './animation-fixtures.mjs';
+import {staticAvif, animatedAvif} from './iso-image-fixtures.mjs';
 import {gifBytes, mp4Bytes, fragmentedMp4, brokenMedia} from "./media-fixtures.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -141,6 +143,8 @@ test('JPEG・PNG・WebMの原本はヘッダーのみと途中切断を拒否し
     for (const [type, kind, variants, header] of [
       ['image/jpeg', 'image', [baselineJpeg, progressiveJpeg, exifJpeg], 3],
       ['image/png', 'image', [pngBytes], 8],
+      ['image/webp', 'image', [staticWebp, animatedWebp], 12],
+      ['image/avif', 'image', [staticAvif, animatedAvif], 32],
       ['video/webm', 'video', [webmBytes], 4],
     ]) {
       for (const bytes of variants) {
@@ -157,7 +161,7 @@ test('JPEG・PNG・WebMの原本はヘッダーのみと途中切断を拒否し
 });
 
 test('原本の混在保存は破損時にダウンロードせず成功項目を保持し、失敗分だけ再試行する', async () => {
-  const assets = [[baselineJpeg, 'image/jpeg', 'image'], [pngBytes, 'image/png', 'image'], [webmBytes, 'video/webm', 'video']];
+  const assets = [[baselineJpeg, 'image/jpeg', 'image'], [staticWebp, 'image/webp', 'image'], [staticAvif, 'image/avif', 'image']];
   const items = assets.map(([, , kind], index) => ({url: `https://media.test/${index}`, sourcePage: 'https://media.test/', selected: true, kind}));
   const archives = [], requests = [];
   let broken = true, completed = 0;

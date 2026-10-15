@@ -5,6 +5,21 @@ import {apng} from './animation-fixtures.mjs';
 import {hasCompletePng} from '../dist/extension/core/original-image-structure.js';
 import {hasCompleteWebm} from '../dist/extension/core/webm-structure.js';
 import {validateOriginalMedia} from '../dist/extension/app/media/original-media-validation.js';
+import {hasCompleteIsoImage} from '../dist/extension/core/original-isobmff-image.js';
+import {staticAvif, animatedAvif} from './iso-image-fixtures.mjs';
+
+test('AVIFの静止・動画原本は全ボックス境界と画像項目の格納範囲を確認する', async () => {
+  for (const bytes of [staticAvif, animatedAvif]) {
+    assert.ok(hasCompleteIsoImage(bytes));
+    assert.ok(hasCompleteIsoImage(Buffer.concat([Buffer.alloc(7), bytes]).subarray(7)));
+    for (let cut = 0; cut < bytes.length; cut++) assert.equal(hasCompleteIsoImage(bytes.subarray(0, cut)), false, String(cut));
+    await validateOriginalMedia(new Blob([bytes], {type: 'image/avif'}));
+    const invalidExtent = Buffer.from(bytes);
+    const iloc = invalidExtent.indexOf('iloc');
+    invalidExtent.writeUInt32BE(bytes.length + 1, iloc + 18);
+    assert.equal(hasCompleteIsoImage(invalidExtent), false);
+  }
+});
 
 test('PNG・APNGはCRCと全チャンクの境界・終端を確認する', () => {
   for (const bytes of [pngBytes, apng]) {

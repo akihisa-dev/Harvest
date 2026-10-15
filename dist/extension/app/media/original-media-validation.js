@@ -3,12 +3,14 @@ import { hasCompleteGif, hasCompleteMp4Boxes } from "../../core/original-media-s
 import { inspectJpegStructure } from "../../core/jpeg.js";
 import { hasCompletePng } from "../../core/original-image-structure.js";
 import { hasCompleteWebm } from "../../core/webm-structure.js";
+import { inspectWebpAnimation } from "../../core/webp-animation.js";
+import { hasCompleteIsoImage } from "../../core/original-isobmff-image.js";
 import { checkCancelled, invalidImage } from "../contracts/image-data-contract.js";
 // Blob bytes are immutable. Remember only completed successes by weak identity.
 const validatedMedia = new WeakSet();
 /** Inspect structure and declared samples without codec support requirements or re-encoding. */
 export async function validateOriginalMedia(blob, signal) {
-    if (!["image/jpeg", "image/png", "image/gif", "video/mp4", "video/webm"].includes(blob.type))
+    if (!["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif", "image/heic", "image/heif", "video/mp4", "video/webm"].includes(blob.type))
         return;
     checkCancelled(signal);
     if (validatedMedia.has(blob))
@@ -19,7 +21,9 @@ export async function validateOriginalMedia(blob, signal) {
     if (blob.type !== "video/mp4") {
         const valid = blob.type === "image/jpeg" ? inspectJpegStructure(bytes)
             : blob.type === "image/png" ? hasCompletePng(bytes)
-                : blob.type === "video/webm" ? hasCompleteWebm(bytes) : hasCompleteGif(bytes);
+                : blob.type === "video/webm" ? hasCompleteWebm(bytes)
+                    : blob.type === "image/webp" ? ["static", "animated"].includes(inspectWebpAnimation(bytes) ?? "")
+                        : ["image/avif", "image/heic", "image/heif"].includes(blob.type) ? hasCompleteIsoImage(bytes) : hasCompleteGif(bytes);
         if (!valid)
             throw invalid();
         checkCancelled(signal);

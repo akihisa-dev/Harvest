@@ -36,6 +36,8 @@
 
 [iso-boxes.ts](iso-boxes.ts) はISO形式のコンテナの長さ・拡張長・親の終端を読み、AVIFの寸法取得、ファイル形式の識別、MP4の完全性検査で共用します。[gif-blocks.ts](gif-blocks.ts) はGIFの色テーブルとデータブロックの境界を読み、寸法取得と完全性検査へ提供します。境界の読み方を共有し、途中までの入力から寸法を取得できる条件や、完全なファイルとして受け入れる条件は各利用側が決めます。
 
+[original-isobmff-image.ts](original-isobmff-image.ts) はAVIF・HEIF系原本のボックス境界、画像項目の必須管理情報と格納範囲を検査します。画像本体はファイル内のmdatまたはmeta内のidatにあることを確認し、外部ファイル参照を保存成功にしません。動画を持つ原本では既存のMP4ボックス境界検査も使います。[AVIF仕様の最小ボックス構成](https://aomediacodec.github.io/av1-avif/latest-approved.html#minimum-set-of-boxes)を参照し、復号対応や再圧縮は要求しません。圧縮された画素の正しさすべてを保証する検査ではありません。
+
 ## ZIPの容量管理と組み立て
 
 [image-archive.ts](image-archive.ts) は現行mixed経路の容量超過エラーを定義します。[stored-zip.ts](stored-zip.ts) の件数・管理情報込み容量上限をmixed準備と最終ZIP生成で共有し、再試行の保持済みBlobも容量へ含めます。

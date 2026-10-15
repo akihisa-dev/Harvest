@@ -10,6 +10,8 @@ Harvestは導入時に通常のWebサイト全体へのアクセス許可を求�
 
 ログイン状態を使う取得がリダイレクトされた場合は停止します。画像とPDFはブラウザー内で処理し、解析結果は保存しません。画像取得に失敗したときにアクセス制限を回避する処理は行いません。PNG・JPEG・GIF・WebP・BMP・AVIFは画像データの寸法を読み取り、幅または高さが16,384画素を超えるか、合計が64,000,000画素を超える場合は、プレビュー用画像要素や画像デコーダーへ渡す前に拒否します。
 
+WebP・AVIF・HEIC・HEIFの原本取得ではコンテナーの境界と必須の画像構造・格納範囲を検査し、不完全な入力は保存失敗にします。検査のために画素へ展開したり外部の参照先へアクセスしたりしません。正常原本のバイト列は維持します。BMP・TIFF・JXL原本は形式識別に留まり、完全性は保証しません。
+
 応答本文は従来どおり64 MiBで制限します。その他の形式は寸法を読み取れない場合があり、その場合はブラウザーが返す寸法を使って従来の上限判定を行います。Chromeは、許可された拡張機能から別サイトへ送る通信で `SameSite=Strict` Cookieが送信される場合があると説明しています。このためHarvestは同一オリジンに限って認証情報を付けます（[Chromeのセキュリティ指針](https://developer.chrome.com/docs/extensions/develop/security-privacy/stay-secure)、[Cookieの説明](https://developer.chrome.com/docs/extensions/develop/concepts/storage-and-cookies)）。
 
 詳しい取扱いは[プライバシーポリシー](docs/privacy-policy.md)に記載します。
