@@ -54,18 +54,31 @@ test("改変MPLソースと内部コーデックの表示を配布し、利用�
   }
 });
 
-test("同梱ソースと固定依存から配布物全体を同一内容で再ビルドできる", async t => {
+test("Git管理外の同梱ソースと固定依存からZIPを再作成し、全内容を維持する", async t => {
   const root = await mkdtemp(join(tmpdir(), "harvest-source-rebuild-"));
   t.after(() => rm(root, {recursive: true, force: true}));
   const expected = resolve("dist/extension");
   await cp(join(expected, "source"), root, {recursive: true});
   // Reuse the installed, lockfile-pinned dependencies; no network in this test.
   await symlink(resolve("node_modules"), join(root, "node_modules"), process.platform === "win32" ? "junction" : "dir");
-  await promisify(execFile)(process.execPath, ["scripts/build.mjs"], {cwd: root});
+  const run = promisify(execFile);
+  if (process.platform === 'win32') await run(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', 'pnpm package:extension'], {cwd: root});
+  else await run('pnpm', ['package:extension'], {cwd: root});
+  const {version} = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+  const archive = join(root, 'dist', `Harvest-extension-${version}.zip`);
+  const unpacked = join(root, 'unpacked');
+  if (process.platform === 'win32') {
+    await run('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
+      'Expand-Archive -LiteralPath $env.HARVEST_TEST_ARCHIVE -DestinationPath $env.HARVEST_TEST_UNPACKED'],
+      {cwd: root, env: {...process.env, HARVEST_TEST_ARCHIVE: archive, HARVEST_TEST_UNPACKED: unpacked}});
+  } else await run('unzip', ['-q', archive, '-d', unpacked], {cwd: root});
+  assert.equal(JSON.parse(await readFile(join(unpacked, 'manifest.json'), 'utf8')).version, version);
   const actual = join(root, "dist/extension");
   const files = (await filesUnder(expected)).map(path => relative(expected, path));
   assert.deepEqual((await filesUnder(actual)).map(path => relative(actual, path)), files);
+  assert.deepEqual((await filesUnder(unpacked)).map(path => relative(unpacked, path)), files);
   for (const file of files) {
     assert.deepEqual(await readFile(join(actual, file)), await readFile(join(expected, file)), file);
+    assert.deepEqual(await readFile(join(unpacked, file)), await readFile(join(expected, file)), file);
   }
 });

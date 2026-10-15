@@ -11,6 +11,10 @@ The `source/` directory in this ZIP contains the corresponding source, original 
 
 配布ソースにはWindowsのZIP作成に必要な `scripts/windows-zip.ps1` も含まれます。`pnpm package:extension` は各OSのローカル機能でZIPを生成します。
 
+ZIPの再作成ではNode/pnpmの版を確認しますが、GitリポジトリやGitフックの設定は不要です。開発用の`pnpm verify`は従来どおりGitフック設定も確認します。
+
+Repackaging checks Node/pnpm versions and does not require a Git repository or Git hooks. Development verification with `pnpm verify` still requires the configured Git hooks.
+
 ## Mediabunny
 
 Mediabunny 1.61.0の対象ソースとその改変部分は **MPL-2.0** で提供します。Harvest全体のAGPL表記によって、この部分のMPLに基づく権利を制限しません。

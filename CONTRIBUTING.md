@@ -23,6 +23,8 @@ Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion�
 
 ## ビルド処理の構成
 
+Node/pnpmの版確認は`scripts/lib/runtime.mjs`で共用します。`check-runtime.mjs`は開発用としてGitフック設定も必須にします。`package:extension`は版確認だけを行い、Git管理外へ取り出した配布ソースからもZIPを再作成できます。開発リポジトリの`verify`・push前検証のフック確認は変わりません。同梱ソースの回帰テストでは実際にZIPを作り、展開後の全ファイルも照合します。
+
 `src/extension/`は実行場所と責務ごとのサブディレクトリを持ち、配布物の`app/`にも同じ階層を保ちます。パネルとバックグラウンドの入口は従来どおり`app/index.js`と`background.js`です。同梱ライブラリは`app/vendor/`へ配置し、コーデックからの参照をビルド時に解決します。`check:build`はimportだけでなく`new URL(..., import.meta.url)`によるWorker等の参照先も確認します。
 
 `pnpm check:architecture`は依存方向・実行時循環・ページ注入関数の実行時import・coreとWorkerの型環境を検査します。通常の`verify`に含まれるため、新しいモジュールも同じ境界を守る必要があります。動的importの参照先も文字列リテラルで指定し、変数経由で依存検査をすり抜けないようにします。詳細は[src/extension/README.md](src/extension/README.md)を参照してください。Nodeで生成済みJavaScriptを検証する際の形式推測をなくすため、packageのモジュール形式は`type: module`で明示しています。

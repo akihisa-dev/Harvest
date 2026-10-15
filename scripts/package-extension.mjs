@@ -3,6 +3,7 @@ import { lstat, mkdir, readFile, readdir } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { replaceArchiveAfterValidation } from "./archive-transaction.mjs";
+import {checkRuntime} from "./lib/runtime.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const dist = join(root, "dist");
@@ -101,7 +102,7 @@ async function validateUnixArchive(archivePath) {
   }
 }
 
-await run(process.execPath, [join(root, "scripts", "check-runtime.mjs")], { cwd: root });
+checkRuntime(root);
 await run(process.execPath, [join(root, "scripts", "build.mjs")], { cwd: root });
 
 const generatedManifest = JSON.parse(await readFile(join(extensionDirectory, "manifest.json"), "utf8"));
