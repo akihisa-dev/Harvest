@@ -64,3 +64,12 @@ export function isAnimationConversionRequest(value) {
 export function isAnimationConversionReply(value) {
     return record(value) && (failure(value, "blob") || (value["error"] === undefined && (value["blob"] === null || (value["blob"] instanceof Blob && value["blob"].type === "image/gif" && value["blob"].size > 0))));
 }
+export function isAudioConversionRequest(value) {
+    return record(value) && value["blob"] instanceof Blob && ["video/mp4", "video/webm"].includes(value["blob"].type)
+        && value["blob"].size > 0 && typeof value["maxBytes"] === "number" && Number.isSafeInteger(value["maxBytes"])
+        && value["maxBytes"] > 0 && value["maxBytes"] <= 64 * 1024 * 1024;
+}
+export function isAudioConversionReply(value) {
+    return record(value) && (failure(value, "blob") || (value["error"] === undefined && value["blob"] instanceof Blob
+        && value["blob"].type === "audio/mpeg" && value["blob"].size > 0));
+}

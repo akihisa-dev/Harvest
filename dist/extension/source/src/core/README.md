@@ -59,3 +59,11 @@ CRC計算の方法は呼び出し元から渡せます。共通処理はWorker�
 [youtube-wire.ts](youtube-wire.ts) は長さ・整数・探索数を制限してprotobufとUMPの枠を読み取ります。未知のprotobufフィールドは通常再生の要求を作り直す際に維持します。[youtube-sabr.ts](youtube-sabr.ts) は取得処理1回の配信設定・認証・サーバー状態と、映像・音声の分割データを所有します。指定動画・形式の一致、各分割のバイト数、順序、再送内容、映像と音声の終端を照合し、不完全な出力を返しません。配信先の変更は検証済みのHTTPS `*.googlevideo.com/videoplayback` に限定します。 映像と音声の両方を要求するSABRの指定値は0です。通常再生から得たcookie・送信済み/未送信contextを初回要求から引き継ぎ、未知のcontext項目もサーバーの明示的な更新まで保持します。サーバーによるKEEP・上書き・停止・破棄を反映します。完成した出力は映像と音声それぞれの終了時刻を返し、正常な長さの違いを欠落として扱いません。
 
 通信形式は [GoogleVideoの公開protobuf定義](https://github.com/LuanRT/googlevideo/tree/main/protos/video_streaming)（MIT）を参照して独自に実装しています。GoogleVideoやyt-dlpの実行コードは同梱していません。プロトコル変更や未対応の制御応答では不完全なデータを保存せず失敗として返し、認証更新要求はブラウザー境界で1回だけ更新します。
+
+## 自作MP3エンコーダー
+
+`mp3-encoder.ts`は小分けのPCMを受け取り、320kbpsのMPEG-1 Layer IIIファイルを作ります。ブラウザーと外部エンコーダーに依存しません。`mp3-filterbank.ts`は32帯域の分析フィルター、長ブロックのMDCT、逆エイリアス処理、`mp3-bitstream.ts`は量子化とHuffman符号化、サイド情報とビット単位の書き込みを担当します。各フレーム内で容量を満たし、別フレームのデータを参照しません。チャンネルを混ぜず、最大1フレーム分のPCMを保持します。
+
+[ISO/IEC 11172-3:1993の規格](https://previewnorm.com/iec/ISO%20IEC%2011172-3-1993%20PDF.pdf)のビット列構造と数式に沿って実装しています。`mp3-tables.ts`は規定の分析窓（Annex C、Table C.1）とHuffman表16（Annex B、Table B.7）の数値定数です。分析窓は[Annex Cの公開資料](https://www.normsplash.com/Samples/BSI/188112399/BS-EN-ISO-IEC-11172-3-1995-en-2.pdf)、符号表は規格と[LAMEの参照表](https://github.com/lameproject/lame/blob/master/libmp3lame/tables.c)で照合しています。変換ライブラリの処理コードは取り込んでいません。
+
+32・44.1・48kHz、1/2チャンネルに対応し、未対応の入力と不正な数値、出力上限超過は拒否します。長ブロックのみで、聴覚モデル・短ブロック切替・ギャップレス情報はありません。圧縮による音質変化と、先頭/末尾の最大約70msの余白があるため、波形を完全に保存する用途には向きません。実Chromeで符号化結果を復号し、周波数、音量、左右分離、複合音との誤差、末尾の保持を検証します。

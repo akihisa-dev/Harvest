@@ -1,5 +1,5 @@
 export const imageExportFormats = ["original", "recommend", "pdf", "jpg", "png", "jxl"];
-export const videoExportFormats = ["original", "recommend", "mp4"];
+export const videoExportFormats = ["original", "recommend", "mp4", "mp3"];
 export function isImageExportFormat(value) {
     return imageExportFormats.some(format => format === value);
 }

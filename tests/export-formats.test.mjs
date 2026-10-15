@@ -10,7 +10,7 @@ const video = {...image, url: "https://example.test/video.webm", kind: "video"};
 
 test("画像・動画の独立した形式候補と受理値が一致し、他媒体の選択を除外しない", () => {
   assert.deepEqual(imageExportFormats, ["original", "recommend", "pdf", "jpg", "png", "jxl"]);
-  assert.deepEqual(videoExportFormats, ["original", "recommend", "mp4"]);
+  assert.deepEqual(videoExportFormats, ["original", "recommend", "mp4", "mp3"]);
   for (const value of [...imageExportFormats, ...videoExportFormats, "gif", "webm", "PDF", "", null, undefined, 1]) {
     assert.equal(isImageExportFormat(value), imageExportFormats.includes(value));
     assert.equal(isVideoExportFormat(value), videoExportFormats.includes(value));

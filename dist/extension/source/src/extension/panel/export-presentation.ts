@@ -103,7 +103,7 @@ export function createExportPresentation(options: ExportPresentationOptions) {
       if (count > 1 && !(videosOnly&&videoFormat !== "original")) return filename("zip");
       const item=selected[0],original=item?.kind === "video" ? videoFormat === "original" : format === "original";
       const extension=!item ? null : original ? originalItemExtension(item)?.toLowerCase()
-        : item.kind === "video" ? "mp4" : !isStillImage(item) ? "gif" : format === "recommend" ? "png" : format;
+        : item.kind === "video" ? videoFormat === "mp3" ? "mp3" : "mp4" : !isStillImage(item) ? "gif" : format === "recommend" ? "png" : format;
       if (!extension) return exportFileBaseName(options.getTitle(),options.fallbackTitle);
       const first=`${"1".padStart(Math.max(3,String(selected.length).length),"0")}.${extension}`;
       return individualFilename(filename("zip"),first,count);

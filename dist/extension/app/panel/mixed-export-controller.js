@@ -60,7 +60,7 @@ export function createMixedExportController(options) {
                                 pages.push(result.page);
                             }
                             else {
-                                const type = originalMediaType(result.blob.type);
+                                const type = result.blob.type === "audio/mpeg" ? { extension: "mp3" } : originalMediaType(result.blob.type);
                                 if (!type)
                                     throw new Error("保存するデータの形式を確認できません。");
                                 entries.push({ filename: indexedExportFilename(index, work.selected.length, type.extension), blob: result.blob });

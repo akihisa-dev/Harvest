@@ -108,3 +108,15 @@ export function isAnimationConversionRequest(value:unknown):value is AnimationCo
 export function isAnimationConversionReply(value:unknown):value is AnimationConversionReply {
   return record(value) && (failure(value,"blob") || (value["error"]===undefined && (value["blob"]===null || (value["blob"] instanceof Blob && value["blob"].type==="image/gif" && value["blob"].size>0))));
 }
+
+export interface AudioConversionRequest {readonly blob: Blob; readonly maxBytes: number;}
+export type AudioConversionReply = Mp4ConversionReply;
+export function isAudioConversionRequest(value: unknown): value is AudioConversionRequest {
+  return record(value) && value["blob"] instanceof Blob && ["video/mp4", "video/webm"].includes(value["blob"].type)
+    && value["blob"].size > 0 && typeof value["maxBytes"] === "number" && Number.isSafeInteger(value["maxBytes"])
+    && value["maxBytes"] > 0 && value["maxBytes"] <= 64 * 1024 * 1024;
+}
+export function isAudioConversionReply(value: unknown): value is AudioConversionReply {
+  return record(value) && (failure(value, "blob") || (value["error"] === undefined && value["blob"] instanceof Blob
+    && value["blob"].type === "audio/mpeg" && value["blob"].size > 0));
+}

@@ -47,6 +47,10 @@ WebMからMP4への変換には`mediabunny` 1.61.0（MPL-2.0）を完全固定�
 
 YouTubeの映像・音声結合にも同じMediabunnyを使用します。AVC/AACのパケットを再圧縮せずにMP4へ書き込みます。新規依存・外部実行コード・別アプリは追加せず、`youtube-mux.ts` の同梱ライブラリ参照だけを既存のビルドで解決します。配信処理と一時ページの所有権は [src/extension/README.md](src/extension/README.md#youtube専用の取得経路) に記載しています。`tests/youtube*.test.mjs` は実際の認証データを使わずに取得と結合を検証します。
 
+## MP3の音声保存
+
+音声のMP3圧縮は`src/core/mp3-encoder.ts`と関連モジュールによる自作実装です。MP3エンコード用の依存は追加していません。既存Mediabunnyは動画内の主音声の読み取りとPCMへの展開だけに使用し、`workers/audio-codec.ts`の参照をビルド時に同梱ライブラリへ解決します。制限と規格の出典は`src/core/README.md`、メモリとWorkerの寿命は`src/extension/README.md`に記載しています。`tests/audio-downloads.browser.mjs`で実際のMP3保存、`tests/mp3-encoder.browser.mjs`でChromeによる復号と波形比較を確認します。
+
 ## 権限と利用者情報
 
 Chrome権限や対象サイトを広げる場合は必要な操作を説明してください。利用者情報を扱う場合は取得内容、保存先、保持期間、削除方法を文書化します。依存追加前に必要性、保守状況、脆弱性、ライセンスを確認し、版を固定してlockfileを更新します。

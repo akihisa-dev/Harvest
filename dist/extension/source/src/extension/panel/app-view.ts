@@ -132,7 +132,7 @@ export function createAppView(elements: AppElements, positionOf: (item: ImageIte
     exportMediaHint.textContent = [
       reasons.length ? `★ ${t("recommendation", {reason: reasons.join(" / ")})}` : "",
       outputFormat !== "original" && images.length ? t("movingImagesGif") : "",
-      snapshot.export.videoFormat !== "original" && videos.length ? t("videoConversionHint") : "",
+      snapshot.export.videoFormat !== "original" && videos.length ? t(snapshot.export.videoFormat === "mp3" ? "audioConversionHint" : "videoConversionHint") : "",
     ].filter(Boolean).join(" ");
     exportMediaHint.hidden = !exportMediaHint.textContent;
     exportMediaHint.title = exportMediaHint.textContent;

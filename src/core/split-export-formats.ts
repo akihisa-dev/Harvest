@@ -1,7 +1,7 @@
 import type {ImageItem} from "./images.js";
 
 export const imageExportFormats = ["original", "recommend", "pdf", "jpg", "png", "jxl"] as const;
-export const videoExportFormats = ["original", "recommend", "mp4"] as const;
+export const videoExportFormats = ["original", "recommend", "mp4", "mp3"] as const;
 export type ImageExportFormat = typeof imageExportFormats[number];
 export type VideoExportFormat = typeof videoExportFormats[number];
 export interface SplitExportSettings {

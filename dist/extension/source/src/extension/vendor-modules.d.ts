@@ -48,6 +48,18 @@ declare module "harvest-vendor-mediabunny" {
     getTracks(): Promise<object[]>;
     dispose(): void;
   }
+  export class AudioSample {
+    readonly sampleRate: number;
+    readonly numberOfChannels: number;
+    readonly numberOfFrames: number;
+    readonly timestamp: number;
+    copyTo(destination: Float32Array, options: {planeIndex: number; format: "f32-planar"}): void;
+    close(): void;
+  }
+  export class AudioSampleSink {
+    constructor(track: object);
+    samples(): AsyncGenerator<AudioSample, void, unknown>;
+  }
   export class BufferTarget {
     buffer: ArrayBuffer | null;
     on(event: "write", listener: (range: {start: number; end: number}) => void): () => void;

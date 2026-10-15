@@ -5,6 +5,10 @@ test('日英320/400/800幅と明暗で独立形式を表示し、キーボード
   const {page,scan}=await animationPanel(t,new Map([['/red.png',[redPng,'image/png']],['/movie.mp4',[mp4Bytes,'video/mp4']]]),{locale});await scan(['/red.png','/movie.mp4'],'layout');
   await page.locator('#export-format-original').focus();await page.keyboard.press('ArrowRight');assert.equal(await page.locator('#export-format-recommend').isChecked(),true);
   await page.locator('#video-export-format-original').focus();await page.keyboard.press('ArrowRight');await page.keyboard.press('ArrowRight');assert.equal(await page.locator('#video-export-format-mp4').isChecked(),true);assert.equal(await page.locator('#export-format-recommend').isChecked(),true);
+  await page.locator('#video-export-format-mp3').check();
+  assert.match(await page.locator('#export-media-hint').innerText(),locale==='ja-JP'?/音声だけをMP3/:/audio only as MP3/);
+  assert.equal(await page.locator('#video-export-format-mp3').isChecked(),true);
+  await page.locator('#video-export-format-mp4').check();
   await page.locator('#export-format-pdf').check();await page.locator('#include-source-page').check();
   for(const colorScheme of ['light','dark'])for(const width of [320,400,800]){
    await page.emulateMedia({colorScheme,reducedMotion:'reduce'});await page.setViewportSize({width,height:800});

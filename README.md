@@ -6,7 +6,7 @@
 
 Harvest is a stable release, versioned from 1.0.0. Versioning rules are defined in [AGENTS.md](AGENTS.md#バージョン管理).
 
-Harvest is a Chrome extension that collects images, GIFs, and videos from a page and saves selected items as PDF, JPG, PNG, JXL, MP4, or GIF. Every selected item is included. Still images can form one PDF; mixed outputs are packaged in one ZIP. A lone output downloads directly, while video-only recommended/MP4 exports use individual downloads. You can analyze the current page or enter a URL, browse groups, select individual items, and change their order. Collection is limited to the specified page and its accessible embedded frames.
+Harvest is a Chrome extension that collects images, GIFs, and videos from a page and saves selected items as PDF, JPG, PNG, JXL, MP4, MP3 audio, or GIF. Every selected item is included. Still images can form one PDF; mixed outputs are packaged in one ZIP. A lone output downloads directly, while video-only recommended/MP4 exports use individual downloads. You can analyze the current page or enter a URL, browse groups, select individual items, and change their order. Collection is limited to the specified page and its accessible embedded frames.
 
 On ordinary pages, same-origin and cross-origin iframes are scanned within existing Chrome permissions. The outer page keeps its initial selection when it has candidates; frame candidates remain available for manual selection. If the outer page is empty, a frame with a body image series is preferred. Unreadable frames do not discard the outer result. X retains its existing post and bookmark boundaries.
 
@@ -70,11 +70,15 @@ Retry fetches only failed images and saves the PDF once all are ready. Changing 
 
 Video thumbnails show the file size before conversion, or **Size unknown** when the server does not provide it. Successful reanalysis refreshes size information even for an unchanged video URL. This is not the size of the converted video or ZIP.
 
-Image formats are original, recommended, PDF, JPG, PNG, and JXL; video formats are original, recommended, and MP4. The two choices are independent. An absent media type hides its format section without changing its choice in the open panel. GIF detection recognizes a `.gif` URL suffix or `format=gif`, `fmt=gif`, or `fm=gif`, ignoring case in parameter names and values. Format parameters take precedence over the extension, and saving also validates the fetched data. GIFs belong to the image section. Choosing PDF, JPG, PNG, or JXL preserves animation as a GIF. Recommended preserves source bytes unless the selected still images qualify for a series PDF.
+Image formats are original, recommended, PDF, JPG, PNG, and JXL; video formats are original, recommended, MP4, and audio (MP3). The two choices are independent. An absent media type hides its format section without changing its choice in the open panel. GIF detection recognizes a `.gif` URL suffix or `format=gif`, `fmt=gif`, or `fm=gif`, ignoring case in parameter names and values. Format parameters take precedence over the extension, and saving also validates the fetched data. GIFs belong to the image section. Choosing PDF, JPG, PNG, or JXL preserves animation as a GIF. Recommended preserves source bytes unless the selected still images qualify for a series PDF.
 
 Video-only recommended/MP4 exports save each selected video separately, using the page title for one file and the title plus sequence numbers for multiple files. Mixed image/video exports and multiple original video outputs use one ZIP. A single output downloads directly.
 
 These video-only recommended/MP4 files are saved one at a time through Chrome's download manager. Success is shown only after every download completes, including any destination selection or Chrome confirmation. Refusal, failure, and cancellation are not treated as success. Only unsaved files are retried, retaining their original sequence numbers. Completed files are not undone. Existing files are not overwritten: Chrome chooses a non-conflicting filename.
+
+Choose **Audio (MP3)** in the video section to save only audio from supported MP4/WebM videos, including the existing YouTube route. MP3 compression is implemented in Harvest itself, without an additional encoding library. The existing bundled reader decodes the primary audio track, which is then encoded locally as MPEG-1 Layer III at 320 kbps. Mono/stereo at 32, 44.1, and 48 kHz retain their sample rate and channel count; unsupported inputs fail with an explanation. Recompression can change sound quality. Long blocks are used without a psychoacoustic model; transient-rich audio can have more audible artifacts. Encoder delay and final frame padding may add up to about 70 ms.
+
+Videos without audio or unsupported audio fail with an explanation before any download begins. Audio outputs download individually; mixed image/audio outputs use a ZIP. Extraction is limited to 64 MiB and 120 seconds per file. Input videos retain existing source size limits (YouTube still fetches and combines both streams before extraction). Temporary audio stays in panel/worker memory with the same completion, cancellation, retry, and cleanup rules as video. Chrome chooses non-conflicting filenames. No additional permission, dependency, permanent storage, or external conversion service is added.
 
 Original MP4 and GIF data is preserved without conversion. WebM is converted to MP4 for video recommended/MP4, while video original retains it. An item labeled “GIF” on X is saved as a video when its actual data is MP4; it is not converted to GIF. Video rows use the retrieved thumbnail or, if none is available, a video indicator. No selected item is excluded because of the other media type's format choice.
 
@@ -102,7 +106,7 @@ Both fetched source streams together and the resulting MP4 have a 64 MiB ceiling
 
 JPEG, PNG, and WebM originals are checked for required structures and complete data boundaries. Header-only or structurally truncated responses remain retryable failures; valid originals retain their bytes without re-encoding. These checks do not guarantee that every pixel or video frame can be decoded. WebM Segment and Cluster elements with unknown sizes are supported.
 
-Within the image section, `original(extension)` and `recommended(extension)` appear above PDF, JPG, PNG, and JXL. In narrow panels, original and recommended stack vertically so the text and recommendation marks fit. The video section offers original, recommended, and MP4 independently. Labels follow the selection, showing “mixed” or “unknown” when needed, with the full list in a tooltip. Original extensions use the validated response type when available, otherwise URL hints. Saved extensions use the validated response type.
+Within the image section, `original(extension)` and `recommended(extension)` appear above PDF, JPG, PNG, and JXL. In narrow panels, original and recommended stack vertically so the text and recommendation marks fit. The video section offers original, recommended, MP4, and audio (MP3) independently. Labels follow the selection, showing “mixed” or “unknown” when needed, with the full list in a tooltip. Original extensions use the validated response type when available, otherwise URL hints. Saved extensions use the validated response type.
 
 Image formats marked with ★ are suitable for different uses. Original is recommended to keep each file unchanged. PDF is also recommended to read a series in one document when at least two selected still images belong to one series or set under the list's existing URL-pattern and format grouping. A single still image, multiple still-image groups, covers, miscellaneous images, and uploads do not trigger the PDF recommendation. Recommendations follow selection; the eye buttons only change visibility.
 
@@ -180,7 +184,7 @@ The initial screen displays `assets/brand/harvest-geometric-logo.svg` in the cen
 
 Harvestは1.0.0を起点とする正式版です。版番号の管理規則は[AGENTS.md](AGENTS.md#バージョン管理)に定めています。
 
-Harvestは、Chromeで開いているページの画像・GIF・動画を集め、選択した項目をPDF、JPG、PNG、JXL、MP4、GIFで保存するChrome拡張機能です。全選択項目を処理し、静止画像は一つのPDFへ、混在する出力は一つのZIPへまとめます。一つの出力は直接保存し、動画のみのrecommended/MP4は個別保存します。現在のページの解析とURLの直接入力に対応し、画像のまとまりごとの表示、個別選択、順序の変更ができます。画像の収集対象は指定したページと、その中に読み込まれたアクセス可能なフレームです。
+Harvestは、Chromeで開いているページの画像・GIF・動画を集め、選択した項目をPDF、JPG、PNG、JXL、MP4、MP3音声、GIFで保存するChrome拡張機能です。全選択項目を処理し、静止画像は一つのPDFへ、混在する出力は一つのZIPへまとめます。一つの出力は直接保存し、動画のみのrecommended/MP4は個別保存します。現在のページの解析とURLの直接入力に対応し、画像のまとまりごとの表示、個別選択、順序の変更ができます。画像の収集対象は指定したページと、その中に読み込まれたアクセス可能なフレームです。
 
 一般ページでは、ページ内のiframeに表示された画像・GIF・直接取得可能な動画も解析します。同一サイト・別サイトともChromeが読み取りを許可する範囲が対象です。外側のページに候補があれば初期選択を維持し、iframeの候補は追加で選択できます。外側が空なら本文画像のシリーズがあるiframeを優先します。読めないiframeがあっても外側の結果は利用できます。Xの投稿・ブックマーク解析は従来の投稿範囲を維持します。
 
@@ -246,9 +250,13 @@ PDFは画像の元の大きさに合わせて1枚ずつページを作成しま�
 
 動画のサムネイルには、変換前のファイルサイズを表示します。配信元からサイズ情報を取得できない場合は「サイズ不明」と表示します。再解析が成功したときは、同じ動画URLでもサイズ情報を取得し直します。変換後の動画やZIPのサイズとは異なります。
 
-静止画像にはPDF・JPG・PNG・JXL、動画にはMP4を選べます。動く画像は画像側の形式で扱い、PDF・JPG・PNG・JXLではGIFとして保持します。recommendedは静止画像のシリーズをPDFにする条件に合う場合を除き、動く画像も原本を保持します。GIFはURL末尾の `.gif` または `format=gif`・`fmt=gif`・`fm=gif` から判定し、パラメーター名・値の大文字と小文字を区別しません。形式指定がある場合は拡張子より優先し、保存時には実際のデータ形式も検査します。MP4を選ぶと選択した動画を個別のMP4ファイルとして保存します。1件ならページ名、複数ならページ名に連番を付けます。GIFは1枚ならGIFファイルを直接保存し、複数枚なら連番ファイルを1つのZIPへまとめます。
+静止画像にはPDF・JPG・PNG・JXL、動画にはMP4・音声（MP3）を選べます。動く画像は画像側の形式で扱い、PDF・JPG・PNG・JXLではGIFとして保持します。recommendedは静止画像のシリーズをPDFにする条件に合う場合を除き、動く画像も原本を保持します。GIFはURL末尾の `.gif` または `format=gif`・`fmt=gif`・`fm=gif` から判定し、パラメーター名・値の大文字と小文字を区別しません。形式指定がある場合は拡張子より優先し、保存時には実際のデータ形式も検査します。MP4を選ぶと選択した動画を個別のMP4ファイルとして保存します。1件ならページ名、複数ならページ名に連番を付けます。GIFは1枚ならGIFファイルを直接保存し、複数枚なら連番ファイルを1つのZIPへまとめます。
 
 動画のみのrecommended/MP4はChromeのダウンロード管理機能で1件ずつ保存し、全件の完了を確認してから「保存しました」と表示します。保存先の選択やChromeの確認が必要な場合は完了するまで待ちます。拒否・失敗・中止があった場合は成功扱いにせず、未保存分だけを元の連番で再試行できます。完了済みのファイルは取り消しません。同名の既存ファイルは上書きせず、Chromeが重複を避ける名前に変更します。
+
+動画の形式で**音声（MP3）**を選ぶと、対応するMP4・WebM動画から音声だけを保存できます。既存のYouTube取得経路にも適用します。MP3への圧縮処理はHarvest内に自作し、変換用ライブラリは追加していません。既存の同梱ライブラリで主音声を読み取り、端末内で320kbpsのMP3へ圧縮します。32・44.1・48kHzのモノラル・ステレオは周波数とチャンネル数を維持し、未対応の入力は理由を表示して止めます。再圧縮で音質は変化します。長い区間を使う方式で聴覚に応じた調整を行わないため、急激に変わる音では歪みが出やすくなります。変換の遅延と末尾の補完により、最大約70ミリ秒の余白が加わる場合があります。
+
+音声のない動画や未対応の音声は理由を表示し、全件の準備ができるまで保存を開始しません。動画だけの選択では音声を個別保存し、画像と混在する場合はZIPへまとめます。取り出しは1件64 MiB・120秒が上限です。元動画の取得上限は従来どおりで、YouTubeは映像・音声の両方を取得して結合してから音声を取り出します。一時的な音声はパネルとWorkerのメモリだけに保持し、保存完了・準備中の中止・パネル終了で破棄します。保存開始後の失敗・中止は、動画と同じ再試行・破棄規則に従います。既存ファイルは上書きせず、Chromeが重複しない名前を選びます。追加権限・依存・永続保存・変換用の外部送信はありません。
 
 元がMP4またはGIFなら再変換せず、元のバイト列を保ちます。動画のrecommended/MP4ではWebMをブラウザー内でMP4へ変換し、originalではWebMの原本を保持します。Xで「GIF」と表示されるものも、実体がMP4ならMP4として保存し、GIFへ変換しません。動画がない場合は動画の形式欄を隠し、画像がない場合は画像の形式欄を隠します。隠した側の選択形式は維持します。
 
@@ -278,7 +286,7 @@ Xは取得できるMP4候補の中から最も高いビットレートを選び�
 
 JPEG・PNG・WebMの原本保存では、形式ごとの必須構造とデータの境界を確認します。ヘッダーだけの応答や構造途中で切れたデータを保存成功にせず、失敗項目を再試行できます。正常な原本は再エンコードせず、元のバイト列を保持します。検査はコンテナー構造を対象とし、すべての画素・映像の復号成功を保証するものではありません。WebMの長さ未確定のSegment・Clusterにも対応します。
 
-画像欄の上側に`original（拡張子）`と`recommended（拡張子）`、その下にPDF・JPG・PNG・JXLを表示します。狭いパネルではoriginalとrecommendedを縦に並べ、文字と推奨の印を収めます。動画欄には独立したoriginal・recommended・MP4を表示します。括弧内は選択中の項目に合わせて更新します。元の拡張子は取得済みのデータ形式を優先し、未取得ならURLから分かる範囲の目安を使います。判別できない場合は「不明」、複数形式なら「混在」と表示し、ポインターを重ねると形式一覧を確認できます。保存時は取得したデータの種類を検証して拡張子を決めます。
+画像欄の上側に`original（拡張子）`と`recommended（拡張子）`、その下にPDF・JPG・PNG・JXLを表示します。狭いパネルではoriginalとrecommendedを縦に並べ、文字と推奨の印を収めます。動画欄には独立したoriginal・recommended・MP4・音声（MP3）を表示します。括弧内は選択中の項目に合わせて更新します。元の拡張子は取得済みのデータ形式を優先し、未取得ならURLから分かる範囲の目安を使います。判別できない場合は「不明」、複数形式なら「混在」と表示し、ポインターを重ねると形式一覧を確認できます。保存時は取得したデータの種類を検証して拡張子を決めます。
 
 画像と動画の形式は別々に選び、保存ボタンで全選択項目を処理します。★は用途に合う候補を示します。画像のoriginalは「各ファイルをそのまま残す」ための推奨です。選択中の静止画像が2枚以上あり、一覧と同じURLのパターン・形式の判定で一つのシリーズまたはセットに属する場合は、「シリーズを一冊にまとめて読む」ためにPDFも推奨します。静止画像が単枚、複数グループ、表紙・その他・アップロード画像の場合はPDFを自動で推奨しません。判定には保存対象の選択を使い、目のボタンによる表示・非表示は影響しません。
 
