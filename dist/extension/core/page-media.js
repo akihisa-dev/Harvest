@@ -9,7 +9,7 @@ export function collectPageMedia(page, frames = []) {
         });
         const groups = groupMediaImages(urls, media);
         const key = defaultDisplayedImageGroup(groups);
-        return { url: document.url, urls, media, group: key ? groups[key] : undefined,
+        return { url: document.sourcePage ?? document.url, urls, media, group: key ? groups[key] : undefined,
             rejected: (document.media ?? []).length - media.length };
     });
     // Existing page selection always wins. With an empty shell, prefer a frame

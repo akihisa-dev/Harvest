@@ -1,6 +1,7 @@
 import { fetchXBookmarkPage } from "../content/x-bookmark-page.js";
 import { isBookmarkPageResult, isPageScan, isXPageState, isXMediaSnapshot } from "../contracts/page-contracts.js";
 import { scanDocument } from "../content/page-scan.js";
+import { readFrameLocation } from "../content/frame-location.js";
 import { waitForXPage } from "../content/x-page-state.js";
 import { scanXMedia } from "../content/x-media-scan.js";
 const pageMovedMessage = "解析中にページが移動しました。もう一度解析してください。";
@@ -113,15 +114,18 @@ export class PageReadSession {
                         return;
                     // Same-URL reloads and detached frames must not publish stale candidates.
                     const current = await chrome.scripting.executeScript({
-                        target: { tabId: this.tabId, allFrames: true }, func: () => location.href,
+                        target: { tabId: this.tabId, allFrames: true }, func: readFrameLocation,
                     });
                     if (!active)
                         return;
                     const frames = scans.filter(entry => entry.frameId !== undefined && entry.frameId !== 0
                         && entry.documentId && isPageScan(entry.result) && entry.result.framePath?.length
                         && current.some(now => now.frameId === entry.frameId && now.documentId === entry.documentId
-                            && typeof now.result === "string" && now.result.split("#")[0] === entry.result.url.split("#")[0]))
-                        .map(entry => entry.result);
+                            && typeof now.result?.url === "string" && now.result.url.split("#")[0] === entry.result.url.split("#")[0]))
+                        .map(entry => {
+                        const source = current.find(now => now.frameId === entry.frameId && now.documentId === entry.documentId)?.result?.sourcePage;
+                        return { ...entry.result, ...(typeof source === "string" && /^https?:\/\//.test(source) ? { sourcePage: source } : {}) };
+                    });
                     frames.sort((a, b) => {
                         const left = a.framePath, right = b.framePath;
                         for (let i = 0; i < Math.min(left.length, right.length); i++) {

@@ -22,7 +22,7 @@ for (const outcome of ['ok', 'denied', 'reload', 'detach', 'timeout', 'abort', '
         }}));
       }
       return outcome === 'detach' ? [] : [1, 2].map(id => ({frameId: id,
-        documentId: outcome === 'reload' ? 'new' : `frame${id}`, result: `${url}/frame${id}`}));
+        documentId: outcome === 'reload' ? 'new' : `frame${id}`, result: {url: `${url}/frame${id}`}}));
     };
     const work = scanTab(8, controller.signal);
     if (outcome === 'abort' || outcome === 'timeout') {

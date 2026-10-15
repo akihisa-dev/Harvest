@@ -22,6 +22,7 @@ export function isPageScan(value) {
         return false;
     const images = value["images"], media = value["media"];
     return Array.isArray(images) && images.every(item => typeof item === "string")
+        && optionalString(value["sourcePage"])
         && optionalBoolean(value["hasFrames"])
         && (value["framePath"] === undefined || (Array.isArray(value["framePath"])
             && value["framePath"].every(item => Number.isSafeInteger(item) && item >= 0)))

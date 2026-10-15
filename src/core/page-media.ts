@@ -2,6 +2,7 @@ import {defaultDisplayedImageGroup, groupMediaImages, normalizeImageUrls, type M
 
 interface DocumentMedia {
   url: string;
+  sourcePage?: string;
   images: readonly string[];
   media?: readonly MediaImageMetadata[];
 }
@@ -16,7 +17,7 @@ export function collectPageMedia(page: DocumentMedia, frames: readonly DocumentM
     });
     const groups = groupMediaImages(urls, media);
     const key = defaultDisplayedImageGroup(groups);
-    return {url: document.url, urls, media, group: key ? groups[key] : undefined,
+    return {url: document.sourcePage ?? document.url, urls, media, group: key ? groups[key] : undefined,
       rejected: (document.media ?? []).length - media.length};
   });
   // Existing page selection always wins. With an empty shell, prefer a frame

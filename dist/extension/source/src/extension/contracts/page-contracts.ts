@@ -5,6 +5,8 @@ import type {MediaImageMetadata} from "../../core/images.js";
 /** Serializable page evidence shared by injected readers and the extension receiver. */
 export interface PageScan {
   url: string;
+  /** Browser-verified same-origin ancestor for inherited about documents. */
+  sourcePage?: string;
   title: string;
   xDiagnostics?: XScanDiagnostics;
   images: string[];
@@ -49,6 +51,7 @@ export function isPageScan(value: unknown): value is PageScan {
   if (!record(value) || typeof value["url"] !== "string" || typeof value["title"] !== "string") return false;
   const images = value["images"], media = value["media"];
   return Array.isArray(images) && images.every(item => typeof item === "string")
+    && optionalString(value["sourcePage"])
     && optionalBoolean(value["hasFrames"])
     && (value["framePath"] === undefined || (Array.isArray(value["framePath"])
       && value["framePath"].every(item => Number.isSafeInteger(item) && item >= 0)))
