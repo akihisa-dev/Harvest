@@ -1,3 +1,4 @@
+import {mediaFixturePage} from "./support/media-fixture-page.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
@@ -41,8 +42,9 @@ test('実拡張機能でWebMの末尾・VFR・音声をMP4とrecommend保存で�
     chrome.tabs.get = async () => ({id: 7, url: 'https://fixture.example.test/gallery'});
     chrome.scripting.executeScript = async () => [{result: window.fixture}];
   });
-  const inspect = async (bytes, type) => page.evaluate(async ({bytes, type}) => {
-    const {Input, BlobSource, ALL_FORMATS, VideoSampleSink, AudioSampleSink, EncodedPacketSink} = await import('./vendor/mediabunny/index.js');
+  const fixturePage = await mediaFixturePage(t, page);
+  const inspect = async (bytes, type) => fixturePage.evaluate(async ({bytes, type}) => {
+    const {Input, BlobSource, ALL_FORMATS, VideoSampleSink, AudioSampleSink, EncodedPacketSink} = await import('/mediabunny.js');
     const blob = new Blob([new Uint8Array(bytes)], {type});
     const input = new Input({formats: ALL_FORMATS, source: new BlobSource(blob)});
     const video = await input.getPrimaryVideoTrack(), frames = [];
@@ -102,8 +104,8 @@ test('実拡張機能でWebMの末尾・VFR・音声をMP4とrecommend保存で�
   };
   for (const variant of ['missing', 'default', 'vfr', 'vfr-audio']) {
     const timestamps = variant.startsWith('vfr') ? [0, .04, .17, .25, .4, .5] : [0, .1, .2, .3, .4, .5];
-    webm = Buffer.from(await page.evaluate(async ({variant, timestamps}) => {
-      const {Output, WebMOutputFormat, BufferTarget, CanvasSource, AudioBufferSource} = await import('./vendor/mediabunny/index.js');
+    webm = Buffer.from(await fixturePage.evaluate(async ({variant, timestamps}) => {
+      const {Output, WebMOutputFormat, BufferTarget, CanvasSource, AudioBufferSource} = await import('/mediabunny.js');
       const canvas = new OffscreenCanvas(32, 24), context = canvas.getContext('2d'), target = new BufferTarget();
       const output = new Output({format: new WebMOutputFormat(), target});
       const video = new CanvasSource(canvas, {codec: 'vp8', bitrate: 100_000});

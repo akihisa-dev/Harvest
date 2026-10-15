@@ -1,0 +1,10 @@
+{
+  "package": "@jsquash/jxl",
+  "version": "1.3.0",
+  "gitHead": "1b1964194611ece3ec984ab91c04726d1088f05e",
+  "sha256": {
+    "codec/enc/jxl_enc.js": "5bb33d2a204f43035bfca2c581aff28669706aedae93188372c5d5c81532f8a8",
+    "codec/enc/jxl_enc.wasm": "3c6c02df45c0dededab146888789d541b23b9a299cb16d497dce412a3a4bc7d3",
+    "utils.js": "fca11cbdec71af34642e793b3e833efa3ceb37e3cbda430f5f6d3975695a71b0"
+  }
+}

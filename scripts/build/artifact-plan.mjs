@@ -12,20 +12,21 @@ export function applicationAssets() {
     ["assets/brand/harvest-geometric-logo.svg", "brand/harvest-geometric-logo.svg"],
     ...icons.map(file => [`assets/icons/${file}`, `icons/${file}`]),
     ...[...locales, "LICENSE", "SOURCE.md"].map(file => [file, file]),
+    ["third_party/jxl/THIRD-PARTY-NOTICES.txt", "app/vendor/jxl/THIRD-PARTY-NOTICES.txt"],
   ];
 }
 
 export async function correspondingSource(root) {
   const fixed = [
-    ["LICENSE", "LICENSE"], ["SOURCE.md", "README.md"],
+    ["LICENSE", "LICENSE"], ["SOURCE.md", "README.md"], ["SOURCE.md", "SOURCE.md"],
     ...["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.json", "manifest.template.json",
       ...appFiles.map(file => `app/${file}`), ...locales,
       "assets/brand/harvest-logo-master.png", "assets/brand/harvest-geometric-logo.svg",
       ...icons.map(file => `assets/icons/${file}`)].map(file => [file, file]),
   ];
-  for (const directory of ["src", "scripts", "tests"]) {
+  for (const directory of ["src", "scripts", "tests", "third_party"]) {
     for (const file of await filesUnder(join(root, directory))) {
-      if (directory === "src" ? file.endsWith(".DS_Store") : !/\.(?:mjs|ps1)$/.test(file)) continue;
+      if (["src", "third_party"].includes(directory) ? file.endsWith(".DS_Store") : !/\.(?:mjs|ps1)$/.test(file)) continue;
       const path = relative(root, file);
       fixed.push([path, path]);
     }

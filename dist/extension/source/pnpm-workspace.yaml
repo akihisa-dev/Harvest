@@ -1,6 +1,8 @@
 packages: []
 minimumReleaseAge: 1440
 strictDepBuilds: true
+allowBuilds:
+  esbuild: false
 saveExact: true
 strictPeerDependencies: true
 engineStrict: true

@@ -51,13 +51,15 @@ test("変換を途中で終了しても先読みしたフレームを解放す�
   assert.equal(samples[2].closed, false, "まだ取得していないフレームは所有しない");
 });
 
-test("固定版bundleの映像経路だけを補正し、変更された上流bundleは拒否する", () => {
-  const video = "Oe.samples(this._startTimestamp,this._endTimestamp)";
-  const audio = "v.samples(this._startTimestamp,this._endTimestamp)";
-  const source = `let Oe=new _i(t);for await(var ui of ${video}){};${audio};`;
-  const adapted = adaptMediabunnyVideoTiming(source);
-  assert.ok(adapted.includes(`harvestVideoSamples(${video},()=>t.getDurationFromMetadata())`));
-  assert.ok(adapted.includes(audio));
-  assert.throws(() => adaptMediabunnyVideoTiming("changed bundle"), /固定版/);
-  assert.throws(() => adaptMediabunnyVideoTiming(`${video};${video}`), /固定版/);
+test("固定版の読みやすい映像経路だけを補正し、不一致や重複を拒否する", () => {
+  for (const binding of ["using sample", "const sample_1"]) {
+    const video = "sink.samples(this._startTimestamp, this._endTimestamp)";
+    const audio = `const sink = new AudioSampleSink(track); for await (${binding} of ${video}) {}`;
+    const source = `const sink = new VideoSampleSink(track); for await (${binding} of ${video}) {} ${audio}`;
+    const adapted = adaptMediabunnyVideoTiming(source);
+    assert.ok(adapted.includes(`harvestVideoSamples(${video}, () => track.getDurationFromMetadata())`));
+    assert.ok(adapted.includes(audio));
+    assert.throws(() => adaptMediabunnyVideoTiming(source + source), /固定版/);
+  }
+  assert.throws(() => adaptMediabunnyVideoTiming("changed source"), /固定版/);
 });

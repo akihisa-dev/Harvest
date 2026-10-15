@@ -3,7 +3,7 @@ import test from 'node:test';
 import {mp4Bytes} from './media-fixtures.mjs';
 import {muxYoutube} from '../dist/extension/app/workers/youtube-mux.js';
 import {prepareYoutubeMp4} from '../dist/extension/app/media/youtube-fetch.js';
-import {BlobSource,BufferTarget,EncodedAudioPacketSource,EncodedPacket,EncodedPacketSink,Input,MP4,Mp4OutputFormat,Output} from '../dist/extension/app/vendor/mediabunny/index.js';
+import {BlobSource,BufferTarget,EncodedAudioPacketSource,EncodedPacket,EncodedPacketSink,Input,MP4,Mp4OutputFormat,Output} from '../node_modules/mediabunny/dist/bundles/mediabunny.min.mjs';
 
 async function audioFixture(frames=13){
   const target=new BufferTarget(),output=new Output({format:new Mp4OutputFormat(),target}),source=new EncodedAudioPacketSource('aac');

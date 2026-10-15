@@ -176,7 +176,7 @@ Chrome Web Store submission uses the [submission guide](store/submit.md) and [li
 
 GNU Affero General Public License version 3 only (AGPL-3.0-only). See [LICENSE](LICENSE) for the full text.
 
-The ZIP submitted to the store includes the full license, corresponding source, and instructions for building the same version. Open **License and source** in the extension for details.
+The ZIP submitted to the store includes the full license, corresponding source, and instructions for building the same version. Bundled third-party components retain their own licenses; the notices and source instructions include internal JXL components and modified Mediabunny code. Open **License and source** in the extension for details.
 
 The initial screen displays `assets/brand/harvest-geometric-logo.svg` in the center. The build copies it into the extension's `brand/` directory and bundled source.
 
@@ -352,6 +352,6 @@ Chrome ウェブストアへの提出には[提出手順](store/submit.md)と[�
 
 GNU Affero General Public License version 3 only（AGPL-3.0-only）。詳細はLICENSEを参照してください。
 
-ストアへ提出するZIPには、ライセンス全文、同じ版をビルドするためのソースコードと手順を含めます。拡張機能の「ライセンスとソース」から案内を開けます。
+ストアへ提出するZIPには、ライセンス全文、同じ版をビルドするためのソースコードと手順を含めます。同梱する第三者コードには各ライセンスが適用され、JXL内部のライブラリの表示とMediabunnyの改変部分のソース案内も含めます。拡張機能の「ライセンスとソース」から案内を開けます。
 
 初期画面の中央には、`assets/brand/harvest-geometric-logo.svg`を表示します。ビルド時にこのロゴを拡張機能の`brand/`と同梱ソースへコピーします。

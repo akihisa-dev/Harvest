@@ -1,3 +1,4 @@
+import {mediaFixturePage} from "./support/media-fixture-page.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {animationPanel, readCompletedDownload} from './support/animation-panel.mjs';
@@ -18,8 +19,9 @@ test('音声MP3を個別/混在保存し、MP3再生・WebM変換・無音拒否
   const {page, scan, saved, failed, count, requests} = await animationPanel(t, assets);
   assert.match(page.url(), /^chrome-extension:/);
   assert.ok(await page.title());
-  const make = (webm, silent = false) => page.evaluate(async ({webm, silent}) => {
-    const {Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, CanvasSource, AudioBufferSource} = await import('./vendor/mediabunny/index.js');
+  const fixturePage = await mediaFixturePage(t, page);
+  const make = (webm, silent = false) => fixturePage.evaluate(async ({webm, silent}) => {
+    const {Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, CanvasSource, AudioBufferSource} = await import('/mediabunny.js');
     const canvas = new OffscreenCanvas(32, 24), target = new BufferTarget();
     canvas.getContext("2d").fillRect(0, 0, 32, 24);
     const output = new Output({format: webm ? new WebMOutputFormat() : new Mp4OutputFormat(), target});
@@ -37,8 +39,8 @@ test('音声MP3を個別/混在保存し、MP3再生・WebM変換・無音拒否
     })()]);
     await output.finalize(); return [...new Uint8Array(target.buffer)];
   }, {webm, silent});
-  const inspect = bytes => page.evaluate(async bytes => {
-    const {Input, BlobSource, ALL_FORMATS, EncodedPacketSink, AudioSampleSink} = await import('./vendor/mediabunny/index.js');
+  const inspect = bytes => fixturePage.evaluate(async bytes => {
+    const {Input, BlobSource, ALL_FORMATS, EncodedPacketSink, AudioSampleSink} = await import('/mediabunny.js');
     const input = new Input({formats: ALL_FORMATS, source: new BlobSource(new Blob([new Uint8Array(bytes)]))});
     try {
       const audio = await input.getPrimaryAudioTrack(), packets = [];

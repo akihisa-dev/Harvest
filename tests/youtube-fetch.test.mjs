@@ -4,7 +4,7 @@ import {fragmentedMp4} from './media-fixtures.mjs';
 import {scanYoutube} from '../dist/extension/app/browser/youtube-page-access.js';
 import {fetchYoutubeVideo} from '../dist/extension/app/media/youtube-fetch.js';
 import {muxYoutube} from '../dist/extension/app/workers/youtube-mux.js';
-import {BlobSource,BufferTarget,EncodedAudioPacketSource,EncodedPacket,Input,MP4,Mp4OutputFormat,Output} from '../dist/extension/app/vendor/mediabunny/index.js';
+import {BlobSource,BufferTarget,EncodedAudioPacketSource,EncodedPacket,Input,MP4,Mp4OutputFormat,Output} from '../node_modules/mediabunny/dist/bundles/mediabunny.min.mjs';
 import {videoId,url,video,audio,template,b,n,t,join,part,identity,initialization} from './support/youtube-fixture.mjs';
 import {readWire,wireBytes,wireNumber} from '../dist/extension/core/youtube-wire.js';
 

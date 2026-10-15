@@ -29,7 +29,7 @@ Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion�
 
 [scripts/build.mjs](scripts/build.mjs) はコマンドの入口です。[build/pipeline.mjs](scripts/build/pipeline.mjs) がコンパイルから配布までの順序を、[build/runtime.mjs](scripts/build/runtime.mjs) が実行コード・ページ注入用スクリプト・同梱ライブラリの配置を担当します。これらのモジュールを読み込むだけではビルドを開始しません。
 
-[build/artifact-plan.mjs](scripts/build/artifact-plan.mjs) は画面・画像と対応ソースの配置先を定義し、生成と `check:build` が同じ定義を参照します。`scripts/` と `tests/` の下に追加する補助モジュールも階層を保って収録し、検査では正本との内容一致を確認します。ソースと生成コードの依存検査は [lib/module-references.mjs](scripts/lib/module-references.mjs) の構文解析を共用し、WorkerへのURL参照と実行時importを区別します。
+[build/artifact-plan.mjs](scripts/build/artifact-plan.mjs) は画面・画像と対応ソースの配置先を定義し、生成と `check:build` が同じ定義を参照します。`scripts/` と `tests/` の下に追加する補助モジュールも階層を保って収録し、検査では正本との内容一致を確認します。`SOURCE.md`は対応ソース側にも同名で収録し、配布ソースからの再ビルドでも入力が欠けないようにします。ソースと生成コードの依存検査は [lib/module-references.mjs](scripts/lib/module-references.mjs) の構文解析を共用し、WorkerへのURL参照と実行時importを区別します。
 
 アプリアイコンは`assets/brand/harvest-geometric-logo.svg`を正本とし、`pnpm icons:generate`で濃いグレーの角丸背景と白いロゴを組み合わせます。Chromeと既存の開発用Playwrightを使い、`assets/icons/`の16/32/48/128pxと`assets/brand/harvest-logo-master.png`の1024px画像を生成します。更新後は通常のビルドで配布物へ反映します。紹介画像のアイコンも更新する場合は、macOSで`swift store/generate-screenshots.swift --promo-only`を実行します。
 
@@ -37,13 +37,13 @@ Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion�
 
 ## 同梱ライブラリ
 
-JXL出力には`@jsquash/jxl` 1.3.0を使用し、同梱される`wasm-feature-detect` 1.9.0とともにApache-2.0で配布します。ビルドは単一スレッド用のエンコーダーとWebAssemblyだけを拡張機能へ含め、画面操作と分けたワーカー内で明示的に初期化します。実行時に外部からコードを取得しません。JXLの追加分は非圧縮で約1.4 MBです。両ライブラリのライセンスは拡張機能内の「ライセンスとソース」画面から確認できます。
+JXL出力には`@jsquash/jxl` 1.3.0（Apache-2.0）を使用します。単一スレッド用エンコーダー、WebAssembly、初期化ヘルパーだけを拡張機能へ含め、ワーカー内で初期化します。この経路では`wasm-feature-detect`を使用しないため、同パッケージはnpmの間接依存にだけ残し、配布しません。実行時に外部からコードを取得しません。JXLの追加分は非圧縮で約1.4 MBです。内部のlibjxl・Brotli・Highway・skcmsと生成ランタイムの表示は`third_party/jxl/THIRD-PARTY-NOTICES.txt`を正本とし、配布物と対応ソースへ含めます。`provenance.json`のSHA-256がエンコーダーと一致しない場合はビルドを止め、更新時にライセンスの由来も再確認します。
 
-WebMからMP4への変換には`mediabunny` 1.61.0（MPL-2.0）を完全固定で使用します。ブラウザー標準のWebCodecsで映像・音声を変換し、コンテナー解析とMP4組み立てを同ライブラリが担当します。実行時の追加依存や外部コード取得はなく、単一のブラウザー用バンドル（約676 KiB）とライセンスを同梱します。型定義用の推移依存はlockfileに固定し、配布実行コードには含めません。Mediabunnyのグローバル型とTypeScriptのDOM型の競合を避けるため、`vendor-modules.d.ts`に使用するAPIだけの境界を置き、型検査全体は省略しません。
+WebMからMP4への変換には`mediabunny` 1.61.0（MPL-2.0）を完全固定で使用します。ブラウザー標準のWebCodecsで映像・音声を変換し、コンテナー解析とMP4組み立てを同ライブラリが担当します。開発用の`esbuild` 0.28.2（MIT）で必要な公開APIから到達するコードだけをまとめ、約428 KiBのブラウザー用コードとライセンスを同梱します。esbuildは配布する実行コードに含めず、プラットフォーム別の固定バイナリを利用するためインストールスクリプトも許可しません。ネットワーク上の入力を受け付ける開発サーバー用途では使用しません。型定義用の推移依存も配布実行コードには含めません。Mediabunnyのグローバル型とTypeScriptのDOM型の競合を避けるため、`vendor-modules.d.ts`に使用するAPIだけの境界を置き、型検査全体は省略しません。
 
-`scripts/mediabunny-build.mjs`は固定版bundleの映像変換iteratorだけを補正します。1.61.0はWebMの表示時間が不明なフレームを長さ0で返し、Conversionがそのフレームを除外するためです。`src/core/video-sample-timing.ts`は既知の長さと表示時刻を維持し、長さ0だけを次のフレームの表示時刻、末尾ではコンテナーの終端から補います。FPSを仮定せず、音声の変換経路は変更しません。終端が確認できない場合は欠落した動画を成功扱いせず、変換失敗として返します。先読みは1フレームに限り、完了・中止・失敗で解放します。
+`scripts/mediabunny-build.mjs`は固定版の読みやすい変換モジュールにある映像変換iteratorだけを補正します。1.61.0はWebMの表示時間が不明なフレームを長さ0で返し、Conversionがそのフレームを除外するためです。`src/core/video-sample-timing.ts`は既知の長さと表示時刻を維持し、長さ0だけを次のフレームの表示時刻、末尾ではコンテナーの終端から補います。FPSを仮定せず、音声の変換経路は変更しません。終端が確認できない場合は欠落した動画を成功扱いせず、変換失敗として返します。先読みは1フレームに限り、完了・中止・失敗で解放します。
 
-上流bundleの補正対象が一意に見つからない場合はビルドを停止します。依存を更新する際はこの補正の必要性と位置を再確認してください。MediabunnyのMPL-2.0ライセンスは維持し、補正の定義とヘルパーを配布ソースへ含めます。`tests/webm-tail.browser.mjs`でDefaultDurationの有無、VFR、Opus音声を含む小さいfixtureを実拡張機能のMP4・recommend保存で確認します。
+上流モジュールの補正対象が一意に見つからない場合はビルドを停止します。依存を更新する際はこの補正の必要性と位置を再確認してください。MediabunnyのMPL-2.0ライセンスは維持し、改変済みの編集用ソースを`source/vendor/mediabunny/conversion.ts`へ同梱します。未改変部分の固定ソース入手先と再生成手順は`SOURCE.md`に明記し、補正の定義と独立したヘルパーも配布ソースへ含めます。`tests/webm-tail.browser.mjs`でDefaultDurationの有無、VFR、Opus音声を含む小さいfixtureを実拡張機能のMP4・recommend保存で確認します。動画生成と出力検査は`tests/support/media-fixture-page.mjs`の別ページで未改変の上流bundleを使い、製品用コードへテスト専用APIを残しません。
 
 YouTubeの映像・音声結合にも同じMediabunnyを使用します。AVC/AACのパケットを再圧縮せずにMP4へ書き込みます。新規依存・外部実行コード・別アプリは追加せず、`youtube-mux.ts` の同梱ライブラリ参照だけを既存のビルドで解決します。配信処理と一時ページの所有権は [src/extension/README.md](src/extension/README.md#youtube専用の取得経路) に記載しています。`tests/youtube*.test.mjs` は実際の認証データを使わずに取得と結合を検証します。
 

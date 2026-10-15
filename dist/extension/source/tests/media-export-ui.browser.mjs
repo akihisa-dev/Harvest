@@ -1,3 +1,4 @@
+import {mediaFixturePage} from "./support/media-fixture-page.mjs";
 import {serveExtension, extensionRoot} from "./support/extension-files.mjs";
 import {launchBrowser} from "./support/browser.mjs";
 import {mp4Bytes, brokenMedia} from './media-fixtures.mjs';
@@ -73,8 +74,9 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   await page.setViewportSize({width: 768, height: 600});
   await page.goto(`http://127.0.0.1:${server.address().port}/app/index.html`);
   await page.locator("#export-format-pdf").check();
-  webm = Buffer.from(await page.evaluate(async () => {
-    const {Output, WebMOutputFormat, BufferTarget, CanvasSource, AudioBufferSource} = await import('./vendor/mediabunny/index.js');
+  const fixturePage = await mediaFixturePage(t, page);
+  webm = Buffer.from(await fixturePage.evaluate(async () => {
+    const {Output, WebMOutputFormat, BufferTarget, CanvasSource, AudioBufferSource} = await import('/mediabunny.js');
     const target = new BufferTarget();
     const output = new Output({format: new WebMOutputFormat(), target});
     const canvas = new OffscreenCanvas(320, 240);
@@ -298,8 +300,8 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   assert.match(failures.limit, /上限/);
   assert.match(failures.corrupt, /MP4へ変換できません/);
   assert.match(failures.audio, /映像または音声をMP4へ変換できません/);
-  const inspectMp4 = bytes => page.evaluate(async values => {
-    const {Input, BlobSource, MP4, VideoSampleSink, AudioSampleSink} = await import('./vendor/mediabunny/index.js');
+  const inspectMp4 = bytes => fixturePage.evaluate(async values => {
+    const {Input, BlobSource, MP4, VideoSampleSink, AudioSampleSink} = await import('/mediabunny.js');
     const input = new Input({formats: [MP4], source: new BlobSource(new Blob([new Uint8Array(values)]))});
     try {
       const video = await input.getPrimaryVideoTrack(), audio = await input.getPrimaryAudioTrack();

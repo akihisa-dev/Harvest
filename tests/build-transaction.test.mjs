@@ -59,12 +59,15 @@ test("successful builds replace a previous distribution and also support first b
 
 test("corresponding source follows nested build and test support files", async t => {
   const {root} = await fixture(t);
-  for (const file of ["src/core/item.ts", "scripts/build/pipeline.mjs", "scripts/windows-zip.ps1", "tests/support/browser.mjs", "tests/.DS_Store"]) {
+  for (const file of ["src/core/item.ts", "scripts/build/pipeline.mjs", "scripts/windows-zip.ps1", "tests/support/browser.mjs", "third_party/jxl/provenance.json", "tests/.DS_Store"]) {
     await mkdir(join(root, file, ".."), {recursive: true});
     await writeFile(join(root, file), "fixture");
   }
-  const plan = new Map(await correspondingSource(root));
-  for (const file of ["src/core/item.ts", "scripts/build/pipeline.mjs", "scripts/windows-zip.ps1", "tests/support/browser.mjs"]) {
+  const entries = await correspondingSource(root);
+  assert.ok(entries.some(([input, output]) => input === "SOURCE.md" && output === join("source", "SOURCE.md")),
+    "配布ソースからビルドする際の入力SOURCE.mdを残す");
+  const plan = new Map(entries);
+  for (const file of ["src/core/item.ts", "scripts/build/pipeline.mjs", "scripts/windows-zip.ps1", "tests/support/browser.mjs", "third_party/jxl/provenance.json"]) {
     assert.equal(plan.get(file), join("source", file));
   }
   assert.equal(plan.has("tests/.DS_Store"), false);
