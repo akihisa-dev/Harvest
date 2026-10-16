@@ -2,7 +2,7 @@ import { createSourcePageLayout } from "../../core/pdf.js";
 import { isStillImage, pdfSourceFilename } from "../../core/split-export-formats.js";
 import { resolveImageExportFormat } from "../../core/export-recommendations.js";
 import { originalItemExtension } from "../../core/export-formats.js";
-import { replaceLoneSurrogates, sourceTextGraphemes } from "../../core/source-text.js";
+import { replaceLoneSurrogates, sourceTextGraphemes, sourceTextNeedsLineImage, sourceTextDirection, SOURCE_TEXT_FONT_FAMILY } from "../../core/source-text.js";
 import { individualFilename } from "../../core/export-files.js";
 export function imageFilename(url) {
     try {
@@ -39,7 +39,8 @@ export function createSourcePreview(selected, format, includeSourcePage, heading
     const escape = (value) => value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[character]);
     const text = layout.lines.map(line => {
         const textLength = line.text ? ` textLength="${line.width.toFixed(3)}" lengthAdjust="spacingAndGlyphs"` : "";
-        return `<text x="${line.x.toFixed(3)}" y="${(layout.height - line.y).toFixed(3)}" font-size="${line.size}"${textLength} xml:space="preserve">${escape(line.text)}</text>`;
+        const shaping = sourceTextNeedsLineImage(line.text) ? ` direction="${sourceTextDirection(line.text)}" text-anchor="${sourceTextDirection(line.text) === "rtl" ? "end" : "start"}" font-family="${escape(SOURCE_TEXT_FONT_FAMILY)}"` : "";
+        return `<text x="${line.x.toFixed(3)}" y="${(layout.height - line.y).toFixed(3)}" font-size="${line.size}"${textLength}${shaping} xml:space="preserve">${escape(line.text)}</text>`;
     }).join("");
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${layout.width}" height="${layout.height}"><rect width="${layout.width}" height="${layout.height}" fill="white"/><g fill="black" font-family="monospace">${text}</g></svg>`;
     return { url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, sourcePage: first.sourcePage, selected: true };

@@ -1,4 +1,5 @@
-import { replaceLoneSurrogates, sourceTextGraphemes, sourceGraphemeNeedsImage } from "./source-text.js";
+import { sourceLineCopyText } from "./pdf-source-copy.js";
+import { replaceLoneSurrogates, sourceTextGraphemes, sourceGraphemeNeedsImage, sourceTextNeedsLineImage, SOURCE_LINE_EM_PIXELS } from "./source-text.js";
 import { validatePdfImage } from "./pdf-image-page.js";
 import { pdfAsciiHex, pdfHex, pdfStreamObject, pdfText } from "./pdf-objects.js";
 import { createSourcePageLayout, sourcePageCharacterWidth } from "./source-page-layout.js";
@@ -16,10 +17,10 @@ export function preparePdfSourcePage(source) {
     for (let index = 0; index < glyphCharacters.length; index += SOURCE_COPY_CODES.length) {
         copyFontGroups.push(glyphCharacters.slice(index, index + SOURCE_COPY_CODES.length));
     }
-    return { layout, sourceGlyphs, glyphCharacters, copyFontGroups };
+    return { layout, sourceGlyphs, lineImages: validateSourceLineImages(sourcePage, layout), glyphCharacters, copyFontGroups };
 }
 export function createPdfSourcePageObjects(prepared, pageObject) {
-    const { layout, sourceGlyphs, glyphCharacters, copyFontGroups } = prepared;
+    const { layout, sourceGlyphs, lineImages, glyphCharacters, copyFontGroups } = prepared;
     const contentsObject = pageObject + 1;
     const fontObject = pageObject + 2;
     const descendantObject = pageObject + 3;
@@ -35,27 +36,42 @@ export function createPdfSourcePageObjects(prepared, pageObject) {
             image: sourceGlyphs.get(character),
         });
     });
-    const copyFontObjectStart = pageObject + 7 + glyphCharacters.length;
+    const sourceLineObjects = new Map();
+    for (const [text, image] of lineImages) {
+        const index = glyphCharacters.length + sourceLineObjects.size;
+        sourceLineObjects.set(text, { character: text, name: `G${index}`, object: pageObject + 7 + index, image });
+    }
+    const rasterObjects = [...sourceGlyphObjects.values(), ...sourceLineObjects.values()];
+    const copyFontObjectStart = pageObject + 7 + rasterObjects.length;
     const copyFonts = copyFontGroups.map((characters, index) => ({
         name: `F${index + 3}`,
         fontObject: copyFontObjectStart + index * 2,
         cmapObject: copyFontObjectStart + index * 2 + 1,
         characters,
     }));
+    const lineCopyFonts = new Map();
+    for (const [text, raster] of sourceLineObjects) {
+        const line = layout.lines.find(line => line.text === text);
+        const fontObject = copyFontObjectStart + copyFonts.length * 2 + lineCopyFonts.size * 3;
+        lineCopyFonts.set(text, { name: `L${fontObject}`, fontObject, cmapObject: fontObject + 1,
+            text: sourceLineCopyText(text), width: line.width / line.size * 1000, raster });
+    }
+    const allLineCopyFonts = [...lineCopyFonts.values()];
     const copyGlyphs = new Map();
     for (const font of copyFonts) {
         font.characters.forEach((character, index) => {
             copyGlyphs.set(character, { fontName: font.name, code: SOURCE_COPY_CODES[index] });
         });
     }
-    const { contents, cmapText } = sourcePageContent(layout, sourceGlyphObjects, copyGlyphs);
+    const { contents, cmapText } = sourcePageContent(layout, sourceGlyphObjects, copyGlyphs, sourceLineObjects, lineCopyFonts);
     const toUnicode = sourceToUnicodeCMap(cmapText);
     const fontResources = [
         `/F1 ${fontObject} 0 R`,
         `/F2 ${standardFontObject} 0 R`,
         ...copyFonts.map(font => `/${font.name} ${font.fontObject} 0 R`),
+        ...allLineCopyFonts.map(font => `/${font.name} ${font.fontObject} 0 R`),
     ].join(" ");
-    const glyphResources = [...sourceGlyphObjects.values()]
+    const glyphResources = rasterObjects
         .map(glyph => `/${glyph.name} ${glyph.object} 0 R`).join(" ");
     const objects = [];
     objects.push(pdfText(`${pageObject} 0 obj\n` +
@@ -79,7 +95,7 @@ export function createPdfSourcePageObjects(prepared, pageObject) {
         "<< /Type /FontDescriptor /FontName /HeiseiKakuGo-W5 /Flags 4 " +
         "/FontBBox [0 -200 1000 900] /ItalicAngle 0 /Ascent 880 /Descent -120 " +
         "/CapHeight 700 /StemV 80 >>\nendobj\n"));
-    for (const glyph of sourceGlyphObjects.values()) {
+    for (const glyph of rasterObjects) {
         const { data } = validatePdfImage(glyph.image, `source glyph ${glyph.character}`);
         objects.push(pdfStreamObject(`${glyph.object} 0 obj\n` +
             `<< /Type /XObject /Subtype /Image /Width ${glyph.image.width} /Height ${glyph.image.height} ` +
@@ -93,6 +109,23 @@ export function createPdfSourcePageObjects(prepared, pageObject) {
             `/ToUnicode ${font.cmapObject} 0 R >>\nendobj\n`));
         const cmapHeader = `${font.cmapObject} 0 obj\n<< /Length ${cmap.byteLength} >>\nstream\n`;
         objects.push(pdfStreamObject(cmapHeader, cmap));
+    }
+    for (const font of allLineCopyFonts) {
+        const width = font.width.toFixed(5);
+        const height = font.raster.image.height / SOURCE_LINE_EM_PIXELS * 1000;
+        const below = (height - 1000).toFixed(5);
+        const box = `0 -${below} ${width} 1000`;
+        objects.push(pdfText(`${font.fontObject} 0 obj\n` +
+            `<< /Type /Font /Subtype /Type3 /Name /${font.name} /FontBBox [${box}] ` +
+            `/FontMatrix [0.001 0 0 0.001 0 0] /FirstChar 33 /LastChar 33 /Widths [${width}] ` +
+            `/Encoding << /Type /Encoding /Differences [33 /line] >> ` +
+            `/CharProcs << /line ${font.fontObject + 2} 0 R >> ` +
+            `/Resources << /XObject << /${font.raster.name} ${font.raster.object} 0 R >> >> ` +
+            `/ToUnicode ${font.cmapObject} 0 R >>\nendobj\n`));
+        const cmap = sourceCopyToUnicodeCMap([font.text], font.name);
+        objects.push(pdfStreamObject(`${font.cmapObject} 0 obj\n<< /Length ${cmap.byteLength} >>\nstream\n`, cmap));
+        const glyph = pdfText(`${width} 0 d0\nq\n${width} 0 0 ${height.toFixed(5)} 0 -${below} cm\n/${font.raster.name} Do\nQ\n`);
+        objects.push(pdfStreamObject(`${font.fontObject + 2} 0 obj\n<< /Length ${glyph.byteLength} >>\nstream\n`, glyph));
     }
     return objects;
 }
@@ -136,6 +169,26 @@ function validateSourceGlyphs(source) {
         output.set(character, image);
     }
     return output;
+}
+function validateSourceLineImages(source, layout) {
+    if (source.lineImages === undefined)
+        return new Map();
+    if (source.lineImages === null || typeof source.lineImages !== "object" || Array.isArray(source.lineImages)) {
+        throw new TypeError("Source page line images must be a text-to-image object.");
+    }
+    const lines = new Set(layout.lines.map(line => line.text));
+    const images = new Map();
+    for (const [text, image] of Object.entries(source.lineImages)) {
+        if (!lines.has(text) || !sourceTextNeedsLineImage(text))
+            throw new RangeError("Source line images must match an RTL layout line.");
+        if (!image || !("rgbFlate" in image) || image.rgbFlate === undefined)
+            throw new TypeError("Source line images must provide RGB Flate data.");
+        validatePdfImage(image, "source line");
+        if (image.height !== 128 || image.width > 4096)
+            throw new RangeError("Source line images must be 128px high and at most 4096px wide.");
+        images.set(text, image);
+    }
+    return images;
 }
 /** PDF CMap character mappings are emitted in blocks of at most 100 entries. */
 function unicodeMappingBlocks(mappings) {
@@ -195,9 +248,17 @@ function sourceCopyToUnicodeCMap(characters, fontName) {
         "",
     ].join("\n"));
 }
-function sourcePageContent(layout, glyphObjects, copyGlyphs) {
+function sourcePageContent(layout, glyphObjects, copyGlyphs, lineObjects, lineCopyFonts) {
     const commands = ["BT"];
     for (const line of layout.lines) {
+        const raster = lineObjects.get(line.text);
+        if (raster) {
+            // The line is one selection unit. Native bidi glyph order and contextual
+            // shaping stay in the browser raster; Chrome reconstructs logical copy text.
+            const font = lineCopyFonts.get(line.text);
+            commands.push(`/${font.name} ${line.size} Tf 100 Tz 1 0 0 1 ${line.x.toFixed(3)} ${line.y.toFixed(3)} Tm <21> Tj`);
+            continue;
+        }
         let x = line.x;
         let run = "";
         let runFont = null;

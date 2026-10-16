@@ -395,3 +395,26 @@ test("source graphemes keep combining marks, joined emoji and copy mappings inta
   }
   assert.throws(() => createPdfFromJpegs([], {heading: "", filename, url: "", glyphs: {ab: glyphs["漢"]}}), /one grapheme/);
 });
+
+
+test("RTL行は文字を分割せず行画像を配置し、行単位で描画・選択する", () => {
+  for (const filename of ["שלום", "שלום.pdf", "report 123 שלום 45.pdf", "مرحبا 123 report.pdf"]) {
+    const source = {heading: "Source", filename, url: "https://example.test/"};
+    const glyphs = Object.fromEntries([...new Set([...filename].filter(c => c.codePointAt(0) > 255))].map(c => [c, {rgbFlate: new Uint8Array([1]), width: 96, height: 96}]));
+    const lineImages = {[filename]: {rgbFlate: new Uint8Array([1]), width: 640, height: 128}};
+    const text = decode(createPdfFromJpegs([], {...source, glyphs, lineImages}));
+    const content = readSourceContentStream(text);
+    for (const character of [...filename].filter(c => c.codePointAt(0) > 255)) {
+      assert.ok(text.includes(`<${utf16Hex(character)}>`), "元のUnicodeを文字対応表に保持する");
+    }
+    assert.match(content, /\/L\d+ .* Tj/);
+    assert.match(text, /\/Subtype \/Type3/);
+    assert.match(text, / d0\n/);
+    assert.match(text, /\/Widths \[/);
+    assert.equal((text.match(/\/G\d+ Do/g) ?? []).length, 1, "見える字形を個別配置しない");
+    const line = createSourcePageLayout(source).lines.find(line => line.text === filename);
+    assert.ok(text.includes(`/Widths [${(line.width / line.size * 1000).toFixed(5)}]`));
+    assert.throws(() => createPdfFromJpegs([], {...source, lineImages: {[filename]: {...lineImages[filename], height: 32}}}), /128px/);
+    assert.throws(() => createPdfFromJpegs([], {...source, lineImages: {wrong: lineImages[filename]}}), /RTL layout line/);
+  }
+});

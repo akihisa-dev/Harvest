@@ -31,3 +31,11 @@ The Mediabunny 1.61.0 source and modifications are available under **MPL-2.0**. 
 `@jsquash/jxl` 1.3.0はApache-2.0です。内部の圧縮処理（libjxl、Brotli、Highway、skcms）と生成ランタイムのライセンス・著作権表示は `app/vendor/jxl/THIRD-PARTY-NOTICES.txt` に収録しています。由来は公開npmパッケージのgitHeadと上流の固定ビルド設定を根拠とし、`source/third_party/jxl/provenance.json` に同梱ファイルのSHA-256を記録しています。元のビルド実行ログはパッケージに含まれていないため、実際のツールチェーン呼び出し全体を証明するものではありません。
 
 The JXL third-party notices cover the codec's internal libraries and generated runtime. Provenance is based on the npm gitHead and pinned upstream build recipe; file hashes bind these notices to the distributed encoder. The original binary build log is not supplied upstream, so this does not attest every toolchain invocation.
+
+## PDF source text compatibility data
+
+Chrome内蔵PDFビューアーでRTL出典をコピーする際の互換処理に、PDFiumの文字分類・鏡像文字データの縮約を使用します。実行ライブラリは追加しません。編集用ソースとBSDライセンス全文は`source/src/core/pdf-copy-bidi-data.ts`、配布JavaScriptは`core/pdf-copy-bidi-data.js`にあります。この部分のBSDの権利をHarvest全体のAGPL表記で制限しません。
+
+出典はPDFium固定コミット[a84323421e94f484faca52dd9d027934eba42ab8](https://github.com/chromium/pdfium/tree/a84323421e94f484faca52dd9d027934eba42ab8)の`core/fxcrt/fx_ucddata.inc`と`core/fxcrt/fx_unicode.cpp`です。BMPの方向分類を左・右・弱い左・中立の4種へまとめ、連続する同分類を終端値で圧縮し、鏡像表は文字コードの対応だけを残しています。表示の文字組みはブラウザーが担当します。
+
+The reduced PDFium bidi-class and mirroring data supports copying RTL source lines in Chrome's built-in PDF viewer. It is derived from the pinned files above; no PDFium runtime is bundled. The editable table, upstream notices, and full BSD license are retained in `source/src/core/pdf-copy-bidi-data.ts` and in the corresponding distributed JavaScript. Harvest's AGPL notice does not restrict these BSD rights.

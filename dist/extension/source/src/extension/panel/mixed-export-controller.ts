@@ -8,7 +8,7 @@ import {individualFilename} from "../../core/export-files.js";
 import {storedZipDataLimit, type StoredZipEntry} from "../../core/stored-zip.js";
 import {ImageArchiveLimitError} from "../../core/image-archive.js";
 import {prepareMixedExport, type MixedExportWork, type PreparedMixedItem} from "../media/mixed-export-preparation.js";
-import {prepareSourceGlyphs} from "../media/pdf-source-glyphs.js";
+import {prepareSourcePageText} from "../media/pdf-source-glyphs.js";
 import {createStoredZipInWorker} from "../media/stored-zip-worker.js";
 import {downloadManagedBlob} from "../browser/managed-download.js";
 import {downloadBlob} from "./export-lifecycle.js";
@@ -66,9 +66,9 @@ export function createMixedExportController(options: MixedExportControllerOption
               const filename = indexedExportFilename(pdfIndex,work.selected.length,"pdf");
               const sourceFilename = pdfSourceFilename(work.selected.length,pdfIndex,entries.length,options.getPdfFilename());
               const source = work.includeSourcePage ? {heading:t("sourceHeading"),filename:sourceFilename,url:firstPage!.sourcePage} : undefined;
-              const glyphs = source ? await prepareSourceGlyphs([source.heading,source.filename,source.url],run.signal) : undefined;
+              const text = source ? await prepareSourcePageText(source,run.signal) : undefined;
               if (run.stopped) return;
-              const pdf = createPdf(pages,source ? {...source,glyphs} : undefined);
+              const pdf = createPdf(pages,source ? {...source,...text} : undefined);
               entries.push({filename,blob:pdf});entries.sort((a,b)=>a.filename.localeCompare(b.filename));
             }
             const bytes = entries.reduce((size,entry)=>size+entry.blob.size,0);

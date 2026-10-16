@@ -58,6 +58,8 @@ Saved filenames use the page title. Unsupported filename symbols and control cha
 
 **Add a source page at the end** applies when the chosen format produces a still-image PDF, including when recommended resolves to PDF. When enabled, it appends one page containing the **Source** heading, saved PDF filename, and source page URL. Text, including Japanese and emoji, can be displayed, selected, and copied. The source page also appears at the end of the image list and viewer thumbnails and can be previewed in the viewer. When the output format is not PDF, this setting is hidden and the source page is omitted. Returning to PDF, including through recommended, restores the saved setting and preview. This source-page setting is stored in the browser and retained the next time the panel opens. Both image and video formats start at recommended whenever the panel opens. Page URLs and collected results are not stored as preferences.
 
+RTL text, such as Hebrew and Arabic, is shaped as a complete line so its order and letter forms match the source preview. In Chrome’s built-in PDF viewer, these lines are selected and copied as whole lines. Copy results in other PDF viewers may differ.
+
 #### PDF quality and retries
 
 Each selected still image becomes a PDF page matching its original dimensions, always at the highest available quality. Supported JPEGs are embedded unchanged after structural and decoding checks; other images use lossless compression of browser-decoded pixels. Transparency is composited over white. Image and page dimensions are preserved, without upscaling or invented detail. Detail already lost through source compression, or color changes introduced by browser decoding, cannot be restored.
@@ -237,6 +239,8 @@ Xのブックマークでは、Xが受信した一覧の投稿IDとメディア�
 #### PDFの出典ページ
 
 「末尾に出典ページを追加」は静止画像をPDFへまとめる場合に使える機能で、recommendedの保存形式がPDFとなる場合も対象です。オンにすると、画像ページの後に「Source」の見出し、保存したPDFのファイル名、画像を見つけた元ページのURLを1ページに載せます。日本語や絵文字を含む文字も表示でき、選択・コピーできます。オンの場合は画像一覧とビュアーのサムネイルにもSourceページを末尾に表示し、ビュアーで内容を確認できます。実際の保存形式がPDF以外になるとこの設定は隠れ、出典ページは追加しません。recommendedを含めてPDFへ戻ると、保存していた設定とプレビューが再び表示されます。この出典ページ設定はブラウザー内に保存され、次回パネルを開いても維持されます。画像・動画の保存形式は、パネルを開くたびに両方ともrecommendedで始まります。ページURLや画像の収集結果は設定として保存しません。
+
+ヘブライ語やアラビア語など右から左へ読む文字を含む行は、行全体で文字を組み、出典プレビューとPDFの文字順・字形を揃えます。Chrome内蔵PDFビューアーでは、この行を行単位で選択・コピーできます。他のPDF閲覧ソフトではコピー結果が異なる場合があります。
 
 #### PDFの画質と再試行
 

@@ -30,3 +30,21 @@ export function sourceTextGraphemes(value) {
 export function sourceGraphemeNeedsImage(value) {
     return [...value].some(character => character.codePointAt(0) > 0xff);
 }
+export const SOURCE_TEXT_FONT_FAMILY = "'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif";
+export const SOURCE_LINE_EM_PIXELS = 96;
+/** Let the browser shape full lines containing RTL scripts or direction controls. */
+export function sourceTextNeedsLineImage(value) {
+    return /[\u0590-\u08ff\u200e\u200f\u202a-\u202e\u2066-\u2069\ufb1d-\ufdff\ufe70-\ufeff\u{10800}-\u{10fff}\u{1e800}-\u{1eeff}]/u.test(value);
+}
+/** Choose the paragraph direction from the first strong letter or direction mark. */
+export function sourceTextDirection(value) {
+    for (const character of value) {
+        if (character === "\u200f")
+            return "rtl";
+        if (character === "\u200e")
+            return "ltr";
+        if (/\p{Letter}/u.test(character))
+            return sourceTextNeedsLineImage(character) ? "rtl" : "ltr";
+    }
+    return "ltr";
+}
