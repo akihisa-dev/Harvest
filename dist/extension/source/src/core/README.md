@@ -73,3 +73,5 @@ CRC計算の方法は呼び出し元から渡せます。共通処理はWorker�
 [ISO/IEC 11172-3:1993の規格](https://previewnorm.com/iec/ISO%20IEC%2011172-3-1993%20PDF.pdf)のビット列構造と数式に沿って実装しています。`mp3-tables.ts`は規定の分析窓（Annex C、Table C.1）とHuffman表16（Annex B、Table B.7）の数値定数です。分析窓は[Annex Cの公開資料](https://www.normsplash.com/Samples/BSI/188112399/BS-EN-ISO-IEC-11172-3-1995-en-2.pdf)、符号表は規格と[LAMEの参照表](https://github.com/lameproject/lame/blob/master/libmp3lame/tables.c)で照合しています。変換ライブラリの処理コードは取り込んでいません。
 
 32・44.1・48kHz、1/2チャンネルに対応し、未対応の入力と不正な数値、出力上限超過は拒否します。長ブロックのみで、聴覚モデル・短ブロック切替・ギャップレス情報はありません。圧縮による音質変化と、先頭/末尾の最大約70msの余白があるため、波形を完全に保存する用途には向きません。実Chromeで符号化結果を復号し、周波数、音量、左右分離、複合音との誤差、末尾の保持を検証します。
+
+PNG原本の構造検査は[PNG仕様のアニメーション定義](https://www.w3.org/TR/png-3/#4Concepts.APNG)に従い、acTLの宣言フレーム数、fcTL/fdATの連番と順序、各フレームのデータと画像内範囲も確認します。先頭静止画をアニメーションに含める構成と含めない構成、単一フレームを扱い、欠落は再試行対象の失敗にします。原本バイトの変更、復号、保存先や外部送信の追加はありません。
