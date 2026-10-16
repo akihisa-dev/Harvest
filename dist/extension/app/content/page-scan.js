@@ -620,15 +620,43 @@ export async function scanDocument(targetPostId, framesOnly = false) {
     const backgroundSnapshots = new Map();
     const backgroundFor = (element) => {
         checkDeadline();
-        let background = "";
+        const backgrounds = [];
         try {
-            background = getComputedStyle(element).backgroundImage;
+            const style = getComputedStyle(element);
+            backgrounds.push(style.backgroundImage);
+            const pseudoBackgrounds = [];
+            for (const pseudo of ["::before", "::after"]) {
+                checkDeadline();
+                const computed = getComputedStyle(element, pseudo);
+                checkDeadline();
+                if (!computed.content || computed.content === "none" || computed.content === "normal"
+                    || computed.display === "none" || computed.visibility === "hidden" || computed.visibility === "collapse"
+                    || computed.opacity === "0" || !computed.backgroundImage || computed.backgroundImage === "none")
+                    continue;
+                pseudoBackgrounds.push(computed.backgroundImage);
+            }
+            if (pseudoBackgrounds.length) {
+                // display:contents has no box of its own but may still generate pseudo boxes.
+                let owner = element;
+                let ownerStyle = style;
+                while (owner && ownerStyle.display === "contents" && ownerStyle.opacity !== "0") {
+                    checkDeadline();
+                    owner = observation.parent(owner);
+                    if (owner)
+                        ownerStyle = getComputedStyle(owner);
+                }
+                const visible = owner && ownerStyle.display !== "none" && ownerStyle.opacity !== "0"
+                    && (typeof owner.checkVisibility === "function" ? owner.checkVisibility({ checkOpacity: true })
+                        : typeof owner.getClientRects !== "function" || owner.getClientRects().length > 0);
+                if (visible)
+                    backgrounds.push(...pseudoBackgrounds);
+            }
         }
         catch {
             // A detached or browser-owned element may not have computed styles.
         }
         checkDeadline();
-        return background;
+        return backgrounds.join(",");
     };
     const scanBackground = (element) => {
         const background = backgroundFor(element);

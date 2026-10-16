@@ -1162,8 +1162,8 @@ test("背景の最終照合中も20秒期限を確認し、部分結果を返さ
   try {
     await runWithFixture(new FixtureDocument(root), TrackingObserver, async () => {
       Object.defineProperty(globalThis, "performance", {configurable: true, value: {now: () => now}});
-      globalThis.getComputedStyle = element => {
-        if (element === image && ++backgroundReads === 2) now = 20_001;
+      globalThis.getComputedStyle = (element, pseudo) => {
+        if (!pseudo && element === image && ++backgroundReads === 2) now = 20_001;
         return {backgroundImage: element.backgroundImage};
       };
       await assert.rejects(scanDocument(), /20 second deadline/);
@@ -1225,4 +1225,40 @@ test("本文の囲み括弧・句読点を区別し、URL自身の括弧とク�
     const result = await runWithFixture(new FixtureDocument(root), undefined, scanDocument);
     assert.deepEqual(result.images, expected ? [base + expected] : [], input);
   }
+});
+
+
+test("大量の要素でも疑似要素の照合回数は要素数に比例する", async () => {
+  const root = new FixtureElement("html", {}, Array.from({length: 2500}, () => new FixtureElement("div")));
+  const counts = new Map();
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, async () => {
+    globalThis.getComputedStyle = (element, pseudo = "normal") => {
+      const key = pseudo;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      return {backgroundImage: "none", content: "none"};
+    };
+    return scanDocument();
+  });
+  assert.deepEqual(result.images, []);
+  assert.equal(counts.get("::before"), 2 * 2501);
+  assert.equal(counts.get("::after"), 2 * 2501);
+  assert.equal(counts.get("normal"), 2 * 2501);
+});
+
+test("疑似要素の読み取り中も20秒期限で停止し監視を解放する", async () => {
+  const root = new FixtureElement("html", {}, [new FixtureElement("div")]);
+  let now = 0, disconnected = false;
+  class Observer extends EmptyMutationObserver { disconnect() { disconnected = true; } }
+  const previous = globalThis.performance;
+  try {
+    await runWithFixture(new FixtureDocument(root), Observer, async () => {
+      Object.defineProperty(globalThis, "performance", {configurable: true, value: {now: () => now}});
+      globalThis.getComputedStyle = (_element, pseudo) => {
+        if (pseudo === "::before") now = 20_001;
+        return {backgroundImage: "none", content: "none"};
+      };
+      await assert.rejects(scanDocument(), /20 second deadline/);
+    });
+  } finally { Object.defineProperty(globalThis, "performance", {configurable: true, value: previous}); }
+  assert.equal(disconnected, true);
 });
