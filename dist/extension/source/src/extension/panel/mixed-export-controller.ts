@@ -42,6 +42,7 @@ export function createMixedExportController(options: MixedExportControllerOption
         async run(run) {
           const {work} = run;
           try {
+            if (work.selected.every(item => work.saved.has(item))) { run.complete(); return; }
             await prepareMixedExport(work,{signal:run.signal,isStopped:()=>run.stopped,onProgress:run.reportPreparation});
             if (run.stopped) return;
             if (work.failed.size) {

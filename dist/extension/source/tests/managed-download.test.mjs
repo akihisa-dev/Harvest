@@ -154,3 +154,25 @@ test('MP4の準備に失敗した場合は保存を一件も開始しない', as
   assert.equal(fixture.completed, 0);
   assert.equal(fixture.controller.pending.failed.size, 3);
 });
+
+
+test('単一画像の完了と中止が競合しても次の操作で重複保存しない', async t => {
+  const {createMixedExportController} = await import('../dist/extension/app/panel/mixed-export-controller.js');
+  const {pngBytes} = await import('./original-fixtures.mjs');
+  const fake = api(); install(t, fake);
+  const items = [{url: 'https://example.test/image.png', sourcePage: 'https://example.test/', kind: 'image'}];
+  let completed = 0;
+  const controller = createMixedExportController({getSelectedItems: () => items, getZipFilename: () => 'image.zip', getPdfFilename: () => 'image.pdf',
+    isBusy: () => false, isDisposed: () => false, onBusyChange() {}, onStatus() {}, onCloseViewer() {}, onClearSourceUrl() {}, onScrollToFailures() {}, onCompleted() {completed++;}});
+  t.mock.method(globalThis, 'fetch', async () => new Response(pngBytes, {headers: {'content-type': 'image/png'}}));
+  const download = fake.downloads.download;
+  t.mock.method(fake.downloads, 'download', async options => {
+    const id = await download(options); fake.finish(id, 'complete'); controller.abort(); return id;
+  });
+  t.mock.method(fake.downloads, 'cancel', async () => {throw Error('already complete');});
+  const settings = {imageFormat: 'original', videoFormat: 'original', includeSourcePage: false};
+  await controller.export(settings);
+  assert.equal(fake.starts.length, 1); assert.equal(completed, 0); assert.equal(controller.pending.saved.size, 1);
+  await controller.export(settings);
+  assert.equal(completed, 1); assert.equal(fake.starts.length, 1); assert.equal(controller.pending, null);
+});
