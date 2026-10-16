@@ -19,7 +19,7 @@ pnpmは`package.json`の`packageManager`と`pnpm-lock.yaml`で12.5.1に固定し
 
 ## Gitフック
 
-Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion一致と、番号更新時の同一commit登録を確認し、`pre-push`で`pnpm verify:full`を実行します。設定時のGitルート照合ではOSに応じて区切り文字と末尾区切りを正規化し、別リポジトリへの誤設定を拒否します。新しいcloneでhookを有効にするには`pnpm setup:hooks`を実行してください。`pnpm verify`などの通常確認も、hook未設定または別の場所を指している場合は`pnpm setup:hooks`の実行方法を案内して停止します。GitHub Actionsは使いません。release前は`pnpm verify:release`を実行します。
+Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion一致と、番号更新時の同一commit登録を確認し、`pre-push`で`pnpm verify:full`を実行し、続けて`pnpm check:generated`で再生成した配布物のコミット漏れを拒否します。設定時のGitルート照合ではOSに応じて区切り文字と末尾区切りを正規化し、別リポジトリへの誤設定を拒否します。新しいcloneでhookを有効にするには`pnpm setup:hooks`を実行してください。`pnpm verify`などの通常確認も、hook未設定または別の場所を指している場合は`pnpm setup:hooks`の実行方法を案内して停止します。GitHub Actionsは使いません。release前は`pnpm verify:release`を実行します。
 
 ## ビルド処理の構成
 
@@ -59,7 +59,7 @@ Chrome権限や対象サイトを広げる場合は必要な操作を説明し�
 
 ## push前のローカル検証
 
-変更はpush前に開発者の環境で必要な検証を完了し、失敗を解消してから共有します。通常は`pnpm verify:full`を実行します。commit前に変更リスクに応じて`pnpm verify`を選んだ場合も、push前には画面の確認を含む`pnpm verify:full`を通します。設定済みの`pre-push`フックでも同じ確認を実行します。
+変更はpush前に開発者の環境で必要な検証を完了し、失敗を解消してから共有します。通常は`pnpm verify:full`を実行します。commit前に変更リスクに応じて`pnpm verify`を選んだ場合も、push前には画面の確認を含む`pnpm verify:full`を通します。設定済みの`pre-push`フックでも同じ確認を実行し、その後で`pnpm check:generated`により生成物がコミット済みか確認します。差分があれば自動登録せず、対象を示して停止します。
 
 GitHub Actionsを導入していないのは意図的な開発方針です。検証失敗をpush後に通知して修正するのではなく、push前に解消し、GitHub側で同じ検証を重複実行する運用は現時点では採用しません。GitHub Actionsが必要になる運用上の理由が生じた場合は、その時点で再検討します。
 

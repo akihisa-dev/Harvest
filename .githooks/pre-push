@@ -1,3 +1,4 @@
 #!/bin/sh
 set -eu
 pnpm verify:full
+pnpm check:generated
