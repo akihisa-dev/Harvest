@@ -72,7 +72,13 @@ test("破損JPEGはPDF・JPGの失敗として再試行し、正常なbaseline/p
       return "blob:fixture";
     };
     URL.revokeObjectURL = () => {};
-    HTMLAnchorElement.prototype.click = () => {};
+    window.chrome ??= {};
+    let downloadId = 0;
+    window.chrome.downloads = {
+      async download() { return ++downloadId; },
+      async search({id}) { return [{id, state: "complete"}]; },
+      onChanged: {addListener() {}, removeListener() {}},
+    };
     const retries = [];
     for (const format of ["pdf", "jpg"]) {
       repair = false;
