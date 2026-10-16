@@ -22,7 +22,7 @@ While analyzing an ordinary page or an individual X post, **Stop** cancels the p
 
 Click **Collect** at the top to analyze links on the current page by clicking them. Links to analyze glow light blue; links you can click again to save the current selection glow a stronger gold. The color changes after analysis even if the pointer stays still. Successfully analyzed links keep glowing after the pointer leaves, and the glow disappears when the link is removed from the page. No text labels are added, and stopping collection removes all glows. A normal left click prevents navigation and analyzes the linked page in a minimized analysis window, replacing the results.
 
-Click a successfully analyzed link again to save the current selection and order in the chosen format. Other links start a new analysis; clicking a failed link retries it. **Stop** restores normal link behavior. Link clicks during analysis or saving neither navigate nor start another analysis. Modified clicks and non-HTTP/HTTPS links behave normally. Navigating away ends collection mode; click **Collect** again on the new page.
+Click a successfully analyzed link again to save the current selection and order in the chosen format. Other links start a new analysis; clicking a failed link retries it. **Stop** restores normal link behavior. Link clicks during analysis or saving neither navigate nor start another analysis. Modified clicks and non-HTTP/HTTPS links behave normally. Any URL change, including same-document history or hash changes, ends collection mode; click **Collect** again on the new page.
 
 #### Selection, visibility, and order
 

@@ -5,6 +5,10 @@
  */
 export function captureCollectionLinks(session: string): void {
   const port = chrome.runtime.connect({name: session});
+  const initialPage = location.href;
+  let ended = false;
+  let navigationTimer: number | undefined;
+  const navigation = (window as Window & {navigation?: EventTarget}).navigation;
   let busy = false;
   let pdfUrl: string | null = null;
   let canExport = false;
@@ -394,8 +398,17 @@ export function captureCollectionLinks(session: string): void {
     scheduleRedraw();
   };
 
+  const checkPage = (): boolean => {
+    if (ended) return false;
+    if (location.href === initialPage) return true;
+    stop();
+    port.disconnect();
+    return false;
+  };
+  const onPageChange = (): void => { checkPage(); };
+  const onPageHide = (): void => { stop(); port.disconnect(); };
   const onClick = (event: MouseEvent): void => {
-    if (!event.isTrusted) return;
+    if (!checkPage() || !event.isTrusted) return;
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const link = findLink(event);
     if (!link) return;
@@ -415,7 +428,14 @@ export function captureCollectionLinks(session: string): void {
   };
 
   port.onMessage.addListener(onMessage);
-  port.onDisconnect.addListener(() => {
+  const stop = (): void => {
+    if (ended) return;
+    ended = true;
+    if (navigationTimer !== undefined) window.clearInterval(navigationTimer);
+    navigation?.removeEventListener("currententrychange", onPageChange);
+    window.removeEventListener("popstate", onPageChange);
+    window.removeEventListener("hashchange", onPageChange);
+    window.removeEventListener("pagehide", onPageHide);
     observer.disconnect();
     resizeObserver?.disconnect();
     document.fonts?.removeEventListener("loadingdone", scheduleRedraw);
@@ -437,7 +457,14 @@ export function captureCollectionLinks(session: string): void {
     lastHover = null;
     visualTarget = null;
     animateOut(glow);
-  });
+  };
+  port.onDisconnect.addListener(stop);
+  navigation?.addEventListener("currententrychange", onPageChange);
+  window.addEventListener("popstate", onPageChange);
+  window.addEventListener("hashchange", onPageChange);
+  window.addEventListener("pagehide", onPageHide);
+  // Fallback for History API changes on browsers without Navigation events.
+  navigationTimer = window.setInterval?.(onPageChange, 250);
   document.addEventListener("click", onClick, true);
   document.addEventListener("pointermove", onHover, true);
   document.addEventListener("pointerout", onLeave, true);

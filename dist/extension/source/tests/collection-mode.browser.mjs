@@ -156,3 +156,37 @@ test("page layout shifts reposition persistent and hovered collection glows", as
   assert.ok(positions.targetTop > 10, "the DOM change moved the link while the pointer remained over it");
   assert.ok(positions.overlayTops.every(top => Math.abs(top - positions.targetTop) < 1), "both glows follow the moved link");
 });
+
+for (const change of ['push', 'replace', 'back', 'forward', 'hash', 'pagehide']) test(`収集は同一文書の${change}で終了し通常クリックへ戻る`, async t => {
+  const source = await readFile(new URL('../dist/extension/app/content/collection-mode.js', import.meta.url), 'utf8');
+  const browser = await launchBrowser(t), page = await browser.newPage({reducedMotion: 'reduce'});
+  await page.route('https://fixture.test/**', route => route.fulfill({contentType: 'text/html', body: '<a id="target" href="/target">Target</a>'}));
+  await page.goto('https://fixture.test/first');
+  await page.evaluate(async ({source, change}) => {
+    history.pushState({}, '', '/second');
+    if (change === 'forward') { history.back(); await new Promise(resolve => addEventListener('popstate', resolve, {once: true})); }
+    window.messages = []; window.disconnections = 0; window.normalClicks = 0;
+    const port = {postMessage: message => window.messages.push(message), disconnect() { window.disconnections++; },
+      onMessage: {addListener(listener) { window.reply = listener; }}, onDisconnect: {addListener() {}}};
+    Object.defineProperty(window, 'chrome', {value: {runtime: {connect: () => port}}});
+    const url = URL.createObjectURL(new Blob([source], {type: 'text/javascript'}));
+    try { (await import(url)).captureCollectionLinks('fixture'); } finally { URL.revokeObjectURL(url); }
+    document.querySelector('#target').addEventListener('click', event => { window.normalClicks++; event.preventDefault(); });
+  }, {source, change});
+  await page.locator('#target').click();
+  await page.evaluate(() => window.reply({pdfUrl: 'https://fixture.test/target', canExport: true}));
+  assert.equal(await page.locator('[data-harvest-collection-marker]').count(), 1);
+  await page.evaluate(change => {
+    if (change === 'push') history.pushState({}, '', '/third');
+    if (change === 'replace') history.replaceState({}, '', '/third');
+    if (change === 'back') history.back();
+    if (change === 'forward') history.forward();
+    if (change === 'hash') location.hash = 'section';
+    if (change === 'pagehide') dispatchEvent(new Event('pagehide'));
+  }, change);
+  await page.waitForFunction(() => window.disconnections === 1);
+  assert.equal(await page.locator('[data-harvest-collection-marker], [data-harvest-collection-hover]').count(), 0);
+  await page.locator('#target').click();
+  assert.equal(await page.evaluate(() => window.normalClicks), 1);
+  assert.equal(await page.evaluate(() => window.messages.length), 1);
+});
