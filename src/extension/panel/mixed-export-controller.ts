@@ -11,7 +11,6 @@ import {prepareMixedExport, type MixedExportWork, type PreparedMixedItem} from "
 import {prepareSourcePageText} from "../media/pdf-source-glyphs.js";
 import {createStoredZipInWorker} from "../media/stored-zip-worker.js";
 import {downloadManagedBlob} from "../browser/managed-download.js";
-import {downloadBlob} from "./export-lifecycle.js";
 import {createExportOperation, type ExportControllerOptions} from "./export-operation.js";
 import {formatPlural, localizeErrorMessage, t} from "./localization.js";
 
@@ -81,16 +80,19 @@ export function createMixedExportController(options: MixedExportControllerOption
                 if (videosOnly && work.saved.has(item)) continue;
                 const filename = entry.blob.type === "application/pdf" && entries.length === 1 ? options.getPdfFilename()
                   : individualFilename(options.getZipFilename(),entry.filename,entries.length);
-                if (videosOnly) {
-                  work.savingStarted=true;run.reportStatus(t("saveFiles",{completed:work.saved.size,total:entries.length}),"busy",`${work.saved.size} / ${entries.length}`);
-                  await downloadManagedBlob(entry.blob,filename,run.signal);work.saved.add(item);
-                } else downloadBlob(entry.blob,filename);
+                work.savingStarted=true;
+                run.reportStatus(t("saveFiles",{completed:work.saved.size,total:entries.length}),"busy",`${work.saved.size} / ${entries.length}`);
+                await downloadManagedBlob(entry.blob,filename,run.signal);
+                if (videosOnly) work.saved.add(item);
+                else for (const selected of work.selected) work.saved.add(selected);
               }
             } else {
               run.reportStatus(t("zipCreating"),"busy",t("zipCreatingShort"));
               const zip = await createStoredZipInWorker(entries,{signal:run.signal,onProgress(completed,total){run.reportStatus(t("zipCreatingProgress",{completed,total}),"busy",`${completed} / ${total}`);}});
               if (run.stopped) return;
-              downloadBlob(zip,options.getZipFilename());
+              work.savingStarted=true;
+              await downloadManagedBlob(zip,options.getZipFilename(),run.signal);
+              for (const item of work.selected) work.saved.add(item);
             }
             run.complete();
           } catch (error) {

@@ -9,7 +9,6 @@ import { prepareMixedExport } from "../media/mixed-export-preparation.js";
 import { prepareSourcePageText } from "../media/pdf-source-glyphs.js";
 import { createStoredZipInWorker } from "../media/stored-zip-worker.js";
 import { downloadManagedBlob } from "../browser/managed-download.js";
-import { downloadBlob } from "./export-lifecycle.js";
 import { createExportOperation } from "./export-operation.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 /** Prepares every selected item before any download, including the aggregated still-image PDF. */
@@ -91,14 +90,14 @@ export function createMixedExportController(options) {
                                     continue;
                                 const filename = entry.blob.type === "application/pdf" && entries.length === 1 ? options.getPdfFilename()
                                     : individualFilename(options.getZipFilename(), entry.filename, entries.length);
-                                if (videosOnly) {
-                                    work.savingStarted = true;
-                                    run.reportStatus(t("saveFiles", { completed: work.saved.size, total: entries.length }), "busy", `${work.saved.size} / ${entries.length}`);
-                                    await downloadManagedBlob(entry.blob, filename, run.signal);
+                                work.savingStarted = true;
+                                run.reportStatus(t("saveFiles", { completed: work.saved.size, total: entries.length }), "busy", `${work.saved.size} / ${entries.length}`);
+                                await downloadManagedBlob(entry.blob, filename, run.signal);
+                                if (videosOnly)
                                     work.saved.add(item);
-                                }
                                 else
-                                    downloadBlob(entry.blob, filename);
+                                    for (const selected of work.selected)
+                                        work.saved.add(selected);
                             }
                         }
                         else {
@@ -106,7 +105,10 @@ export function createMixedExportController(options) {
                             const zip = await createStoredZipInWorker(entries, { signal: run.signal, onProgress(completed, total) { run.reportStatus(t("zipCreatingProgress", { completed, total }), "busy", `${completed} / ${total}`); } });
                             if (run.stopped)
                                 return;
-                            downloadBlob(zip, options.getZipFilename());
+                            work.savingStarted = true;
+                            await downloadManagedBlob(zip, options.getZipFilename(), run.signal);
+                            for (const item of work.selected)
+                                work.saved.add(item);
                         }
                         run.complete();
                     }

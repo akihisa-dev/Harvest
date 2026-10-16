@@ -43,18 +43,6 @@ export function selectionsMatch(first: readonly ImageItem[], second: readonly Im
   return first.length === second.length && first.every((item, index) => item === second[index]);
 }
 
-export function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  // Let Chrome consume the click in the current task before releasing the Blob reference.
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
 /** Owns the retry work, cancellation, progress, and cleanup shared by every export format. */
 export function createExportLifecycle<TPrepared, TWork extends MutablePendingExport<TPrepared>>(
   options: ExportLifecycleOptions<TWork>,

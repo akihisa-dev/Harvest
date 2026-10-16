@@ -67,9 +67,9 @@ PDF出典のRTL文字を含む行は、ブラウザーのCanvasでLatin文字や
 
 ## 保存・再試行・ダウンロード
 
-[mixed-export-preparation.ts](media/mixed-export-preparation.ts) が全選択項目を準備し、[mixed-export-controller.ts](panel/mixed-export-controller.ts) が静止PDFと個別GIF/動画を組み立てます。一つの出力は直接保存し、複数出力はZIPにまとめます。動画のみのrecommended/MP4は [managed-download.ts](browser/managed-download.ts) で順次保存し、全ダウンロード完了を確認します。動画originalの複数出力はZIPです。準備データの合計上限は個別保存でも維持し、全件の準備成功後に保存を開始します。
+[mixed-export-preparation.ts](media/mixed-export-preparation.ts) が全選択項目を準備し、[mixed-export-controller.ts](panel/mixed-export-controller.ts) が静止PDFと個別GIF/動画を組み立てます。一つの出力は直接保存し、複数出力はZIPにまとめます。PDF・画像・ZIPを含む全出力は [managed-download.ts](browser/managed-download.ts) で自分のダウンロードIDの完了を確認します。動画のみのrecommended/MP4は順次保存します。取消・拒否・失敗では入力URLと準備済みデータを保持し、保存済みの個別動画は再試行時に重複保存しません。履歴全体の照会や権限追加は行いません。動画originalの複数出力はZIPです。準備データの合計上限は個別保存でも維持し、全件の準備成功後に保存を開始します。
 
-[export-operation.ts](panel/export-operation.ts) が開始前確認、保存対象の確定、失敗分の選定、準備進捗と完了通知を管理します。[export-lifecycle.ts](panel/export-lifecycle.ts) は選択一致、中断、進捗、終了時の後始末、Blobダウンロードを管理します。旧PDF/画像controllerと単一形式sessionは撤去し、mixed/split経路で安全性を検証します。
+[export-operation.ts](panel/export-operation.ts) が開始前確認、保存対象の確定、失敗分の選定、準備進捗と完了通知を管理します。[export-lifecycle.ts](panel/export-lifecycle.ts) は選択一致、中断、進捗、終了時の後始末を管理します。旧PDF/画像controllerと単一形式sessionは撤去し、mixed/split経路で安全性を検証します。
 
 保存中も保存ボタンだけは有効にし、再クリックで進行中の保存を中止します。進捗表示は維持し、中止後は通信・変換の終了を待って準備済み画像と失敗情報を破棄し、エラーにせず通常の保存可能状態へ戻します。収集モードからの保存要求はこの中止操作と分けます。
 
@@ -83,7 +83,7 @@ PDF出典のRTL文字を含む行は、ブラウザーのCanvasでLatin文字や
 
 画像の選択と確定した順序、ZIPの組み立ては `src/core/` に置き、画面やChromeの状態を参照させません。
 
-保存用のBlob URLはダウンロードを開始した次のタスクで解放します。保存済みの大容量Blobを固定時間保持せず、連続保存時の参照の積み上がりを抑えます。
+保存用のBlob URLは自分のダウンロードの完了・失敗・中止を確認してから解放します。保存済みの大容量Blobを固定時間保持せず、連続保存時の参照の積み上がりを抑えます。
 
 ## 画像の取得・変換と並行処理
 

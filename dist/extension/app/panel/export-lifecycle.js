@@ -1,17 +1,6 @@
 export function selectionsMatch(first, second) {
     return first.length === second.length && first.every((item, index) => item === second[index]);
 }
-export function downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    // Let Chrome consume the click in the current task before releasing the Blob reference.
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}
 /** Owns the retry work, cancellation, progress, and cleanup shared by every export format. */
 export function createExportLifecycle(options) {
     let pending = null;
