@@ -5,7 +5,7 @@ import type {MediaImageMetadata} from "../../core/images.js";
 /** Serializable page evidence shared by injected readers and the extension receiver. */
 export interface PageScan {
   url: string;
-  /** Browser-verified same-origin ancestor for inherited about documents. */
+  /** Browser-verified same-origin document URL, or ancestor for inherited about documents. */
   sourcePage?: string;
   title: string;
   xDiagnostics?: XScanDiagnostics;

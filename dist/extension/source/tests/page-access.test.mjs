@@ -600,3 +600,21 @@ for (const ending of ['end', 'failed', 'stalled', 'stop', 'cycle', 'changed']) {
     assert.equal(reads,fetched+1);
   });
 }
+
+for (const outcome of ['ok', 'reload', 'detach', 'navigate']) test(`重複画像の取得元も文書の再確認を通ったiframeだけを使う: ${outcome}`, async t => {
+  const {collectPageMedia} = await import('../dist/extension/core/page-media.js');
+  const {getImageFetchCredentials} = await import('../dist/extension/app/media/image-fetch-policy.js');
+  const url = 'https://outer.test/book', frameUrl = 'https://media.test/viewer', image = 'https://media.test/pages/001.jpg';
+  fixture(t, {get: async () => ({url})});
+  let allReads = 0;
+  chrome.scripting.executeScript = async ({target, func}) => {
+    if (!target.allFrames) return [{documentId: 'outer', result: func.name === 'scanDocument' ? {url, title: '', images: [image], hasFrames: true} : url}];
+    if (++allReads === 1) return [{frameId: 1, documentId: 'frame', result: {url: frameUrl, title: '', images: [image], framePath: [0]}}];
+    return outcome === 'detach' ? [] : [{frameId: 1, documentId: outcome === 'reload' ? 'new' : 'frame',
+      result: {url: outcome === 'navigate' ? frameUrl + '/new' : frameUrl, sourcePage: frameUrl}}];
+  };
+  const scan = await scanTab(8);
+  const media = collectPageMedia(scan, scan.frames);
+  assert.deepEqual(media.urls, [image]);
+  assert.equal(getImageFetchCredentials(image, media.initial.sourcePages.get(image)), outcome === 'ok' ? 'include' : 'omit');
+});

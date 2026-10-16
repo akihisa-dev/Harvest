@@ -2,9 +2,17 @@ import {defaultDisplayedImageGroup, groupMediaImages, normalizeImageUrls, type M
 
 interface DocumentMedia {
   url: string;
+  /** Source whose real origin was verified by the browser. */
   sourcePage?: string;
   images: readonly string[];
   media?: readonly MediaImageMetadata[];
+}
+
+function sameWebOrigin(image: string, source: string): boolean {
+  try {
+    const target = new URL(image), page = new URL(source);
+    return (page.protocol === "http:" || page.protocol === "https:") && target.origin === page.origin;
+  } catch { return false; }
 }
 
 /** Keep document provenance and selection independent from the combined URL groups. */
@@ -17,7 +25,7 @@ export function collectPageMedia(page: DocumentMedia, frames: readonly DocumentM
     });
     const groups = groupMediaImages(urls, media);
     const key = defaultDisplayedImageGroup(groups);
-    return {url: document.sourcePage ?? document.url, urls, media, group: key ? groups[key] : undefined,
+    return {url: document.sourcePage ?? document.url, verifiedSource: document.sourcePage !== undefined, urls, media, group: key ? groups[key] : undefined,
       rejected: (document.media ?? []).length - media.length};
   });
   // Existing page selection always wins. With an empty shell, prefer a frame
@@ -28,7 +36,14 @@ export function collectPageMedia(page: DocumentMedia, frames: readonly DocumentM
   const sourcePages = new Map<string, string>();
   const metadata = new Map<string, MediaImageMetadata>();
   for (const document of documents) {
-    for (const url of document.urls) if (!sourcePages.has(url)) sourcePages.set(url, document.url);
+    for (const url of document.urls) {
+      const previous = sourcePages.get(url);
+      // Updating an existing Map value preserves its original display position.
+      // Only an observed document with a browser-verified origin can replace it.
+      if (previous === undefined || (document.verifiedSource && !sameWebOrigin(url, previous) && sameWebOrigin(url, document.url))) {
+        sourcePages.set(url, document.url);
+      }
+    }
     for (const item of document.media) if (!metadata.has(item.url)) metadata.set(item.url, item);
   }
   return {urls: [...sourcePages.keys()], media: [...metadata.values()],

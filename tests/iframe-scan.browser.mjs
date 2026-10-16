@@ -178,3 +178,56 @@ test('親DOMの読み取りが許可されても実オリジンの異なるabout
     await page.close();
   }
 });
+
+test('重複画像は確認済みiframeの同一オリジン出典で取得し、不透明なiframeでは認証しない', {timeout: 30000}, async t => {
+  const temporary = await temporaryDirectory(t, join(tmpdir(), 'harvest-duplicate-frames-'));
+  const context = await launchExtensionContext(t, join(temporary, 'profile'));
+  const cdp = await resourcesFor(t).acquire(() => context.browser().newBrowserCDPSession(), session => session.detach());
+  const {id} = await cdp.send('Extensions.loadUnpacked', {path: resolve('dist/extension')});
+  for (const host of ['media.test', 'opaque.test']) await context.addCookies([{url: `https://${host}`, name: 'session', value: 'synthetic', sameSite: 'None', secure: true}]);
+  const image = 'https://media.test/pages/shared.png', inherited = 'https://media.test/pages/inherited.png', denied = 'https://opaque.test/pages/shared.png';
+  await context.route('https://**/*', route => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('.png')) return route.fulfill({status: route.request().headers().cookie?.includes('session=synthetic') ? 200 : 403, contentType: 'image/png', body: png});
+    const body = url.hostname === 'outer.test' ? `<img src="${image}"><img src="${inherited}"><img src="${denied}">`
+      + '<iframe src="https://other.test/viewer"></iframe><iframe src="https://media.test/viewer"></iframe><iframe sandbox="allow-scripts" src="https://opaque.test/viewer"></iframe>'
+      : url.hostname === 'media.test' ? `<img src="${image}"><iframe srcdoc="&lt;img src=&quot;${inherited}&quot;&gt;"></iframe>`
+      : `<img src="${url.hostname === 'opaque.test' ? denied : image}">`;
+    return route.fulfill({contentType: 'text/html', body: `<!doctype html><title>Fixture</title>${body}`});
+  });
+  const page = await context.newPage();
+  await page.goto('https://outer.test/book');
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${id}/app/index.html`);
+  const result = await panel.evaluate(async ({image, inherited, denied}) => {
+    const {scanTab} = await import(chrome.runtime.getURL('app/browser/page-access.js'));
+    const {collectPageMedia} = await import(chrome.runtime.getURL('core/page-media.js'));
+    const {ImageCollection} = await import(chrome.runtime.getURL('core/image-collection.js'));
+    const {fetchOriginalMedia} = await import(chrome.runtime.getURL('app/media/media-fetch.js'));
+    const {fetchImage} = await import(chrome.runtime.getURL('app/media/image-fetch.js'));
+    const {getImageFetchCredentials, validateImageFetchTarget} = await import(chrome.runtime.getURL('app/media/image-fetch-policy.js'));
+    const [tab] = await chrome.tabs.query({url: 'https://outer.test/book'});
+    const scan = await scanTab(tab.id), combined = collectPageMedia(scan, scan.frames);
+    const collection = new ImageCollection();
+    collection.replace(combined.urls, scan.url, combined.media, combined.initial);
+    const successes = [];
+    for (const url of [image, inherited]) {
+      const item = collection.itemForUrl(url);
+      const original = await fetchOriginalMedia(url, 'image', {sourcePage: item.sourcePage});
+      const preview = await fetchImage(url, {sourcePage: item.sourcePage});
+      successes.push({url, sourcePage: item.sourcePage, size: original.size, preview: preview.kind});
+    }
+    const item = collection.itemForUrl(denied);
+    let failed = false, localDenied = false;
+    try { await fetchOriginalMedia(denied, 'image', {sourcePage: item.sourcePage}); } catch { failed = true; }
+    try { validateImageFetchTarget('http://127.0.0.1/private.png', successes[0].sourcePage); } catch { localDenied = true; }
+    return {items: collection.items.map(item => item.url), selected: collection.selectedItems.map(item => item.url), successes,
+      denied: {source: item.sourcePage, credentials: getImageFetchCredentials(denied, item.sourcePage), failed}, localDenied};
+  }, {image, inherited, denied});
+  assert.deepEqual(result.items, [image, inherited, denied]);
+  assert.deepEqual(result.selected, [image, inherited, denied]);
+  assert.deepEqual(result.successes.map(item => ({source: item.sourcePage, size: item.size, preview: item.preview})),
+    [image, inherited].map(() => ({source: 'https://media.test/viewer', size: png.length, preview: 'bitmap'})));
+  assert.deepEqual(result.denied, {source: 'https://outer.test/book', credentials: 'omit', failed: true});
+  assert.ok(result.localDenied);
+});

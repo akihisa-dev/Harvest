@@ -1,8 +1,11 @@
 /** Verify inherited provenance with browser-owned properties in the isolated world. */
 export function readFrameLocation(): {url: string; sourcePage?: string} {
   const url = location.href;
-  if (!/^about:(?:srcdoc|blank)(?:[?#]|$)/.test(url)) return {url};
   const origin = window.origin;
+  if (/^https?:\/\//.test(url)) {
+    return new URL(url).origin === origin ? {url, sourcePage: url} : {url};
+  }
+  if (!/^about:(?:srcdoc|blank)(?:[?#]|$)/.test(url)) return {url};
   if (origin === "null") return {url};
   try {
     let current: Window = window;
