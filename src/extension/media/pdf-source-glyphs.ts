@@ -1,3 +1,4 @@
+import { sourceTextGraphemes, sourceGraphemeNeedsImage } from "../../core/source-text.js";
 import type { PdfRgbImagePage } from "../../core/pdf-types.js";
 
 const GLYPH_PIXELS = 96;
@@ -8,7 +9,7 @@ export async function prepareSourceGlyphs(
   signal?: AbortSignal,
 ): Promise<Readonly<Record<string, PdfRgbImagePage>>> {
   const glyphs: Record<string, PdfRgbImagePage> = Object.create(null);
-  const characters = new Set(values.flatMap(value => [...value].filter(character => character.codePointAt(0)! > 0xff)));
+  const characters = new Set(values.flatMap(value => sourceTextGraphemes(value).filter(sourceGraphemeNeedsImage)));
   for (const character of characters) {
     if (signal?.aborted) throw new DOMException("PDF creation cancelled.", "AbortError");
     const canvas = document.createElement("canvas");

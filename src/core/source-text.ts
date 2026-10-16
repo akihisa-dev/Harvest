@@ -19,3 +19,15 @@ export function replaceLoneSurrogates(value: string): string {
   }
   return output;
 }
+
+
+const sourceSegmenter = new Intl.Segmenter("und", {granularity: "grapheme"});
+
+/** Keeps combining marks, variation selectors and joined emoji in one display unit. */
+export function sourceTextGraphemes(value: string): string[] {
+  return Array.from(sourceSegmenter.segment(value), part => part.segment);
+}
+
+export function sourceGraphemeNeedsImage(value: string): boolean {
+  return [...value].some(character => character.codePointAt(0)! > 0xff);
+}

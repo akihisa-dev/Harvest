@@ -367,3 +367,31 @@ test("rejects missing, empty, or ambiguous image payloads", () => {
   assert.throws(() => createPdfFromJpegs([{ jpeg: new Uint8Array([1]), rgbFlate: new Uint8Array([2]), width: 1, height: 1 }]), TypeError);
   assert.throws(() => createPdfFromJpegs([{ rgbFlate: new Uint8Array([1]), width: 1.5, height: 1 }]), RangeError);
 });
+
+
+test("source graphemes keep combining marks, joined emoji and copy mappings intact", () => {
+  const units = ["か\u3099", "👩‍💻", "葛\u{e0100}", "🇯🇵", "e\u0301"];
+  const filename = "A漢📚" + units.join("") + ".pdf";
+  const glyphs = Object.fromEntries(["漢", "📚", ...units].map(character => [character, {
+    rgbFlate: new Uint8Array([1]), width: 96, height: 96,
+  }]));
+  const layout = createSourcePageLayout({heading: "", filename, url: ""});
+  assert.equal(layout.lines.find(line => line.text === filename).width, (7 * 1000 + 5 * 600) * 12 / 1000);
+  const pdf = createPdfFromJpegs([], {heading: "", filename, url: "", glyphs});
+  const source = decode(pdf), content = readSourceContentStream(source);
+  assert.equal(imageStreams(pdf).length, 7);
+  assert.equal((content.match(/\/G\d+ Do/g) ?? []).length, 7);
+  const mappings = new Map([...source.matchAll(/<([0-9a-f]{2})> <([0-9a-f]+)>/g)]
+    .map(([, code, unicode]) => [code, decodeUtf16Hex(unicode)]));
+  const copied = [...content.matchAll(/\/F3 \d+ Tf 166\.667 Tz 3 Tr 1 0 0 1 [^ ]+ [^ ]+ Tm <([0-9a-f]+)> Tj/g)]
+    .flatMap(([, hex]) => hex.match(/.{2}/g) ?? []).map(code => mappings.get(code)).join("");
+  assert.equal(copied, "漢📚" + units.join(""));
+  const long = createSourcePageLayout({heading: "", filename: units.join("").repeat(30), url: ""});
+  assert.equal(long.lines.filter(line => line.size === 12).map(line => line.text).join(""), units.join("").repeat(30));
+  for (const line of long.lines.filter(line => line.size === 12)) {
+    assert.ok(units.some(unit => line.text.startsWith(unit)));
+    assert.ok(units.some(unit => line.text.endsWith(unit)));
+    assert.ok(line.width <= long.width - 2 * long.margin);
+  }
+  assert.throws(() => createPdfFromJpegs([], {heading: "", filename, url: "", glyphs: {ab: glyphs["漢"]}}), /one grapheme/);
+});

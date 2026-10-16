@@ -1,8 +1,9 @@
+import { sourceTextGraphemes, sourceGraphemeNeedsImage } from "../../core/source-text.js";
 const GLYPH_PIXELS = 96;
 /** Renders source characters outside Latin-1 with the browser's installed fonts. */
 export async function prepareSourceGlyphs(values, signal) {
     const glyphs = Object.create(null);
-    const characters = new Set(values.flatMap(value => [...value].filter(character => character.codePointAt(0) > 0xff)));
+    const characters = new Set(values.flatMap(value => sourceTextGraphemes(value).filter(sourceGraphemeNeedsImage)));
     for (const character of characters) {
         if (signal?.aborted)
             throw new DOMException("PDF creation cancelled.", "AbortError");

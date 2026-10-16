@@ -18,7 +18,7 @@
 
 [source-page-layout.ts](source-page-layout.ts) は出典ページの折り返し、文字幅、行位置を計算し、プレビューとPDFで共用します。
 
-[source-text.ts](source-text.ts) は不正なUTF-16を置換する規則を所有し、出典プレビューの配置・PDFの字形検索・コピー文字列で共用します。
+[source-text.ts](source-text.ts) は不正なUTF-16を置換する規則と、`Intl.Segmenter`で一文字のまとまりを分ける処理を所有します。結合濁点・異体字セレクタ・ZWJ絵文字・旗を分断せず、出典プレビューとPDFで幅・改行・字形の単位を揃えます。Latin-1外の文字を含むまとまりはCanvasで一括描画し、PDFのコピー用対応表には元のUnicode文字列を保持します。保存する文字列を合成形へ変換しません。
 
 ## Xの投稿メディア
 

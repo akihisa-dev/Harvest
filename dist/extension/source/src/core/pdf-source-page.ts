@@ -1,4 +1,4 @@
-import { replaceLoneSurrogates } from "./source-text.js";
+import { replaceLoneSurrogates, sourceTextGraphemes, sourceGraphemeNeedsImage } from "./source-text.js";
 import type { PdfRgbImagePage, PdfSourcePageOptions } from "./pdf-types.js";
 import { validatePdfImage } from "./pdf-image-page.js";
 import { pdfAsciiHex, pdfHex, pdfStreamObject, pdfText } from "./pdf-objects.js";
@@ -33,8 +33,8 @@ export function preparePdfSourcePage(source: PdfSourcePageOptions | undefined): 
   const layout = createSourcePageLayout(sourcePage);
   const sourceGlyphs = validateSourceGlyphs(sourcePage);
   const sourceCharacters = [...new Set(
-    [...sourcePage.heading, ...sourcePage.filename, ...sourcePage.url]
-      .filter(character => character.codePointAt(0)! > 0xff),
+    [sourcePage.heading, sourcePage.filename, sourcePage.url]
+      .flatMap(sourceTextGraphemes).filter(sourceGraphemeNeedsImage),
   )];
   const glyphCharacters = sourceCharacters.filter(character => sourceGlyphs.has(character));
   const copyFontGroups: string[][] = [];
@@ -176,10 +176,8 @@ function validateSourceGlyphs(source: PdfSourcePageOptions): Map<string, PdfRgbI
   const output = new Map<string, PdfRgbImagePage>();
   for (const [inputCharacter, image] of Object.entries(input)) {
     const character = replaceLoneSurrogates(inputCharacter);
-    const codePoints = [...character];
-    const codePoint = codePoints[0]?.codePointAt(0);
-    if (codePoints.length !== 1 || codePoint === undefined || codePoint <= 0xff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
-      throw new RangeError("Source page glyph keys must be one Unicode scalar above U+00FF.");
+    if (sourceTextGraphemes(character).length !== 1 || !sourceGraphemeNeedsImage(character)) {
+      throw new RangeError("Source page glyph keys must be one grapheme containing a scalar above U+00FF.");
     }
     if (image === null || typeof image !== "object" || !("rgbFlate" in image) || image.rgbFlate === undefined) {
       throw new TypeError(`Source page glyph ${character} must provide an RGB Flate image.`);
@@ -266,10 +264,10 @@ function sourcePageContent(
       if (runFont === null || run === "") return;
       const encoded = runFont === "F1" ? pdfHex(run) : pdfAsciiHex(run);
       commands.push(`/${runFont} ${line.size} Tf 1 0 0 1 ${x.toFixed(3)} ${line.y.toFixed(3)} Tm ${encoded} Tj`);
-      x += [...run].reduce((width, character) => width + sourcePageCharacterWidth(character), 0) * line.size / 1000;
+      x += sourceTextGraphemes(run).reduce((width, character) => width + sourcePageCharacterWidth(character), 0) * line.size / 1000;
       run = "";
     };
-    const lineCharacters = [...line.text];
+    const lineCharacters = sourceTextGraphemes(line.text);
     for (let index = 0; index < lineCharacters.length;) {
       const character = lineCharacters[index]!;
       const glyph = glyphObjects.get(character);
@@ -310,7 +308,7 @@ function sourcePageContent(
         index += glyphRun.length;
         continue;
       }
-      const font: "F1" | "F2" = character.codePointAt(0)! <= 0xff ? "F2" : "F1";
+      const font: "F1" | "F2" = sourceGraphemeNeedsImage(character) ? "F1" : "F2";
       if (runFont !== font) {
         flush();
         runFont = font;

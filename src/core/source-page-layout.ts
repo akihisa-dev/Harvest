@@ -1,4 +1,4 @@
-import { replaceLoneSurrogates } from "./source-text.js";
+import { replaceLoneSurrogates, sourceTextGraphemes, sourceGraphemeNeedsImage } from "./source-text.js";
 import type { PdfSourcePageOptions } from "./pdf-types.js";
 
 const SOURCE_PAGE_WIDTH = 595;
@@ -34,7 +34,7 @@ export function createSourcePageLayout(source: SourcePageLayoutInput): SourcePag
   const filenameLines = wrapSourceText(filename, availableWidth / 12);
   const fixedHeight = headingLines.length * 25 + filenameLines.length * 18 + 20;
   const availableHeight = Math.max(1, SOURCE_PAGE_HEIGHT - SOURCE_PAGE_MARGIN * 2 - fixedHeight);
-  const urlUnits = [...url].reduce((total, character) => total + sourcePageCharacterWidth(character), 0);
+  const urlUnits = sourceTextGraphemes(url).reduce((total, character) => total + sourcePageCharacterWidth(character), 0);
   let urlSize = 10;
   let urlLines = wrapSourceText(url, availableWidth / urlSize);
   while (urlSize > 0.25 && fixedHeight + urlLines.length * urlSize * 1.4 > availableHeight) {
@@ -50,7 +50,7 @@ export function createSourcePageLayout(source: SourcePageLayoutInput): SourcePag
   let y = SOURCE_PAGE_HEIGHT - SOURCE_PAGE_MARGIN;
   const addSection = (textLines: readonly string[], size: number, leading: number): void => {
     for (const text of textLines) {
-      const widthUnits = [...text].reduce((total, character) => total + sourcePageCharacterWidth(character), 0);
+      const widthUnits = sourceTextGraphemes(text).reduce((total, character) => total + sourcePageCharacterWidth(character), 0);
       lines.push({
         text,
         x: SOURCE_PAGE_MARGIN,
@@ -75,7 +75,7 @@ export function createSourcePageLayout(source: SourcePageLayoutInput): SourcePag
 }
 
 export function sourcePageCharacterWidth(character: string): number {
-  return character.codePointAt(0)! <= 0x00ff ? 600 : 1000;
+  return sourceGraphemeNeedsImage(character) ? 1000 : 600;
 }
 
 function wrapSourceText(value: string, maxWidth: number): string[] {
@@ -83,7 +83,7 @@ function wrapSourceText(value: string, maxWidth: number): string[] {
   for (const paragraph of value.split(/\r\n|\r|\n/u)) {
     let line = "";
     let width = 0;
-    for (const character of paragraph) {
+    for (const character of sourceTextGraphemes(paragraph)) {
       const characterWidth = sourcePageCharacterWidth(character);
       if (line !== "" && width + characterWidth > maxWidth) {
         output.push(line);
