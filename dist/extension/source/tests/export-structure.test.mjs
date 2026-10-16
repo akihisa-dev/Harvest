@@ -194,3 +194,14 @@ test("export lifecycle replaces incompatible pending work and scrolls to retaine
   assert.equal(lifecycle.pending, replacement);
   assert.equal(scrolledToFailures, 1);
 });
+
+
+test("未知の形式ヒントを含む画像でも原本・推奨の表示名を文字列として返す", () => {
+  for (const format of ["recommend", "original"]) for (const parameter of ["format", "fmt", "fm"]) {
+    for (const value of ["constructor", "__proto__", "unknown"]) {
+      const selected = [{url: `https://example.test/image?${parameter}=${value}`, sourcePage: "https://example.test/", selected: true}];
+      const presentation = createExportPresentation({getTitle: () => "page", getSelection: () => ({format, videoFormat: "recommend", includeSourcePage: false, selected}), fallbackTitle: "Images", sourceHeading: "Source"});
+      assert.equal(presentation.resultFilename, "page");
+    }
+  }
+});

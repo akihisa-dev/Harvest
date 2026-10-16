@@ -135,6 +135,22 @@ for (const language of ["ja", "en"]) test(`${language}: 元形式・推奨形式
   assert.deepEqual(mixed.find(entry => entry.name.endsWith(".gif")).bytes, gifBytes);
   const originals = zipEntries(await save("original", "automatic.zip"));
   assert.deepEqual(originals.find(entry => entry.name.endsWith(".jpg")).bytes, jpeg);
+  for (const parameter of ["format", "fmt", "fm"]) for (const value of ["constructor", "__proto__", "unknown"]) {
+    const unknown = {...image, url: `https://files.example.test/image?${parameter}=${value}`};
+    await scan([unknown]);
+    for (const format of ["recommend", "original"]) {
+      await page.locator(`#export-format-${format}`).check();
+      assert.equal(await page.locator("#export").isEnabled(), true);
+      assert.equal(await page.locator("#source-drop").textContent(), "automatic");
+    }
+    if (parameter === "format" && value === "constructor") {
+      assert.deepEqual(await save("recommend", "automatic.jpg"), jpeg, "実際のMIMEと内容で原本拡張子を確認する");
+    }
+  }
+  await scan(["constructor", "__proto__", "unknown"].map(value => ({...image, url: `https://files.example.test/image?format=${value}`})));
+  await page.locator("#all-selection").check();
+  assert.equal(await page.locator("#export").isEnabled(), true);
+  assert.equal(await page.locator("#source-drop").textContent(), "automatic.zip");
   await page.reload();
   assert.equal(await page.locator("#export-format-recommend").isChecked(), true, "パネルを開き直すと推奨へ戻る");
   assert.equal(await page.locator("#video-export-format-recommend").isChecked(), true);

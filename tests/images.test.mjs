@@ -6,6 +6,7 @@ import {
   filterImagesByGroup,
   groupImages,
   groupMediaImages,
+  mediaFormat,
   imageGroupLabel,
   normalizeImageUrls
 } from "../dist/extension/core/images.js";
@@ -232,4 +233,18 @@ test("少数の数値画像より多数の本文を選び、本文同士と本�
 
   const uploaded = groupImages(["data:image/jpeg;base64,AA==", ...body]);
   assert.equal(uploaded[defaultDisplayedImageGroup(uploaded)].priority, 0);
+});
+
+
+test("形式ヒントは辞書自身の別名だけを受理し、継承名を不明へ落とす", () => {
+  for (const param of ["format", "fmt", "fm"]) {
+    for (const value of ["constructor", "__proto__", "toString", "unknown"]) {
+      assert.deepEqual(mediaFormat(`https://example.test/a.jpg?${param}=${value}`), {extension: "不明"});
+    }
+    for (const [value, expected] of [["JPEG", "JPG"], ["jpg", "JPG"], ["x-png", "PNG"], ["svg+xml", "SVG"]]) {
+      assert.deepEqual(mediaFormat(`https://example.test/a.webp?${param}=${encodeURIComponent(value)}`), {extension: expected});
+    }
+  }
+  assert.deepEqual(mediaFormat("https://example.test/a.JPEG"), {extension: "JPG"});
+  assert.deepEqual(mediaFormat("data:image/constructor;base64,AAAA"), {extension: "不明"});
 });

@@ -75,7 +75,7 @@ function normalizeFormat(value) {
         jxl: "JXL",
         svg: "SVG",
     };
-    return aliases[format] ?? "不明";
+    return Object.hasOwn(aliases, format) ? aliases[format] : "不明";
 }
 export function filterImagesByGroup(images, group) {
     if (!group)

@@ -104,7 +104,7 @@ function normalizeFormat(value: string): string {
     jxl: "JXL",
     svg: "SVG",
   };
-  return aliases[format] ?? "不明";
+  return Object.hasOwn(aliases, format) ? aliases[format]! : "不明";
 }
 
 export function filterImagesByGroup<T extends {url: string}>(images: readonly T[], group: ImageGroup | null): T[] {
