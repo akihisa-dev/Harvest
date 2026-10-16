@@ -77,8 +77,8 @@ for (const language of ["ja", "en"]) test(`${language}: 元形式・推奨形式
   const image = {url: "https://files.example.test/photo.jpg", kind: "image"};
   const gif = {url: "https://files.example.test/animation.gif", kind: "gif"};
   const video = {url: "https://files.example.test/movie.mp4", kind: "video"};
-  const scan = async media => {
-    await page.evaluate(media => { window.fixture = {url: "https://source.example.test/gallery", title: "automatic", images: media.filter(item => item.kind === "image").map(item => item.url), media}; }, media);
+  const scan = async (media, title = "automatic") => {
+    await page.evaluate(({media, title}) => { window.fixture = {url: "https://source.example.test/gallery", title, images: media.filter(item => item.kind === "image").map(item => item.url), media}; }, {media, title});
     await page.locator("#scan").click();
     await page.waitForFunction(() => document.querySelector("#scan").dataset.scanning === "false" && !document.querySelector("#scan").disabled);
   };
@@ -151,6 +151,15 @@ for (const language of ["ja", "en"]) test(`${language}: 元形式・推奨形式
   await page.locator("#all-selection").check();
   assert.equal(await page.locator("#export").isEnabled(), true);
   assert.equal(await page.locator("#source-drop").textContent(), "automatic.zip");
+  const longTitle = "a".repeat(94) + "👨‍👩‍👧‍👦", base = "a".repeat(94);
+  await scan([image], longTitle);
+  for (const [format, extension] of [["recommend", "jpg"], ["original", "jpg"], ["jpg", "jpg"], ["png", "png"], ["jxl", "jxl"], ["pdf", "pdf"]]) {
+    assert.ok((await save(format, `${base}.${extension}`)).length > 0, `${format}: 書記素境界の保存名で保存できる`);
+    assert.equal(await page.locator("#source-drop").getAttribute("data-has-url"), "false", "保存成功後は出典表示をクリアする");
+  }
+  await scan([image, gif, video], longTitle);
+  await page.locator("#all-selection").check();
+  assert.equal(zipEntries(await save("original", `${base}.zip`)).length, 3);
   await page.reload();
   assert.equal(await page.locator("#export-format-recommend").isChecked(), true, "パネルを開き直すと推奨へ戻る");
   assert.equal(await page.locator("#video-export-format-recommend").isChecked(), true);

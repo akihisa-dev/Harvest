@@ -4,7 +4,7 @@ import {isStillImage, pdfSourceFilename, type ImageExportFormat, type VideoExpor
 import {resolveImageExportFormat, type ResolvedImageExportFormat} from "../../core/export-recommendations.js";
 import type { ExportFormat } from "../../core/export-formats.js";
 import { originalItemExtension } from "../../core/export-formats.js";
-import { replaceLoneSurrogates } from "../../core/source-text.js";
+import { replaceLoneSurrogates, sourceTextGraphemes } from "../../core/source-text.js";
 import { individualFilename } from "../../core/export-files.js";
 
 /** The display only needs failures and selection, never prepared image data. */
@@ -36,12 +36,18 @@ export function imageFilename(url: string): string {
 /** Keep the existing length budget without splitting Unicode or creating hidden filenames. */
 export function exportFileBaseName(pageTitle: string, fallback: string): string {
   function normalize(value: string): string {
-    const truncated = replaceLoneSurrogates(value)
+    const normalized = replaceLoneSurrogates(value)
       .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, "_")
-      .replace(/^[.\s]+|[.\s]+$/g, "")
-      .slice(0, 100);
-    // The title may end with the first half of a surrogate pair after truncation.
-    return truncated.replace(/[\ud800-\udbff]$/, "").replace(/[.\s]+$/g, "");
+      .replace(/^[.\s]+|[.\s]+$/g, "");
+    let truncated = "";
+    for (const grapheme of sourceTextGraphemes(normalized)) {
+      if (truncated.length + grapheme.length > 100) break;
+      truncated += grapheme;
+    }
+    // Chrome rejects format controls (including ZWJ) in filenames. Replace
+    // the complete affected grapheme, preserving the original length budget.
+    return sourceTextGraphemes(truncated).map(grapheme => /\p{Cf}/u.test(grapheme) ? "_" : grapheme)
+      .join("").replace(/[.\s]+$/g, "");
   }
   return normalize(pageTitle) || normalize(fallback) || "Harvest";
 }

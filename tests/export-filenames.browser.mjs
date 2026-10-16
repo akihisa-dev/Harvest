@@ -11,6 +11,13 @@ const titles = [
   ['あ'.repeat(98) + '😀後続', 'あ'.repeat(98) + '😀'],
   ['日本語'.repeat(50), '日本語'.repeat(50).slice(0, 100)],
   ['😀'.repeat(60), '😀'.repeat(50)],
+  ['a'.repeat(98) + '🇯🇵', 'a'.repeat(98)],
+  ['a'.repeat(96) + '🇯🇵後続', 'a'.repeat(96) + '🇯🇵'],
+  ['a'.repeat(99) + 'か\u3099', 'a'.repeat(99)],
+  ['a'.repeat(98) + 'か\u3099後続', 'a'.repeat(98) + 'か\u3099'],
+  ['a'.repeat(94) + '👨‍👩‍👧‍👦', 'a'.repeat(94)],
+  ['a'.repeat(89) + '👨‍👩‍👧‍👦後続', 'a'.repeat(89) + '_'],
+  ['a'.repeat(99) + '\ud800', 'a'.repeat(99) + '�'],
   ['.leading', 'leading'], ['trailing.', 'trailing'],
   ['...', '画像'], ['   ', '画像'], ['制御\u0000\n\u007f文字', '制御___文字'],
 ];
@@ -31,9 +38,9 @@ test('実Chromeでタイトル境界の単体・複数MP4を安全な名前で�
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`chrome-extension://${id}/app/index.html`);
   await page.evaluate(() => {
-    window.fixture = {}; window.downloads = [];
+    window.fixture = {}; window.downloads = []; window.downloadErrors = [];
     const download = chrome.downloads.download.bind(chrome.downloads);
-    chrome.downloads.download = async options => { const id = await download(options); window.downloads.push({id, filename: options.filename}); return id; };
+    chrome.downloads.download = async options => { try { const id = await download(options); window.downloads.push({id, filename: options.filename}); return id; } catch (error) { window.downloadErrors.push({filename: options.filename, message: error.message}); throw error; } };
     chrome.tabs.query = async () => [{id: 7, url: 'https://source.example.test/gallery'}];
     chrome.tabs.get = async () => ({id: 7, url: 'https://source.example.test/gallery'});
     chrome.scripting.executeScript = async () => [{result: window.fixture}];
@@ -44,7 +51,9 @@ test('実Chromeでタイトル境界の単体・複数MP4を安全な名前で�
     await page.locator('#scan').click(); await page.waitForFunction(() => (document.querySelector('#scan').dataset.scanning === "false" && !document.querySelector('#scan').disabled));
     await page.locator('#video-export-format-mp4').check();
     assert.equal(await page.locator('#source-drop').textContent(), count === 1 ? base + '.mp4' : base + '_001.mp4');
-    await page.locator('#export').click(); await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'success');
+    await page.locator('#export').click();
+    try { await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'success'); }
+    catch (error) { t.diagnostic(JSON.stringify({title, count, state: await page.evaluate(() => ({status: document.querySelector('#status').textContent, downloads: window.downloads, downloadErrors: window.downloadErrors})), errors})); throw error; }
     assert.equal(await page.locator('#export').textContent(), `${count}件保存しました`);
     const results = await page.evaluate(async () => Promise.all(window.downloads.map(async record => ({...record, item: (await chrome.downloads.search({id: record.id}))[0]}))));
     assert.deepEqual(results.map(r => r.filename), count === 1 ? [base + '.mp4'] : [base + '_001.mp4', base + '_002.mp4']);
