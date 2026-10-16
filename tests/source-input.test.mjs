@@ -115,3 +115,24 @@ test("ファイル名表示をクリックするとURLを編集でき、形式�
   input.dispatchEvent(enter);
   assert.deepEqual(state.scans, ["https://example.test/next"]);
 });
+
+
+test("変換確定のEnterは解析せず、確定後の通常Enterだけで解析する", () => {
+  const {controller, input, state} = fixture();
+  controller.setDraft("https://example.test/日本語");
+  const enter = (isComposing = false, keyCode = 13) => {
+    const event = new Event("keydown");
+    Object.assign(event, {key: "Enter", isComposing, keyCode});
+    input.dispatchEvent(event);
+  };
+  enter(true);
+  input.dispatchEvent(new Event("compositionstart"));
+  enter();
+  input.dispatchEvent(new Event("compositionend"));
+  enter(false, 229);
+  assert.deepEqual(state.scans, []);
+  enter();
+  controller.setDraft("https://example.test/ascii");
+  enter();
+  assert.deepEqual(state.scans, ["https://example.test/日本語", "https://example.test/ascii"]);
+});

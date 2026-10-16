@@ -17,6 +17,7 @@ export function createSourceInputController(options: SourceInputOptions) {
   let resultSourceUrl: string | null = null;
   let displayCleared = false;
   let dragDepth = 0;
+  let composing = false;
 
   function render(): void {
     const draft = input.value.trim();
@@ -60,7 +61,12 @@ export function createSourceInputController(options: SourceInputOptions) {
   display.addEventListener("click", show);
   input.addEventListener("input", render);
   input.addEventListener("blur", hide);
-  input.addEventListener("keydown", event => { if (event.key === "Enter") options.onScan(); });
+  input.addEventListener("compositionstart", () => { composing = true; });
+  input.addEventListener("compositionend", () => { composing = false; });
+  input.addEventListener("keydown", event => {
+    // Some IMEs report compositionend before the confirming keydown (keyCode 229).
+    if (event.key === "Enter" && !composing && !event.isComposing && event.keyCode !== 229) options.onScan();
+  });
   eventTarget.addEventListener("dragenter", event => {
     if (isPageUrlDrag(event) && !options.isReordering()) dragDepth += 1;
   });
