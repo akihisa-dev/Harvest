@@ -28,6 +28,14 @@ const {createMixedExportController} = await import("../dist/extension/app/panel/
 const {originalMediaType, mediaTypeMatchesKind} = await import("../dist/extension/core/media-types.js");
 const {indexedExportFilename} = await import("../dist/extension/core/split-export-formats.js");
 
+function completedDownloads(starts = []) {
+  return {
+    async download(options) { starts.push(options); return starts.length; },
+    async search({id}) { return [{id, state: 'complete'}]; },
+    onChanged: {addListener() {}, removeListener() {}},
+  };
+}
+
 function fakeResponse(bytes, contentType, extraHeaders = {}) {
   return new Response(bytes, {headers: {"content-type": contentType, ...extraHeaders}});
 }
@@ -64,7 +72,7 @@ test("original media preserves GIF and MP4 bytes with MIME-based ZIP extensions"
   let maximumFetches = 0;
   const archives = [];
   const links = [];
-  globalThis.chrome = {i18n: {getUILanguage: () => "en"}};
+  globalThis.chrome = {i18n: {getUILanguage: () => "en"}, downloads: completedDownloads(links)};
   globalThis.document = {
     body: {append(link) { links.push(link); } },
     createElement() { return {href: "", download: "", click() {}, remove() {} }; },
@@ -101,7 +109,7 @@ test("original media preserves GIF and MP4 bytes with MIME-based ZIP extensions"
     await controller.export({imageFormat: "original", videoFormat: "original", includeSourcePage: false});
     assert.equal(maximumFetches, 1, "original downloads use one in-flight request to limit memory");
     assert.equal(archives.length, 1);
-    assert.equal(links[0].download, "Original.zip");
+    assert.equal(links[0].filename, "Original.zip");
     const entries = await unzipStored(archives[0]);
     assert.deepEqual(entries.map(entry => entry.name), ["001.jpg", "002.gif", "003.mp4", "004.mp4", "005.webm"]);
     assert.deepEqual(entries.map(entry => [...entry.data]), [[...jpegBytes], [...gifBytes], [...mp4Bytes], [...mp4Bytes], [...webmBytes]]);
@@ -165,6 +173,8 @@ test('原本の混在保存は破損時にダウンロードせず成功項目�
   const items = assets.map(([, , kind], index) => ({url: `https://media.test/${index}`, sourcePage: 'https://media.test/', selected: true, kind}));
   const archives = [], requests = [];
   let broken = true, completed = 0;
+  const savedChrome = globalThis.chrome;
+  globalThis.chrome = {i18n: {getUILanguage: () => 'en'}, downloads: completedDownloads()};
   globalThis.window = {setTimeout};
   globalThis.document = {body: {append() {}}, createElement: () => ({click() {}, remove() {}})};
   globalThis.fetch = async url => {
@@ -189,7 +199,7 @@ test('原本の混在保存は破損時にダウンロードせず成功項目�
     assert.equal(completed, 1); assert.equal(controller.pending, null);
     assert.deepEqual((await unzipStored(archives[0])).map(entry => [...entry.data]), assets.map(([bytes]) => [...bytes]));
   } finally {
-    Object.assign(globalThis, {document: previous.document, window: previous.window, fetch: previous.fetch});
+    Object.assign(globalThis, {chrome: savedChrome, document: previous.document, window: previous.window, fetch: previous.fetch});
     URL.createObjectURL = previous.createObjectURL; URL.revokeObjectURL = previous.revokeObjectURL;
   }
 });

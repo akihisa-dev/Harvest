@@ -138,7 +138,7 @@ Only the PDF source-page preference persists; format choices and image data do n
 
 Installation requires access to ordinary HTTP/HTTPS websites. When you analyze a page, Harvest reads its title, URL, image/media URLs, and the data needed to create the selected files. An entered URL targets that page. The `sidePanel` permission displays Harvest beside the current page when its icon is clicked. JXL WebAssembly code is bundled, never fetched externally.
 
-The `downloads` permission saves individual MP4 files and checks completion or interruption. Chrome presents this as permission to manage downloads. Harvest queries or cancels only download IDs it created, without reading other downloads or the full history. IDs and completion state stay in panel memory; history and file contents are not sent externally. Chrome and the user manage saved files and download history. Harvest does not delete existing history or saved files. Updating an existing installation may require permission approval again.
+The `downloads` permission saves PDF, images, ZIP, video, and audio files and checks completion or interruption. Chrome presents this as permission to manage downloads. Harvest queries or cancels only download IDs it created, without reading other downloads or the full history. IDs and completion state stay in panel memory; history and file contents are not sent externally. Chrome and the user manage saved files and download history. Harvest does not delete existing history or saved files. Updating an existing installation may require permission approval again.
 
 Collection, conversion, PDF creation, and ZIP creation run inside the browser, without an external collection server. The JXL encoder is bundled. Entered URLs open in a minimized analysis window that closes after reading, without adding a tab to your browsing window or moving focus to the analysis window. Fetching media sends ordinary browser requests to the hosting sites. A YouTube embed created on another HTTPS site sends only that site’s origin as its referrer, without the page path, query, or fragment. Collected results and prepared images are not persisted and are discarded when the side panel closes. Only the source-page preference is stored in the browser. Only files you save remain on disk.
 
@@ -316,7 +316,7 @@ PDFの出典ページの設定だけを保存し、保存形式と画像デー�
 
 導入時に、すべての通常のWebサイト（HTTP/HTTPS）へのアクセスを許可する必要があります。解析ボタンを押したときに、現在のページの名前とURL、画像・動画のURL、選択したファイルの作成に必要なデータを読み取るためです。URLを入力した場合は、そのURLのページを読み取ります。`sidePanel`権限は、アイコンを押したときに現在のページの横へHarvestを表示するために使います。JXL作成用のWebAssemblyコードは拡張機能に同梱し、外部から取得しません。
 
-`downloads`権限はMP4の個別保存と完了・中断の確認に使用します。Chromeにはダウンロードを管理する権限として表示されます。Harvest自身が開始したダウンロードIDだけを照会・中止し、他のダウンロードや履歴全体は取得しません。IDと完了状態はパネル内のメモリで扱い、履歴やファイル内容を外部へ送りません。保存ファイルとChromeのダウンロード履歴はChrome・利用者が管理し、Harvestが既存の履歴や保存ファイルを削除することはありません。既存の拡張機能を更新すると権限の再承認を求められる場合があります。
+`downloads`権限はPDF・画像・ZIP・動画・音声の保存と完了・中断の確認に使用します。Chromeにはダウンロードを管理する権限として表示されます。Harvest自身が開始したダウンロードIDだけを照会・中止し、他のダウンロードや履歴全体は取得しません。IDと完了状態はパネル内のメモリで扱い、履歴やファイル内容を外部へ送りません。保存ファイルとChromeのダウンロード履歴はChrome・利用者が管理し、Harvestが既存の履歴や保存ファイルを削除することはありません。既存の拡張機能を更新すると権限の再承認を求められる場合があります。
 
 収集、画像変換、PDF・ZIP作成はブラウザー内で行い、外部の収集サーバーへは送信しません。JXLエンコーダーは拡張機能に同梱します。URLを直接入力した場合、最小化した解析用ウィンドウでそのページを開き、読み取り後に閉じます。一般ページの解析用ウィンドウにはフォーカスを移しません。YouTubeでは新しいタブやウィンドウを開きません。対象動画が開いていればそのページを使い、ほかの場合は既存ページ内に表示しない取得用フレームを一時作成して終了時に削除します。画像の取得時には、画像が置かれたサイトへブラウザーから通常のリクエストを送ります。収集結果と準備した画像は保存せず、サイドパネルを閉じると破棄します。出典ページの設定だけをブラウザー内に保存します。PDF・画像・動画・ZIPは利用者が保存したファイルだけが残ります。
 
