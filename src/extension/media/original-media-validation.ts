@@ -4,7 +4,7 @@ import {inspectJpegStructure} from "../../core/jpeg.js";
 import {hasCompletePng} from "../../core/original-image-structure.js";
 import {hasCompleteWebm} from "../../core/webm-structure.js";
 import {inspectWebpAnimation} from "../../core/webp-animation.js";
-import {hasCompleteIsoImage} from "../../core/original-isobmff-image.js";
+import {validateIsoImage} from "./iso-image-validation.js";
 import {checkCancelled, invalidImage} from "../contracts/image-data-contract.js";
 
 // Blob bytes are immutable. Remember only completed successes by weak identity.
@@ -23,7 +23,7 @@ export async function validateOriginalMedia(blob: Blob, signal?: AbortSignal): P
       : blob.type === "image/png" ? hasCompletePng(bytes)
         : blob.type === "video/webm" ? hasCompleteWebm(bytes)
           : blob.type === "image/webp" ? ["static", "animated"].includes(inspectWebpAnimation(bytes) ?? "")
-            : ["image/avif", "image/heic", "image/heif"].includes(blob.type) ? hasCompleteIsoImage(bytes) : hasCompleteGif(bytes);
+            : ["image/avif", "image/heic", "image/heif"].includes(blob.type) ? await validateIsoImage(bytes, signal) : hasCompleteGif(bytes);
     if (!valid) throw invalid();
     checkCancelled(signal);
     validatedMedia.add(blob);

@@ -4,30 +4,40 @@ import {hasCompleteMp4Boxes} from "./original-media-structure.js";
 /** Check image-item storage without decoding pixels or restricting the image codec. */
 export function hasCompleteIsoImage(bytes: Uint8Array): boolean {
   try {
-    const top = [...isoBoxes(bytes, 0, bytes.length)];
-    const meta = top.find(box => box.type === "meta");
-    const movie = top.find(box => box.type === "moov");
+    const top = selectedBoxes(bytes, 0, bytes.length, ["meta", "moov"]);
+    const meta = top.get("meta"), movie = top.get("moov");
     if (movie && !hasCompleteMp4Boxes(bytes)) return false;
-    if (!meta) return !!movie && [...isoBoxes(bytes, movie.dataStart, movie.end)].some(box => box.type === "trak" && box.end > box.dataStart);
-    if (meta.end - meta.dataStart < 4 || bytes[meta.dataStart] !== 0) return false;
-    const children = [...isoBoxes(bytes, meta.dataStart + 4, meta.end)];
-    for (const type of ["hdlr", "pitm", "iloc", "iinf", "iprp"]) {
-      if (!children.some(box => box.type === type && box.end > box.dataStart)) return false;
+    if (!meta) {
+      if (!movie) return false;
+      return selectedBoxes(bytes, movie.dataStart, movie.end, ["trak"]).has("trak");
     }
-    const properties = children.find(box => box.type === "iprp")!;
-    const propertyBoxes = [...isoBoxes(bytes, properties.dataStart, properties.end)];
-    const container = propertyBoxes.find(box => box.type === "ipco");
-    if (!container || !propertyBoxes.some(box => box.type === "ipma")) return false;
-    if (![...isoBoxes(bytes, container.dataStart, container.end)].length) return false;
-    const idat = children.find(box => box.type === "idat");
-    const media = top.filter(box => box.type === "mdat");
-    return validItemLocations(bytes, children.find(box => box.type === "iloc")!, media, idat);
+    if (meta.end - meta.dataStart < 4 || bytes[meta.dataStart] !== 0) return false;
+    const children = selectedBoxes(bytes, meta.dataStart + 4, meta.end, ["hdlr", "pitm", "iloc", "iinf", "iprp", "idat"]);
+    for (const type of ["hdlr", "pitm", "iloc", "iinf", "iprp"]) {
+      const child = children.get(type);
+      if (!child || child.end === child.dataStart) return false;
+    }
+    const properties = children.get("iprp")!;
+    const propertyBoxes = selectedBoxes(bytes, properties.dataStart, properties.end, ["ipco", "ipma"]);
+    const container = propertyBoxes.get("ipco");
+    if (!container || !propertyBoxes.has("ipma")) return false;
+    let hasProperty = false;
+    for (const _box of isoBoxes(bytes, container.dataStart, container.end)) hasProperty = true;
+    if (!hasProperty) return false;
+    return validItemLocations(bytes, children.get("iloc")!, children.get("idat"));
   } catch {
     return false;
   }
 }
 
-function validItemLocations(bytes: Uint8Array, box: IsoBox, media: readonly IsoBox[], idat: IsoBox | undefined): boolean {
+/** Retain at most one box per requested type; still validate the entire range. */
+function selectedBoxes(bytes: Uint8Array, start: number, end: number, types: readonly string[]): Map<string, IsoBox> {
+  const selected = new Map<string, IsoBox>();
+  for (const box of isoBoxes(bytes, start, end)) if (types.includes(box.type) && !selected.has(box.type)) selected.set(box.type, box);
+  return selected;
+}
+
+function validItemLocations(bytes: Uint8Array, box: IsoBox, idat: IsoBox | undefined): boolean {
   let offset = box.dataStart;
   const read = (width: number): number => {
     if (width > 8 || offset + width > box.end) throw new Error("Invalid item location");
@@ -55,12 +65,18 @@ function validItemLocations(bytes: Uint8Array, box: IsoBox, media: readonly IsoB
     for (let extent = 0; extent < extents; extent++) {
       read(indexSize);
       const start = base + read(offsetSize), length = read(lengthSize);
-      const ranges = method === 1 ? (idat ? [idat] : []) : media;
-      if (!ranges.some(range => {
+      const fits = (range: IsoBox): boolean => {
         const absolute = method === 1 ? range.dataStart + start : start;
         return Number.isSafeInteger(absolute + length) && absolute >= range.dataStart &&
           absolute < range.end && (length === 0 || absolute + length <= range.end);
-      })) return false;
+      };
+      let stored = method === 1 && !!idat && fits(idat);
+      if (method === 0) {
+        for (const range of isoBoxes(bytes, 0, bytes.length)) {
+          if (range.type === "mdat" && fits(range)) { stored = true; break; }
+        }
+      }
+      if (!stored) return false;
       storedExtents++;
     }
   }
