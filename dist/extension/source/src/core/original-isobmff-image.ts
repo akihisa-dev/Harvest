@@ -1,4 +1,5 @@
 import {isoBoxes, type IsoBox} from "./iso-boxes.js";
+import {hasCompleteImageTracks} from "./original-image-tracks.js";
 import {hasCompleteMp4Boxes} from "./original-media-structure.js";
 
 /** Check image-item storage without decoding pixels or restricting the image codec. */
@@ -6,7 +7,7 @@ export function hasCompleteIsoImage(bytes: Uint8Array): boolean {
   try {
     const top = selectedBoxes(bytes, 0, bytes.length, ["meta", "moov"]);
     const meta = top.get("meta"), movie = top.get("moov");
-    if (movie && !hasCompleteMp4Boxes(bytes)) return false;
+    if (movie && (!hasCompleteMp4Boxes(bytes) || !hasCompleteImageTracks(bytes, movie))) return false;
     if (!meta) {
       if (!movie) return false;
       return selectedBoxes(bytes, movie.dataStart, movie.end, ["trak"]).has("trak");
