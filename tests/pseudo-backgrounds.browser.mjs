@@ -111,3 +111,33 @@ test("5000要素の疑似要素走査は重複をまとめ、分割処理と20�
   assert.ok(result.elapsed < 20000);
   t.diagnostic(`5000要素: ${Math.round(result.elapsed)} ms、疑似要素の参照 ${result.pseudoReads} 回`);
 });
+
+
+test("疑似要素のcontent画像は外部CSSから収集し、文字列・非表示・削除済みURLを除く", async t => {
+  const source = await readFile(new URL("../dist/extension/app/content/page-scan.js", import.meta.url), "utf8");
+  const browser = await launchBrowser(t), page = await browser.newPage();
+  await page.route("https://**/*", route => {
+    const url = route.request().url();
+    if (url.endsWith('/sheet.css')) return route.fulfill({contentType: 'text/css', body:
+      ['before', 'after', 'shared', 'hidden', 'transparent', 'changed', 'removed'].map(name => `.${name}::${name === 'after' ? 'after' : 'before'}{content:url("${image(name)}");display:block}`).join('')
+      + `.shared{background-image:url("${image('shared')}")}.hidden::before{display:none}.transparent::before{opacity:0}.text::before{content:'url("${image('text')}")'}`});
+    if (url === 'https://reader.test/') return route.fulfill({contentType: 'text/html', body: '<link rel="stylesheet" href="https://styles.test/sheet.css">'
+      + ['before', 'after', 'shared', 'hidden', 'transparent', 'text', 'changed', 'removed'].map(name => `<div class="${name}"></div>`).join('')});
+    return route.abort();
+  });
+  await page.goto('https://reader.test/');
+  const result = await page.evaluate(async source => {
+    const url = URL.createObjectURL(new Blob([source], {type: 'text/javascript'}));
+    try {
+      const {scanDocument} = await import(url);
+      const work = scanDocument();
+      setTimeout(() => {
+        const sheet = document.createElement('style');
+        sheet.textContent = '.changed::before{content:url("https://cdn.example.test/pages/new.png")}.removed::before{content:none}';
+        document.head.append(sheet);
+      }, 20);
+      return await work;
+    } finally { URL.revokeObjectURL(url); }
+  }, source);
+  assert.deepEqual([...result.images].sort(), ['before', 'after', 'shared', 'new'].map(image).sort());
+});

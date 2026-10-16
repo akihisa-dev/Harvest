@@ -590,8 +590,8 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
         checkDeadline();
         if (!computed.content || computed.content === "none" || computed.content === "normal"
           || computed.display === "none" || computed.visibility === "hidden" || computed.visibility === "collapse"
-          || computed.opacity === "0" || !computed.backgroundImage || computed.backgroundImage === "none") continue;
-        pseudoBackgrounds.push(computed.backgroundImage);
+          || computed.opacity === "0") continue;
+        pseudoBackgrounds.push(computed.backgroundImage, computed.content);
       }
       if (pseudoBackgrounds.length) {
         // display:contents has no box of its own but may still generate pseudo boxes.
