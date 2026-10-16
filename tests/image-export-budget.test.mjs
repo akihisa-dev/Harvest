@@ -1,3 +1,4 @@
+import {successfulDownloads} from "./support/downloads.mjs";
 import {storedZipChecksum} from "../dist/extension/core/stored-zip.js";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -6,6 +7,7 @@ const nativeBlob = globalThis.Blob;
 const nativeSetTimeout = globalThis.setTimeout;
 globalThis.chrome = {i18n: {getUILanguage: () => "en"}};
 const downloads = [];
+globalThis.chrome.downloads = successfulDownloads(options => downloads.push(options.filename));
 let large = true;
 let selected = [];
 let started = 0;

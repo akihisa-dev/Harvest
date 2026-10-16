@@ -1,3 +1,4 @@
+import {successfulDownloads} from "./support/downloads.mjs";
 import {exifJpeg} from "./jpeg-fixtures.mjs";
 import {storedZipChecksum} from "../dist/extension/core/stored-zip.js";
 import assert from "node:assert/strict";
@@ -13,6 +14,7 @@ const previous = {
   window: globalThis.window,
 };
 const downloads = [];
+let onDownload = options => downloads.push({href: options.url, download: options.filename});
 const pageDocument = {
   documentElement: {setAttribute() {} },
   body: {append(element) { downloads.push(element); } },
@@ -22,7 +24,7 @@ const pageDocument = {
   },
 };
 globalThis.document = pageDocument;
-globalThis.chrome = {i18n: {getUILanguage: () => "en"}};
+globalThis.chrome = {i18n: {getUILanguage: () => "en"}, downloads: successfulDownloads(options => onDownload(options))};
 globalThis.window = {setTimeout() {} };
 
 const {convertImage} = await import("../dist/extension/app/media/image-format.js");
@@ -354,6 +356,8 @@ test("image export downloads one ordered ZIP, saves only selected images, and re
   const calls = new Map();
   const saved = [];
   const links = [];
+  const savedOnDownload = onDownload;
+  onDownload = options => links.push({href: options.url, filename: options.filename});
   let busy = false;
   let clearedSource = 0;
   pageDocument.createElement = tag => tag === "a"
@@ -410,6 +414,7 @@ test("image export downloads one ordered ZIP, saves only selected images, and re
     assert.equal(calls.get(urls[1]), 3);
     assert.deepEqual(reordered.map(entry => entry.data[16]), [3, 2], "選択順を変更するとBlobもその順で保存する");
   } finally {
+    onDownload = savedOnDownload;
     pageDocument.createElement = previousCreateElement;
     globalThis.fetch = previousFetch;
     globalThis.createImageBitmap = previousCreateImageBitmap;
@@ -569,6 +574,8 @@ test("取消した画像形式の保存は進捗を保ち、作業を捨てて�
   const formats = ["jpg", "png", "jxl"];
   const statuses = [];
   const downloads = [];
+  const savedOnDownload = onDownload;
+  onDownload = options => downloads.push(options.filename);
   let busy = false;
   let fetchRound = 0;
   const selected = [{url: "https://example.test/restart.png"}];
@@ -642,6 +649,7 @@ test("取消した画像形式の保存は進捗を保ち、作業を捨てて�
       assert.equal(busy, false);
     }
   } finally {
+    onDownload = savedOnDownload;
     pageDocument.createElement = previousCreateElement;
     Object.assign(globalThis, {fetch: previousFetch, createImageBitmap: previousCreateImageBitmap, document: previousDocument, Worker: previousWorker});
     URL.createObjectURL = previousCreateObjectURL;

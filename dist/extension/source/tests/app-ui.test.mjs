@@ -1,3 +1,4 @@
+import {successfulDownloads} from "./support/downloads.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {ImageCollection} from "../dist/extension/core/image-collection.js";
@@ -301,6 +302,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     onDisconnect: {addListener(listener) { disconnected = listener; } }
   };
   globalThis.chrome = {
+    downloads: successfulDownloads(options => document.downloads.push(options.filename)),
     windows: {
       create: async ({url}) => {
         createdUrls.push(url);
