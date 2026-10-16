@@ -212,6 +212,8 @@ export function createImagePreviewLoader() {
                 entries.set(key, entry);
             }
             entry.elements.add(image);
+            if (entry.retryAfter > 0 && !entry.objectUrl)
+                image.dataset["previewFailed"] = "true";
             bindings.set(image, { key, visible: false, eager });
             observer?.observe(image);
             if (entry.objectUrl) {

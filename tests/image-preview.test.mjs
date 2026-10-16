@@ -389,11 +389,11 @@ test("一覧とビュアーは一時失敗後に待ち時間を置いて同じ�
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(requests.length, 1, "失敗直後の再表示とViewer表示では連続要求しない");
 
+  assert.equal(viewerImage.dataset.previewFailed, "true", "待機中に追加したViewerも失敗を引き継ぐ");
   await new Promise(resolve => setTimeout(resolve, 1_000));
-  observers[0].intersect(listImage, false);
-  observers[0].intersect(listImage, true);
+  loader.set(viewerImage, item, true);
   await waitFor(() => listImage.src.startsWith("blob:") && viewerImage.src.startsWith("blob:"));
-  assert.equal(requests.length, 2, "待ち時間後の再表示で再要求する");
+  assert.equal(requests.length, 2, "待ち時間後のViewer操作だけで再要求する");
   assert.equal(listImage.src, viewerImage.src, "一覧とViewerは同じ再試行結果を共有する");
   assert.equal(listImage.dataset.previewFailed, undefined, "成功後に一覧の失敗状態を解除する");
   assert.equal(viewerImage.dataset.previewFailed, undefined, "成功後にViewerの失敗状態を解除する");

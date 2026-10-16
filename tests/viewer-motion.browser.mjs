@@ -396,3 +396,44 @@ test("navigation reuses one fresh page snapshot and preserves focus, Source and 
   await page.waitForFunction(()=>document.querySelector('#position').textContent==='2 / 2');
   assert.equal((await read()).reads,1);assert.equal((await read()).url,'data:image/svg+xml,Source');
 });
+
+test("failed previews opened during cooldown clear old layers and retry from the same thumbnail", async t => {
+  const {url} = await serve(t, {sharedPoster: true});
+  const browser = await launchBrowser(t);
+  const page = await browser.newPage({reducedMotion: "no-preference"});
+  let failures = 0;
+  await page.route("https://images.example.test/**", async route => {
+    if (route.request().url().endsWith("failed.gif") && ++failures === 1) {
+      await route.fulfill({status: 503, headers: {"access-control-allow-origin": "*"}});
+    } else {
+      await route.fulfill({status: 200, contentType: "image/gif",
+        body: Buffer.from("R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=", "base64"),
+        headers: {"access-control-allow-origin": "*"}});
+    }
+  });
+  await page.goto(url);
+  await page.waitForFunction(() => window.__viewerReady && document.querySelector("#image").naturalWidth > 0);
+  await page.evaluate(() => {
+    const fixture = window.__viewerFixture;
+    fixture.pages[1].previewUrl = "https://images.example.test/failed.gif";
+    fixture.listImage = document.createElement("img");
+    fixture.actualPreviewLoader.set(fixture.listImage, fixture.pages[1], true);
+  });
+  await page.waitForFunction(() => window.__viewerFixture.listImage.dataset.previewFailed === "true");
+  await page.locator("#next").click();
+  await page.waitForFunction(() => document.querySelector("#image").dataset.previewFailed === "true"
+    && !document.querySelector(".viewer-motion-image"));
+  assert.equal(failures, 1, "cooldown does not cause another request");
+  await page.waitForTimeout(1050);
+  await page.locator("#thumbnails button").nth(1).click();
+  await page.waitForFunction(() => document.querySelector("#image").naturalWidth > 0
+    && !document.querySelector("#image").dataset.previewFailed);
+  assert.equal(failures, 2);
+  await page.evaluate(() => {
+    window.__viewerFixture.actualPreviewLoader.clearImage(window.__viewerFixture.listImage);
+    window.__viewerReady.setOpen(false);
+    window.__viewerReady.render();
+  });
+  assert.equal(await page.locator(".viewer-motion-image").count(), 0);
+  assert.equal(await page.evaluate(() => [...window.__viewerFixture.bindings.keys()].filter(image => !image.isConnected).length), 0);
+});
