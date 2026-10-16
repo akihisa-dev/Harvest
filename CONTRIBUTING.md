@@ -19,7 +19,7 @@ pnpmは`package.json`の`packageManager`と`pnpm-lock.yaml`で12.5.1に固定し
 
 ## Gitフック
 
-Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion一致と、番号更新時の同一commit登録を確認し、`pre-push`で`pnpm verify:full`を実行します。新しいcloneでhookを有効にするには`pnpm setup:hooks`を実行してください。`pnpm verify`などの通常確認も、hook未設定または別の場所を指している場合は`pnpm setup:hooks`の実行方法を案内して停止します。GitHub Actionsは使いません。release前は`pnpm verify:release`を実行します。
+Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion一致と、番号更新時の同一commit登録を確認し、`pre-push`で`pnpm verify:full`を実行します。設定時のGitルート照合ではOSに応じて区切り文字と末尾区切りを正規化し、別リポジトリへの誤設定を拒否します。新しいcloneでhookを有効にするには`pnpm setup:hooks`を実行してください。`pnpm verify`などの通常確認も、hook未設定または別の場所を指している場合は`pnpm setup:hooks`の実行方法を案内して停止します。GitHub Actionsは使いません。release前は`pnpm verify:release`を実行します。
 
 ## ビルド処理の構成
 
