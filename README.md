@@ -140,7 +140,7 @@ Installation requires access to ordinary HTTP/HTTPS websites. When you analyze a
 
 The `downloads` permission saves individual MP4 files and checks completion or interruption. Chrome presents this as permission to manage downloads. Harvest queries or cancels only download IDs it created, without reading other downloads or the full history. IDs and completion state stay in panel memory; history and file contents are not sent externally. Chrome and the user manage saved files and download history. Harvest does not delete existing history or saved files. Updating an existing installation may require permission approval again.
 
-Collection, conversion, PDF creation, and ZIP creation run inside the browser, without an external collection server. The JXL encoder is bundled. Entered URLs open in a minimized analysis window that closes after reading, without adding a tab to your browsing window or moving focus to the analysis window. Fetching media sends ordinary browser requests to the hosting sites. Collected results and prepared images are not persisted and are discarded when the side panel closes. Only the source-page preference is stored in the browser. Only files you save remain on disk.
+Collection, conversion, PDF creation, and ZIP creation run inside the browser, without an external collection server. The JXL encoder is bundled. Entered URLs open in a minimized analysis window that closes after reading, without adding a tab to your browsing window or moving focus to the analysis window. Fetching media sends ordinary browser requests to the hosting sites. A YouTube embed created on another HTTPS site sends only that site’s origin as its referrer, without the page path, query, or fragment. Collected results and prepared images are not persisted and are discarded when the side panel closes. Only the source-page preference is stored in the browser. Only files you save remain on disk.
 
 Image fetching rejects localhost and private-IP URLs outside the source page's origin before sending a request. Public hostnames are also designated as public-network requests to Chrome, restricting connections that resolve or redirect to local destinations. Login credentials are used only when the image and source page share the same scheme, hostname, and port. Restrictions after DNS resolution depend on Chrome support and are not guaranteed in older Chrome versions that ignore this option.
 
@@ -359,3 +359,5 @@ GNU Affero General Public License version 3 only（AGPL-3.0-only）。詳細はL
 ストアへ提出するZIPには、ライセンス全文、同じ版をビルドするためのソースコードと手順を含めます。同梱する第三者コードには各ライセンスが適用され、JXL内部のライブラリの表示とMediabunnyの改変部分のソース案内も含めます。拡張機能の「ライセンスとソース」から案内を開けます。
 
 初期画面の中央には、`assets/brand/harvest-geometric-logo.svg`を表示します。ビルド時にこのロゴを拡張機能の`brand/`と同梱ソースへコピーします。
+
+YouTube取得用の埋め込みを他のHTTPSページに作る場合、YouTubeへ参照元のサイト部分（方式・ホスト・ポート）だけを送ります。ページのパス・検索条件・ハッシュは送らず、Harvest内で保存しません。

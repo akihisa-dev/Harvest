@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {temporaryDirectory,launchExtensionContext} from './support/browser.mjs';
 import {videoId,video,audio,template,url} from './support/youtube-fixture.mjs';
 
-for(const host of [`https://www.youtube.com/watch?v=${videoId}&t=14s`,'https://example.test/gallery'])test(`既存タブで認証を取得し、対象動画が開いていればフレームを作らない: ${host}`,{timeout:30000},async t=>{
+for(const host of [`https://www.youtube.com/watch?v=${videoId}&t=14s`,'https://example.test/gallery/private?secret=fixture#local'])test(`既存タブで認証を取得し、対象動画が開いていればフレームを作らない: ${host}`,{timeout:30000},async t=>{
   const temporary=await temporaryDirectory(t,join(tmpdir(),'harvest-youtube-frame-'));
   const context=await launchExtensionContext(t,join(temporary,'profile'));
   const cdp=await context.browser().newBrowserCDPSession();
@@ -21,10 +21,11 @@ for(const host of [`https://www.youtube.com/watch?v=${videoId}&t=14s`,'https://e
     </script>`});
   });
   // Other HTTPS hosts use the embeddable player; open YouTube uses its native watch path.
-  await context.route('https://www.youtube.com/embed/**',route=>route.fulfill({contentType:'text/html',body:`<div id="movie_player"><video></video></div><script>
+  const embedReferrers=[];
+  await context.route('https://www.youtube.com/embed/**',route=>{ embedReferrers.push(route.request().headers()['referer']); return route.fulfill({contentType:'text/html',body:`<div id="movie_player"><video></video></div><script>
     const player=document.getElementById('movie_player');player.getPlayerResponse=()=>(${JSON.stringify(response)});player.mute=()=>{document.querySelector('video').muted=true;};
     player.loadVideoById=()=>{const request=new XMLHttpRequest();request.open('POST',${JSON.stringify(url)});request.send(new Uint8Array(${JSON.stringify([...template])}));};
-  </script>`}));
+  </script>`}); });
   await context.route('https://example.test/**',route=>route.fulfill({contentType:'text/html',body:'<main>existing page</main>'}));
   await context.route('https://*.googlevideo.com/**',route=>route.fulfill({contentType:'application/vnd.yt-ump',body:Buffer.alloc(0)}));
   const page=await context.newPage();await page.goto(host);
@@ -51,6 +52,7 @@ for(const host of [`https://www.youtube.com/watch?v=${videoId}&t=14s`,'https://e
   },{videoId,duplicate:host.startsWith('https://www.youtube.com')});
   assert.equal(result.rejected.length,host.startsWith('https://www.youtube.com')?1:0);
   if(result.rejected.length)assert.match(result.rejected[0],/保存準備が続いて/);
+  assert.deepEqual(embedReferrers, host.startsWith('https://www.youtube.com') ? [] : ['https://example.test/']);
   assert.equal(result.evidence.videoId,videoId);assert.deepEqual(result.evidence.capture.body,[...template]);
   assert.deepEqual(result.before,result.after);assert.equal(opened,0);assert.deepEqual(context.pages(),pages);assert.equal(page.url(),beforeUrl);
   assert.equal(await page.locator('iframe[id^="harvest-youtube-"]').count(),0);

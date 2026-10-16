@@ -15,7 +15,7 @@ export function manageYoutubeFrame(videoId, owner, remove) {
     frame.name = owner;
     frame.tabIndex = -1;
     frame.setAttribute("aria-hidden", "true");
-    frame.referrerPolicy = "no-referrer";
+    frame.referrerPolicy = location.origin === "https://www.youtube.com" ? "no-referrer" : "strict-origin";
     frame.setAttribute("allow", "autoplay");
     frame.style.cssText = "position:fixed!important;left:-20000px!important;top:0!important;width:1280px!important;height:720px!important;opacity:0!important;pointer-events:none!important;border:0!important;";
     // Preserve the native watch authorization path for videos which the embedded
