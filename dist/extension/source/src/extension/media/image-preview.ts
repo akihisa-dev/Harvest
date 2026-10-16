@@ -125,6 +125,7 @@ export function createImagePreviewLoader(): ImagePreviewLoader {
         if (entries.get(entry.key) !== entry || !entry.elements.size) return;
         const objectUrl = URL.createObjectURL(previewBlob(fetched));
         entry.objectUrl = objectUrl;
+        entry.retryAfter = 0;
         retainedPreviewCount += 1;
         for (const image of entry.elements) {
           image.src = objectUrl;

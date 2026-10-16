@@ -90,6 +90,7 @@ export function createImagePreviewLoader() {
                     return;
                 const objectUrl = URL.createObjectURL(previewBlob(fetched));
                 entry.objectUrl = objectUrl;
+                entry.retryAfter = 0;
                 retainedPreviewCount += 1;
                 for (const image of entry.elements) {
                     image.src = objectUrl;

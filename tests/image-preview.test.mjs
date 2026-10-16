@@ -398,6 +398,21 @@ test("一覧とビュアーは一時失敗後に待ち時間を置いて同じ�
   assert.equal(listImage.dataset.previewFailed, undefined, "成功後に一覧の失敗状態を解除する");
   assert.equal(viewerImage.dataset.previewFailed, undefined, "成功後にViewerの失敗状態を解除する");
   assert.deepEqual(loader.diagnostics, {bound: 1, ready: 1, failed: 0, pending: 0});
+  loader.clearImage(viewerImage);
+  observers[0].intersect(listImage, false);
+  for (let index = 0; index < 25; index++) {
+    const cachedImage = new PreviewImage();
+    const cachedItem = {...item, url: `https://cdn.example/cache-${index}.png`};
+    loader.set(cachedImage, cachedItem, true);
+    await waitFor(() => cachedImage.src.startsWith("blob:"));
+    loader.set(cachedImage, cachedItem, false);
+  }
+  assert.equal(listImage.src, "", "成功した古いプレビューは保持上限で解放される");
+  const reopened = new PreviewImage();
+  loader.set(reopened, item);
+  assert.equal(reopened.dataset.previewFailed, undefined, "成功後のキャッシュ解放を失敗として引き継がない");
+  observers[0].intersect(reopened);
+  await waitFor(() => reopened.src.startsWith("blob:"));
   loader.clear();
 });
 
