@@ -70,3 +70,16 @@ test('GIF事前走査は既知の論理画素上限をデコード前に拒否�
     await assert.rejects(convertAnimatedImage(new Blob([animatedWebp]),65536),/second-pass/);assert.equal(decoded,5);assert.equal(framesClosed,4);assert.equal(closed,1);
   }finally{for(const [key,value] of Object.entries(saved)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}}
 });
+
+
+test('構造確認済みJPEGは再読込せず、MIMEだけがJPEGの未知データは検査する', async () => {
+  const {prepareAnimatedImage} = await import('../dist/extension/app/media/animated-image.js');
+  const blob = new Blob([animatedWebp], {type: 'image/jpeg'});
+  let reads = 0;
+  const read = blob.arrayBuffer.bind(blob);
+  blob.arrayBuffer = () => { reads++; return read(); };
+  assert.equal(await prepareAnimatedImage({kind: 'bitmap', blob, originalJpeg: true}), null);
+  assert.equal(reads, 0);
+  await assert.rejects(prepareAnimatedImage({kind: 'bitmap', blob}), /GIFへ変換できません/);
+  assert.equal(reads, 1);
+});

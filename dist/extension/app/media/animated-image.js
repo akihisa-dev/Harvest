@@ -3,7 +3,7 @@ import { checkCancelled, MAX_IMAGE_BYTES } from "../contracts/image-data-contrac
 import { animatedImageType } from "../../core/animated-image.js";
 export async function prepareAnimatedImage(fetched, signal, maxBytes = MAX_IMAGE_BYTES) {
     checkCancelled(signal);
-    if (fetched.kind !== "bitmap")
+    if (fetched.kind !== "bitmap" || fetched.originalJpeg === true)
         return null;
     const blob = fetched.blob;
     if (!animatedImageType(new Uint8Array(await blob.arrayBuffer())))
