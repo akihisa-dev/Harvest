@@ -46,7 +46,7 @@ Selection, visibility changes, and reordering use short transitions. Animations 
 
 Controls follow the browser or system light/dark setting, including changes while the panel is open. The interface and **License and source** page follow Chrome's display language: Japanese for Japanese, English otherwise. Controls, accessible labels, and known error messages use that language; unknown errors use a translated general message. After changing the language, restart Chrome if needed and reopen the panel. Images, page titles, filenames, and PDF colors are preserved. The source page heading remains **Source** in both languages. There is no separate language switch in Harvest.
 
-Controls are monochrome, while images and saved PDFs retain their original colors. Analysis initially opens the image list. URL entry, Analyze, Clear, and Collect are at the top; format, saving, source-page settings, viewer switching, and group controls are to the right of the images. **Viewer mode** previews selected images; **Back to image list** returns to the list. Select images with thumbnails or Previous/Next, and zoom with the wheel or zoom buttons.
+Controls are monochrome, while images and saved PDFs retain their original colors. Analysis initially opens the image list. URL entry, Analyze, Clear, and Collect are at the top; format, saving, source-page settings, viewer switching, and group controls are to the right of the images. **Viewer mode** previews selected images; **Back to image list** returns to the list. Select images with thumbnails or Previous/Next, and zoom with the wheel or zoom buttons. While zoomed in, Tab to the image area and use the arrow keys to pan or Home to return to the center.
 
 Drag a zoomed image to pan. Group labels show counts, and image labels show positions in the full collection. Save controls show the selected item count, progress while saving, and a retry action after failure; completion shows the saved count. Click the save button again during saving to cancel while retaining the progress display. Once requests and conversion stop, prepared images are discarded and saving becomes available again. Incomplete PDFs and ZIPs are not saved; the same selection can be saved again.
 
@@ -226,7 +226,7 @@ Xのブックマークでは、Xが受信した一覧の投稿IDとメディア�
 
 操作欄の明暗はブラウザーまたはシステムの設定に自動で従い、設定を変更すると開いているパネルにも反映されます。操作画面と「ライセンスとソース」の表示言語はChromeの表示言語に従い、日本語なら日本語、それ以外は英語で表示します。操作項目、読み上げ用の説明、既知のエラーは選択された言語で表示し、未知のエラーには翻訳済みの一般的な説明を使います。言語設定の変更後は必要に応じてChromeを再起動してパネルを開き直してください。画像、ページの名前、ファイル名、PDFの色は変更しません。出典ページの見出しは「Source」です。独自の言語切り替えボタンはありません。
 
-操作欄はモノクロですが、画像と保存したPDFは元の色を保ちます。解析後はビュアーではなく画像一覧を初期表示します。URL入力・解析・クリア・収集は上部に、保存形式と保存・出典ページの設定・ビュアー切り替え・画像グループの操作は画像の右側に並びます。「ビュアーモード」で保存対象の画像を確認し、「画像一覧に戻る」で一覧へ切り替えられます。ビュアーではサムネイルや前後ボタンで画像を選び、ホイールまたは拡大縮小ボタンで拡大・縮小できます。
+操作欄はモノクロですが、画像と保存したPDFは元の色を保ちます。解析後はビュアーではなく画像一覧を初期表示します。URL入力・解析・クリア・収集は上部に、保存形式と保存・出典ページの設定・ビュアー切り替え・画像グループの操作は画像の右側に並びます。「ビュアーモード」で保存対象の画像を確認し、「画像一覧に戻る」で一覧へ切り替えられます。ビュアーではサムネイルや前後ボタンで画像を選び、ホイールまたは拡大縮小ボタンで拡大・縮小できます。拡大後は画像領域へTabでフォーカスし、矢印キーで表示位置を移動、Homeで中央へ戻せます。
 
 拡大中は画像をドラッグして表示位置を動かせます。グループ名には枚数、各画像には収集結果全体での順番を表示します。保存ボタンには選択件数、保存中には進捗、失敗時には再試行の操作、保存完了時には保存件数を表示します。保存中に同じボタンをもう一度押すと、進捗表示を保ったまま保存を中止できます。通信と変換の終了後に準備済みの画像を破棄し、通常の保存可能状態へ戻ります。不完全なPDF・ZIPは保存せず、同じ対象を再度保存できます。
 

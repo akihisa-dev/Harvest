@@ -262,6 +262,29 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
     event.preventDefault();
     zoomBy(Math.exp(-event.deltaY * 0.001), event.clientX, event.clientY);
   }, {passive: false});
+  elements.stage.addEventListener("keydown", event => {
+    if (event.target !== elements.stage || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
+      || !open || !currentUrl || zoom <= 1 || options.isBusy()) return;
+    const directions: Record<string, readonly [number, number]> = {
+      ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1],
+    };
+    const direction = Object.hasOwn(directions, event.key) ? directions[event.key] : undefined;
+    if (!direction && event.key !== "Home") return;
+    event.preventDefault();
+    stopPan();
+    if (event.key === "Home") { panX = 0; panY = 0; }
+    else if (direction) {
+      const rect = elements.stage.getBoundingClientRect();
+      const width = elements.image.naturalWidth, height = elements.image.naturalHeight;
+      const fit = width > 0 && height > 0 ? Math.min(rect.width / width, rect.height / height) : 1;
+      const limitX = Math.max(0, (width * fit * zoom - rect.width) / 2);
+      const limitY = Math.max(0, (height * fit * zoom - rect.height) / 2);
+      const step = Math.max(24, Math.min(80, Math.min(rect.width, rect.height) / 10));
+      panX = Math.max(-limitX, Math.min(limitX, panX + direction[0] * step));
+      panY = Math.max(-limitY, Math.min(limitY, panY + direction[1] * step));
+    }
+    updateTransform();
+  });
   elements.stage.addEventListener("pointerdown", event => {
     if (!open || zoom <= 1 || (event.button !== undefined && event.button !== 0)) return;
     event.preventDefault();

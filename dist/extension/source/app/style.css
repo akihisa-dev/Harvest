@@ -1168,6 +1168,11 @@ main:has(#viewer:not([hidden])) {
   touch-action: pan-y;
 }
 
+.viewer-stage:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
 .viewer-stage[data-pannable="true"] {
   cursor: grab;
   touch-action: none;

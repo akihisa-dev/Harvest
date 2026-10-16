@@ -72,7 +72,7 @@
         <section id="viewer" class="viewer" data-i18n-aria-label="viewer" aria-label="選択した画像のビュアー" hidden>
           <p id="viewer-empty" data-i18n="viewerEmpty">保存する画像が選択されていません。</p>
           <div id="viewer-page" class="viewer-page" hidden>
-            <div id="viewer-stage" class="viewer-stage" data-i18n-aria-label="viewerStage" aria-label="画像。ホイールで拡大縮小、拡大中はドラッグで移動">
+            <div id="viewer-stage" class="viewer-stage" tabindex="0" role="group" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home" data-i18n-aria-label="viewerStage" data-i18n-title="viewerStage" aria-label="画像。拡大中は矢印キーで表示位置を移動、Homeで中央へ戻ります。ホイールで拡大縮小、ドラッグで移動">
               <img id="viewer-image" alt="" referrerpolicy="no-referrer" draggable="false">
               <div id="export-overlay" aria-hidden="true" hidden></div>
             </div>
