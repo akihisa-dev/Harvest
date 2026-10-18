@@ -1279,3 +1279,21 @@ test('srcsetは密度の指数・小数とASCII空白を扱い、不正指定を
     assert.deepEqual(new Set(result.media.map(item => item.url)), new Set(result.images), descriptor);
   }
 });
+
+
+test('videoの拡張子なしURLは直接候補にし、音声・分割配信・非HTTPは混ぜない', async () => {
+  const root = new FixtureElement('html', {}, [
+    new FixtureElement('video', {src: '/opaque-one'}),
+    new FixtureElement('video', {}, [new FixtureElement('source', {src: '/opaque-two'})]),
+    new FixtureElement('video', {}, [new FixtureElement('source', {src: '/opaque-three', type: 'video/mp4'})]),
+    new FixtureElement('video', {src: '/movie.mp4'}), new FixtureElement('video', {src: '/movie.webm'}),
+    new FixtureElement('audio', {src: '/audio'}, [new FixtureElement('source', {src: '/audio-source'})]),
+    new FixtureElement('video', {}, [new FixtureElement('source', {src: '/misleading', type: 'audio/mp4'})]),
+    ...['/live.m3u8', '/live.mpd', '/segment.m4s', '/segment.ts', '/live?format=hls', 'blob:https://example.test/id', 'data:video/mp4;base64,AA=='].map(src => new FixtureElement('video', {src})),
+    new FixtureElement('video', {}, [new FixtureElement('source', {src: '/manifest', type: 'application/dash+xml'})]),
+    new FixtureElement('source', {src: '/unowned'}),
+  ]);
+  const result = await runWithFixture(new FixtureDocument(root), undefined, () => scanDocument());
+  assert.deepEqual(result.images, ['https://example.test/unowned']);
+  assert.deepEqual(result.media.map(item => [item.url, item.kind]), [...['opaque-one', 'opaque-two', 'opaque-three', 'movie.mp4', 'movie.webm'].map(path => [`https://example.test/${path}`, 'video']), ['https://example.test/unowned', 'image']]);
+});

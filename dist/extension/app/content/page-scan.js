@@ -289,7 +289,14 @@ export async function scanDocument(targetPostId, framesOnly = false) {
             const pathIsVideo = /\.(?:mp4|webm)$/i.test(parsed.pathname)
                 || /^(?:mp4|webm)$/i.test(parsed.searchParams.get("format") ?? "");
             const declaredVideo = /^video\/(?:mp4|webm)(?:\s*;|$)/i.test(declaredType?.trim() ?? "");
-            if (pathIsVideo || declaredVideo)
+            const tag = sourceElement.tagName.toLowerCase();
+            const videoReference = tag === "video" || (tag === "source" && sourceElement.parentElement?.tagName.toLowerCase() === "video");
+            const segmented = /\.(?:m3u8|mpd|m4s|ts|ism|ismc|cmfv|cmfa)$/i.test(parsed.pathname)
+                || /^(?:m3u8|mpd|hls|dash)$/i.test(parsed.searchParams.get("format") ?? "");
+            // A video element is evidence even when the server uses an opaque URL.
+            // This is only discovery; saving still checks MIME and complete media bytes.
+            const untypedVideo = videoReference && !declaredType?.trim() && !segmented;
+            if (pathIsVideo || declaredVideo || untypedVideo)
                 recordMedia(parsed.href, "video", sourceElement);
         }
         catch {
