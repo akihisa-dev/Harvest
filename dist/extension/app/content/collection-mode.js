@@ -25,18 +25,20 @@ export function captureCollectionLinks(session) {
         const overlays = new Map();
         const frames = new Set();
         const release = (overlay, animation) => {
-            if (overlays.get(overlay)?.animation !== animation)
+            const entry = overlays.get(overlay);
+            if (entry?.animation !== animation)
                 return;
             overlays.delete(overlay);
             overlay.remove();
+            entry.clip?.remove();
         };
         const cancel = (overlay, animation) => {
             animation.cancel();
             release(overlay, animation);
         };
         return {
-            track(overlay, animation, ghost = false) {
-                overlays.set(overlay, { animation, ghost });
+            track(overlay, animation, ghost = false, clip) {
+                overlays.set(overlay, { animation, ghost, ...(clip ? { clip } : {}) });
                 const finish = () => release(overlay, animation);
                 animation.onfinish = finish;
                 animation.oncancel = finish;
@@ -64,9 +66,10 @@ export function captureCollectionLinks(session) {
     })();
     let hideTimer = null;
     const prefersReducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    const animateOut = (overlay) => {
+    const animateOut = (overlay, clip) => {
         if (prefersReducedMotion() || typeof overlay.animate !== "function") {
             overlay.remove();
+            clip?.remove();
             return;
         }
         const style = getComputedStyle(overlay);
@@ -74,7 +77,7 @@ export function captureCollectionLinks(session) {
             { opacity: style.opacity, transform: style.transform },
             { opacity: "0", transform: "scale(.78)" },
         ], { duration: 160, easing: "cubic-bezier(.2,.75,.25,1)" });
-        motion.track(overlay, animation);
+        motion.track(overlay, animation, false, clip);
     };
     const resolveLinkUrl = (anchor) => {
         const href = anchor.getAttribute("href");
@@ -99,7 +102,7 @@ export function captureCollectionLinks(session) {
         }
         const state = markedTargets.get(target);
         if (state?.url === url) {
-            animateOut(state.overlay);
+            animateOut(state.overlay, state.clip);
             markedTargets.delete(target);
         }
     };
@@ -175,7 +178,7 @@ export function captureCollectionLinks(session) {
         for (const [target, state] of markedTargets) {
             if (target.isConnected)
                 continue;
-            animateOut(state.overlay);
+            animateOut(state.overlay, state.clip);
             markedTargets.delete(target);
         }
         for (const links of [pendingClicks, analyzedLinks]) {
@@ -239,6 +242,62 @@ export function captureCollectionLinks(session) {
         overlay.style.width = `${rect.width}px`;
         overlay.style.height = `${rect.height}px`;
     };
+    const positionMarkedGlow = (target, state) => {
+        const { overlay } = state;
+        positionGlow(target, overlay);
+        const rect = target.getBoundingClientRect();
+        let left = 0, top = 0;
+        let right = document.documentElement.clientWidth || window.innerWidth;
+        let bottom = document.documentElement.clientHeight || window.innerHeight;
+        const viewportRight = right, viewportBottom = bottom;
+        let clipped = false;
+        const parentOf = (element) => {
+            if (element.assignedSlot)
+                return element.assignedSlot;
+            if (element.parentElement)
+                return element.parentElement;
+            const root = element.getRootNode?.();
+            return root && "host" in root ? root.host : null;
+        };
+        for (let parent = parentOf(target); parent; parent = parentOf(parent)) {
+            const style = getComputedStyle(parent);
+            const clipsX = /^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowX);
+            const clipsY = /^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowY);
+            if (!clipsX && !clipsY)
+                continue;
+            clipped = true;
+            const bounds = parent.getBoundingClientRect();
+            const scaleX = bounds.width / (parent.offsetWidth || bounds.width || 1);
+            const scaleY = bounds.height / (parent.offsetHeight || bounds.height || 1);
+            const x = bounds.left + parent.clientLeft * scaleX;
+            const y = bounds.top + parent.clientTop * scaleY;
+            if (clipsX) {
+                left = Math.max(left, x);
+                right = Math.min(right, x + parent.clientWidth * scaleX);
+            }
+            if (clipsY) {
+                top = Math.max(top, y);
+                bottom = Math.min(bottom, y + parent.clientHeight * scaleY);
+            }
+        }
+        if (!clipped && !state.clip)
+            return;
+        if (!state.clip) {
+            const clip = document.createElement("div");
+            overlayElements.add(clip);
+            clip.setAttribute("data-harvest-collection-clip", "true");
+            clip.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:2147483646;";
+            document.documentElement.append(clip);
+            clip.append(overlay);
+            state.clip = clip;
+        }
+        // Clip a stationary viewport-sized parent, so the child's existing scale
+        // and opacity animation cannot move its shadow outside the visible region.
+        state.clip.style.clipPath = clipped
+            ? `inset(${top}px ${Math.max(0, viewportRight - right)}px ${Math.max(0, viewportBottom - bottom)}px ${left}px)` : "";
+        state.clip.style.display = Math.min(rect.left + rect.width, right) <= Math.max(rect.left, left)
+            || Math.min(rect.top + rect.height, bottom) <= Math.max(rect.top, top) ? "none" : "block";
+    };
     const markTarget = (target, url, anchor) => {
         if (!target.isConnected)
             return;
@@ -273,7 +332,7 @@ export function captureCollectionLinks(session) {
             state.anchor = anchor;
         }
         state.overlay.style.boxShadow = desiredGlow(url);
-        positionGlow(target, state.overlay);
+        positionMarkedGlow(target, state);
         syncScrollRoots();
     };
     const redrawMarkedTargets = () => {
@@ -286,7 +345,7 @@ export function captureCollectionLinks(session) {
                 ? "none"
                 : "opacity 180ms cubic-bezier(.2,.75,.25,1),transform 180ms cubic-bezier(.2,.75,.25,1),box-shadow 180ms ease";
             state.overlay.style.boxShadow = desiredGlow(state.url);
-            positionGlow(target, state.overlay);
+            positionMarkedGlow(target, state);
         }
     };
     const findLink = (event) => {
@@ -524,7 +583,7 @@ export function captureCollectionLinks(session) {
             window.clearTimeout(hideTimer);
         motion.cancelAll();
         for (const state of markedTargets.values())
-            animateOut(state.overlay);
+            animateOut(state.overlay, state.clip);
         markedTargets.clear();
         pendingClicks.clear();
         analyzedLinks.clear();

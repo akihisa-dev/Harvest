@@ -13,7 +13,7 @@ export function captureCollectionLinks(session: string): void {
   let pdfUrl: string | null = null;
   let canExport = false;
   type HoverState = {anchor: HTMLAnchorElement; url: URL; target: Element; modifier: boolean};
-  type PersistentGlow = {url: string; anchor: HTMLAnchorElement; overlay: HTMLElement};
+  type PersistentGlow = {url: string; anchor: HTMLAnchorElement; overlay: HTMLElement; clip?: HTMLElement};
   let lastHover: HoverState | null = null;
   const pendingClicks = new Map<string, Set<Element>>();
   const analyzedLinks = new Map<string, Set<Element>>();
@@ -24,20 +24,22 @@ export function captureCollectionLinks(session: string): void {
   // Each fading overlay has one animation owner, including hover ghosts.
   // Completion, cancellation, ghost eviction and disconnect use the same release.
   const motion = (() => {
-    const overlays = new Map<HTMLElement, {animation: Animation; ghost: boolean}>();
+    const overlays = new Map<HTMLElement, {animation: Animation; ghost: boolean; clip?: HTMLElement}>();
     const frames = new Set<number>();
     const release = (overlay: HTMLElement, animation: Animation): void => {
-      if (overlays.get(overlay)?.animation !== animation) return;
+      const entry = overlays.get(overlay);
+      if (entry?.animation !== animation) return;
       overlays.delete(overlay);
       overlay.remove();
+      entry.clip?.remove();
     };
     const cancel = (overlay: HTMLElement, animation: Animation): void => {
       animation.cancel();
       release(overlay, animation);
     };
     return {
-      track(overlay: HTMLElement, animation: Animation, ghost = false): void {
-        overlays.set(overlay, {animation, ghost});
+      track(overlay: HTMLElement, animation: Animation, ghost = false, clip?: HTMLElement): void {
+        overlays.set(overlay, {animation, ghost, ...(clip ? {clip} : {})});
         const finish = (): void => release(overlay, animation);
         animation.onfinish = finish;
         animation.oncancel = finish;
@@ -63,9 +65,10 @@ export function captureCollectionLinks(session: string): void {
 
   const prefersReducedMotion = (): boolean => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
-  const animateOut = (overlay: HTMLElement): void => {
+  const animateOut = (overlay: HTMLElement, clip?: HTMLElement): void => {
     if (prefersReducedMotion() || typeof overlay.animate !== "function") {
       overlay.remove();
+      clip?.remove();
       return;
     }
     const style = getComputedStyle(overlay);
@@ -73,7 +76,7 @@ export function captureCollectionLinks(session: string): void {
       {opacity: style.opacity, transform: style.transform},
       {opacity: "0", transform: "scale(.78)"},
     ], {duration: 160, easing: "cubic-bezier(.2,.75,.25,1)"});
-    motion.track(overlay, animation);
+    motion.track(overlay, animation, false, clip);
   };
 
   const resolveLinkUrl = (anchor: HTMLAnchorElement): URL | null => {
@@ -94,7 +97,7 @@ export function captureCollectionLinks(session: string): void {
     }
     const state = markedTargets.get(target);
     if (state?.url === url) {
-      animateOut(state.overlay);
+      animateOut(state.overlay, state.clip);
       markedTargets.delete(target);
     }
   };
@@ -161,7 +164,7 @@ export function captureCollectionLinks(session: string): void {
   const pruneDetachedTargets = (): void => {
     for (const [target, state] of markedTargets) {
       if (target.isConnected) continue;
-      animateOut(state.overlay);
+      animateOut(state.overlay, state.clip);
       markedTargets.delete(target);
     }
     for (const links of [pendingClicks, analyzedLinks]) {
@@ -219,6 +222,53 @@ export function captureCollectionLinks(session: string): void {
     overlay.style.height = `${rect.height}px`;
   };
 
+  const positionMarkedGlow = (target: Element, state: PersistentGlow): void => {
+    const {overlay} = state;
+    positionGlow(target, overlay);
+    const rect = target.getBoundingClientRect();
+    let left = 0, top = 0;
+    let right = document.documentElement.clientWidth || window.innerWidth;
+    let bottom = document.documentElement.clientHeight || window.innerHeight;
+    const viewportRight = right, viewportBottom = bottom;
+    let clipped = false;
+    const parentOf = (element: Element): Element | null => {
+      if (element.assignedSlot) return element.assignedSlot;
+      if (element.parentElement) return element.parentElement;
+      const root = element.getRootNode?.();
+      return root && "host" in root ? (root as ShadowRoot).host : null;
+    };
+    for (let parent = parentOf(target); parent; parent = parentOf(parent)) {
+      const style = getComputedStyle(parent);
+      const clipsX = /^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowX);
+      const clipsY = /^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowY);
+      if (!clipsX && !clipsY) continue;
+      clipped = true;
+      const bounds = parent.getBoundingClientRect();
+      const scaleX = bounds.width / ((parent as HTMLElement).offsetWidth || bounds.width || 1);
+      const scaleY = bounds.height / ((parent as HTMLElement).offsetHeight || bounds.height || 1);
+      const x = bounds.left + parent.clientLeft * scaleX;
+      const y = bounds.top + parent.clientTop * scaleY;
+      if (clipsX) {left = Math.max(left, x); right = Math.min(right, x + parent.clientWidth * scaleX);}
+      if (clipsY) {top = Math.max(top, y); bottom = Math.min(bottom, y + parent.clientHeight * scaleY);}
+    }
+    if (!clipped && !state.clip) return;
+    if (!state.clip) {
+      const clip = document.createElement("div");
+      overlayElements.add(clip);
+      clip.setAttribute("data-harvest-collection-clip", "true");
+      clip.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:2147483646;";
+      document.documentElement.append(clip);
+      clip.append(overlay);
+      state.clip = clip;
+    }
+    // Clip a stationary viewport-sized parent, so the child's existing scale
+    // and opacity animation cannot move its shadow outside the visible region.
+    state.clip.style.clipPath = clipped
+      ? `inset(${top}px ${Math.max(0, viewportRight - right)}px ${Math.max(0, viewportBottom - bottom)}px ${left}px)` : "";
+    state.clip.style.display = Math.min(rect.left + rect.width, right) <= Math.max(rect.left, left)
+      || Math.min(rect.top + rect.height, bottom) <= Math.max(rect.top, top) ? "none" : "block";
+  };
+
   const markTarget = (target: Element, url: string, anchor: HTMLAnchorElement): void => {
     if (!target.isConnected) return;
     let state = markedTargets.get(target);
@@ -248,7 +298,7 @@ export function captureCollectionLinks(session: string): void {
       state.anchor = anchor;
     }
     state.overlay.style.boxShadow = desiredGlow(url);
-    positionGlow(target, state.overlay);
+    positionMarkedGlow(target, state);
     syncScrollRoots();
   };
 
@@ -262,7 +312,7 @@ export function captureCollectionLinks(session: string): void {
         ? "none"
         : "opacity 180ms cubic-bezier(.2,.75,.25,1),transform 180ms cubic-bezier(.2,.75,.25,1),box-shadow 180ms ease";
       state.overlay.style.boxShadow = desiredGlow(state.url);
-      positionGlow(target, state.overlay);
+      positionMarkedGlow(target, state);
     }
   };
 
@@ -489,7 +539,7 @@ export function captureCollectionLinks(session: string): void {
     if (redrawFrame !== null) window.cancelAnimationFrame(redrawFrame);
     if (hideTimer !== null) window.clearTimeout(hideTimer);
     motion.cancelAll();
-    for (const state of markedTargets.values()) animateOut(state.overlay);
+    for (const state of markedTargets.values()) animateOut(state.overlay, state.clip);
     markedTargets.clear();
     pendingClicks.clear();
     analyzedLinks.clear();

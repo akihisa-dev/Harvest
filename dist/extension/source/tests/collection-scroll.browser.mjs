@@ -61,3 +61,47 @@ test('ネストと動的Shadow Root内のscrollに発光が追従し、削除・
   assert.equal(await page.evaluate(()=>[...window.scrollSubscriptions.values()].reduce((n,set)=>n+set.size,0)),0);
   assert.equal(await page.locator('[data-harvest-collection-marker]').count(),0);
 });
+
+
+test('祖先overflowの縦横・入れ子の表示範囲で発光を切り取り、完全に隠れると消し再表示する', async t => {
+  const browser=await launchBrowser(t),page=await browser.newPage({viewport:{width:600,height:600},reducedMotion:'reduce'});
+  await page.setContent(`<style>body{margin:0;background:white}#outer{position:absolute;left:100px;top:200px;width:220px;height:120px;overflow:auto;border:2px solid black}#inner{width:400px;height:260px;overflow:hidden}a{display:block;margin:10px;width:160px;height:40px;color:black;background:#eee}#spacer{height:400px;width:600px}</style><div id="outer"><div id="inner"><a href="https://example.test/clipped">Clip target</a><div id="spacer"></div></div></div>`);
+  await startCollection(page);
+  await mark(page,page.getByText('Clip target',{exact:true}),'https://example.test/clipped');
+  const marker=page.locator('[data-harvest-collection-marker]');
+  const outer=page.locator('#outer');
+  const noLeak = async (clip) => {
+    const before=await page.screenshot({clip});
+    await marker.evaluate(el=>{el.style.visibility='hidden';});
+    const without=await page.screenshot({clip});
+    await marker.evaluate(el=>{el.style.visibility='';});
+    assert.deepEqual(before,without,'領域外の描画はマーカーの有無で変化しない');
+  };
+  await outer.evaluate(el=>{el.scrollTop=25;});
+  await page.waitForFunction(()=>parseFloat(document.querySelector('[data-harvest-collection-marker]').style.top)===document.querySelector('a').getBoundingClientRect().top);
+  assert.equal(await marker.isVisible(),true,'部分クリップでは可視部分を残す');
+  await noLeak({x:70,y:150,width:280,height:50});
+  const visible=await page.screenshot({clip:{x:102,y:202,width:180,height:23}});
+  await marker.evaluate(el=>{el.style.visibility='hidden';});
+  const unmarked=await page.screenshot({clip:{x:102,y:202,width:180,height:23}});
+  await marker.evaluate(el=>{el.style.visibility='';});
+  assert.notDeepEqual(visible,unmarked,'可視部分には実際に発光が描かれる');
+  await page.evaluate(()=>window.reply({canExport:false}));
+  await noLeak({x:70,y:150,width:280,height:50});
+  await outer.evaluate(el=>{el.scrollTop=100;});
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('[data-harvest-collection-clip]')).display==='none');
+  assert.equal(await marker.isVisible(),false);
+  await outer.evaluate(el=>{el.scrollTop=0;el.scrollLeft=80;});
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('[data-harvest-collection-clip]')).display==='block');
+  await noLeak({x:20,y:180,width:80,height:180});
+  await outer.evaluate(el=>{el.scrollLeft=0;});
+  await page.waitForFunction(()=>parseFloat(document.querySelector('[data-harvest-collection-marker]').style.left)===document.querySelector('a').getBoundingClientRect().left);
+  assert.equal(await marker.isVisible(),true);
+  await page.evaluate(()=>{const inner=document.querySelector('#inner');inner.style.height='25px';});
+  await page.waitForFunction(()=>document.querySelector('[data-harvest-collection-clip]').style.clipPath.includes('373px'));
+  await noLeak({x:102,y:227,width:218,height:50});
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.evaluate(()=>window.disconnectCollection());
+  await page.waitForFunction(()=>document.querySelectorAll('[data-harvest-collection-clip]').length===0);
+  assert.equal(await page.locator('[data-harvest-collection-clip]').count(),0);
+});
