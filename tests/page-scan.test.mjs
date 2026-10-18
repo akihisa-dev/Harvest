@@ -1262,3 +1262,20 @@ test("疑似要素の読み取り中も20秒期限で停止し監視を解放す
   } finally { Object.defineProperty(globalThis, "performance", {configurable: true, value: previous}); }
   assert.equal(disconnected, true);
 });
+
+
+test('srcsetは密度の指数・小数とASCII空白を扱い、不正指定を除く', async () => {
+  for (const [descriptor, expected] of [
+    ['1e1x', 'large.jpg'], ['10x', 'large.jpg'], ['.5x', 'large.jpg'],
+    ['0.5x', 'large.jpg'], ['5E-1x', 'large.jpg'], ['2x', 'big%C2%A0picture.jpg'],
+    ['1.5w', 'small.jpg'], ['1e3w', 'small.jpg'], ['0w', 'small.jpg'],
+    ['+2x', 'small.jpg'], ['1.x', 'small.jpg'], ['Infinityx', 'small.jpg'],
+    ['1e999x', 'small.jpg'], ['2x 3x', 'small.jpg'], ['-2x', 'small.jpg'],
+  ]) {
+    const large = descriptor === '2x' ? 'big\u00a0picture.jpg' : 'large.jpg';
+    const image = new FixtureElement('img', {srcset: `/small.jpg 0.1x, /${large} ${descriptor}`}, [], {currentSrc: 'https://example.test/small.jpg'});
+    const result = await runWithFixture(new FixtureDocument(new FixtureElement('html', {}, [image])), undefined, () => scanDocument());
+    assert.deepEqual(new Set(result.images), new Set(['https://example.test/small.jpg', `https://example.test/${expected}`]), descriptor);
+    assert.deepEqual(new Set(result.media.map(item => item.url)), new Set(result.images), descriptor);
+  }
+});

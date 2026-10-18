@@ -505,10 +505,11 @@ export async function scanDocument(targetPostId, framesOnly = false) {
     };
     const parseSrcset = (value) => {
         const entries = [];
+        const trimAscii = (text) => text.replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, "");
         let index = 0;
         while (index < value.length) {
             checkDeadline();
-            while (index < value.length && (value[index] === "," || /\s/.test(value[index] ?? ""))) {
+            while (index < value.length && (value[index] === "," || /[ \t\n\r\f]/.test(value[index] ?? ""))) {
                 if (index % 256 === 0)
                     checkDeadline();
                 index += 1;
@@ -521,7 +522,7 @@ export async function scanDocument(targetPostId, framesOnly = false) {
             while (index < value.length) {
                 if (index % 256 === 0)
                     checkDeadline();
-                if (/\s/.test(value[index] ?? "")) {
+                if (/[ \t\n\r\f]/.test(value[index] ?? "")) {
                     whitespace = index;
                     break;
                 }
@@ -530,9 +531,9 @@ export async function scanDocument(targetPostId, framesOnly = false) {
                     const afterComma = value.slice(index + 1);
                     // A comma can also be part of a URL. Without whitespace, split only
                     // when both sides look like separate image filenames.
-                    if (/\s/.test(value[index + 1] ?? "") ||
+                    if (/[ \t\n\r\f]/.test(value[index + 1] ?? "") ||
                         (/\.(?:jpe?g|png|webp|avif|gif)$/i.test(beforeComma) &&
-                            /^[^\s,]+\.(?:jpe?g|png|webp|avif|gif)(?=[\s,?#]|$)/i.test(afterComma))) {
+                            /^[^ \t\n\r\f,]+\.(?:jpe?g|png|webp|avif|gif)(?=[ \t\n\r\f,?#]|$)/i.test(afterComma))) {
                         commaSeparator = index;
                         break;
                     }
@@ -542,24 +543,26 @@ export async function scanDocument(targetPostId, framesOnly = false) {
             // Keep commas inside URLs such as /scan,page.jpg while recognizing
             // image filename pairs with or without whitespace after the comma.
             if (commaSeparator >= 0) {
-                entries.push({ url: value.slice(start, commaSeparator).trim(), value: 0, kind: null });
+                entries.push({ url: trimAscii(value.slice(start, commaSeparator)), value: 0, kind: null });
                 index = commaSeparator + 1;
                 continue;
             }
             if (whitespace < 0) {
                 const rest = value.slice(start);
-                entries.push({ url: rest.trim(), value: 0, kind: null });
+                entries.push({ url: trimAscii(rest), value: 0, kind: null });
                 break;
             }
-            const url = value.slice(start, whitespace).trim();
+            const url = trimAscii(value.slice(start, whitespace));
             const comma = value.indexOf(",", whitespace);
-            const descriptorText = (comma < 0 ? value.slice(whitespace) : value.slice(whitespace, comma)).trim();
-            const descriptor = descriptorText.match(/^(\d+(?:\.\d+)?)(w|x)$/i);
-            entries.push({
-                url,
-                value: descriptor ? Number(descriptor[1]) : 0,
-                kind: descriptor ? (descriptor[2] ?? "").toLowerCase() : null,
-            });
+            const descriptorText = trimAscii(comma < 0 ? value.slice(whitespace) : value.slice(whitespace, comma));
+            const width = descriptorText.match(/^(\d+)w$/);
+            const density = descriptorText.match(/^(-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)x$/);
+            const number = Number((width ?? density)?.[1]);
+            if (!descriptorText)
+                entries.push({ url, value: 0, kind: null });
+            else if (Number.isFinite(number) && (width ? number > 0 : density && number >= 0)) {
+                entries.push({ url, value: number, kind: width ? "w" : "x" });
+            }
             if (comma < 0)
                 break;
             index = comma + 1;
