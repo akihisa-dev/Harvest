@@ -63,7 +63,9 @@ export async function convertImage(
     await withFormatImage(fetched.blob, signal, () => {});
     return fetched.blob;
   }
-  if (format === "png" && fetched.kind === "bitmap" && await isDecodablePng(fetched.blob, signal)) return fetched.blob;
+  if (format === "png" && fetched.kind === "bitmap" && await isDecodablePng(fetched.blob, signal)) {
+    return fetched.blob.type === "image/png" ? fetched.blob : new Blob([fetched.blob], {type: "image/png"});
+  }
 
   return withFormatImage(fetchedBlob(fetched), signal, async image => {
     const {width, height} = image;
