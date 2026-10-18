@@ -3,8 +3,16 @@ import { t } from "./localization.js";
 /** Format choices last for this panel; only the source-page preference is persisted. */
 export function bindExportPreferences(options) {
     const { session, elements } = options;
+    const updatePreference = (update) => {
+        const retryRequired = session.state.view.phase === "retry-required";
+        update();
+        const phase = session.state.view.phase;
+        if (retryRequired && (phase === "ready" || phase === "empty")) {
+            options.onStatus(t("exportSettingsChanged"), "info");
+        }
+    };
     elements.includeSourcePage.addEventListener("change", () => {
-        session.setIncludeSourcePage(elements.includeSourcePage.checked);
+        updatePreference(() => session.setIncludeSourcePage(elements.includeSourcePage.checked));
         if (!saveSourcePagePreference(session.includeSourcePage)) {
             session.invalidateCompletion();
             options.onStatus(t("errorSavePreference"), "error");
@@ -15,7 +23,7 @@ export function bindExportPreferences(options) {
         input.addEventListener("change", () => {
             if (!input.checked)
                 return;
-            session.setFormat(format);
+            updatePreference(() => session.setFormat(format));
             options.onSelectionChange();
         });
     }
@@ -23,7 +31,7 @@ export function bindExportPreferences(options) {
         input.addEventListener("change", () => {
             if (!input.checked)
                 return;
-            session.setVideoFormat(format);
+            updatePreference(() => session.setVideoFormat(format));
             options.onSelectionChange();
         });
     }
