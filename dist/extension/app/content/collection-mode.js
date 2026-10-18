@@ -16,6 +16,7 @@ export function captureCollectionLinks(session) {
     const pendingClicks = new Map();
     const analyzedLinks = new Map();
     const markedTargets = new Map();
+    const scrollRoots = new Set();
     const targetAnchors = new WeakMap();
     const overlayElements = new WeakSet();
     // Each fading overlay has one animation owner, including hover ghosts.
@@ -134,6 +135,7 @@ export function captureCollectionLinks(session) {
             }
         }
         redrawMarkedTargets();
+        syncScrollRoots();
         if (busy)
             hideGlow();
         else
@@ -272,6 +274,7 @@ export function captureCollectionLinks(session) {
         }
         state.overlay.style.boxShadow = desiredGlow(url);
         positionGlow(target, state.overlay);
+        syncScrollRoots();
     };
     const redrawMarkedTargets = () => {
         for (const [target, state] of markedTargets) {
@@ -395,6 +398,7 @@ export function captureCollectionLinks(session) {
             redrawFrame = null;
             pruneDetachedTargets();
             redrawMarkedTargets();
+            syncScrollRoots();
             redrawHover();
         });
     };
@@ -413,6 +417,44 @@ export function captureCollectionLinks(session) {
         onLeave();
         pruneDetachedTargets();
         scheduleRedraw();
+    };
+    // Element scroll events stop at shadow boundaries. Subscribe only to the
+    // composed ancestors of marked targets, including slots and nested roots.
+    const syncScrollRoots = () => {
+        const next = new Set();
+        for (const target of markedTargets.keys()) {
+            for (let element = target; element;) {
+                const root = element.getRootNode?.();
+                const shadow = root && "host" in root ? root : null;
+                if (shadow)
+                    next.add(shadow);
+                element = element.assignedSlot ?? element.parentElement ?? shadow?.host ?? null;
+            }
+        }
+        let changed = false;
+        for (const root of scrollRoots) {
+            if (next.has(root))
+                continue;
+            root.removeEventListener("scroll", onScroll, true);
+            scrollRoots.delete(root);
+            changed = true;
+        }
+        for (const root of next) {
+            if (scrollRoots.has(root))
+                continue;
+            root.addEventListener("scroll", onScroll, true);
+            scrollRoots.add(root);
+            changed = true;
+        }
+        if (!changed)
+            return;
+        // Rebind to release removed roots as well as detect moves within a marked
+        // shadow tree. Every redraw still shares the existing single-frame queue.
+        observer.disconnect();
+        const options = { childList: true, subtree: true, attributes: true, characterData: true };
+        observer.observe(document.documentElement, options);
+        for (const root of scrollRoots)
+            observer.observe(root, options);
     };
     const onResize = () => {
         onLeave();
@@ -463,6 +505,9 @@ export function captureCollectionLinks(session) {
         window.removeEventListener("hashchange", onPageChange);
         window.removeEventListener("pagehide", onPageHide);
         observer.disconnect();
+        for (const root of scrollRoots)
+            root.removeEventListener("scroll", onScroll, true);
+        scrollRoots.clear();
         resizeObserver?.disconnect();
         document.fonts?.removeEventListener("loadingdone", scheduleRedraw);
         document.removeEventListener("click", onClick, true);
