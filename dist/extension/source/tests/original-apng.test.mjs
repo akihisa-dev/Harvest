@@ -43,3 +43,26 @@ test('APNGは全フレームの宣言・制御・データ・シーケンスを�
   for (const part of poster) if (['fcTL', 'fdAT'].includes(type(part))) part.writeUInt32BE(sequence++, 8);
   assert.ok(hasCompletePng(assemble(poster)), '先頭の静止画像をアニメーションから除く構成も保持する');
 });
+
+
+test('正式APNG MIMEもPNGと同じ完全性検査を通し、原本bytesと拡張子を保持する', async t => {
+  const {fetchOriginalMedia, originalMediaExtension} = await import('../dist/extension/app/media/media-fetch.js');
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const parts = chunks(apng);
+  const last = parts.findLastIndex(part => type(part) === 'fcTL');
+  const missing = assemble(parts.filter((part, index) => index < last || type(part) === 'IEND'));
+  const corrupt = Buffer.from(apng); corrupt[corrupt.length - 1] ^= 1;
+  for (const mime of ['image/png', 'image/apng']) {
+    globalThis.fetch = async () => new Response(apng, {headers: {'content-type': mime}});
+    const result = await fetchOriginalMedia('https://example.test/animation', 'image');
+    assert.equal(result.type, 'image/png');
+    assert.equal(originalMediaExtension(mime), 'png');
+    assert.deepEqual(Buffer.from(await result.arrayBuffer()), apng);
+    for (const bytes of [missing, corrupt]) {
+      await assert.rejects(validateOriginalMedia(new Blob([bytes], {type: mime})), /不完全|破損/);
+      globalThis.fetch = async () => new Response(bytes, {headers: {'content-type': mime}});
+      await assert.rejects(fetchOriginalMedia('https://example.test/animation', 'image'), /不完全|破損/);
+    }
+  }
+});

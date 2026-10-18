@@ -105,7 +105,8 @@ const mediaTypes: Readonly<Record<string, MediaType>> = {
 };
 
 export function normalizeMediaMimeType(mimeType: string): string {
-  return mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  const normalized = mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  return normalized === "image/apng" ? "image/png" : normalized;
 }
 
 export function originalMediaType(mimeType: string): MediaType | undefined {

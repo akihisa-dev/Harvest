@@ -1,3 +1,4 @@
+import {normalizeMediaMimeType} from "../../core/media-types.js";
 import {BlobSource, EncodedPacketSink, Input, MP4} from "harvest-vendor-mediabunny";
 import {hasCompleteGif, hasCompleteMp4Boxes} from "../../core/original-media-structure.js";
 import {inspectJpegStructure} from "../../core/jpeg.js";
@@ -12,18 +13,19 @@ const validatedMedia = new WeakSet<Blob>();
 
 /** Inspect structure and declared samples without codec support requirements or re-encoding. */
 export async function validateOriginalMedia(blob: Blob, signal?: AbortSignal): Promise<void> {
-  if (!["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif", "image/heic", "image/heif", "video/mp4", "video/webm"].includes(blob.type)) return;
+  const mimeType = normalizeMediaMimeType(blob.type);
+  if (!["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif", "image/heic", "image/heif", "video/mp4", "video/webm"].includes(mimeType)) return;
   checkCancelled(signal);
   if (validatedMedia.has(blob)) return;
   const bytes = new Uint8Array(await blob.arrayBuffer());
   checkCancelled(signal);
   const invalid = (): Error => invalidImage("メディアのデータが不完全または破損しています。");
-  if (blob.type !== "video/mp4") {
-    const valid = blob.type === "image/jpeg" ? inspectJpegStructure(bytes)
-      : blob.type === "image/png" ? hasCompletePng(bytes)
-        : blob.type === "video/webm" ? hasCompleteWebm(bytes)
-          : blob.type === "image/webp" ? ["static", "animated"].includes(inspectWebpAnimation(bytes) ?? "")
-            : ["image/avif", "image/heic", "image/heif"].includes(blob.type) ? await validateIsoImage(bytes, signal) : hasCompleteGif(bytes);
+  if (mimeType !== "video/mp4") {
+    const valid = mimeType === "image/jpeg" ? inspectJpegStructure(bytes)
+      : mimeType === "image/png" ? hasCompletePng(bytes)
+        : mimeType === "video/webm" ? hasCompleteWebm(bytes)
+          : mimeType === "image/webp" ? ["static", "animated"].includes(inspectWebpAnimation(bytes) ?? "")
+            : ["image/avif", "image/heic", "image/heif"].includes(mimeType) ? await validateIsoImage(bytes, signal) : hasCompleteGif(bytes);
     if (!valid) throw invalid();
     checkCancelled(signal);
     validatedMedia.add(blob);

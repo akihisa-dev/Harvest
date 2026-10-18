@@ -92,7 +92,8 @@ const mediaTypes = {
     },
 };
 export function normalizeMediaMimeType(mimeType) {
-    return mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+    const normalized = mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+    return normalized === "image/apng" ? "image/png" : normalized;
 }
 export function originalMediaType(mimeType) {
     return mediaTypes[normalizeMediaMimeType(mimeType)];
