@@ -306,7 +306,7 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
     if (!value) return;
     for (const match of value.matchAll(mediaUrlPattern)) {
       checkDeadline();
-      const decoded = (match[0] ?? "").replaceAll("&amp;", "&");
+      const decoded = (match[0] ?? "");
       let candidate = trimTextUrl(decoded);
       if (!/[?#]/.test(decoded)) candidate = candidate.replace(/!+$/, "");
       const kind = mediaKindForUrl(candidate);
@@ -452,7 +452,7 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
       checkDeadline();
       const candidate = trimTextUrl(match[0]);
       if (candidate && relativeImagePathPattern.test(candidate.split(/[?#]/, 1)[0] ?? "")) {
-        add(candidate.replaceAll("&amp;", "&"), positionElement, sourceElement);
+        add(candidate, positionElement, sourceElement);
       }
     }
     scanMediaText(value, sourceElement);

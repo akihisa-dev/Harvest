@@ -469,3 +469,34 @@ test("実Chromeの本文URLで句読点を除き、URL自身の括弧・クエ�
     assert.deepEqual(normalizeImageUrls(results[index],"https://example.test/"), expected ? [expected.split("#")[0]] : [], input);
   }
 });
+
+
+test('復号済みのDOM・JSON画像URLにHTML実体参照の復号を重ねない', async t => {
+  const source = await readFile(new URL('../dist/extension/app/content/page-scan.js', import.meta.url), 'utf8');
+  const browser = await launchBrowser(t), page = await browser.newPage();
+  await page.route('**/*', route => route.abort());
+  for (const extension of ['jpg', 'png', 'gif']) {
+    for (const mode of ['json', 'text', 'attribute', 'img', 'combined', 'html']) {
+      const url = `https://cdn.example.test/photo.${extension}?width=800&amp;token=synthetic`;
+      await page.setContent('<main></main>');
+      const result = await page.evaluate(async ({source, mode, url}) => {
+        const moduleUrl = URL.createObjectURL(new Blob([source], {type: 'text/javascript'}));
+        const {scanDocument} = await import(moduleUrl); URL.revokeObjectURL(moduleUrl);
+        const main = document.querySelector('main');
+        if (mode === 'html') main.innerHTML = `<img src="${url}">`;
+        for (const kind of mode === 'combined' ? ['json', 'text', 'attribute', 'img'] : [mode]) {
+          const node = document.createElement({json: 'script', text: 'p', attribute: 'div', img: 'img'}[kind] ?? 'div');
+          if (kind === 'json') node.textContent = JSON.stringify({image: url});
+          if (kind === 'text') node.textContent = url;
+          if (kind === 'attribute') node.setAttribute('data-resource', url);
+          if (kind === 'img') node.setAttribute('src', url);
+          main.append(node);
+        }
+        return scanDocument();
+      }, {source, mode, url});
+      const expected = mode === 'html' ? url.replace('&amp;', '&') : url;
+      assert.deepEqual(result.images, [expected], `${extension}/${mode}`);
+      assert.deepEqual(result.media.map(item => item.url), [expected], `${extension}/${mode}`);
+    }
+  }
+});
