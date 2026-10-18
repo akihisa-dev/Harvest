@@ -1,3 +1,4 @@
+import {indexMediaRanges, type MediaRangeContains} from "./iso-media-ranges.js";
 import {isoBoxes, type IsoBox} from "./iso-boxes.js";
 import {hasCompleteImageTracks} from "./original-image-tracks.js";
 import {hasCompleteMp4Boxes} from "./original-media-structure.js";
@@ -7,7 +8,9 @@ export function hasCompleteIsoImage(bytes: Uint8Array): boolean {
   try {
     const top = selectedBoxes(bytes, 0, bytes.length, ["meta", "moov"]);
     const meta = top.get("meta"), movie = top.get("moov");
-    if (movie && (!hasCompleteMp4Boxes(bytes) || !hasCompleteImageTracks(bytes, movie))) return false;
+    if (!meta && !movie) return false;
+    const containsMedia = indexMediaRanges(bytes);
+    if (movie && (!hasCompleteMp4Boxes(bytes) || !hasCompleteImageTracks(bytes, movie, containsMedia))) return false;
     if (!meta) {
       if (!movie) return false;
       return selectedBoxes(bytes, movie.dataStart, movie.end, ["trak"]).has("trak");
@@ -25,7 +28,7 @@ export function hasCompleteIsoImage(bytes: Uint8Array): boolean {
     let hasProperty = false;
     for (const _box of isoBoxes(bytes, container.dataStart, container.end)) hasProperty = true;
     if (!hasProperty) return false;
-    return validItemLocations(bytes, children.get("iloc")!, children.get("idat"));
+    return validItemLocations(bytes, children.get("iloc")!, children.get("idat"), containsMedia);
   } catch {
     return false;
   }
@@ -38,7 +41,7 @@ function selectedBoxes(bytes: Uint8Array, start: number, end: number, types: rea
   return selected;
 }
 
-function validItemLocations(bytes: Uint8Array, box: IsoBox, idat: IsoBox | undefined): boolean {
+function validItemLocations(bytes: Uint8Array, box: IsoBox, idat: IsoBox | undefined, containsMedia: MediaRangeContains): boolean {
   let offset = box.dataStart;
   const read = (width: number): number => {
     if (width > 8 || offset + width > box.end) throw new Error("Invalid item location");
@@ -71,12 +74,7 @@ function validItemLocations(bytes: Uint8Array, box: IsoBox, idat: IsoBox | undef
         return Number.isSafeInteger(absolute + length) && absolute >= range.dataStart &&
           absolute < range.end && (length === 0 || absolute + length <= range.end);
       };
-      let stored = method === 1 && !!idat && fits(idat);
-      if (method === 0) {
-        for (const range of isoBoxes(bytes, 0, bytes.length)) {
-          if (range.type === "mdat" && fits(range)) { stored = true; break; }
-        }
-      }
+      const stored = method === 1 ? !!idat && fits(idat) : containsMedia(start, length);
       if (!stored) return false;
       storedExtents++;
     }

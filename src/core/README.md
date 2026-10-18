@@ -83,3 +83,5 @@ ISO画像に動画トラックがある場合は[original-image-tracks.ts](origi
 `image/apng`は保存形式の判定時に`image/png`へ正規化します。原本のバイト列とPNGの拡張子を保ち、通常のPNGと同じ全フレーム・CRC検査を通します。
 
 明示PNG保存では、シグネチャと復号可能性を確認した原本PNGを再圧縮せず再利用し、配信ヘッダーの有無や誤りによらず出力のMIMEを`image/png`へ揃えます。
+
+AVIFのmdat範囲は`iso-media-ranges.ts`で一度索引化し、項目のextentと動画チャンクで共有して二分探索します。固定回数のtop-level走査後は全boxを読み直しません。保持するのは非空mdatの開始・終端だけで、Float64Arrayへ1区間16バイトで格納します。全box・extent・サンプルのオブジェクト配列は作らず、Worker中断と期限も維持します。

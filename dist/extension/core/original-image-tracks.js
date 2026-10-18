@@ -29,17 +29,8 @@ function reader(bytes, box) {
         return value;
     };
 }
-function fitsMedia(bytes, start, length) {
-    if (!Number.isSafeInteger(start + length) || length <= 0)
-        return false;
-    for (const box of isoBoxes(bytes, 0, bytes.length)) {
-        if (box.type === "mdat" && start >= box.dataStart && start + length <= box.end)
-            return true;
-    }
-    return false;
-}
 /** Validate declared samples without retaining per-sample or per-chunk objects. */
-export function hasCompleteImageTracks(bytes, movie) {
+export function hasCompleteImageTracks(bytes, movie, containsMedia) {
     let tracks = 0;
     for (const track of isoBoxes(bytes, movie.dataStart, movie.end)) {
         if (track.type !== "trak")
@@ -48,12 +39,12 @@ export function hasCompleteImageTracks(bytes, movie) {
         const media = required(children(bytes, track, ["mdia"]), "mdia");
         const info = required(children(bytes, media, ["minf"]), "minf");
         const table = required(children(bytes, info, ["stbl"]), "stbl");
-        if (!validSamples(bytes, table))
+        if (!validSamples(bytes, table, containsMedia))
             return false;
     }
     return tracks > 0;
 }
-function validSamples(bytes, table) {
+function validSamples(bytes, table, containsMedia) {
     const boxes = children(bytes, table, ["stsz", "stz2", "stsc", "stco", "co64", "stts"]);
     if (boxes.has("stsz") === boxes.has("stz2") || boxes.has("stco") === boxes.has("co64"))
         return false;
@@ -113,7 +104,7 @@ function validSamples(bytes, table) {
                 return false;
             length += value;
         }
-        if (!fitsMedia(bytes, offset(8 + (chunk - 1) * offsetWidth, offsetWidth), length))
+        if (!containsMedia(offset(8 + (chunk - 1) * offsetWidth, offsetWidth), length))
             return false;
     }
     return sample === sampleCount;

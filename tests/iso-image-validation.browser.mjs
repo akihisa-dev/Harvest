@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {animationPanel} from './support/animation-panel.mjs';
-import {staticAvif, animatedAvif} from './iso-image-fixtures.mjs';
+import {staticAvif, animatedAvif, extentAvif} from './iso-image-fixtures.mjs';
 
 test('ISO画像原本の実Worker検査は中止でき、次の正常原本を検査できる', async t => {
   const {page} = await animationPanel(t, new Map());
@@ -23,4 +23,24 @@ test('ISO画像原本の実Worker検査は中止でき、次の正常原本を�
     return {ticked, aborted, valid, created, terminated, detached: bytes.byteLength === 0};
   }, [[...staticAvif], [...animatedAvif]]);
   assert.deepEqual(result, {ticked: true, aborted: 'AbortError', valid: [true, true], created: 3, terminated: 3, detached: true});
+});
+
+
+test('多extentと多数free boxのAVIFを独立したChromeデコーダーで元画像と画素比較する', async t => {
+  const {page} = await animationPanel(t, new Map());
+  const fixtures = [staticAvif, ...[1000, 2000, 4000].map(count => extentAvif(count))];
+  const results = await page.evaluate(async fixtures => {
+    const {validateIsoImage} = await import(chrome.runtime.getURL('app/media/iso-image-validation.js'));
+    return Promise.all(fixtures.map(async data => {
+      const bytes = new Uint8Array(data), image = await createImageBitmap(new Blob([bytes], {type: 'image/avif'}));
+      try {
+        const canvas = new OffscreenCanvas(image.width,image.height), context = canvas.getContext('2d');
+        context.drawImage(image,0,0);
+        const pixels = [...context.getImageData(0,0,image.width,image.height).data];
+        return {valid: await validateIsoImage(bytes), width: image.width, height: image.height, pixels};
+      } finally {image.close();}
+    }));
+  }, fixtures.map(bytes => [...bytes]));
+  assert.equal(results[0].valid, true);
+  for (const result of results.slice(1)) assert.deepEqual(result, results[0]);
 });

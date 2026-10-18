@@ -1,3 +1,4 @@
+import type {MediaRangeContains} from "./iso-media-ranges.js";
 import {isoBoxes, type IsoBox} from "./iso-boxes.js";
 
 function children(bytes: Uint8Array, parent: IsoBox, types: readonly string[]): Map<string, IsoBox> {
@@ -24,16 +25,8 @@ function reader(bytes: Uint8Array, box: IsoBox) {
     return value;
   };
 }
-function fitsMedia(bytes: Uint8Array, start: number, length: number): boolean {
-  if (!Number.isSafeInteger(start + length) || length <= 0) return false;
-  for (const box of isoBoxes(bytes, 0, bytes.length)) {
-    if (box.type === "mdat" && start >= box.dataStart && start + length <= box.end) return true;
-  }
-  return false;
-}
-
 /** Validate declared samples without retaining per-sample or per-chunk objects. */
-export function hasCompleteImageTracks(bytes: Uint8Array, movie: IsoBox): boolean {
+export function hasCompleteImageTracks(bytes: Uint8Array, movie: IsoBox, containsMedia: MediaRangeContains): boolean {
   let tracks = 0;
   for (const track of isoBoxes(bytes, movie.dataStart, movie.end)) {
     if (track.type !== "trak") continue;
@@ -41,11 +34,11 @@ export function hasCompleteImageTracks(bytes: Uint8Array, movie: IsoBox): boolea
     const media = required(children(bytes, track, ["mdia"]), "mdia");
     const info = required(children(bytes, media, ["minf"]), "minf");
     const table = required(children(bytes, info, ["stbl"]), "stbl");
-    if (!validSamples(bytes, table)) return false;
+    if (!validSamples(bytes, table, containsMedia)) return false;
   }
   return tracks > 0;
 }
-function validSamples(bytes: Uint8Array, table: IsoBox): boolean {
+function validSamples(bytes: Uint8Array, table: IsoBox, containsMedia: MediaRangeContains): boolean {
   const boxes = children(bytes, table, ["stsz", "stz2", "stsc", "stco", "co64", "stts"]);
   if (boxes.has("stsz") === boxes.has("stz2") || boxes.has("stco") === boxes.has("co64")) return false;
   const sizes = boxes.get("stsz") ?? required(boxes, "stz2");
@@ -89,7 +82,7 @@ function validSamples(bytes: Uint8Array, table: IsoBox): boolean {
       if (!value) return false;
       length += value;
     }
-    if (!fitsMedia(bytes, offset(8 + (chunk - 1) * offsetWidth, offsetWidth), length)) return false;
+    if (!containsMedia(offset(8 + (chunk - 1) * offsetWidth, offsetWidth), length)) return false;
   }
   return sample === sampleCount;
 }

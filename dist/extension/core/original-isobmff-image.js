@@ -1,3 +1,4 @@
+import { indexMediaRanges } from "./iso-media-ranges.js";
 import { isoBoxes } from "./iso-boxes.js";
 import { hasCompleteImageTracks } from "./original-image-tracks.js";
 import { hasCompleteMp4Boxes } from "./original-media-structure.js";
@@ -6,7 +7,10 @@ export function hasCompleteIsoImage(bytes) {
     try {
         const top = selectedBoxes(bytes, 0, bytes.length, ["meta", "moov"]);
         const meta = top.get("meta"), movie = top.get("moov");
-        if (movie && (!hasCompleteMp4Boxes(bytes) || !hasCompleteImageTracks(bytes, movie)))
+        if (!meta && !movie)
+            return false;
+        const containsMedia = indexMediaRanges(bytes);
+        if (movie && (!hasCompleteMp4Boxes(bytes) || !hasCompleteImageTracks(bytes, movie, containsMedia)))
             return false;
         if (!meta) {
             if (!movie)
@@ -31,7 +35,7 @@ export function hasCompleteIsoImage(bytes) {
             hasProperty = true;
         if (!hasProperty)
             return false;
-        return validItemLocations(bytes, children.get("iloc"), children.get("idat"));
+        return validItemLocations(bytes, children.get("iloc"), children.get("idat"), containsMedia);
     }
     catch {
         return false;
@@ -45,7 +49,7 @@ function selectedBoxes(bytes, start, end, types) {
             selected.set(box.type, box);
     return selected;
 }
-function validItemLocations(bytes, box, idat) {
+function validItemLocations(bytes, box, idat, containsMedia) {
     let offset = box.dataStart;
     const read = (width) => {
         if (width > 8 || offset + width > box.end)
@@ -86,15 +90,7 @@ function validItemLocations(bytes, box, idat) {
                 return Number.isSafeInteger(absolute + length) && absolute >= range.dataStart &&
                     absolute < range.end && (length === 0 || absolute + length <= range.end);
             };
-            let stored = method === 1 && !!idat && fits(idat);
-            if (method === 0) {
-                for (const range of isoBoxes(bytes, 0, bytes.length)) {
-                    if (range.type === "mdat" && fits(range)) {
-                        stored = true;
-                        break;
-                    }
-                }
-            }
+            const stored = method === 1 ? !!idat && fits(idat) : containsMedia(start, length);
             if (!stored)
                 return false;
             storedExtents++;
