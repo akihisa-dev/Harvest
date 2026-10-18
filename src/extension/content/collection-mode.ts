@@ -238,6 +238,14 @@ export function captureCollectionLinks(session: string): void {
       return root && "host" in root ? (root as ShadowRoot).host : null;
     };
     for (let parent = parentOf(target); parent; parent = parentOf(parent)) {
+      // Root overflow clips the viewport itself. When the root is visible,
+      // HTML body overflow is propagated to that same viewport as well.
+      // Their scrolling client boxes are not nested clipping rectangles.
+      if (parent === document.documentElement) continue;
+      if (parent === document.body) {
+        const rootStyle = getComputedStyle(document.documentElement);
+        if (rootStyle.overflowX === "visible" && rootStyle.overflowY === "visible") continue;
+      }
       const style = getComputedStyle(parent);
       const clipsX = /^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowX);
       const clipsY = /^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowY);

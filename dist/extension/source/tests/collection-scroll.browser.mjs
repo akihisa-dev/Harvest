@@ -105,3 +105,24 @@ test('祖先overflowの縦横・入れ子の表示範囲で発光を切り取り
   await page.waitForFunction(()=>document.querySelectorAll('[data-harvest-collection-clip]').length===0);
   assert.equal(await page.locator('[data-harvest-collection-clip]').count(),0);
 });
+
+
+for (const viewportOverflow of ['html','body']) test(`ページ全体の${viewportOverflow}スクロールで可視リンクの発光を隠さない`, async t => {
+  const browser=await launchBrowser(t),page=await browser.newPage({viewport:{width:600,height:600},reducedMotion:'reduce'});
+  await page.setContent(`<!doctype html><style>html{overflow:${viewportOverflow === 'html' ? 'auto' : 'visible'}}body{margin:0;height:${viewportOverflow === 'html' ? '2200px' : '100vh'};overflow:${viewportOverflow === 'body' ? 'auto' : 'visible'}}a{position:absolute;left:100px;top:1200px;display:block;width:160px;height:40px;background:#eee}#spacer{height:2200px}</style><a href="https://example.test/scrolled">Scrolled target</a><div id="spacer"></div>`);
+  await startCollection(page);
+  await page.evaluate(()=>scrollTo(0,1000));
+  await mark(page,page.getByText('Scrolled target',{exact:true}),'https://example.test/scrolled');
+  assert.ok(await page.evaluate(()=>scrollY>=1000));
+  const marker=page.locator('[data-harvest-collection-marker]');
+  assert.equal(await marker.isVisible(),true);
+  const before=await page.screenshot({clip:{x:80,y:180,width:200,height:80}});
+  await marker.evaluate(el=>{el.style.visibility='hidden';});
+  const without=await page.screenshot({clip:{x:80,y:180,width:200,height:80}});
+  assert.notDeepEqual(before,without,'画面内にある対象の発光が実際に描かれる');
+  await marker.evaluate(el=>{el.style.visibility='';});
+  await page.evaluate(()=>scrollBy(0,50));
+  await page.waitForFunction(()=>parseFloat(document.querySelector('[data-harvest-collection-marker]').style.top)===document.querySelector('a').getBoundingClientRect().top);
+  assert.equal(await marker.isVisible(),true);
+  await page.evaluate(()=>window.disconnectCollection());
+});
