@@ -868,6 +868,7 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
     const pendingTextElements = new Set<Element>();
     const pendingRemovedElements = new Set<Element>();
     let pendingFlushPromise: Promise<void> | undefined;
+    let observedBaseURI = document.baseURI;
     let observer: MutationObserver | undefined;
     let resolveWait: (() => void) | undefined;
     let quietTimer: ReturnType<typeof setTimeout> | undefined;
@@ -895,7 +896,14 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
     const flushPending = (): Promise<void> => {
       if (pendingFlushPromise) return pendingFlushPromise;
       const run = async (): Promise<void> => {
-        while (pendingElements.size > 0 || pendingTextElements.size > 0 || pendingRemovedElements.size > 0) {
+        for (;;) {
+          // A base change affects other elements' relative references. Rebuild
+          // their evidence together while keeping independently owned absolute URLs.
+          if (document.baseURI !== observedBaseURI) {
+            observedBaseURI = document.baseURI;
+            pendingElements.add(root);
+          }
+          if (!pendingElements.size && !pendingTextElements.size && !pendingRemovedElements.size) break;
           const removed = [...pendingRemovedElements];
           pendingRemovedElements.clear();
           for (const element of removed) {
