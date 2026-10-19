@@ -41,7 +41,7 @@ export function createMixedExportController(options: MixedExportControllerOption
     async export(settings: SplitExportSettings & {readonly resolvedImageFormat?: ResolvedImageExportFormat}): Promise<void> {
       let percentage: boolean | undefined;
       await operation.start({
-        createWork:selected => ({...settings,selected,resolvedImageFormat:settings.resolvedImageFormat ?? resolveImageExportFormat(settings.imageFormat,selected),prepared:new Map<ImageItem,PreparedMixedItem>(),failed:new Map<ImageItem,string>(),saved:new Set<ImageItem>()}),
+        createWork:selected => ({...settings,selected,audioFilename:options.getZipFilename(),resolvedImageFormat:settings.resolvedImageFormat ?? resolveImageExportFormat(settings.imageFormat,selected),prepared:new Map<ImageItem,PreparedMixedItem>(),failed:new Map<ImageItem,string>(),saved:new Set<ImageItem>()}),
         isCompatible:pending => splitSettingsMatch(pending,settings),
         preparationProgress(work, completed, total) {
           return (percentage ??= usesPercentageProgress(work))

@@ -7,7 +7,7 @@ import {convertImage} from "./image-format.js";
 
 /** Artwork is optional; cancellation and audio conversion failures still propagate. */
 export async function prepareAudioWithCover(
-  item: ImageItem, ...options: Parameters<typeof prepareAudio>
+  item: ImageItem, title: string, ...options: Parameters<typeof prepareAudio>
 ): Promise<Blob> {
   const [, signal, maxBytes = MAX_IMAGE_BYTES] = options;
   const audio = await prepareAudio(...options);
@@ -18,7 +18,7 @@ export async function prepareAudioWithCover(
     const image = await convertImage(fetched, "jpg", signal);
     checkCancelled(signal);
     if (image.size > 4 * 1024 * 1024) return audio;
-    const tag = createMp3CoverTag(new Uint8Array(await image.arrayBuffer()), "image/jpeg");
+    const tag = createMp3CoverTag(new Uint8Array(await image.arrayBuffer()), "image/jpeg", title);
     checkCancelled(signal);
     if (tag.length + audio.size > Math.min(maxBytes, MAX_IMAGE_BYTES)) return audio;
     return new Blob([tag, audio], {type: "audio/mpeg"});

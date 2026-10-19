@@ -4,7 +4,7 @@ import { prepareAudio } from "./audio-conversion.js";
 import { fetchImage } from "./image-fetch.js";
 import { convertImage } from "./image-format.js";
 /** Artwork is optional; cancellation and audio conversion failures still propagate. */
-export async function prepareAudioWithCover(item, ...options) {
+export async function prepareAudioWithCover(item, title, ...options) {
     const [, signal, maxBytes = MAX_IMAGE_BYTES] = options;
     const audio = await prepareAudio(...options);
     checkCancelled(signal);
@@ -16,7 +16,7 @@ export async function prepareAudioWithCover(item, ...options) {
         checkCancelled(signal);
         if (image.size > 4 * 1024 * 1024)
             return audio;
-        const tag = createMp3CoverTag(new Uint8Array(await image.arrayBuffer()), "image/jpeg");
+        const tag = createMp3CoverTag(new Uint8Array(await image.arrayBuffer()), "image/jpeg", title);
         checkCancelled(signal);
         if (tag.length + audio.size > Math.min(maxBytes, MAX_IMAGE_BYTES))
             return audio;

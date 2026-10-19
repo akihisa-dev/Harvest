@@ -35,7 +35,7 @@ test('MP3個別保存と混在ZIPに動画のカバーを埋め込み、取得�
       const selected = [video, ...(mixed ? [{url: `${base}/cover.png`, sourcePage, selected: true, kind: 'image'}] : [])];
       let status, completed = false;
       const controller = createMixedExportController({
-        getSelectedItems: () => selected, getZipFilename: () => 'covered.zip', getPdfFilename: () => 'covered.pdf',
+        getSelectedItems: () => selected, getZipFilename: () => '涼宮ハルヒ 🎵.zip', getPdfFilename: () => 'covered.pdf',
         isBusy: () => false, isDisposed: () => false, onBusyChange() {}, onCloseViewer() {}, onClearSourceUrl() {}, onScrollToFailures() {},
         onStatus(message, state) {status = {message, state};}, onCompleted() {completed = true;},
       });
@@ -55,16 +55,24 @@ test('MP3個別保存と混在ZIPに動画のカバーを埋め込み、取得�
   const audio = await download('cover.png');
   const cover = readCover(audio);
   assert.equal(cover.mime, 'image/jpeg');
-  const playback = await fixture.evaluate(async ({audio, image}) => {
-    const bitmap = await createImageBitmap(new Blob([new Uint8Array(image)], {type: 'image/jpeg'}));
+  assert.equal(cover.title, '涼宮ハルヒ 🎵');
+  const playback = await fixture.evaluate(async audio => {
+    const {Input, BlobSource, ALL_FORMATS} = await import('/mediabunny.js');
+    const input = new Input({formats: ALL_FORMATS, source: new BlobSource(new Blob([new Uint8Array(audio)]))});
+    let metadata;
+    try {metadata = await input.getMetadataTags();} finally {input.dispose();}
+    const image = metadata.images[0];
+    const bitmap = await createImageBitmap(new Blob([image.data], {type: image.mimeType}));
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height), pixels = canvas.getContext('2d');
     pixels.drawImage(bitmap, 0, 0); bitmap.close();
     const context = new AudioContext();
     try {
       const decoded = await context.decodeAudioData(new Uint8Array(audio).buffer);
-      return {pixel: [...pixels.getImageData(0, 0, 1, 1).data], duration: decoded.duration};
+      return {title: metadata.title, kind: image.kind, pixel: [...pixels.getImageData(0, 0, 1, 1).data], duration: decoded.duration};
     } finally {await context.close();}
-  }, {audio: [...audio], image: [...cover.image]});
+  }, [...audio]);
+  assert.equal(playback.title, '涼宮ハルヒ 🎵');
+  assert.equal(playback.kind, 'coverFront');
   assert.ok(playback.pixel[0] > 240 && playback.pixel[1] < 15 && playback.pixel[2] < 15);
   assert.ok(playback.duration > .15 && playback.duration < .35);
   const zip = await download('cover.png', true);
@@ -75,6 +83,7 @@ test('MP3個別保存と混在ZIPに動画のカバーを埋め込み、取得�
     at = start + size;
   }
   assert.deepEqual(readCover(embedded).image, cover.image);
+  assert.equal(readCover(embedded).title, '涼宮ハルヒ 🎵_001');
   for (const preview of [null, 'missing.png', 'broken.png']) {
     const plain = await download(preview);
     assert.deepEqual(plain, audio.subarray(cover.audioOffset), '画像なし・取得失敗・壊れた画像でも音声を維持する');
@@ -86,7 +95,7 @@ test('MP3個別保存と混在ZIPに動画のカバーを埋め込み、取得�
     const sourcePage = document.querySelector('#source-url').value;
     const item = {url: new URL('/movie.mp4', sourcePage).href, sourcePage, previewUrl: new URL('/cover.png', sourcePage).href};
     const plain = await prepareAudio(input);
-    const limited = await prepareAudioWithCover(item, input, undefined, plain.size);
+    const limited = await prepareAudioWithCover(item, '境界テスト', input, undefined, plain.size);
     const controller = new AbortController();
     const nativeFetch = window.fetch;
     window.fetch = (...args) => {
@@ -94,7 +103,7 @@ test('MP3個別保存と混在ZIPに動画のカバーを埋め込み、取得�
       return nativeFetch(...args);
     };
     let cancelled;
-    try {await prepareAudioWithCover(item, input, controller.signal);} catch (error) {cancelled = error.kind ?? error.name;}
+    try {await prepareAudioWithCover(item, '境界テスト', input, controller.signal);} catch (error) {cancelled = error.kind ?? error.name;}
     finally {window.fetch = nativeFetch;}
     return {plain: [...new Uint8Array(await plain.arrayBuffer())], limited: [...new Uint8Array(await limited.arrayBuffer())], cancelled};
   }, movie);

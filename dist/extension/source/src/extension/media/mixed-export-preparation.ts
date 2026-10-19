@@ -1,5 +1,6 @@
 import type {ImageItem} from "../../core/images.js";
 import type {PdfImagePage} from "../../core/pdf-types.js";
+import {individualFilename} from "../../core/export-files.js";
 import {originalMediaType} from "../../core/media-types.js";
 import type {ResolvedImageExportFormat} from "../../core/export-recommendations.js";
 import {indexedExportFilename, type SplitExportSettings} from "../../core/split-export-formats.js";
@@ -22,6 +23,7 @@ export type PreparedMixedItem = {readonly blob: Blob} | {readonly page: PdfImage
 export interface MixedExportWork extends MutablePendingExport<PreparedMixedItem>, SplitExportSettings {
   readonly resolvedImageFormat: ResolvedImageExportFormat;
   readonly saved: Set<ImageItem>;
+  readonly audioFilename?: string;
   savingStarted?: boolean;
 }
 interface Options {
@@ -93,7 +95,8 @@ export async function prepareMixedExport(work: MixedExportWork, options: Options
           if (outcome.kind !== "media") throw new Error("選択項目と保存データの形式が一致しません。");
           const input = outcome.blob;
           const onProgress = (fraction: number): void => itemProgress(index, .7 + .29 * fraction);
-          prepared = {blob:work.videoFormat === "original" ? input : work.videoFormat === "mp3" ? await prepareAudioWithCover(item,input,options.signal,limit-size,onProgress) : await prepareMp4(input,options.signal,limit-size,onProgress)};
+          const title = individualFilename(work.audioFilename ?? "Harvest.zip", indexedExportFilename(work.selected.indexOf(item), work.selected.length, "mp3"), work.selected.length).replace(/\.mp3$/i, "");
+          prepared = {blob:work.videoFormat === "original" ? input : work.videoFormat === "mp3" ? await prepareAudioWithCover(item,title,input,options.signal,limit-size,onProgress) : await prepareMp4(input,options.signal,limit-size,onProgress)};
         } else if (imageFormat === "original") {
           if (outcome.kind !== "media") throw new Error("選択項目と保存データの形式が一致しません。");
           prepared = {blob:outcome.blob};
