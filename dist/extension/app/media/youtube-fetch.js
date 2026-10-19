@@ -56,7 +56,7 @@ export function prepareYoutubeMp4(video, audio, durations, signal) {
     });
 }
 /** One deadline covers authorization, retries, transfer, muxing, and validation. */
-export async function fetchYoutubeVideo(source, signal) {
+export async function fetchYoutubeVideo(source, signal, onProgress) {
     checkCancelled(signal);
     const controller = new AbortController();
     let reject;
@@ -67,7 +67,7 @@ export async function fetchYoutubeVideo(source, signal) {
     try {
         if (signal?.aborted)
             abort();
-        return await Promise.race([fetchYoutubeWithinDeadline(source, controller.signal), interrupted]);
+        return await Promise.race([fetchYoutubeWithinDeadline(source, controller.signal, onProgress), interrupted]);
     }
     finally {
         clearTimeout(timer);
@@ -75,7 +75,7 @@ export async function fetchYoutubeVideo(source, signal) {
     }
 }
 /** Refresh playback evidence per retry; never reuse partial data across tokens. */
-async function fetchYoutubeWithinDeadline(source, signal) {
+async function fetchYoutubeWithinDeadline(source, signal, onProgress) {
     let lastError;
     for (let attempt = 0; attempt < 2; attempt++) {
         checkCancelled(signal);
@@ -106,6 +106,10 @@ async function fetchYoutubeWithinDeadline(source, signal) {
                 if (totalTransferred > MAX_IMAGE_BYTES * 3)
                     throw new Error("YouTubeの動画配信が取得を継続できませんでした。");
                 session.ingest(bytes);
+                const fraction = video.contentLength > 0 && audio.contentLength > 0
+                    ? session.receivedBytes / (video.contentLength + audio.contentLength)
+                    : session.progressMs / Math.max(video.durationMs, audio.durationMs);
+                onProgress?.(Math.min(.95, .95 * fraction));
                 const progressed = session.receivedBytes > before;
                 if (progressed)
                     lastProgressAt = performance.now();
@@ -118,6 +122,7 @@ async function fetchYoutubeWithinDeadline(source, signal) {
             checkCancelled(signal);
             const blob = await prepareYoutubeMp4(new Blob([output.video], { type: "video/mp4" }), new Blob([output.audio], { type: "audio/mp4" }), output.durations, signal);
             await validateOriginalMedia(blob, signal);
+            onProgress?.(1);
             return blob;
         }
         catch (error) {

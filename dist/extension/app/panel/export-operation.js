@@ -20,7 +20,8 @@ export function createExportOperation(options) {
             const work = lifecycle.resolveWork(selected, () => request.createWork(selected), request.isCompatible);
             const remaining = work.selected.filter(item => !work.prepared.has(item));
             const retry = work.failed.size > 0;
-            await lifecycle.run(work, request.preparationMessage(retry, 0, remaining.length), `0 / ${remaining.length}`, async (run) => {
+            const progress = (completed, total) => request.preparationProgress?.(work, completed, total) ?? `${completed} / ${total}`;
+            await lifecycle.run(work, request.preparationMessage(retry, 0, remaining.length), progress(0, remaining.length), async (run) => {
                 await request.run({
                     work,
                     remaining,
@@ -29,7 +30,7 @@ export function createExportOperation(options) {
                     get stopped() { return run.stopped; },
                     reportStatus: run.reportStatus,
                     reportPreparation(completed, total) {
-                        run.reportStatus(request.preparationMessage(retry, completed, total), "busy", `${completed} / ${total}`);
+                        run.reportStatus(request.preparationMessage(retry, Math.floor(completed), total), "busy", progress(completed, total));
                     },
                     complete() {
                         if (run.stopped)

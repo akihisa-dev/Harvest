@@ -50,11 +50,23 @@ export async function prepareMixedExport(work: MixedExportWork, options: Options
     return {promise,resolve};
   });
   const concurrency = remaining.some(item => item.kind === "video" || item.kind === "gif" || item.recommendedFormat === "gif" || imageFormat === "original") ? 1 : 3;
+  const fractions = remaining.map(() => 0);
+  let completedUnits = 0;
+  const itemProgress = (index: number, fraction: number): void => {
+    if (options.isStopped() || !Number.isFinite(fraction)) return;
+    const next = Math.max(fractions[index]!, Math.min(.99, Math.max(0, fraction)));
+    completedUnits += next - fractions[index]!;
+    fractions[index] = next;
+    options.onProgress(completedUnits, remaining.length);
+  };
   const workers = createPreparationWorkers(remaining.length,concurrency,options.signal,async (index,signal,release) => {
     const item = remaining[index]!;
     try {
       const original = item.kind === "video" || imageFormat === "original";
-      if (original) results[index]!.resolve({kind:"media",blob:item.youtube ? await fetchYoutubeVideo(item.youtube,signal) : await fetchOriginalMedia(item.url,item.kind ?? "image",{signal,sourcePage:item.sourcePage}),release});
+      if (original) {
+        const onProgress = item.kind === "video" ? (fraction: number) => itemProgress(index, fraction * (work.videoFormat === "original" ? .95 : .7)) : undefined;
+        results[index]!.resolve({kind:"media",blob:item.youtube ? await fetchYoutubeVideo(item.youtube,signal,onProgress) : await fetchOriginalMedia(item.url,item.kind ?? "image",{signal,sourcePage:item.sourcePage,...(onProgress ? {onProgress} : {})}),release});
+      }
       else {
         const knownGif = item.kind === "gif" || item.recommendedFormat === "gif";
         results[index]!.resolve({kind:"image",fetched:await fetchImage(item.url,{signal,sourcePage:item.sourcePage,...(knownGif ? {timeoutMs:DEFAULT_MEDIA_TIMEOUT_MS} : {})}),release});
@@ -80,7 +92,8 @@ export async function prepareMixedExport(work: MixedExportWork, options: Options
         if (item.kind === "video") {
           if (outcome.kind !== "media") throw new Error("選択項目と保存データの形式が一致しません。");
           const input = outcome.blob;
-          prepared = {blob:work.videoFormat === "original" ? input : work.videoFormat === "mp3" ? await prepareAudio(input,options.signal,limit-size) : await prepareMp4(input,options.signal,limit-size)};
+          const onProgress = (fraction: number): void => itemProgress(index, .7 + .29 * fraction);
+          prepared = {blob:work.videoFormat === "original" ? input : work.videoFormat === "mp3" ? await prepareAudio(input,options.signal,limit-size,onProgress) : await prepareMp4(input,options.signal,limit-size,onProgress)};
         } else if (imageFormat === "original") {
           if (outcome.kind !== "media") throw new Error("選択項目と保存データの形式が一致しません。");
           prepared = {blob:outcome.blob};
@@ -107,7 +120,9 @@ export async function prepareMixedExport(work: MixedExportWork, options: Options
         if (error instanceof ImageArchiveLimitError) throw error;
         work.failed.set(item,error instanceof Error ? error.message : "保存するデータを準備できませんでした。");
       } finally {results[index]=undefined;outcome.release();}
-      options.onProgress(index+1,remaining.length);
+      completedUnits += 1 - fractions[index]!;
+      fractions[index] = 1;
+      options.onProgress(completedUnits,remaining.length);
     }
   } finally {workers.abort();await completion;}
 }

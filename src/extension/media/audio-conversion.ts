@@ -1,8 +1,8 @@
-import { isAudioConversionReply, type AudioConversionRequest } from "../contracts/worker-contracts.js";
+import { isConversionProgress, isAudioConversionReply, type AudioConversionRequest } from "../contracts/worker-contracts.js";
 import { checkCancelled, MAX_IMAGE_BYTES } from "../contracts/image-data-contract.js";
 
 /** One worker owns one conversion and is released on completion, failure, timeout, or cancellation. */
-export function prepareAudio(blob: Blob, signal?: AbortSignal, maxBytes = MAX_IMAGE_BYTES): Promise<Blob> {
+export function prepareAudio(blob: Blob, signal?: AbortSignal, maxBytes = MAX_IMAGE_BYTES, onProgress?: (fraction: number) => void): Promise<Blob> {
   checkCancelled(signal);
   if (!["video/mp4", "video/webm"].includes(blob.type)) return Promise.reject(new Error("選択項目と保存データの形式が一致しません。"));
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) return Promise.reject(new Error("音声データが保存容量の上限を超えています。"));
@@ -22,6 +22,8 @@ export function prepareAudio(blob: Blob, signal?: AbortSignal, maxBytes = MAX_IM
     const abort = (): void => finish(new DOMException("音声の取り出しを中止しました。", "AbortError"));
     const timeout = setTimeout(() => finish(new Error("音声の取り出しがタイムアウトしました。")), 120_000);
     worker.onmessage = (event: MessageEvent<unknown>) => {
+      if (finished) return;
+      if (isConversionProgress(event.data)) {onProgress?.(event.data.progress); return;}
       if (!isAudioConversionReply(event.data)) finish(new Error("音声を取り出した結果が空です。"));
       else if (event.data.error) finish(new Error(event.data.error));
       else if (event.data.blob && event.data.blob.size > Math.min(maxBytes, MAX_IMAGE_BYTES)) finish(new Error("音声データが保存容量の上限を超えています。"));

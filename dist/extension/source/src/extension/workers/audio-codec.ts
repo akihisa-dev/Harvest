@@ -2,11 +2,12 @@ import {AudioSampleSink, BlobSource, Input, MP4, WEBM} from "harvest-vendor-medi
 import {Mp3Encoder} from "../../core/mp3-encoder.js";
 
 /** Decode with the existing video reader; MP3 compression and framing are our own core code. */
-export async function extractAudio(blob: Blob, maxBytes: number): Promise<Blob> {
+export async function extractAudio(blob: Blob, maxBytes: number, onProgress?: (fraction: number) => void): Promise<Blob> {
   const input = new Input({formats: [MP4, WEBM], source: new BlobSource(blob)});
   try {
     const track = await input.getPrimaryAudioTrack();
     if (!track) throw new Error("この動画には音声がありません。");
+    const duration = onProgress ? await track.computeDuration() : 0;
     let encoder: Mp3Encoder | undefined, firstTimestamp = 0, position = 0;
     for await (const sample of new AudioSampleSink(track).samples()) {
       try {
@@ -31,6 +32,7 @@ export async function extractAudio(blob: Blob, maxBytes: number): Promise<Blob> 
           return plane.subarray(Math.min(sample.numberOfFrames, Math.max(0, position - start)));
         });
         encoder.add(planes); position += planes[0]!.length;
+        if (duration > 0) onProgress?.(Math.min(1, (sample.timestamp + sample.numberOfFrames / sample.sampleRate) / duration));
       } finally {sample.close();}
     }
     if (!encoder) throw new Error("音声を取り出した結果が空です。");

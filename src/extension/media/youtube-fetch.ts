@@ -41,7 +41,7 @@ export function prepareYoutubeMp4(video:Blob,audio:Blob,durations:YoutubeTrackDu
 }
 
 /** One deadline covers authorization, retries, transfer, muxing, and validation. */
-export async function fetchYoutubeVideo(source:YoutubeSource,signal?:AbortSignal):Promise<Blob>{
+export async function fetchYoutubeVideo(source:YoutubeSource,signal?:AbortSignal,onProgress?:(fraction:number)=>void):Promise<Blob>{
   checkCancelled(signal);
   const controller=new AbortController();
   let reject!:(error:Error)=>void;
@@ -51,12 +51,12 @@ export async function fetchYoutubeVideo(source:YoutubeSource,signal?:AbortSignal
   const timer=setTimeout(()=>{reject(errors.timeout());controller.abort();},120000);
   try{
     if(signal?.aborted)abort();
-    return await Promise.race([fetchYoutubeWithinDeadline(source,controller.signal),interrupted]);
+    return await Promise.race([fetchYoutubeWithinDeadline(source,controller.signal,onProgress),interrupted]);
   }finally{clearTimeout(timer);signal?.removeEventListener("abort",abort);}
 }
 
 /** Refresh playback evidence per retry; never reuse partial data across tokens. */
-async function fetchYoutubeWithinDeadline(source:YoutubeSource,signal:AbortSignal):Promise<Blob>{
+async function fetchYoutubeWithinDeadline(source:YoutubeSource,signal:AbortSignal,onProgress?:(fraction:number)=>void):Promise<Blob>{
   let lastError:unknown;
   for(let attempt=0;attempt<2;attempt++){
     checkCancelled(signal);
@@ -79,6 +79,10 @@ async function fetchYoutubeWithinDeadline(source:YoutubeSource,signal:AbortSigna
         });
         totalTransferred+=bytes.length;if(totalTransferred>MAX_IMAGE_BYTES*3)throw new Error("YouTubeの動画配信が取得を継続できませんでした。");
         session.ingest(bytes);
+        const fraction=video.contentLength>0&&audio.contentLength>0
+          ? session.receivedBytes/(video.contentLength+audio.contentLength)
+          : session.progressMs/Math.max(video.durationMs,audio.durationMs);
+        onProgress?.(Math.min(.95, .95 * fraction));
         const progressed=session.receivedBytes>before;
         if(progressed)lastProgressAt=performance.now();
         if(!session.complete&&performance.now()-lastProgressAt>=30000)throw new Error("YouTubeの動画配信が取得を継続できませんでした。");
@@ -86,7 +90,7 @@ async function fetchYoutubeWithinDeadline(source:YoutubeSource,signal:AbortSigna
       }
       const output=session.output();checkCancelled(signal);
       const blob=await prepareYoutubeMp4(new Blob([output.video],{type:"video/mp4"}),new Blob([output.audio],{type:"audio/mp4"}),output.durations,signal);
-      await validateOriginalMedia(blob,signal);return blob;
+      await validateOriginalMedia(blob,signal);onProgress?.(1);return blob;
     }catch(error){lastError=error;if(signal?.aborted||!(error instanceof Error)||error.message!==youtubeAuthenticationError)throw error;}
   }
   throw lastError;

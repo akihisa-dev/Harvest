@@ -25,6 +25,7 @@ interface ExportOperationRequest<TWork> {
   readonly createWork: (selected: readonly ImageItem[]) => TWork;
   readonly isCompatible?: (pending: TWork) => boolean;
   readonly preparationMessage: (retry: boolean, completed: number, total: number) => string;
+  readonly preparationProgress?: (work: TWork, completed: number, total: number) => string;
   readonly run: (attempt: ExportAttempt<TWork>) => Promise<void>;
 }
 
@@ -53,7 +54,8 @@ export function createExportOperation<TPrepared, TWork extends MutablePendingExp
       const work = lifecycle.resolveWork(selected, () => request.createWork(selected), request.isCompatible);
       const remaining = work.selected.filter(item => !work.prepared.has(item));
       const retry = work.failed.size > 0;
-      await lifecycle.run(work, request.preparationMessage(retry, 0, remaining.length), `0 / ${remaining.length}`, async run => {
+      const progress = (completed: number, total: number): string => request.preparationProgress?.(work, completed, total) ?? `${completed} / ${total}`;
+      await lifecycle.run(work, request.preparationMessage(retry, 0, remaining.length), progress(0, remaining.length), async run => {
         await request.run({
           work,
           remaining,
@@ -62,7 +64,7 @@ export function createExportOperation<TPrepared, TWork extends MutablePendingExp
           get stopped() { return run.stopped; },
           reportStatus: run.reportStatus,
           reportPreparation(completed, total) {
-            run.reportStatus(request.preparationMessage(retry, completed, total), "busy", `${completed} / ${total}`);
+            run.reportStatus(request.preparationMessage(retry, Math.floor(completed), total), "busy", progress(completed, total));
           },
           complete() {
             if (run.stopped) return;

@@ -91,6 +91,7 @@ declare module "harvest-vendor-mediabunny" {
       audio: {codec: "aac"; bitrate: object};
       showWarnings: boolean;
     }): Promise<Conversion>;
+    onProgress?: (progress: number, processedTime: number) => unknown;
     readonly isValid: boolean;
     readonly discardedTracks: readonly object[];
     execute(): Promise<void>;

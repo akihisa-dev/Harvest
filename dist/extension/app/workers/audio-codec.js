@@ -1,12 +1,13 @@
 import { AudioSampleSink, BlobSource, Input, MP4, WEBM } from "../vendor/mediabunny/index.js";
 import { Mp3Encoder } from "../../core/mp3-encoder.js";
 /** Decode with the existing video reader; MP3 compression and framing are our own core code. */
-export async function extractAudio(blob, maxBytes) {
+export async function extractAudio(blob, maxBytes, onProgress) {
     const input = new Input({ formats: [MP4, WEBM], source: new BlobSource(blob) });
     try {
         const track = await input.getPrimaryAudioTrack();
         if (!track)
             throw new Error("この動画には音声がありません。");
+        const duration = onProgress ? await track.computeDuration() : 0;
         let encoder, firstTimestamp = 0, position = 0;
         for await (const sample of new AudioSampleSink(track).samples()) {
             try {
@@ -35,6 +36,8 @@ export async function extractAudio(blob, maxBytes) {
                 });
                 encoder.add(planes);
                 position += planes[0].length;
+                if (duration > 0)
+                    onProgress?.(Math.min(1, (sample.timestamp + sample.numberOfFrames / sample.sampleRate) / duration));
             }
             finally {
                 sample.close();

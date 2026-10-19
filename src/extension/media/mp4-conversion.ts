@@ -1,9 +1,9 @@
 import {validateOriginalMedia} from "./original-media-validation.js";
-import { isMp4ConversionReply, type Mp4ConversionRequest } from "../contracts/worker-contracts.js";
+import { isConversionProgress, isMp4ConversionReply, type Mp4ConversionRequest } from "../contracts/worker-contracts.js";
 import { checkCancelled, MAX_IMAGE_BYTES } from "../contracts/image-data-contract.js";
 
 /** One worker owns one conversion and is released on completion, failure, timeout, or cancellation. */
-export function prepareMp4(blob: Blob, signal?: AbortSignal, maxBytes = MAX_IMAGE_BYTES): Promise<Blob> {
+export function prepareMp4(blob: Blob, signal?: AbortSignal, maxBytes = MAX_IMAGE_BYTES, onProgress?: (fraction: number) => void): Promise<Blob> {
   checkCancelled(signal);
   if (blob.type === "video/mp4") return validateOriginalMedia(blob, signal).then(() => blob);
   if (blob.type !== "video/webm") return Promise.reject(new Error("選択項目と保存データの形式が一致しません。"));
@@ -24,6 +24,8 @@ export function prepareMp4(blob: Blob, signal?: AbortSignal, maxBytes = MAX_IMAG
     const abort = (): void => finish(new DOMException("動画の変換を中止しました。", "AbortError"));
     const timeout = setTimeout(() => finish(new Error("MP4への変換がタイムアウトしました。")), 120_000);
     worker.onmessage = (event: MessageEvent<unknown>) => {
+      if (finished) return;
+      if (isConversionProgress(event.data)) {onProgress?.(event.data.progress); return;}
       if (!isMp4ConversionReply(event.data)) finish(new Error("MP4への変換結果が空です。"));
       else if (event.data.error) finish(new Error(event.data.error));
       else if (event.data.blob && event.data.blob.size > Math.min(maxBytes, MAX_IMAGE_BYTES)) finish(new Error("MP4変換後の動画が保存容量の上限を超えています。"));

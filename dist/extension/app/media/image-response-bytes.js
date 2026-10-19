@@ -8,7 +8,7 @@ function contentLength(response) {
     return Number.isSafeInteger(length) ? length : undefined;
 }
 /** Read an image response with a hard byte ceiling; the optional limit can only tighten it. */
-export async function readImageBytes(response, requestedLimit = MAX_IMAGE_BYTES) {
+export async function readImageBytes(response, requestedLimit = MAX_IMAGE_BYTES, onProgress) {
     if (!Number.isSafeInteger(requestedLimit) || requestedLimit <= 0) {
         throw new RangeError("requestedLimit must be a positive safe integer.");
     }
@@ -41,6 +41,8 @@ export async function readImageBytes(response, requestedLimit = MAX_IMAGE_BYTES)
             }
             chunks.push(value);
             length += value.byteLength;
+            if (declaredLength && length <= declaredLength)
+                onProgress?.(length / declaredLength);
         }
     }
     finally {

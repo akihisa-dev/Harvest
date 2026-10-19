@@ -4,7 +4,15 @@ const scope = self;
 scope.addEventListener("message", event => {
     if (!isAudioConversionRequest(event.data))
         throw new Error("Workerへの要求が不正です。");
-    void extractAudio(event.data.blob, event.data.maxBytes).then(blob => {
+    let previous = -1;
+    const report = (progress) => {
+        const percent = Math.floor(Math.max(0, Math.min(1, progress)) * 100);
+        if (Number.isFinite(percent) && percent > previous) {
+            previous = percent;
+            scope.postMessage({ progress: percent / 100 });
+        }
+    };
+    void extractAudio(event.data.blob, event.data.maxBytes, report).then(blob => {
         scope.postMessage({ blob });
     }).catch(error => {
         const message = error instanceof Error && /[ぁ-んァ-ヶ一-龯]/u.test(error.message)

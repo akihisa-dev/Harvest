@@ -61,7 +61,18 @@ test('音声MP3を個別/混在保存し、MP3再生・WebM変換・無音拒否
   assert.match(await page.locator('#export-media-hint').innerText(), /音声だけをMP3/);
   await page.setViewportSize({width: 400, height: 400});
   await page.screenshot({path: '/tmp/harvest-audio-format.png'});
+  await page.evaluate(() => {
+    window.audioProgress = [];
+    new MutationObserver(() => {
+      const button = document.querySelector('#export');
+      if (button.dataset.saving === 'true') window.audioProgress.push(button.querySelector('.button-label').textContent);
+    }).observe(document.querySelector('#export'), {subtree: true, childList: true, characterData: true});
+  });
   const output = await saved('recommend');
+  const progress = await page.evaluate(() => window.audioProgress);
+  assert.ok(progress.length > 2);
+  assert.ok(progress.every(label => /^\d+%$/.test(label)), JSON.stringify(progress));
+  assert.ok(progress.some(label => parseInt(label) > 63 && parseInt(label) < 90), '音声変換中にも進捗が更新される');
   assert.match(output.filename, /sound\.mp3$/);
   const source = await inspect(mp4), result = await inspect(output.bytes);
   assert.equal(result.video, false); assert.equal(result.codec, 'mp3');

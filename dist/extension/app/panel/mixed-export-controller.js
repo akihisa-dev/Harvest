@@ -1,7 +1,7 @@
 import { resolveImageExportFormat } from "../../core/export-recommendations.js";
 import { createPdf } from "../../core/pdf.js";
 import { originalMediaType } from "../../core/media-types.js";
-import { indexedExportFilename, pdfSourceFilename, splitSettingsMatch } from "../../core/split-export-formats.js";
+import { indexedExportFilename, isStillImage, pdfSourceFilename, splitSettingsMatch } from "../../core/split-export-formats.js";
 import { individualFilename } from "../../core/export-files.js";
 import { storedZipDataLimit } from "../../core/stored-zip.js";
 import { ImageArchiveLimitError } from "../../core/image-archive.js";
@@ -11,6 +11,10 @@ import { createStoredZipInWorker } from "../media/stored-zip-worker.js";
 import { downloadManagedBlob } from "../browser/managed-download.js";
 import { createExportOperation } from "./export-operation.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
+function usesPercentageProgress(work) {
+    return work.selected.some(item => item.kind === "video")
+        || (work.resolvedImageFormat === "pdf" && work.selected.some(isStillImage));
+}
 /** Prepares every selected item before any download, including the aggregated still-image PDF. */
 export function createMixedExportController(options) {
     const markUnsaved = (work) => {
@@ -32,12 +36,25 @@ export function createMixedExportController(options) {
         get progress() { return operation.progress; },
         clear: operation.clear, abort: operation.abort, discardIfSelectionChanged: operation.discardIfSelectionChanged,
         async export(settings) {
+            let percentage;
             await operation.start({
                 createWork: selected => ({ ...settings, selected, resolvedImageFormat: settings.resolvedImageFormat ?? resolveImageExportFormat(settings.imageFormat, selected), prepared: new Map(), failed: new Map(), saved: new Set() }),
                 isCompatible: pending => splitSettingsMatch(pending, settings),
+                preparationProgress(work, completed, total) {
+                    return (percentage ??= usesPercentageProgress(work))
+                        ? `${Math.floor(90 * (total ? completed / total : 1))}%` : `${completed} / ${total}`;
+                },
                 preparationMessage: (retry, completed, total) => t(retry ? "retryFiles" : "prepareFiles", { completed, total }),
                 async run(run) {
                     const { work } = run;
+                    percentage ??= usesPercentageProgress(work);
+                    let lastPercent = 90;
+                    const finalProgress = (fraction, count) => {
+                        if (!percentage)
+                            return count;
+                        lastPercent = Math.max(lastPercent, Math.min(99, Math.floor(90 + 9 * fraction)));
+                        return `${lastPercent}%`;
+                    };
                     try {
                         if (work.selected.every(item => work.saved.has(item))) {
                             run.complete();
@@ -70,7 +87,7 @@ export function createMixedExportController(options) {
                             }
                         }
                         if (pages.length) {
-                            run.reportStatus(t("pdfCreating"), "busy", `${pages.length} / ${pages.length}`);
+                            run.reportStatus(t("pdfCreating"), "busy", finalProgress(0, `${pages.length} / ${pages.length}`));
                             const filename = indexedExportFilename(pdfIndex, work.selected.length, "pdf");
                             const sourceFilename = pdfSourceFilename(work.selected.length, pdfIndex, entries.length, options.getPdfFilename());
                             const source = work.includeSourcePage ? { heading: t("sourceHeading"), filename: sourceFilename, url: firstPage.sourcePage } : undefined;
@@ -95,7 +112,7 @@ export function createMixedExportController(options) {
                                 const filename = entry.blob.type === "application/pdf" && entries.length === 1 ? options.getPdfFilename()
                                     : individualFilename(options.getZipFilename(), entry.filename, entries.length);
                                 work.savingStarted = true;
-                                run.reportStatus(t("saveFiles", { completed: work.saved.size, total: entries.length }), "busy", `${work.saved.size} / ${entries.length}`);
+                                run.reportStatus(t("saveFiles", { completed: work.saved.size, total: entries.length }), "busy", finalProgress(work.saved.size / entries.length, `${work.saved.size} / ${entries.length}`));
                                 await downloadManagedBlob(entry.blob, filename, run.signal);
                                 if (videosOnly)
                                     work.saved.add(item);
@@ -105,8 +122,8 @@ export function createMixedExportController(options) {
                             }
                         }
                         else {
-                            run.reportStatus(t("zipCreating"), "busy", t("zipCreatingShort"));
-                            const zip = await createStoredZipInWorker(entries, { signal: run.signal, onProgress(completed, total) { run.reportStatus(t("zipCreatingProgress", { completed, total }), "busy", `${completed} / ${total}`); } });
+                            run.reportStatus(t("zipCreating"), "busy", finalProgress(0, t("zipCreatingShort")));
+                            const zip = await createStoredZipInWorker(entries, { signal: run.signal, onProgress(completed, total) { run.reportStatus(t("zipCreatingProgress", { completed, total }), "busy", finalProgress(total ? completed / total : 0, `${completed} / ${total}`)); } });
                             if (run.stopped)
                                 return;
                             work.savingStarted = true;

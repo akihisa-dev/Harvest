@@ -9,7 +9,7 @@ function contentLength(response: Response): number | undefined {
 }
 
 /** Read an image response with a hard byte ceiling; the optional limit can only tighten it. */
-export async function readImageBytes(response: Response, requestedLimit = MAX_IMAGE_BYTES): Promise<Uint8Array> {
+export async function readImageBytes(response: Response, requestedLimit = MAX_IMAGE_BYTES, onProgress?: (fraction: number) => void): Promise<Uint8Array> {
   if (!Number.isSafeInteger(requestedLimit) || requestedLimit <= 0) {
     throw new RangeError("requestedLimit must be a positive safe integer.");
   }
@@ -42,6 +42,7 @@ export async function readImageBytes(response: Response, requestedLimit = MAX_IM
       }
       chunks.push(value);
       length += value.byteLength;
+      if (declaredLength && length <= declaredLength) onProgress?.(length / declaredLength);
     }
   } finally {
     reader.releaseLock();

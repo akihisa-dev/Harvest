@@ -58,7 +58,10 @@ for(const {refresh,chunked,differentDurations} of [
     return new Response(responses[responseIndex++],{headers:{'content-type':'application/vnd.yt-ump'}});
   };
   const scan=await scanYoutube(videoId),source=scan.media[0].youtube;
-  assert.equal('capture' in source,false);const blob=await fetchYoutubeVideo(source);
+  assert.equal('capture' in source,false);const progress=[];const blob=await fetchYoutubeVideo(source,undefined,value=>progress.push(value));
+  assert.ok(progress.length > 1);assert.equal(progress.at(-1),1);
+  assert.ok(progress.every(value=>Number.isFinite(value)&&value>=0&&value<=1));
+  if(chunked)assert.ok(progress.some(value=>value>0&&value<.95),'受信途中にも進捗を通知する');
   const input=new Input({formats:[MP4],source:new BlobSource(blob)});
   try{assert.ok(await input.getPrimaryVideoTrack());assert.ok(await input.getPrimaryAudioTrack());}finally{input.dispose();}
   assert.deepEqual(captures,refresh?[false,true,true]:[false,true]);assert.deepEqual(closed,refresh?[1,2,3]:[1,2]);assert.equal(workers[0].terminated,true);

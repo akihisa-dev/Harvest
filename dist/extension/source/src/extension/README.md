@@ -67,6 +67,8 @@ PDF出典のRTL文字を含む行は、ブラウザーのCanvasでLatin文字や
 
 ## 保存・再試行・ダウンロード
 
+保存ボタン内の進捗は、画像ファイルだけの保存では枚数、動画・音声・PDFを含む保存ではパーセントで表示します。パーセントは準備に0〜90%、出力と保存に残りを割り当て、Chromeが完了を確認するまでは99%以下に保ちます。動画の取得は受信量（YouTubeは総容量が分かる場合は受信量、不明な場合は取得済み区間）、MP4・MP3変換は処理済みの時間から更新します。全体量が不明な処理では時間だけで進捗を増やさず、その処理の完了時に更新します。進捗は処理中のメモリだけに保持します。
+
 [mixed-export-preparation.ts](media/mixed-export-preparation.ts) が全選択項目を準備し、[mixed-export-controller.ts](panel/mixed-export-controller.ts) が静止PDFと個別GIF/動画を組み立てます。一つの出力は直接保存し、複数出力はZIPにまとめます。PDF・画像・ZIPを含む全出力は [managed-download.ts](browser/managed-download.ts) で自分のダウンロードIDの完了を確認します。動画のみのrecommended/MP4は順次保存します。取消・拒否・失敗では入力URLと準備済みデータを保持し、保存済みの個別動画は再試行時に重複保存しません。履歴全体の照会や権限追加は行いません。動画originalの複数出力はZIPです。準備データの合計上限は個別保存でも維持し、全件の準備成功後に保存を開始します。
 
 [export-operation.ts](panel/export-operation.ts) が開始前確認、保存対象の確定、失敗分の選定、準備進捗と完了通知を管理します。[export-lifecycle.ts](panel/export-lifecycle.ts) は選択一致、中断、進捗、終了時の後始末を管理します。旧PDF/画像controllerと単一形式sessionは撤去し、mixed/split経路で安全性を検証します。

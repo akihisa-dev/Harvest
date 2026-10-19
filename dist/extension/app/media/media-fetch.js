@@ -48,7 +48,7 @@ export async function fetchOriginalMedia(url, kind = "image", options = {}) {
         if (!mediaType || !mediaTypeMatchesKind(kind, mediaType.kind)) {
             throw invalidImage("メディアの形式を確認できませんでした。");
         }
-        const bytes = await readImageBytes(response, MAX_IMAGE_BYTES);
+        const bytes = await readImageBytes(response, MAX_IMAGE_BYTES, options.onProgress);
         checkCancelled(sourceSignal);
         if (!mediaType.matches(bytes))
             throw invalidImage("メディアの種類とデータが一致しません。");

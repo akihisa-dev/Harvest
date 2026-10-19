@@ -1,7 +1,7 @@
-import { isAudioConversionReply } from "../contracts/worker-contracts.js";
+import { isConversionProgress, isAudioConversionReply } from "../contracts/worker-contracts.js";
 import { checkCancelled, MAX_IMAGE_BYTES } from "../contracts/image-data-contract.js";
 /** One worker owns one conversion and is released on completion, failure, timeout, or cancellation. */
-export function prepareAudio(blob, signal, maxBytes = MAX_IMAGE_BYTES) {
+export function prepareAudio(blob, signal, maxBytes = MAX_IMAGE_BYTES, onProgress) {
     checkCancelled(signal);
     if (!["video/mp4", "video/webm"].includes(blob.type))
         return Promise.reject(new Error("選択項目と保存データの形式が一致しません。"));
@@ -27,6 +27,12 @@ export function prepareAudio(blob, signal, maxBytes = MAX_IMAGE_BYTES) {
         const abort = () => finish(new DOMException("音声の取り出しを中止しました。", "AbortError"));
         const timeout = setTimeout(() => finish(new Error("音声の取り出しがタイムアウトしました。")), 120_000);
         worker.onmessage = (event) => {
+            if (finished)
+                return;
+            if (isConversionProgress(event.data)) {
+                onProgress?.(event.data.progress);
+                return;
+            }
             if (!isAudioConversionReply(event.data))
                 finish(new Error("音声を取り出した結果が空です。"));
             else if (event.data.error)

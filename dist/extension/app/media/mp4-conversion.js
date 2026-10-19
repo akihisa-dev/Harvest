@@ -1,8 +1,8 @@
 import { validateOriginalMedia } from "./original-media-validation.js";
-import { isMp4ConversionReply } from "../contracts/worker-contracts.js";
+import { isConversionProgress, isMp4ConversionReply } from "../contracts/worker-contracts.js";
 import { checkCancelled, MAX_IMAGE_BYTES } from "../contracts/image-data-contract.js";
 /** One worker owns one conversion and is released on completion, failure, timeout, or cancellation. */
-export function prepareMp4(blob, signal, maxBytes = MAX_IMAGE_BYTES) {
+export function prepareMp4(blob, signal, maxBytes = MAX_IMAGE_BYTES, onProgress) {
     checkCancelled(signal);
     if (blob.type === "video/mp4")
         return validateOriginalMedia(blob, signal).then(() => blob);
@@ -30,6 +30,12 @@ export function prepareMp4(blob, signal, maxBytes = MAX_IMAGE_BYTES) {
         const abort = () => finish(new DOMException("動画の変換を中止しました。", "AbortError"));
         const timeout = setTimeout(() => finish(new Error("MP4への変換がタイムアウトしました。")), 120_000);
         worker.onmessage = (event) => {
+            if (finished)
+                return;
+            if (isConversionProgress(event.data)) {
+                onProgress?.(event.data.progress);
+                return;
+            }
             if (!isMp4ConversionReply(event.data))
                 finish(new Error("MP4への変換結果が空です。"));
             else if (event.data.error)

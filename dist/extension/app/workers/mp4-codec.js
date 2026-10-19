@@ -1,6 +1,6 @@
 import { BlobSource, BufferTarget, Conversion, Input, Mp4OutputFormat, Output, QUALITY_HIGH, WEBM } from "../vendor/mediabunny/index.js";
 /** Converts a validated WebM response locally; an unsupported track must never disappear silently. */
-export async function convertWebmToMp4(blob, maxBytes) {
+export async function convertWebmToMp4(blob, maxBytes, onProgress) {
     const input = new Input({ formats: [WEBM], source: new BlobSource(blob) });
     const target = new BufferTarget();
     const output = new Output({ format: new Mp4OutputFormat(), target });
@@ -21,6 +21,8 @@ export async function convertWebmToMp4(blob, maxBytes) {
         if (!conversion.isValid || conversion.discardedTracks.length) {
             throw new Error("この環境では動画の映像または音声をMP4へ変換できません。");
         }
+        if (onProgress)
+            conversion.onProgress = onProgress;
         await conversion.execute();
         if (!target.buffer?.byteLength)
             throw new Error("MP4への変換結果が空です。");

@@ -32,6 +32,12 @@ export type Mp4ConversionReply =
   | {readonly blob: Blob; readonly error?: never}
   | {readonly error: string; readonly blob?: never};
 
+export interface ConversionProgress {readonly progress: number;}
+export function isConversionProgress(value: unknown): value is ConversionProgress {
+  return record(value) && typeof value["progress"] === "number" && Number.isFinite(value["progress"])
+    && value["progress"] >= 0 && value["progress"] <= 1 && value["blob"] === undefined && value["error"] === undefined;
+}
+
 export interface ZipChecksumRequest {
   readonly id: number;
   readonly blob: Blob;

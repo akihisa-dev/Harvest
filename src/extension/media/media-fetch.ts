@@ -10,6 +10,7 @@ export interface OriginalMediaOptions {
   readonly signal?: AbortSignal;
   readonly sourcePage?: string;
   readonly timeoutMs?: number;
+  readonly onProgress?: (fraction: number) => void;
 }
 
 /** Return a safe file extension for a MIME type that this exporter recognizes. */
@@ -61,7 +62,7 @@ export async function fetchOriginalMedia(
       throw invalidImage("メディアの形式を確認できませんでした。");
     }
 
-    const bytes = await readImageBytes(response, MAX_IMAGE_BYTES);
+    const bytes = await readImageBytes(response, MAX_IMAGE_BYTES, options.onProgress);
     checkCancelled(sourceSignal);
     if (!mediaType.matches(bytes)) throw invalidImage("メディアの種類とデータが一致しません。");
     const blob = new Blob([bytes.buffer as ArrayBuffer], {type: normalizedType});
