@@ -1,7 +1,30 @@
-/** Tracks only the ID returned by this save; never queries the user's download history. */
+import { streamDownloadUrl } from "../../core/stream-recording.js";
+import { inspectStreamRecording, streamAccessError } from "./stream-recording.js";
 export async function downloadManagedBlob(blob, filename, signal) {
     signal.throwIfAborted();
     const url = URL.createObjectURL(blob);
+    try {
+        await downloadManagedUrl(url, filename, signal);
+    }
+    finally {
+        URL.revokeObjectURL(url);
+    }
+}
+/** Chrome streams the authorized original to disk; no Blob or file-size/time ceiling. */
+export async function downloadManagedRecording(recording, filename, signal) {
+    const current = await inspectStreamRecording(recording.pageUrl, signal);
+    const url = streamDownloadUrl(current.pageUrl);
+    await downloadManagedUrl(url, filename, signal, async (id) => {
+        const [item] = await chrome.downloads.search({ id });
+        // An expired login can return a successful HTML download. Never call that a saved recording.
+        if (!item || !["video/mp4", "application/octet-stream"].includes(item.mime?.toLowerCase() ?? "")
+            || !(item.fileSize && item.fileSize > 0) || (current.bytes !== undefined && current.bytes !== item.fileSize))
+            throw new Error(streamAccessError);
+    });
+}
+/** Tracks only the ID returned by this save; never queries the user's download history. */
+async function downloadManagedUrl(url, filename, signal, verify) {
+    signal.throwIfAborted();
     let id;
     let finished = false;
     let resolve;
@@ -72,10 +95,10 @@ export async function downloadManagedBlob(blob, filename, signal) {
                 fail(new Error("Download unavailable"));
         }
         await completion;
+        await verify?.(id);
     }
     finally {
         signal.removeEventListener("abort", abort);
         chrome.downloads.onChanged.removeListener(listener);
-        URL.revokeObjectURL(url);
     }
 }

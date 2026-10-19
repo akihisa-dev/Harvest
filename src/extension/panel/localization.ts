@@ -5,6 +5,9 @@
  */
 
 const english = {
+  errorStreamAccess: "Could not download the recording. Check download permission and your Microsoft 365 sign-in.",
+  errorStreamFile: "Could not identify the recording file. Open its Stream playback page and analyze it.",
+  errorStreamTimeout: "Checking recording download permission timed out. Try again.",
   errorYoutubeHost: "Keep a web page open to save the YouTube video.",
   errorYoutubeTarget: "Could not verify the target YouTube video.",
   errorYoutubeRead: "Could not read the YouTube video information.",
@@ -243,6 +246,9 @@ const english = {
 } as const;
 
 const japanese: {[K in keyof typeof english]: string} = {
+  errorStreamAccess: "録画をダウンロードできません。ダウンロード権限とMicrosoft 365へのログイン状態を確認してください。",
+  errorStreamFile: "録画ファイルを特定できません。Streamの録画再生ページを開いて解析してください。",
+  errorStreamTimeout: "録画のダウンロード権限の確認が時間切れになりました。もう一度お試しください。",
   errorYoutubeHost: "YouTubeの取得にはWebページを開いたタブが必要です。",
   errorYoutubeTarget: "YouTubeの対象動画を確認できませんでした。",
   errorYoutubeRead: "YouTubeの動画情報を読み取れませんでした。",

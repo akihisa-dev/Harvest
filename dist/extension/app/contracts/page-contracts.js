@@ -1,4 +1,5 @@
 import { isYoutubeSource, youtubeVideoId } from "../../core/youtube.js";
+import { isStreamRecording } from "../../core/stream-recording.js";
 function record(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -30,6 +31,7 @@ export function isPageScan(value) {
         && (media === undefined || (Array.isArray(media) && media.every(item => record(item)
             && typeof item["url"] === "string" && (item["kind"] === "image" || item["kind"] === "gif" || item["kind"] === "video")
             && optionalString(item["previewUrl"])
+            && (item["stream"] === undefined || (item["kind"] === "video" && isStreamRecording(item["stream"], item["url"])))
             && (item["youtube"] === undefined || (item["kind"] === "video" && isYoutubeSource(item["youtube"])
                 && youtubeVideoId(item["url"]) === item["youtube"].videoId)))));
 }

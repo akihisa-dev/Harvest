@@ -1,4 +1,5 @@
 import {createVideoSizeLoader} from "../media/video-size.js";
+import {streamRecordingFilename} from "../../core/stream-recording.js";
 import type { ImageCollection } from "../../core/image-collection.js";
 import type { ImageItem } from "../../core/images.js";
 import { reconcileKeyedChildren } from "./motion.js";
@@ -292,7 +293,7 @@ export function createImageListView(options: ImageListViewOptions): ImageListVie
     const overallIndex = collection.positionOf(item)!;
     const busy = options.isBusy();
     const failed = failedItems.has(item);
-    const filename = options.getFilename(item.url);
+    const filename = item.stream ? streamRecordingFilename(item.stream) : options.getFilename(item.url);
     // Capture mutable media fields as values, not the mutable ImageItem identity.
     const state = [index, overallIndex, item.selected, failed, busy, filename,
       item.kind, item.sourcePage, item.previewUrl, options.previewLoader.generation];

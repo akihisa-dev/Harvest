@@ -22,7 +22,7 @@ interface HarvestManifest {
 declare const chrome: {
   downloads: {
     download(options: {url: string; filename: string; conflictAction: "uniquify"}): Promise<number>;
-    search(query: {id: number}): Promise<Array<{id: number; state: string; error?: string}>>;
+    search(query: {id: number}): Promise<Array<{id: number; state: string; error?: string; mime?: string; fileSize?: number}>>;
     cancel(id: number): Promise<void>;
     onChanged: {
       addListener(listener: (delta: {id: number; state?: {current?: string}; error?: {current?: string}}) => void): void;

@@ -1,6 +1,7 @@
 import type { XMediaSnapshot, XPostSnapshot, XScanDiagnostics } from "../../core/x-media.js";
 import {isYoutubeSource, youtubeVideoId} from "../../core/youtube.js";
 import type {MediaImageMetadata} from "../../core/images.js";
+import {isStreamRecording} from "../../core/stream-recording.js";
 
 /** Serializable page evidence shared by injected readers and the extension receiver. */
 export interface PageScan {
@@ -59,6 +60,7 @@ export function isPageScan(value: unknown): value is PageScan {
     && (media === undefined || (Array.isArray(media) && media.every(item => record(item)
       && typeof item["url"] === "string" && (item["kind"] === "image" || item["kind"] === "gif" || item["kind"] === "video")
       && optionalString(item["previewUrl"])
+      && (item["stream"] === undefined || (item["kind"] === "video" && isStreamRecording(item["stream"], item["url"])))
       && (item["youtube"] === undefined || (item["kind"] === "video" && isYoutubeSource(item["youtube"])
         && youtubeVideoId(item["url"]) === item["youtube"].videoId)))));
 }

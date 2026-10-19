@@ -27,6 +27,7 @@ export class ImageCollection {
                 ...(details ? { kind: details.kind } : {}),
                 ...(details?.previewUrl ? { previewUrl: details.previewUrl } : {}),
                 ...(details?.youtube ? { youtube: details.youtube } : {}),
+                ...(details?.stream ? { stream: details.stream } : {}),
             };
         });
         this.initialItems = [...this.orderedItems];
@@ -122,7 +123,7 @@ export class ImageCollection {
     }
     currentGroups() {
         const urls = this.orderedItems.map(item => item.url);
-        const media = this.orderedItems.flatMap(item => item.kind ? [{ url: item.url, kind: item.kind }] : []);
+        const media = this.orderedItems.flatMap(item => item.kind ? [{ url: item.url, kind: item.kind, ...(item.stream ? { stream: item.stream } : {}) }] : []);
         return groupMediaImages(urls, media);
     }
     reindex(groups = this.currentGroups()) {

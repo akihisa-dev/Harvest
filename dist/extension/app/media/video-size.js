@@ -9,6 +9,8 @@ const errors = {
 export async function fetchVideoSize(item, signal) {
     if (item.youtube)
         return item.youtube.bytes ?? null;
+    if (item.stream)
+        return item.stream.bytes ?? null;
     return fetchResponse(item.url, { sourcePage: item.sourcePage, ...(signal ? { signal } : {}), method: "HEAD", timeoutMs: 10000 }, errors, async (response) => {
         const type = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
         const encoding = response.headers.get("content-encoding");

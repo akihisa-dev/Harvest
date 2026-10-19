@@ -5,6 +5,8 @@ import { readFrameLocation } from "../content/frame-location.js";
 import { waitForXPage } from "../content/x-page-state.js";
 import { scanXMedia } from "../content/x-media-scan.js";
 import type { XMediaSnapshot } from "../../core/x-media.js";
+import {isStreamRecordingPage, streamDownloadUrl} from "../../core/stream-recording.js";
+import {inspectStreamRecording} from "./stream-recording.js";
 
 const pageMovedMessage = "解析中にページが移動しました。もう一度解析してください。";
 const abortedMessage = "ページの解析を終了しました。";
@@ -86,8 +88,8 @@ export class PageReadSession {
     }, this.signal);
   }
 
-  scanInitialPage(): Promise<PageScan> {
-    return this.read({
+  async scanInitialPage(): Promise<PageScan> {
+    const page = await this.read({
       func: scanDocument,
       watchRemoval: true,
       failureMessage: "このページを読み取れませんでした。Chromeで開けるWebページを指定してください。",
@@ -98,6 +100,18 @@ export class PageReadSession {
         return result;
       },
     });
+    return this.scanRecording(page);
+  }
+
+  private async scanRecording(page: PageScan): Promise<PageScan> {
+    if (!isStreamRecordingPage(page.url)) return page;
+    // A generic Office document viewer must not be mistaken for a recording.
+    const url = new URL(page.url);
+    if (!/\/stream\.aspx$/i.test(url.pathname) && !/\.mp4(?:$|[?#])/i.test(url.searchParams.get("id") ?? url.searchParams.get("file") ?? "")
+      && !page.media?.some(item => item.kind === "video")) return page;
+    const stream = await inspectStreamRecording(page.url, this.signal);
+    const downloadUrl = streamDownloadUrl(page.url)!;
+    return {...page, images: [], media: [{url: downloadUrl, kind: "video", stream}], hasFrames: false};
   }
 
   async scanFrames(): Promise<PageScan[]> {
@@ -109,9 +123,18 @@ export class PageReadSession {
         };
         chrome.tabs.onRemoved.addListener(onRemoved);
         void (async () => {
-          const scans = await chrome.scripting.executeScript({
+          const rawScans = await chrome.scripting.executeScript({
             target: {tabId: this.tabId, allFrames: true}, func: scanDocument, args: ["", true],
           });
+          if (!active) return;
+          const scans = await Promise.all(rawScans.map(async entry => {
+            if (!isPageScan(entry.result) || !isStreamRecordingPage(entry.result.url)) return entry;
+            try { return {...entry, result: await this.scanRecording(entry.result)}; }
+            catch {
+              // An inaccessible recording must not fall back to playback URLs.
+              return {...entry, result: {...entry.result, images: [], media: []}};
+            }
+          }));
           if (!active) return;
           // Same-URL reloads and detached frames must not publish stale candidates.
           const current = await chrome.scripting.executeScript({

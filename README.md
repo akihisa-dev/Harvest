@@ -94,6 +94,16 @@ Media cannot be saved if the page exposes no playback information or provides on
 
 Conversion workers terminate on success, failure, cancellation, or timeout. Conversion does not send data externally or persist it.
 
+#### Teams recordings in Stream
+
+Open a Teams recording's Stream playback page on your organization's SharePoint/OneDrive (`*.sharepoint.com`), then use **Analyze → select the video → Save**. Stream `stream.aspx` pages identify recordings by file path (`id`) or file GUID (`sourcedoc`/`UniqueId`). MP4 file viewers in OneDrive and embedded SharePoint players are also recognized when the selected MP4 or a video is identifiable. Short sharing links must first resolve to the actual player; legacy Stream Classic and personal OneDrive are outside this route.
+
+Harvest checks the ordinary SharePoint `download.aspx` response with a HEAD request, using the existing same-origin login. Download permission is required; view-only playback permission is insufficient. Rejected requests, login HTML, unsupported responses and redirects fail with an explanation. No playback segments, account tokens, extra Chrome permissions, dependencies or external conversion service are used.
+
+When the selection contains only these recordings, **recommended, MP4 and original** save the original MP4 individually through Chrome's download manager. The recording is streamed to disk without passing through Harvest's Blob/ZIP buffer, so this route has no Harvest 64 MiB or 120-second download limit. Available disk space and browser/server limits still apply. Permission is checked again before saving; completion, reported MIME type and file size are checked before reporting success. Cancellation targets only the current download, and retry skips completed recordings. Chrome avoids overwriting existing files. MP3 conversion and selections mixed with other media retain the existing memory, time and ZIP limits.
+
+Recording URLs and sizes remain only in panel memory until Clear, result changes or panel closure; retry state is also discarded on successful completion. Saved files and Chrome's normal download records remain under browser control. Tests use synthetic responses and a real Chrome download above 64 MiB; authenticated Microsoft 365 playback/download still needs verification on your organization's actual recording page.
+
 #### YouTube URLs
 
 YouTube watch, youtu.be, Shorts, and embed URLs resolve to one video. Timestamp and playlist parameters do not request a clip or a playlist. When the target watch page is already open, analysis only reads its public VOD playback information; it does not scan page images or Shadow DOM, or add a frame. Saving also reuses that page without adding a frame. To obtain current authorization, saving temporarily reloads the video muted, then restores its playback position, volume, speed, and playing/paused state when finished. Otherwise, Harvest creates a hidden retrieval frame inside an existing web page only while needed and removes it afterwards. It does not open a new tab or window. Existing YouTube tabs are preferred; otherwise an existing HTTPS page hosts an embedded player. If no suitable page exists or the page blocks YouTube embeds, Harvest reports failure. This is an ordinary visit to YouTube and may affect YouTube's playback history or other normal site behavior. No account login is automated.
@@ -267,6 +277,16 @@ PDFは画像の元の大きさに合わせて1枚ずつページを作成しま�
 形式を指定しても選択中の項目を種類で除外せず、保存ボタンには選択元の項目数を表示します。動画一覧には取得できたサムネイル、なければ動画を示す印を表示します。
 
 動画はページの動画要素からMP4・WebMのURLを、ページ内の再生情報やXの投稿表示に使われている情報からMP4のURLを取得します。WebMを含む場合も保存形式はMP4で、保存前に変換することを表示します。WebMは映像をH.264、音声をAACに変換し、解像度・フレーム間隔・音声のチャンネル数とサンプルレートを維持します。再圧縮による画質・音質の変化や容量の増減はあり得ます。変換できない映像・音声がある場合は、勝手に取り除かず理由を表示して保存を止めます。
+
+#### Streamで開いたTeamsの会議録画
+
+組織のSharePoint／OneDrive（`*.sharepoint.com`）にある録画のStream再生ページをブラウザーで開き、**解析 → 動画を選択 → 保存**で保存できます。`stream.aspx`のファイルパス（`id`）またはファイルID（`sourcedoc`／`UniqueId`）から対象を特定します。OneDriveのMP4表示画面と埋め込みSharePointプレイヤーも、選択中のMP4または動画を特定できる場合に対象とします。短い共有リンクは実際の再生ページまで開いてください。旧Stream Classicと個人用OneDriveはこの取得経路の対象外です。
+
+通常のSharePointダウンロード先（`download.aspx`）に、同一オリジンのログイン状態を使ってヘッダーだけを確認します。閲覧権限とは別にダウンロード権限が必要です。拒否、ログイン画面、未対応の応答、転送があれば理由を表示し、再生用の分割データへ切り替えません。アカウントのトークン取得、Chrome権限・依存の追加、変換用の外部送信はありません。
+
+録画だけを選択したとき、**recommended・MP4・original**は原本MP4をChromeのダウンロード管理で個別保存します。録画全体をHarvestのメモリやZIPへ読み込まず直接ディスクへ保存するため、この経路にはHarvestの64 MiB・120秒のダウンロード上限を設けません。空き容量とブラウザー・配信元の制限は適用されます。保存直前に取得可否を再確認し、完了通知・形式・ファイルサイズを確認して成功とします。中止は現在のダウンロードだけに作用し、再試行では保存済みの録画を重複保存しません。同名ファイルはChromeが重複を避けます。MP3変換やほかのメディアと混在する選択には、従来のメモリ・時間・ZIP上限が適用されます。
+
+録画URL・容量はパネル内メモリだけに保持し、クリア、結果の変更、パネル終了で破棄します。再試行情報は保存完了時にも破棄します。保存したファイルとChrome通常のダウンロード記録はブラウザーの管理に従います。自動検証では再現用の応答と64 MiBを超える実Chrome保存を使います。認証付きMicrosoft 365での再生・保存は、組織の実際の録画ページでの確認が必要です。
 
 #### YouTubeのURL
 

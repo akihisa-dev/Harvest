@@ -1,7 +1,28 @@
-/** Tracks only the ID returned by this save; never queries the user's download history. */
+import {streamDownloadUrl, type StreamRecording} from "../../core/stream-recording.js";
+import {inspectStreamRecording, streamAccessError} from "./stream-recording.js";
+
 export async function downloadManagedBlob(blob: Blob, filename: string, signal: AbortSignal): Promise<void> {
   signal.throwIfAborted();
   const url = URL.createObjectURL(blob);
+  try { await downloadManagedUrl(url, filename, signal); }
+  finally { URL.revokeObjectURL(url); }
+}
+
+/** Chrome streams the authorized original to disk; no Blob or file-size/time ceiling. */
+export async function downloadManagedRecording(recording: StreamRecording, filename: string, signal: AbortSignal): Promise<void> {
+  const current = await inspectStreamRecording(recording.pageUrl, signal);
+  const url = streamDownloadUrl(current.pageUrl)!;
+  await downloadManagedUrl(url, filename, signal, async id => {
+    const [item] = await chrome.downloads.search({id});
+    // An expired login can return a successful HTML download. Never call that a saved recording.
+    if (!item || !["video/mp4", "application/octet-stream"].includes(item.mime?.toLowerCase() ?? "")
+      || !(item.fileSize && item.fileSize > 0) || (current.bytes !== undefined && current.bytes !== item.fileSize)) throw new Error(streamAccessError);
+  });
+}
+
+/** Tracks only the ID returned by this save; never queries the user's download history. */
+async function downloadManagedUrl(url: string, filename: string, signal: AbortSignal, verify?: (id: number) => Promise<void>): Promise<void> {
+  signal.throwIfAborted();
   let id: number | undefined;
   let finished = false;
   let resolve!: () => void;
@@ -53,9 +74,9 @@ export async function downloadManagedBlob(blob: Blob, filename: string, signal: 
       else fail(new Error("Download unavailable"));
     }
     await completion;
+    await verify?.(id);
   } finally {
     signal.removeEventListener("abort", abort);
     chrome.downloads.onChanged.removeListener(listener);
-    URL.revokeObjectURL(url);
   }
 }

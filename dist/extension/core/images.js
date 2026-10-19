@@ -4,7 +4,7 @@ export function groupMediaImages(urls, metadata = []) {
     const buckets = new Map();
     for (const url of urls) {
         const details = metadataByUrl.get(url);
-        const detected = mediaFormat(url);
+        const detected = details?.stream ? { extension: "MP4" } : mediaFormat(url);
         const kind = details?.kind ?? "image";
         // GIF and video identities take precedence over a file's incidental suffix.
         const extension = kind === "gif" ? "GIF" : kind === "video" ? (detected.extension || "不明") : detected.extension;

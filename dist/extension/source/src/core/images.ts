@@ -1,4 +1,5 @@
 import type {YoutubeSource} from "./youtube.js";
+import type {StreamRecording} from "./stream-recording.js";
 
 export interface ImageItem {
   url: string;
@@ -7,6 +8,7 @@ export interface ImageItem {
   kind?: "image" | "gif" | "video";
   previewUrl?: string;
   youtube?: YoutubeSource;
+  stream?: StreamRecording;
   /** Verified response format for recommend labels; panel memory only. */
   recommendedFormat?: "png" | "gif";
   /** Validated response extension; never persisted outside this panel. */
@@ -23,7 +25,7 @@ export interface ImageGroup {
 
 export type ImageGroups = Record<string, ImageGroup>;
 
-export type MediaImageMetadata = {url: string; kind: "image" | "gif" | "video"; previewUrl?: string; youtube?: YoutubeSource};
+export type MediaImageMetadata = {url: string; kind: "image" | "gif" | "video"; previewUrl?: string; youtube?: YoutubeSource; stream?: StreamRecording};
 
 /** Groups collected media by type and file format while retaining image-series grouping. */
 export function groupMediaImages(urls: readonly string[], metadata: readonly MediaImageMetadata[] = []): ImageGroups {
@@ -31,7 +33,7 @@ export function groupMediaImages(urls: readonly string[], metadata: readonly Med
   const buckets = new Map<string, {kind: "image" | "gif" | "video"; extension: string; urls: string[]}>();
   for (const url of urls) {
     const details = metadataByUrl.get(url);
-    const detected = mediaFormat(url);
+    const detected = details?.stream ? {extension: "MP4"} : mediaFormat(url);
     const kind = details?.kind ?? "image";
     // GIF and video identities take precedence over a file's incidental suffix.
     const extension = kind === "gif" ? "GIF" : kind === "video" ? (detected.extension || "不明") : detected.extension;

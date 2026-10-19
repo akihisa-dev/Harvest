@@ -8,7 +8,9 @@ import { ImageArchiveLimitError } from "../../core/image-archive.js";
 import { prepareMixedExport } from "../media/mixed-export-preparation.js";
 import { prepareSourcePageText } from "../media/pdf-source-glyphs.js";
 import { createStoredZipInWorker } from "../media/stored-zip-worker.js";
-import { downloadManagedBlob } from "../browser/managed-download.js";
+import { downloadManagedBlob, downloadManagedRecording } from "../browser/managed-download.js";
+import { inspectStreamRecording } from "../browser/stream-recording.js";
+import { isStreamRecording } from "../../core/stream-recording.js";
 import { createExportOperation } from "./export-operation.js";
 import { formatPlural, localizeErrorMessage, t } from "./localization.js";
 function usesPercentageProgress(work) {
@@ -57,6 +59,43 @@ export function createMixedExportController(options) {
                     };
                     try {
                         if (work.selected.every(item => work.saved.has(item))) {
+                            run.complete();
+                            return;
+                        }
+                        if (work.videoFormat !== "mp3" && work.selected.every(item => item.kind === "video" && item.stream)) {
+                            work.failed.clear();
+                            const remaining = work.selected.filter(item => !work.saved.has(item));
+                            for (const [index, item] of remaining.entries()) {
+                                if (run.stopped)
+                                    return;
+                                try {
+                                    if (!isStreamRecording(item.stream, item.url))
+                                        throw new Error("録画ファイルを特定できません。Streamの録画再生ページを開いて解析してください。");
+                                    await inspectStreamRecording(item.stream.pageUrl, run.signal);
+                                    run.reportPreparation(index + 1, remaining.length);
+                                }
+                                catch (error) {
+                                    if (run.stopped)
+                                        return;
+                                    work.failed.set(item, error instanceof Error ? error.message : t("errorFileSave"));
+                                }
+                            }
+                            if (work.failed.size) {
+                                options.onCloseViewer();
+                                run.reportStatus(t("fileFailedSummary", { count: work.failed.size, plural: formatPlural(work.failed.size) }), "error");
+                                return;
+                            }
+                            for (const [index, item] of work.selected.entries()) {
+                                if (run.stopped)
+                                    return;
+                                if (work.saved.has(item))
+                                    continue;
+                                const filename = individualFilename(options.getZipFilename(), indexedExportFilename(index, work.selected.length, "mp4"), work.selected.length);
+                                work.savingStarted = true;
+                                run.reportStatus(t("saveFiles", { completed: work.saved.size, total: work.selected.length }), "busy", finalProgress(work.saved.size / work.selected.length, `${work.saved.size} / ${work.selected.length}`));
+                                await downloadManagedRecording(item.stream, filename, run.signal);
+                                work.saved.add(item);
+                            }
                             run.complete();
                             return;
                         }
