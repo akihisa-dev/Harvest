@@ -7,7 +7,7 @@ import { DEFAULT_MEDIA_TIMEOUT_MS, fetchOriginalMedia } from "./media-fetch.js";
 import { fetchImage } from "./image-fetch.js";
 import { prepareRecommendedGif } from "./recommended-gif.js";
 import { prepareAnimatedImage } from "./animated-image.js";
-import { prepareAudio } from "./audio-conversion.js";
+import { prepareAudioWithCover } from "./audio-cover.js";
 import { prepareMp4 } from "./mp4-conversion.js";
 import { convertImage } from "./image-format.js";
 import { decodeImage } from "./image-decode.js";
@@ -87,7 +87,7 @@ export async function prepareMixedExport(work, options) {
                         throw new Error("選択項目と保存データの形式が一致しません。");
                     const input = outcome.blob;
                     const onProgress = (fraction) => itemProgress(index, .7 + .29 * fraction);
-                    prepared = { blob: work.videoFormat === "original" ? input : work.videoFormat === "mp3" ? await prepareAudio(input, options.signal, limit - size, onProgress) : await prepareMp4(input, options.signal, limit - size, onProgress) };
+                    prepared = { blob: work.videoFormat === "original" ? input : work.videoFormat === "mp3" ? await prepareAudioWithCover(item, input, options.signal, limit - size, onProgress) : await prepareMp4(input, options.signal, limit - size, onProgress) };
                 }
                 else if (imageFormat === "original") {
                     if (outcome.kind !== "media")
