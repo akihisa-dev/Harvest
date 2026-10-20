@@ -46,6 +46,7 @@ export function createMixedExportController(options: MixedExportControllerOption
         createWork:selected => ({...settings,selected,audioFilename:options.getZipFilename(),resolvedImageFormat:settings.resolvedImageFormat ?? resolveImageExportFormat(settings.imageFormat,selected),prepared:new Map<ImageItem,PreparedMixedItem>(),failed:new Map<ImageItem,string>(),saved:new Set<ImageItem>()}),
         isCompatible:pending => splitSettingsMatch(pending,settings),
         preparationProgress(work, completed, total) {
+          if (usesDirectRecordingDownload(work.selected, work.videoFormat)) return `${Math.min(99, Math.floor(100 * work.saved.size / work.selected.length))}%`;
           return (percentage ??= usesPercentageProgress(work))
             ? `${Math.floor(90 * (total ? completed / total : 1))}%` : `${completed} / ${total}`;
         },
@@ -62,6 +63,12 @@ export function createMixedExportController(options: MixedExportControllerOption
           try {
             if (work.selected.every(item => work.saved.has(item))) { run.complete(); return; }
             if (usesDirectRecordingDownload(work.selected, work.videoFormat)) {
+              let directPercent = Math.floor(100 * work.saved.size / work.selected.length);
+              const reportDownload = (fraction: number): void => {
+                if (run.stopped) return;
+                directPercent = Math.max(directPercent, Math.min(99, Math.floor(100 * (work.saved.size + fraction) / work.selected.length)));
+                run.reportStatus(t("saveFiles",{completed:work.saved.size,total:work.selected.length}),"busy",`${directPercent}%`);
+              };
               work.failed.clear();
               const remaining = work.selected.filter(item => !work.saved.has(item));
               for (const [index, item] of remaining.entries()) {
@@ -83,9 +90,10 @@ export function createMixedExportController(options: MixedExportControllerOption
                 if (work.saved.has(item)) continue;
                 const filename = individualFilename(options.getZipFilename(), indexedExportFilename(index, work.selected.length, "mp4"), work.selected.length);
                 work.savingStarted = true;
-                run.reportStatus(t("saveFiles",{completed:work.saved.size,total:work.selected.length}),"busy",finalProgress(work.saved.size / work.selected.length, `${work.saved.size} / ${work.selected.length}`));
-                await downloadManagedRecording(item.stream!, filename, run.signal);
+                reportDownload(0);
+                await downloadManagedRecording(item.stream!, filename, run.signal, reportDownload);
                 work.saved.add(item);
+                reportDownload(0);
               }
               run.complete();return;
             }

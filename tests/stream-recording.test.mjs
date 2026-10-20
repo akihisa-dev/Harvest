@@ -199,3 +199,64 @@ for(const count of [1,2])for(const format of ['original','recommend','mp4'])test
  selected=[{url:'https://example.test/one.mp4',sourcePage:pageUrl,selected:true,kind:'video'},{url:'https://example.test/two.mp4',sourcePage:pageUrl,selected:true,kind:'video'}];
  if(format==='original')assert.equal(presentation.resultFilename,'meeting.zip');
 });
+
+function progressClock(t) {
+ let serial=0;const timers=new Map();
+ t.mock.method(globalThis,'setTimeout',(fn,delay)=>{assert.equal(delay,250);timers.set(++serial,fn);return serial;});
+ t.mock.method(globalThis,'clearTimeout',id=>timers.delete(id));
+ return {timers,async step(){const [id,fn]=timers.entries().next().value;timers.delete(id);fn();await tick();}};
+}
+
+test('録画の受信量だけが変わっても自分のIDを照会し、完了で進捗監視を終える',async t=>{
+ head(t);const fake=chromeApi(t),clock=progressClock(t),fractions=[],queries=[];let received=0;
+ const search=fake.api.downloads.search;
+ t.mock.method(fake.api.downloads,'search',async query=>{queries.push(query);return (await search(query)).map(item=>({...item,bytesReceived:received,totalBytes:bytes}));});
+ const work=downloadManagedRecording({pageUrl},'meeting.mp4',new AbortController().signal,value=>fractions.push(value));await tick();
+ for(const fraction of [.01,.5,.99,1]){received=bytes*fraction;await clock.step();}
+ assert.equal(fractions.length,5);
+ for(const [index,expected] of [0,.01,.5,.99,1].entries()) assert.ok(Math.abs(fractions[index]-expected)<1e-12);
+ assert.ok(queries.every(query=>Object.keys(query).join()==='id'&&query.id===1));
+ assert.equal(clock.timers.size,1);fake.finish(1,'complete');await work;
+ assert.equal(clock.timers.size,0);assert.equal(fake.listeners.size,0);
+});
+
+for(const source of ['head','chrome','unknown'])test(`録画の総容量は実データを使い、不明なら時間で増やさない: ${source}`,async t=>{
+ head(t,()=>new Response(null,{headers:{'content-type':'video/mp4',...(source==='head'?{'content-length':String(bytes)}:{})}}));
+ const fake=chromeApi(t),clock=progressClock(t),fractions=[];const search=fake.api.downloads.search;
+ t.mock.method(fake.api.downloads,'search',async query=>(await search(query)).map(item=>({...item,bytesReceived:bytes/2,totalBytes:source==='chrome'?bytes:-1})));
+ const work=downloadManagedRecording({pageUrl},'meeting.mp4',new AbortController().signal,value=>fractions.push(value));await tick();await clock.step();
+ assert.deepEqual(fractions,source==='unknown'?[]:[.5,.5]);fake.finish(1,'complete');await work;assert.equal(clock.timers.size,0);
+});
+
+for(const outcome of ['abort','interrupted','poll-error','late'])test(`転送進捗の監視と遅い応答を解放する: ${outcome}`,async t=>{
+ head(t);const fake=chromeApi(t),clock=progressClock(t),fractions=[],controller=new AbortController();
+ let calls=0,release;const search=fake.api.downloads.search;
+ t.mock.method(fake.api.downloads,'search',async query=>{
+  calls++;
+  if(calls===2&&outcome==='poll-error')throw Error('query failed');
+  if(calls===2&&outcome==='late')return new Promise(resolve=>release=()=>resolve([{id:1,state:'in_progress',bytesReceived:bytes/2,totalBytes:bytes}]));
+  return (await search(query)).map(item=>({...item,bytesReceived:0,totalBytes:bytes}));
+ });
+ const work=downloadManagedRecording({pageUrl},'meeting.mp4',controller.signal,value=>fractions.push(value));const rejected=assert.rejects(work);await tick();
+ if(outcome==='late'||outcome==='poll-error')await clock.step();
+ if(outcome==='abort'||outcome==='late')controller.abort();
+ if(outcome==='interrupted')fake.finish(1,'interrupted',{error:'NETWORK_FAILED'});
+ await rejected;const before=fractions.length;if(release){release();await tick();}
+ assert.equal(clock.timers.size,0);assert.equal(fake.listeners.size,0);assert.equal(fractions.length,before);
+});
+
+test('複数録画の転送と保存済み件数を合算し、中止後は未保存分だけ再試行する',async t=>{
+ head(t);const fake=chromeApi(t),clock=progressClock(t),received=new Map(),updates=[];
+ install(t,'document',{documentElement:{setAttribute(){}},body:{dataset:{}},querySelectorAll:()=>[]});
+ const search=fake.api.downloads.search;t.mock.method(fake.api.downloads,'search',async query=>(await search(query)).map(item=>({...item,bytesReceived:received.get(query.id)??0,totalBytes:bytes})));
+ const selected=[1,2].map(()=>({url,sourcePage:pageUrl,selected:true,kind:'video',stream:{pageUrl,bytes}}));let completed=0;
+ const controller=createMixedExportController({getSelectedItems:()=>selected,getZipFilename:()=> 'meeting.zip',getPdfFilename:()=> 'meeting.pdf',isBusy:()=>false,isDisposed:()=>false,
+  onBusyChange(){},onStatus(_message,state,progress){if(state==='busy')updates.push(progress);},onCloseViewer(){},onClearSourceUrl(){},onCompleted(){completed++;},onScrollToFailures(){}});
+ const settings={imageFormat:'original',videoFormat:'original',includeSourcePage:false};
+ let work=controller.export(settings);await tick();received.set(1,bytes/2);await clock.step();assert.equal(updates.at(-1),'25%');
+ fake.finish(1,'complete');await tick();assert.equal(updates.at(-1),'50%');received.set(2,bytes/2);await clock.step();assert.equal(updates.at(-1),'75%');
+ controller.abort();await work;assert.equal(clock.timers.size,0);assert.equal(completed,0);
+ work=controller.export(settings);await tick();assert.equal(updates.at(-1),'50%');assert.equal(fake.starts.length,3);
+ received.set(3,bytes);await clock.step();assert.equal(updates.at(-1),'99%');assert.equal(completed,0);
+ fake.finish(3,'complete');await work;assert.equal(completed,1);assert.equal(clock.timers.size,0);assert.ok(updates.every(value=>parseInt(value)<100));
+});

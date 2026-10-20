@@ -43,7 +43,17 @@ export async function streamSite(t, options = {}) {
       const source = url.searchParams.get('SourceUrl');
       if (source !== `https://${host}/sites/team/Documents/Recordings/meeting.mp4` && url.searchParams.get('UniqueId') !== '12345678-1234-abcd-1234-123456789abc') {response.writeHead(404);response.end('Wrong recording');return;}
       response.writeHead(200, {'content-type': options.contentType ?? 'video/mp4', 'content-disposition': 'attachment; filename="meeting.mp4"', 'content-length': String(recording.length)});
-      response.end(request.method === 'HEAD' ? undefined : recording);return;
+      if (request.method === 'HEAD') response.end();
+      else if (options.chunkIntervalMs) {
+        response.flushHeaders();let offset=0,timer;
+        const send=()=>{
+          const end=Math.min(offset+1024*1024,recording.length);
+          response.write(recording.subarray(offset,end));offset=end;
+          if(offset===recording.length)response.end();else timer=setTimeout(send,options.chunkIntervalMs);
+        };
+        response.on('close',()=>clearTimeout(timer));send();
+      } else response.end(recording);
+      return;
     }
     if (/\/thumb\d\.png$/.test(url.pathname)) {response.writeHead(200, {'content-type': 'image/png'});response.end(redPng);return;}
     if (url.pathname === '/playback-segment') {response.writeHead(200, {'content-type': 'video/mp4'});response.end(fragmentedMp4);return;}

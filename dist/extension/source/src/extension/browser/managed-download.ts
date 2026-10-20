@@ -9,7 +9,7 @@ export async function downloadManagedBlob(blob: Blob, filename: string, signal: 
 }
 
 /** Chrome streams the authorized original to disk; no Blob or file-size/time ceiling. */
-export async function downloadManagedRecording(recording: StreamRecording, filename: string, signal: AbortSignal): Promise<void> {
+export async function downloadManagedRecording(recording: StreamRecording, filename: string, signal: AbortSignal, onProgress?: (fraction: number) => void): Promise<void> {
   const current = await inspectStreamRecording(recording.pageUrl, signal);
   const url = streamDownloadUrl(current.pageUrl)!;
   await downloadManagedUrl(url, filename, signal, async id => {
@@ -17,29 +17,53 @@ export async function downloadManagedRecording(recording: StreamRecording, filen
     // An expired login can return a successful HTML download. Never call that a saved recording.
     if (!item || !["video/mp4", "application/octet-stream"].includes(item.mime?.toLowerCase() ?? "")
       || !(item.fileSize && item.fileSize > 0) || (current.bytes !== undefined && current.bytes !== item.fileSize)) throw new Error(streamAccessError);
-  });
+  }, onProgress, current.bytes);
 }
 
 /** Tracks only the ID returned by this save; never queries the user's download history. */
-async function downloadManagedUrl(url: string, filename: string, signal: AbortSignal, verify?: (id: number) => Promise<void>): Promise<void> {
+async function downloadManagedUrl(url: string, filename: string, signal: AbortSignal, verify?: (id: number) => Promise<void>, onProgress?: (fraction: number) => void, expectedBytes?: number): Promise<void> {
   signal.throwIfAborted();
   let id: number | undefined;
   let finished = false;
+  let progressTimer: ReturnType<typeof setTimeout> | undefined;
+  const stopPolling = (): void => { clearTimeout(progressTimer); progressTimer = undefined; };
   let resolve!: () => void;
   let reject!: (error: Error) => void;
   const completion = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
   // Observe rejection while download() / search() are still pending.
   void completion.catch(() => {});
-  const fail = (error: Error) => { if (!finished) { finished = true; reject(error); } };
+  const fail = (error: Error) => { if (!finished) { finished = true; stopPolling(); reject(error); } };
   const update = (state?: string, error?: string) => {
     if (finished) return;
-    if (state === "complete") { finished = true; resolve(); }
+    if (state === "complete") { finished = true; stopPolling(); resolve(); }
     else if (state === "interrupted") fail(new Error(error ?? "Download interrupted"));
   };
   const listener: Parameters<typeof chrome.downloads.onChanged.addListener>[0] = delta => {
     if (id !== undefined && delta.id === id) update(delta.state?.current, delta.error?.current);
   };
+  const inspect = async (): Promise<void> => {
+    if (id === undefined || finished || signal.aborted) return;
+    const [item] = await chrome.downloads.search({id});
+    // A pending query must never publish progress after cancellation/completion.
+    if (finished || signal.aborted) return;
+    if (!item) { fail(new Error("Download unavailable")); return; }
+    update(item.state, item.error);
+    const total = item.totalBytes !== undefined && Number.isFinite(item.totalBytes) && item.totalBytes > 0 ? item.totalBytes : expectedBytes;
+    if (!finished && total !== undefined && total > 0 && item.bytesReceived !== undefined && Number.isFinite(item.bytesReceived) && item.bytesReceived >= 0) {
+      onProgress?.(Math.min(1, item.bytesReceived / total));
+    }
+  };
+  const scheduleProgress = (): void => {
+    if (!onProgress || finished || signal.aborted) return;
+    progressTimer = setTimeout(() => {
+      progressTimer = undefined;
+      void inspect().then(scheduleProgress).catch(error => {
+        if (!finished && !signal.aborted) fail(error instanceof Error ? error : new Error("Download unavailable"));
+      });
+    }, 250);
+  };
   const abort = () => {
+    stopPolling();
     // If Chrome already reported completion, do not cancel a completed file.
     if (finished) return;
     if (id === undefined) return;
@@ -69,13 +93,13 @@ async function downloadManagedUrl(url: string, filename: string, signal: AbortSi
       abort();
     } else {
       // An event can precede download() resolving. Query just our ID to close that race.
-      const [item] = await chrome.downloads.search({id});
-      if (item) update(item.state, item.error);
-      else fail(new Error("Download unavailable"));
+      await inspect();
+      scheduleProgress();
     }
     await completion;
     await verify?.(id);
   } finally {
+    stopPolling();
     signal.removeEventListener("abort", abort);
     chrome.downloads.onChanged.removeListener(listener);
   }
