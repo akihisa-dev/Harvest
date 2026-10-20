@@ -1,5 +1,5 @@
 import { checkCancelled, type FetchedImage } from "../contracts/image-data-contract.js";
-import {validateFetchedDimensions, withDecodedImage, type DecodedImage} from "./decoded-image.js";
+import {validateFetchedDimensions, withDecodedImage, waitForImageOperation, type DecodedImage} from "./decoded-image.js";
 import { encodeJxl } from "./jxl-encoder.js";
 import { isMediaArchiveFormat, type ImageArchiveFormat } from "../../core/export-formats.js";
 
@@ -43,10 +43,10 @@ function fetchedBlob(fetched: FetchedImage): Blob {
     : fetched.blob;
 }
 
-function toBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
+function toBlob(canvas: HTMLCanvasElement, type: string, signal?: AbortSignal, quality?: number): Promise<Blob> {
+  return waitForImageOperation(new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(blob => blob ? resolve(blob) : reject(new ImageFormatError("画像を変換できませんでした。")), type, quality);
-  });
+  }), signal);
 }
 
 /** Convert one fetched image, releasing its decoded pixels before returning. */
@@ -77,8 +77,8 @@ export async function convertImage(
     });
     checkCancelled(signal);
 
-    if (format === "jpg") return await toBlob(canvas, "image/jpeg", 1);
-    if (format === "png") return await toBlob(canvas, "image/png");
+    if (format === "jpg") return await toBlob(canvas, "image/jpeg", signal, 1);
+    if (format === "png") return await toBlob(canvas, "image/png", signal);
 
     const pixels = context.getImageData(0, 0, width, height);
     checkCancelled(signal);

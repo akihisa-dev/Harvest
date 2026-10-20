@@ -33,18 +33,42 @@ export async function validateFetchedDimensions(
   if (error) throw invalidDimensions(error);
 }
 
+/** Stop waiting for native image work; dispose any result arriving after cancellation. */
+export function waitForImageOperation<T>(operation: Promise<T>, signal?: AbortSignal, discard?: (value: T) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = (): void => { signal?.removeEventListener("abort", abort); };
+    const abort = (): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try { checkCancelled(signal); } catch (error) { reject(error); }
+    };
+    operation.then(value => {
+      if (settled) { discard?.(value); return; }
+      settled = true;
+      cleanup();
+      resolve(value);
+    }, error => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    });
+    signal?.addEventListener("abort", abort, {once: true});
+    if (signal?.aborted) abort();
+  });
+}
+
 /** Own the bitmap and optional canvas until the consumer, including async encoding, settles. */
 export async function withDecodedImage<T>(
   source: Blob,
   policy: DecodePolicy,
   consume: (image: DecodedImage) => T | Promise<T>,
 ): Promise<T> {
-  let bitmap: ImageBitmap;
-  try {
-    bitmap = await createImageBitmap(source);
-  } catch {
-    throw policy.decodeFailure();
-  }
+  checkCancelled(policy.signal);
+  const decoding = createImageBitmap(source).catch(() => { throw policy.decodeFailure(); });
+  const bitmap = await waitForImageOperation(decoding, policy.signal, late => late.close());
   let canvas: HTMLCanvasElement | undefined;
   try {
     checkCancelled(policy.signal);

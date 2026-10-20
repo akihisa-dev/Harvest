@@ -68,7 +68,7 @@ test("画像の非同期符号化が終了するまでは画素を保持し、�
   }
 });
 
-test("デコード失敗と中止が重なった場合のPDFと画像保存の既存の優先順位を維持する", async t => {
+test("デコードの返答前の中止はPDFと画像保存の待機を終了する", async t => {
   const previous = globalThis.createImageBitmap;
   t.after(() => { globalThis.createImageBitmap = previous; });
   for (const conversion of conversions) {
@@ -78,7 +78,7 @@ test("デコード失敗と中止が重なった場合のPDFと画像保存の�
       throw new Error("decode failed");
     };
     await assert.rejects(conversion.run(fetched(), controller.signal), error =>
-      error.kind === (conversion.name === "PDF" ? "invalid-image" : "cancelled"));
+      error.kind === "cancelled");
   }
 });
 
@@ -91,4 +91,36 @@ test("JPEG原本の取得時にデコード寸法が食い違ってもbitmapを�
   await assert.rejects(fetchImage("https://image.test/original.jpg", {}), error =>
     error.kind === "invalid-image" && error.message === "画像の大きさが不正です。");
   assert.equal(closed, 1);
+});
+
+for (const format of ['jpg', 'png']) for (const late of ['blob', 'null']) test(`Canvasの返答前に${format}を中止し資源を解放する: ${late}`, async t => {
+  let complete, closed = 0;
+  const canvas = {width: 0, height: 0, getContext: () => ({fillRect() {}, drawImage() {}}), toBlob(callback) {complete = callback;}};
+  const previousDecode = globalThis.createImageBitmap;
+  t.after(() => {globalThis.createImageBitmap = previousDecode;});
+  globalThis.createImageBitmap = async () => ({width: 2, height: 1, close() {closed++;}});
+  const previous = globalThis.document;
+  globalThis.document = {createElement: () => canvas}; t.after(() => {globalThis.document = previous;});
+  const controller = new AbortController(), work = convertImage(fetched(), format, controller.signal);
+  const rejected = assert.rejects(work, error => error.kind === 'cancelled');
+  while (!complete) await new Promise(resolve => setImmediate(resolve));
+  controller.abort(); await rejected;
+  assert.equal(closed, 1); assert.deepEqual([canvas.width, canvas.height], [0, 0]);
+  complete(late === 'blob' ? new Blob(['late']) : null);
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(closed, 1);
+  canvas.toBlob = callback => callback(new Blob(['retry']));
+  assert.equal(await (await convertImage(fetched(), format)).text(), 'retry');
+});
+
+for (const conversion of conversions) for (const late of ['success', 'failure']) test(`デコードの返答前に${conversion.name}を中止して後着結果を処理する: ${late}`, async t => {
+  let complete, fail, closed = 0;
+  const previousDecode = globalThis.createImageBitmap;
+  t.after(() => {globalThis.createImageBitmap = previousDecode;});
+  globalThis.createImageBitmap = () => new Promise((resolve, reject) => {complete = resolve; fail = reject;});
+  const controller = new AbortController(), work = conversion.run(fetched(), controller.signal);
+  const rejected = assert.rejects(work, error => error.kind === 'cancelled');
+  while (!complete) await new Promise(resolve => setImmediate(resolve));
+  controller.abort(); await rejected; assert.equal(closed, 0);
+  if (late === 'success') complete({width: 2, height: 1, close() {closed++;}}); else fail(Error('late decode failure'));
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(closed, late === 'success' ? 1 : 0);
 });

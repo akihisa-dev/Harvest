@@ -102,8 +102,8 @@ test('実Chromeの上部操作ラベルは狭幅と状態変化後もボタン�
     assert.ok(await page.locator('#scan').isDisabled());
     await inspectActions(page, `${label}/saving`);
     await page.locator('#export').click();
-    await page.evaluate(() => { window.holdEncode = false; window.releaseEncode(); });
     await page.waitForFunction(() => document.querySelector('#export').dataset.saving === 'false');
+    await page.evaluate(() => { window.holdEncode = false; window.releaseEncode(); });
     await page.locator('#reset').click();
     await inspectActions(page, `${label}/cleared`);
     assert.deepEqual(errors, [], label);
