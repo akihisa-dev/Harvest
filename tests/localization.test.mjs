@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import test from "node:test";
+import {installMemoryStorage} from "./support/storage.mjs";
 
 test("翻訳ヘルパーの読み込みは画面を必要とせず書き換えない", async () => {
   const previous = globalThis.document;
@@ -139,7 +140,8 @@ function descendants(element) {
 }
 
 
-test("英語画面で解析・分類・選択・エラー表示が翻訳され、取得元の名前は保つ", async () => {
+test("英語画面で解析・分類・選択・エラー表示が翻訳され、取得元の名前は保つ", async t => {
+  installMemoryStorage(t);
   const previous = {document: globalThis.document, chrome: globalThis.chrome, window: globalThis.window};
   const root = {
     activeElement: null,

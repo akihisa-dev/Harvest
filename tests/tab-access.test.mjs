@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {installMemoryStorage} from "./support/storage.mjs";
 
-test("解析時に開いているページだけを調べ、URL指定時はそのURLを使う", async () => {
+test("解析時に開いているページだけを調べ、URL指定時はそのURLを使う", async t => {
+  installMemoryStorage(t);
   const listeners = new Map();
   const documentListeners = new Map();
   const elements = new Map();
