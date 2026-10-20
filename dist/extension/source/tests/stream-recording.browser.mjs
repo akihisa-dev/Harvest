@@ -38,3 +38,24 @@ for (const permission of ['denied', 'expired']) test(`仮想Streamの${permissio
   assert.equal(requests.filter(request => request.path.endsWith('/download.aspx') && request.method === 'GET').length, 0);
   assert.notEqual(await panel.locator('#status').getAttribute('data-state'), 'success');
 });
+
+for (const filename of ['進捗 50%.mp4', '進捗%20確認.mp4', 'folder%2Fmeeting.mp4', '確認%25.mp4']) test(`仮想SharePointの原本を名前の%を変えず実Chromeで取得する: ${filename}`, {timeout: 60000}, async t => {
+  const {mp4Bytes} = await import('./media-fixtures.mjs');
+  const fixture = await streamSite(t, {filename, recording: mp4Bytes});
+  const {panel, requests} = fixture;
+  assert.ok((await fixture.scan('stream')).includes(filename));
+  await panel.locator('#video-export-format-mp4').check();
+  await panel.locator('#export').click();
+  await panel.waitForFunction(() => document.querySelector('#status').dataset.state === 'success');
+  const item = await panel.evaluate(async () => (await chrome.downloads.search({id: window.downloadIds.at(-1)}))[0]);
+  assert.equal(item.state, 'complete');
+  assert.deepEqual(await readCompletedDownload(item.filename), Buffer.from(mp4Bytes));
+  const downloads = requests.filter(request => request.path.endsWith('/download.aspx'));
+  assert.ok(downloads.some(request => request.method === 'HEAD'));
+  assert.equal(downloads.filter(request => request.method === 'GET').length, 1);
+  for (const request of downloads) {
+    assert.equal(request.authenticated, true);
+    const source = new URLSearchParams(request.query).get('SourceUrl');
+    assert.equal(decodeURIComponent(new URL(source).pathname), '/sites/team/Documents/Recordings/' + filename);
+  }
+});

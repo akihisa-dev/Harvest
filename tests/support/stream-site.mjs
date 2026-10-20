@@ -14,6 +14,8 @@ import {mp4Bytes, fragmentedMp4} from '../media-fixtures.mjs';
 /** A local HTTPS site, including auth and binary download, with no replaced Chrome APIs. */
 export async function streamSite(t, options = {}) {
   const host = 'harvest-fixture.sharepoint.com';
+  const filename = options.filename ?? 'meeting.mp4';
+  const path = '/sites/team/Documents/Recordings/' + filename;
   const recording = options.recording ?? Buffer.alloc(65 * 1024 ** 2);
   if (!options.recording) {recording.set(mp4Bytes);recording.writeUInt32BE(recording.length - mp4Bytes.length, mp4Bytes.length);recording.write('free', mp4Bytes.length + 4);}
   const requests = [], sockets = new Set();
@@ -41,8 +43,8 @@ export async function streamSite(t, options = {}) {
       if (permission === 'denied') {response.writeHead(403);response.end('Download blocked');return;}
       if (permission === 'expired') {response.writeHead(302, {location: '/login-required'});response.end();return;}
       const source = url.searchParams.get('SourceUrl');
-      if (source !== `https://${host}/sites/team/Documents/Recordings/meeting.mp4` && url.searchParams.get('UniqueId') !== '12345678-1234-abcd-1234-123456789abc') {response.writeHead(404);response.end('Wrong recording');return;}
-      response.writeHead(200, {'content-type': options.contentType ?? 'video/mp4', 'content-disposition': 'attachment; filename="meeting.mp4"', 'content-length': String(recording.length)});
+      if ((!source || decodeURIComponent(new URL(source).pathname) !== path || new URL(source).origin !== `https://${host}`) && url.searchParams.get('UniqueId') !== '12345678-1234-abcd-1234-123456789abc') {response.writeHead(404);response.end('Wrong recording');return;}
+      response.writeHead(200, {'content-type': options.contentType ?? 'video/mp4', 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`, 'content-length': String(recording.length)});
       if (request.method === 'HEAD') response.end();
       else if (options.chunkIntervalMs) {
         response.flushHeaders();let offset=0,timer;
@@ -100,7 +102,6 @@ export async function streamSite(t, options = {}) {
   assert.match(await playback.title(), /Fixture sign-in/);
   await panel.goto(`chrome-extension://${id}/app/index.html`);
   await panel.evaluate(() => {window.downloadIds=[];chrome.downloads.onCreated.addListener(item => window.downloadIds.push(item.id));});
-  const path = '/sites/team/Documents/Recordings/meeting.mp4';
   const pages = {
     embed: `https://${host}/sites/team/_layouts/15/embed.aspx?UniqueId=12345678-1234-abcd-1234-123456789abc`,
     iframe: `https://${host}/parent`,
