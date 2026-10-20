@@ -7,9 +7,9 @@ import {tmpdir} from 'node:os';
 import {mp4Bytes} from './media-fixtures.mjs';
 
 const titles = [
-  ['あ'.repeat(99) + '😀後続', 'あ'.repeat(99)],
-  ['あ'.repeat(98) + '😀後続', 'あ'.repeat(98) + '😀'],
-  ['日本語'.repeat(50), '日本語'.repeat(50).slice(0, 100)],
+  ['あ'.repeat(99) + '😀後続', 'あ'.repeat(66)],
+  ['あ'.repeat(98) + '😀後続', 'あ'.repeat(66)],
+  ['日本語'.repeat(50), '日本語'.repeat(22)],
   ['😀'.repeat(60), '😀'.repeat(50)],
   ['a'.repeat(98) + '🇯🇵', 'a'.repeat(98)],
   ['a'.repeat(96) + '🇯🇵後続', 'a'.repeat(96) + '🇯🇵'],
@@ -28,7 +28,8 @@ test('実Chromeでタイトル境界の単体・複数MP4を安全な名前で�
   await mkdir(join(profile, 'Default'), {recursive: true}); await mkdir(downloads);
   await writeFile(join(profile, 'Default', 'Preferences'), JSON.stringify({download: {default_directory: downloads, prompt_for_download: false}}));
   const existing = Buffer.from('existing fixture file');
-  await writeFile(join(downloads, 'leading.mp4'), existing);
+  const existingNames = ['leading.mp4', 'あ'.repeat(66) + '.mp4'];
+  for (const name of existingNames) await writeFile(join(downloads, name), existing);
   const context = await launchExtensionContext(t, profile, {locale: 'ja-JP', reducedMotion: 'reduce'});
   const cdp = await context.browser().newBrowserCDPSession();
   const {id} = await cdp.send('Extensions.loadUnpacked', {path: resolve('dist/extension')});
@@ -61,9 +62,10 @@ test('実Chromeでタイトル境界の単体・複数MP4を安全な名前で�
       assert.equal(result.item.state, 'complete');
       assert.deepEqual(await readFile(result.item.filename), mp4Bytes);
     }
+    if (title === titles[0][0] && count === 1) assert.equal(basename(results[0].item.filename), base + ' (1).mp4');
     if (title === '.leading' && count === 1) assert.equal(basename(results[0].item.filename), 'leading (1).mp4');
   }
-  assert.deepEqual(await readFile(join(downloads, 'leading.mp4')), existing);
-  assert.equal((await readdir(downloads)).length, titles.length * 3 + 1);
+  for (const name of existingNames) assert.deepEqual(await readFile(join(downloads, name)), existing);
+  assert.equal((await readdir(downloads)).length, titles.length * 3 + existingNames.length);
   assert.deepEqual(errors, []);
 });

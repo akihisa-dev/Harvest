@@ -14,15 +14,21 @@ export function imageFilename(url) {
 }
 /** Keep the existing length budget without splitting Unicode or creating hidden filenames. */
 export function exportFileBaseName(pageTitle, fallback) {
+    const encoder = new TextEncoder();
     function normalize(value) {
         const normalized = replaceLoneSurrogates(value)
             .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, "_")
             .replace(/^[.\s]+|[.\s]+$/g, "");
         let truncated = "";
+        let bytes = 0;
         for (const grapheme of sourceTextGraphemes(normalized)) {
-            if (truncated.length + grapheme.length > 100)
+            const graphemeBytes = encoder.encode(grapheme).length;
+            // Reserve 55 bytes of a 255-byte component for extensions, sequence,
+            // Chrome's .crdownload suffix and collision-avoidance additions.
+            if (truncated.length + grapheme.length > 100 || bytes + graphemeBytes > 200)
                 break;
             truncated += grapheme;
+            bytes += graphemeBytes;
         }
         // Chrome rejects format controls (including ZWJ) in filenames. Replace
         // the complete affected grapheme, preserving the original length budget.

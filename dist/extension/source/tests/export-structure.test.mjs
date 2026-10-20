@@ -205,3 +205,23 @@ test("未知の形式ヒントを含む画像でも原本・推奨の表示名�
     }
   }
 });
+
+test('保存名の文字・UTF-8予算に拡張子・連番・Chrome追加名の余裕を残す',async()=>{
+ const {individualFilename}=await import('../dist/extension/core/export-files.js');
+ for(const [title,expected] of [
+  ['あ'.repeat(100),'あ'.repeat(66)],
+  ['あ'.repeat(65)+'😀あ','あ'.repeat(65)+'😀'],
+  ['あ'.repeat(66)+'か\u3099','あ'.repeat(66)],
+  ['😀'.repeat(51),'😀'.repeat(50)],
+  ['a'.repeat(101),'a'.repeat(100)],
+ ]){
+  const base=exportFileBaseName(title,'Harvest');assert.equal(base,expected);
+  assert.ok(base.length<=100);assert.ok(Buffer.byteLength(base)<=200);
+  const filename=individualFilename(base+'.zip','9999999999.jpeg',10);
+  assert.ok(Buffer.byteLength(filename+' (9999999999).crdownload')<=255);
+  const presentation=createExportPresentation({getTitle:()=>title,getSelection:()=>({format:'pdf',videoFormat:'mp4',includeSourcePage:true,selected:[image]}),fallbackTitle:'Harvest',sourceHeading:'Source'});
+  assert.equal(presentation.pdfFilename,base+'.pdf');assert.equal(presentation.zipFilename,base+'.zip');
+  const sourceText=[...decodeURIComponent(presentation.sourcePreview.url).matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map(match=>match[1]).join('');
+  assert.ok(sourceText.includes(base+'.pdf'));
+ }
+});
