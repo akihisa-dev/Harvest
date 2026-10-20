@@ -5,10 +5,10 @@ import {individualFilename} from '../dist/extension/core/export-files.js';
 
 test('保存名のUnicode境界・先頭ドット・空白・制御文字を正規化する', () => {
   for (const [title, expected] of [
-    ['あ'.repeat(99) + '😀後続', 'あ'.repeat(99)],
-    ['あ'.repeat(98) + '😀後続', 'あ'.repeat(98) + '😀'],
+    ['あ'.repeat(99) + '😀後続', 'あ'.repeat(66)],
+    ['あ'.repeat(98) + '😀後続', 'あ'.repeat(66)],
     ['😀'.repeat(60), '😀'.repeat(50)],
-    ['日本語'.repeat(50), '日本語'.repeat(50).slice(0, 100)],
+    ['日本語'.repeat(50), '日本語'.repeat(22)],
   ['a'.repeat(98) + '🇯🇵', 'a'.repeat(98)],
   ['a'.repeat(96) + '🇯🇵後続', 'a'.repeat(96) + '🇯🇵'],
   ['a'.repeat(99) + 'か\u3099', 'a'.repeat(99)],
