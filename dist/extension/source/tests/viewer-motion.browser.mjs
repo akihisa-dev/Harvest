@@ -373,15 +373,32 @@ test("viewer retargeting, failed previews and clearing release obsolete image bi
   assert.deepEqual(errors, []);
 });
 
-test("navigation reuses one fresh page snapshot and preserves focus, Source and zoom reset", async t => {
+for (const input of ["click", "Enter"]) test(`enabled navigation preserves focus after ${input}`, async t => {
   const {url}=await serve(t),browser=await launchBrowser(t),page=await browser.newPage();
   await page.goto(url);await page.waitForFunction(()=>Boolean(window.__viewerReady));
-  const read=()=>page.evaluate(()=>({reads:window.__pageReads,position:document.querySelector('#position').textContent,url:document.querySelector('#image').dataset.previewUrl,zoom:document.querySelector('#zoom-reset').textContent,focus:document.activeElement?.id}));
+  await page.evaluate(()=>{
+    window.__viewerFixture.pages.push({...window.__viewerFixture.pages[1],url:'https://images.example.test/3.jpg'});
+    window.__viewerReady.render();window.__pageReads=0;
+  });
+  await page.locator('#zoom-in').click();
+  await page.locator('#next').focus();
+  if(input==='click')await page.locator('#next').click();else await page.locator('#next').press('Enter');
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  assert.deepEqual(await page.evaluate(()=>({reads:window.__pageReads,position:document.querySelector('#position').textContent,
+    disabled:document.querySelector('#next').disabled,focus:document.activeElement?.id,zoom:document.querySelector('#zoom-reset').textContent})),
+    {reads:1,position:'2 / 3',disabled:false,focus:'next',zoom:'100%'});
+});
+
+test("navigation reuses one fresh page snapshot and preserves Source and zoom reset at boundaries", async t => {
+  const {url}=await serve(t),browser=await launchBrowser(t),page=await browser.newPage();
+  await page.goto(url);await page.waitForFunction(()=>Boolean(window.__viewerReady));
+  const read=()=>page.evaluate(()=>({reads:window.__pageReads,position:document.querySelector('#position').textContent,url:document.querySelector('#image').dataset.previewUrl,zoom:document.querySelector('#zoom-reset').textContent,nextDisabled:document.querySelector('#next').disabled,previousDisabled:document.querySelector('#previous').disabled}));
   await page.locator('#zoom-in').click();assert.equal((await read()).zoom,'125%');
   await page.evaluate(()=>window.__pageReads=0);await page.locator('#next').click();
-  assert.deepEqual(await read(),{reads:1,position:'2 / 2',url:'https://images.example.test/2.jpg',zoom:'100%',focus:'next'});
+  assert.deepEqual(await read(),{reads:1,position:'2 / 2',url:'https://images.example.test/2.jpg',zoom:'100%',nextDisabled:true,previousDisabled:false});
   await page.evaluate(()=>window.__pageReads=0);await page.locator('#previous').click();
   assert.equal((await read()).reads,1);assert.equal((await read()).position,'1 / 2');
+  assert.equal((await read()).previousDisabled,true);assert.equal((await read()).nextDisabled,false);
   await page.evaluate(()=>{
     window.__viewerFixture.pages.push({url:'data:image/svg+xml,Source',sourcePage:'https://source.example.test/',selected:false});
     window.__pageReads=0;
