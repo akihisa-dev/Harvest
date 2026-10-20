@@ -1,9 +1,10 @@
+import {tmpdir} from "node:os";
 import assert from 'node:assert/strict';
 import {createServer} from 'node:https';
 import {createHash, X509Certificate} from 'node:crypto';
 import {mkdir, writeFile} from 'node:fs/promises';
 import {createReadStream} from 'node:fs';
-import {resolve} from 'node:path';
+import {resolve, join} from 'node:path';
 import {launchExtensionContext, temporaryDirectory} from './browser.mjs';
 import {resourcesFor} from './resources.mjs';
 import {key, cert} from './stream-tls.mjs';
@@ -65,7 +66,7 @@ export async function streamSite(t) {
     for (const socket of sockets) socket.destroy();
   }));
   await new Promise((resolve, reject) => {server.once('error', reject);server.listen(0, '127.0.0.1', resolve);});
-  const temporary = await temporaryDirectory(t, '/tmp/harvest-stream-site-');
+  const temporary = await temporaryDirectory(t, join(tmpdir(), 'harvest-stream-site-'));
   await mkdir(`${temporary}/profile/Default`, {recursive: true});await mkdir(`${temporary}/downloads`);
   await writeFile(`${temporary}/profile/Default/Preferences`, JSON.stringify({download: {default_directory: `${temporary}/downloads`, prompt_for_download: false}}));
   const spki = createHash('sha256').update(new X509Certificate(cert).publicKey.export({format: 'der', type: 'spki'})).digest('base64');

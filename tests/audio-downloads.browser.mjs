@@ -1,3 +1,5 @@
+import {join} from "node:path";
+import {tmpdir} from "node:os";
 import {mediaFixturePage} from "./support/media-fixture-page.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -60,7 +62,7 @@ test('音声MP3を個別/混在保存し、MP3再生・WebM変換・無音拒否
   await page.locator('#video-export-format-mp3').check();
   assert.match(await page.locator('#export-media-hint').innerText(), /音声だけをMP3/);
   await page.setViewportSize({width: 400, height: 400});
-  await page.screenshot({path: '/tmp/harvest-audio-format.png'});
+  await page.screenshot({path: join(tmpdir(), 'harvest-audio-format.png')});
   await page.evaluate(() => {
     window.audioProgress = [];
     new MutationObserver(() => {

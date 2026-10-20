@@ -1,7 +1,8 @@
+import {tmpdir} from "node:os";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
-import {resolve} from 'node:path';
+import {resolve, join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {temporaryDirectory,launchExtensionContext,startServer} from './browser.mjs';
 
@@ -43,7 +44,7 @@ export async function animationPanel(t, assets, options = {}) {
       else response.end(body);
     }
   });
-  const origin = `http://127.0.0.1:${server.address().port}`, temporary = await temporaryDirectory(t,'/tmp/harvest-recommended-animation-');
+  const origin = `http://127.0.0.1:${server.address().port}`, temporary = await temporaryDirectory(t,join(tmpdir(), 'harvest-recommended-animation-'));
   await mkdir(`${temporary}/profile/Default`,{recursive:true});await mkdir(`${temporary}/downloads`);
   await writeFile(`${temporary}/profile/Default/Preferences`,JSON.stringify({download:{default_directory:`${temporary}/downloads`,prompt_for_download:false}}));
   const context = await launchExtensionContext(t,`${temporary}/profile`,{locale:options.locale ?? 'ja-JP',reducedMotion:'reduce',args:['--enable-unsafe-extension-debugging','--disable-background-networking','--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1','--no-first-run']});

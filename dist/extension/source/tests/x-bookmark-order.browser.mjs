@@ -1,7 +1,8 @@
+import {tmpdir} from "node:os";
 import {launchBrowser, temporaryDirectory, launchExtensionContext} from "./support/browser.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {resolve} from 'node:path';
+import {resolve, join} from 'node:path';
 import {scanXMedia} from '../dist/extension/app/content/x-media-scan.js';
 import {parseXMedia} from '../dist/extension/core/x-media.js';
 const urls=ids=>ids.map(id=>`https://pbs.twimg.com/media/image${id}?format=jpg&name=orig`);
@@ -23,7 +24,7 @@ for(const [current,expected] of [[['3','4'],['3','4']],[['1','2','3','4'],['1','
 }
 });
 test('実拡張機能の再解析と続き取得でも前方の投稿を一覧順へ戻す',async(t)=>{
- const temp=await temporaryDirectory(t, '/tmp/harvest-bookmark-order-'); const context = await launchExtensionContext(t, temp);
+ const temp=await temporaryDirectory(t, join(tmpdir(), 'harvest-bookmark-order-')); const context = await launchExtensionContext(t, temp);
 const cdp=await context.browser().newBrowserCDPSession();const {id}=await cdp.send('Extensions.loadUnpacked',{path:resolve('dist/extension')});
 await context.route('**/*',r=>r.request().url().startsWith('chrome-extension:')?r.continue():r.request().resourceType()==='document'?r.fulfill({contentType:'text/html',body:'<!doctype html><main></main>'}):r.abort());
 const page=await context.newPage(),panel=await context.newPage();await page.goto('https://x.com/i/history');await page.evaluate(fixture);await panel.goto(`chrome-extension://${id}/app/index.html`);

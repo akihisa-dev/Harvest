@@ -1,12 +1,13 @@
+import {tmpdir} from "node:os";
 import {mediaFixturePage} from "./support/media-fixture-page.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
-import {resolve} from 'node:path';
+import {resolve, join} from 'node:path';
 import {temporaryDirectory, launchExtensionContext} from './support/browser.mjs';
 
 test('実拡張機能でWebMの末尾・VFR・音声をMP4とrecommend保存でも保持する', {timeout: 120_000}, async t => {
-  const temporary = await temporaryDirectory(t, '/tmp/harvest-webm-tail-');
+  const temporary = await temporaryDirectory(t, join(tmpdir(), 'harvest-webm-tail-'));
   const profile = `${temporary}/profile`, downloads = `${temporary}/downloads`;
   await mkdir(`${profile}/Default`, {recursive: true}); await mkdir(downloads);
   await writeFile(`${profile}/Default/Preferences`, JSON.stringify({download: {default_directory: downloads, prompt_for_download: false}}));

@@ -1,3 +1,4 @@
+import {tmpdir} from "node:os";
 import {mediaFixturePage} from "./support/media-fixture-page.mjs";
 import {serveExtension, extensionRoot} from "./support/extension-files.mjs";
 import {launchBrowser} from "./support/browser.mjs";
@@ -5,7 +6,7 @@ import {mp4Bytes, brokenMedia} from './media-fixtures.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFile} from 'node:fs/promises';
-import {resolve} from 'node:path';
+import {resolve, join} from 'node:path';
 
 let png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j+ioAAAAASUVORK5CYII=', 'base64');
 const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
@@ -398,6 +399,6 @@ test('動画と単体画像を直接保存し、複数画像はZIPへ保存す�
   const {formatFileSize} = await import('../dist/extension/core/file-size.js');
   await page.waitForFunction(expected => [...document.querySelectorAll('#images .item-resolution')].at(-1)?.textContent === expected, formatFileSize(mp4.length));
   assert.deepEqual(await page.locator('#images .item-resolution').allTextContents(), ['640 × 960', '1 × 1', formatFileSize(mp4.length)]);
-  await page.screenshot({path: '/private/tmp/harvest-media-ui.png'});
+  await page.screenshot({path: join(tmpdir(), 'harvest-media-ui.png')});
   assert.deepEqual(errors, []);
 });

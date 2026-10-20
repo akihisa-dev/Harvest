@@ -1,3 +1,5 @@
+import {join} from "node:path";
+import {tmpdir} from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {extensionFile} from "./support/extension-files.mjs";
@@ -53,7 +55,7 @@ for(const count of [200,1000]) test(`ordered list motion measures visible rows a
   assert.equal(await page.locator('#images > li').count(),0);
   await page.waitForFunction(()=>[...document.querySelectorAll('.motion-ghost img')].every(image=>image.complete&&image.naturalWidth>0));
   assert.equal(await page.evaluate(urls=>urls.some(url=>fixture.revoked.includes(url)),exit.urls),false,"visible exit keeps the Blob references alive");
-  await page.screenshot({path:`/tmp/harvest-129-ghost-${count}.png`});
+  await page.screenshot({path:join(tmpdir(), `harvest-129-ghost-${count}.png`)});
   await page.evaluate(()=>{for(const ghost of document.querySelectorAll('.motion-ghost'))for(const animation of ghost.getAnimations())animation.finish()});
   await page.waitForFunction(()=>document.querySelectorAll('.motion-ghost-shell').length===0);
   assert.equal(await page.evaluate(()=>fixture.previews.diagnostics.bound),0);

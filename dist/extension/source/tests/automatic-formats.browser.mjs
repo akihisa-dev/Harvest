@@ -1,3 +1,5 @@
+import {join} from "node:path";
+import {tmpdir} from "node:os";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {readFile} from "node:fs/promises";
@@ -110,8 +112,8 @@ for (const language of ["ja", "en"]) test(`${language}: 元形式・推奨形式
         labels: [...group.querySelectorAll("label:not([hidden])")].map(label => ({text: label.textContent.trim(), scroll: label.scrollWidth, client: label.clientWidth}))};
     });
     assert.ok(layout.bottom <= layout.top, "元形式・推奨形式の下に従来の選択肢を置く");
-    if (language === "ja") await page.screenshot({path: `/tmp/harvest-automatic-formats-${width}.png`});
-    if (language === "ja" && width === 1280) await page.locator(".save-area").screenshot({path: "/tmp/harvest-format-choices.png"});
+    if (language === "ja") await page.screenshot({path: join(tmpdir(), `harvest-automatic-formats-${width}.png`)});
+    if (language === "ja" && width === 1280) await page.locator(".save-area").screenshot({path: join(tmpdir(), "harvest-format-choices.png")});
     assert.ok(layout.overflow <= 1 && layout.labels.every(label => label.scroll <= label.client + 1), `${width}: ラベルを見切れさせない ${JSON.stringify(layout)}`);
   }
   await page.locator("#export-format-original").check();

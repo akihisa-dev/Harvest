@@ -1,3 +1,5 @@
+import {join} from "node:path";
+import {tmpdir} from "node:os";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {animationPanel} from './support/animation-panel.mjs';
@@ -47,7 +49,7 @@ for (const locale of ['ja-JP', 'en-US']) test(`保存ボタンは画像を枚数
         const label = document.querySelector('#export .button-label').textContent;
         return /^\d+%$/.test(label) && parseInt(label) > 0 && parseInt(label) < 80;
       });
-      await page.screenshot({path: `/tmp/harvest-export-progress-${locale}.png`});
+      await page.screenshot({path: join(tmpdir(), `harvest-export-progress-${locale}.png`)});
       assert.equal(await page.locator('#export').isEnabled(), true, '進捗表示中も中止できる');
     }
     await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'success' || !document.querySelector('#failures').hidden);

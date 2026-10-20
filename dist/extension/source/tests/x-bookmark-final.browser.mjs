@@ -1,9 +1,10 @@
+import {tmpdir} from "node:os";
 import {temporaryDirectory, launchExtensionContext} from "./support/browser.mjs";
 import test from 'node:test';
-import {resolve} from 'node:path';
+import {resolve, join} from 'node:path';
 import assert from 'node:assert/strict';
 test('Bookmarkの最終確認前の同URL一覧切替を実Chromeで拒否する',async(t)=>{
-const root=resolve('.'),temp=await temporaryDirectory(t, '/tmp/harvest-bookmark-final-');
+const root=resolve('.'),temp=await temporaryDirectory(t, join(tmpdir(), 'harvest-bookmark-final-'));
 function fixture(){
  const photo=(id,name)=>({id_str:id,extended_entities:{media:[{type:'photo',media_url_https:`https://pbs.twimg.com/media/${name}.jpg`}]}});
  const entry=id=>({entryId:`tweet-${id}`,type:'tweet',content:{id}});

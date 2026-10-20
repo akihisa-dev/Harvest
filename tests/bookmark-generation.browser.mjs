@@ -1,8 +1,10 @@
+import {join} from "node:path";
+import {tmpdir} from "node:os";
 import {temporaryDirectory, launchExtensionContext} from './support/browser.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 test('実Chromeの受信世代変更では旧投稿を再混入せず再解析を案内する', async t => {
-const temp=await temporaryDirectory(t,'/tmp/harvest-generation-chrome-');let context;
+const temp=await temporaryDirectory(t,join(tmpdir(), 'harvest-generation-chrome-'));let context;
 const response=(ids,clear=false)=>({data:{bookmark_timeline_v2:{timeline:{instructions:[...(clear?[{type:'TimelineClearCache'}]:[]),{type:'TimelineAddEntries',entries:ids.map(id=>({entryId:'tweet-'+id,content:{itemContent:{tweet_results:{result:{rest_id:id,legacy:{extended_entities:{media:[{type:'photo',media_url_https:`https://pbs.twimg.com/media/image${id}.jpg`}]}}}}}}}))}]}}}});
 try{
  context=await launchExtensionContext(t,temp+'/profile');

@@ -1,9 +1,10 @@
+import {tmpdir} from "node:os";
 import {temporaryDirectory, launchExtensionContext} from "./support/browser.mjs";
 import test from 'node:test';
-import {resolve} from 'node:path';
+import {resolve, join} from 'node:path';
 import assert from 'node:assert/strict';
 test('Bookmark続き取得後の実script境界で一覧切替と継続機能の不在を区別する', async(t)=>{
-const root=resolve('.'),temp=await temporaryDirectory(t, '/tmp/harvest-bookmark-await-');
+const root=resolve('.'),temp=await temporaryDirectory(t, join(tmpdir(), 'harvest-bookmark-await-'));
 function fixture({ending,switchAt}){
  const photo=(id,name)=>({id_str:id,extended_entities:{media:[{type:'photo',media_url_https:`https://pbs.twimg.com/media/${name}.jpg`}]}});
  const entry=id=>({entryId:`tweet-${id}`,type:'tweet',content:{id}});

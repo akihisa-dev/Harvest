@@ -1,6 +1,7 @@
+import {tmpdir} from "node:os";
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {basename} from 'node:path';
+import {basename, join} from 'node:path';
 import {animationPanel} from './support/animation-panel.mjs';
 import {baselineJpeg, progressiveJpeg} from './jpeg-fixtures.mjs';
 
@@ -93,7 +94,7 @@ async function expectGroupOnlyScroll(page, label) {
   try {
     await page.waitForFunction(() => document.querySelector('.group-bar').scrollTop > 0, null, {timeout: 3000});
   } catch (error) {
-    await page.screenshot({path: `/tmp/harvest-recommendations-wheel-${label.replaceAll(' ', '-')}.png`});
+    await page.screenshot({path: join(tmpdir(), `harvest-recommendations-wheel-${label.replaceAll(' ', '-')}.png`)});
     console.error(`${label}: ${JSON.stringify({before, after: await state(), wheel: await page.evaluate(() => window.recommendationWheel)})}`);
     throw error;
   }
@@ -216,7 +217,7 @@ test('日英で選択したシリーズにPDFと原本の理由を示し、表�
       }).map(label => label.textContent));
       assert.deepEqual(clipped, [], `${locale} ${width}x${height}: 推奨の星を含む選択肢を見切れさせない`);
       await expectGroupOnlyScroll(page, `${locale} ${width}x${height}`);
-      await page.screenshot({path: `/tmp/harvest-recommendations-${locale}-${width}x${height}.png`});
+      await page.screenshot({path: join(tmpdir(), `harvest-recommendations-${locale}-${width}x${height}.png`)});
     }
   }
 });
