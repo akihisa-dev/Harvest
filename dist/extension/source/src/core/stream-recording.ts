@@ -4,20 +4,29 @@ export interface StreamRecording {
   readonly bytes?: number;
 }
 
-export function isStreamRecordingPage(value: string): boolean {
+function recordingPage(value: string): {page: URL; prefix: string; library?: string} | null {
   try {
-    const url = new URL(value);
-    return url.protocol === "https:" && !url.username && !url.password && !url.port
-      && /^[a-z0-9-]+\.sharepoint\.com$/i.test(url.hostname)
-      && /\/_layouts\/(?:15\/)?(?:stream|onedrive|doc|embed)\.aspx$/i.test(url.pathname);
-  } catch { return false; }
+    const page = new URL(value);
+    if (page.protocol !== "https:" || page.username || page.password || page.port
+      || !/^[a-z0-9-]+\.sharepoint\.com$/i.test(page.hostname)) return null;
+    const layout = /^(.*)\/_layouts\/(?:15\/)?(?:stream|onedrive|doc|embed)\.aspx$/i.exec(page.pathname);
+    if (layout) return {page, prefix: layout[1]!};
+    const library = /^(.*)\/([^/]+)\/Forms\/AllItems\.aspx$/i.exec(page.pathname);
+    return library ? {page, prefix: library[1]!, library: `${library[1]}/${library[2]}`} : null;
+  } catch { return null; }
+}
+
+export function isStreamRecordingPage(value: string): boolean {
+  const location = recordingPage(value);
+  // Ordinary library/folder views must retain their general page scan.
+  return location !== null && (location.library === undefined || streamDownloadUrl(value) !== null);
 }
 
 /** Resolve the file selected by the player, never a playback manifest or guessed segment URL. */
 export function streamDownloadUrl(value: string): string | null {
-  if (!isStreamRecordingPage(value)) return null;
-  const page = new URL(value);
-  const prefix = page.pathname.slice(0, page.pathname.toLowerCase().indexOf("/_layouts/"));
+  const location = recordingPage(value);
+  if (!location) return null;
+  const {page, prefix, library} = location;
   const params = new Map<string, string>();
   for (const [name, entry] of page.searchParams) {
     const key = name.toLowerCase();
@@ -31,9 +40,11 @@ export function streamDownloadUrl(value: string): string | null {
     if (!path.startsWith("/") || path.startsWith("//") || /[\\\u0000-\u001f]/.test(path)) return null;
     const file = new URL(page.origin);
     file.pathname = path;
-    if (file.origin !== page.origin || !file.pathname.startsWith(prefix + "/") || !/\.mp4$/i.test(file.pathname)) return null;
+    if (file.origin !== page.origin || !file.pathname.startsWith((library ?? prefix) + "/") || !/\.mp4$/i.test(file.pathname)) return null;
     download.searchParams.set("SourceUrl", file.href);
   } else {
+    // An AllItems view needs an explicitly selected file in that same library.
+    if (library !== undefined) return null;
     const guid = (params.get("sourcedoc") ?? params.get("uniqueid") ?? "").replace(/^\{(.*)\}$/, "$1");
     if (!/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(guid)) return null;
     download.searchParams.set("UniqueId", guid);

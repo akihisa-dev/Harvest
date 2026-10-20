@@ -105,7 +105,8 @@ export class PageReadSession {
             return page;
         // A generic Office document viewer must not be mistaken for a recording.
         const url = new URL(page.url);
-        if (!/\/stream\.aspx$/i.test(url.pathname) && !/\.mp4(?:$|[?#])/i.test(url.searchParams.get("id") ?? url.searchParams.get("file") ?? "")
+        const libraryRecording = /\/Forms\/AllItems\.aspx$/i.test(url.pathname) && streamDownloadUrl(page.url) !== null;
+        if (!/\/stream\.aspx$/i.test(url.pathname) && !libraryRecording && !/\.mp4(?:$|[?#])/i.test(url.searchParams.get("id") ?? url.searchParams.get("file") ?? "")
             && !page.media?.some(item => item.kind === "video"))
             return page;
         const stream = await inspectStreamRecording(page.url, this.signal);

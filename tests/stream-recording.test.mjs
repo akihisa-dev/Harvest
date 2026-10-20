@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {streamDownloadUrl, isStreamRecording, streamRecordingFilename} from '../dist/extension/core/stream-recording.js';
+import {streamDownloadUrl, isStreamRecording, isStreamRecordingPage, streamRecordingFilename} from '../dist/extension/core/stream-recording.js';
 import {inspectStreamRecording} from '../dist/extension/app/browser/stream-recording.js';
 import {scanTab} from '../dist/extension/app/browser/page-access.js';
 import {ImageCollection} from '../dist/extension/core/image-collection.js';
@@ -44,6 +44,24 @@ function chromeApi(t) {
   install(t, 'chrome', api);
   return {api, finish, starts, cancelled, listeners};
 }
+
+test('一覧型の録画は同一ライブラリーの選択MP4だけを取得し、通常の一覧は録画と判定しない', () => {
+  for (const prefix of ['', '/sites/team', '/teams/team/subsite', '/personal/user']) {
+    const library = `${prefix}/Shared Documents`;
+    const page = new URL(`https://contoso.sharepoint.com${prefix}/Shared%20Documents/Forms/AllItems.aspx`);
+    for (const file of [null, library, `${library}/preview.png`, '/sites/other/movie.mp4', `${prefix}/Other/movie.mp4`, `${library}/../Other/movie.mp4`]) {
+      page.search = '';
+      if (file !== null) page.searchParams.set('id', file);
+      assert.equal(streamDownloadUrl(page.href), null, page.href);
+      assert.equal(isStreamRecordingPage(page.href), false, page.href);
+    }
+    page.searchParams.set('id', `${library}/Recordings/定例.mp4`);
+    assert.equal(isStreamRecordingPage(page.href), true);
+    const download = new URL(streamDownloadUrl(page.href));
+    assert.equal(download.pathname, `${prefix}/_layouts/15/download.aspx`);
+    assert.equal(new URL(download.searchParams.get('SourceUrl')).pathname, `${prefix}/Shared%20Documents/Recordings/%E5%AE%9A%E4%BE%8B.mp4`);
+  }
+});
 
 test('Streamの会議録画を同一サイトの通常のダウンロード先に限定する', () => {
   assert.equal(new URL(url).pathname, '/personal/user/_layouts/15/download.aspx');
