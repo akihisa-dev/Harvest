@@ -1,3 +1,4 @@
+import {isXBookmarkUrl} from "../../core/x-page-url.js";
 import type { XScanDiagnostics } from "../../core/x-media.js";
 import type { ImageCollection } from "../../core/image-collection.js";
 import { defaultDisplayedImageGroup } from "../../core/images.js";
@@ -36,11 +37,6 @@ function isWebUrl(url: string | undefined): url is string {
   return url !== undefined && /^https?:\/\//i.test(url);
 }
 
-function isBookmarkUrl(url: string): boolean {
-  const parsed = new URL(url);
-  return /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(url)
-    && /^\/i\/(?:history|bookmarks)(?:\/|$)/i.test(parsed.pathname);
-}
 
 /** Owns one scan from URL validation through atomic publication and cancellation. */
 export function createScanSessionController(options: ScanSessionControllerOptions): ScanSessionController {
@@ -71,7 +67,7 @@ export function createScanSessionController(options: ScanSessionControllerOption
     const controller = new AbortController();
     activeController = controller;
     stopRequested = false;
-    bookmarkScan = targetUrl ? isBookmarkUrl(targetUrl) : null;
+    bookmarkScan = targetUrl ? isXBookmarkUrl(targetUrl, true) : null;
     state = "scanning";
     diagnostics = null;
     options.onBusyChange(true);
@@ -87,7 +83,7 @@ export function createScanSessionController(options: ScanSessionControllerOption
         const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
         if (options.isDisposed() || controller.signal.aborted || activeController !== controller) return;
         if (activeTab?.id === undefined || !isWebUrl(activeTab.url)) throw new Error(t("errorNoActivePage"));
-        bookmarkScan = isBookmarkUrl(activeTab.url);
+        bookmarkScan = isXBookmarkUrl(activeTab.url, true);
         if (stopRequested && !bookmarkScan) {
           controller.abort();
           throw new Error(t("errorScanCancelled"));

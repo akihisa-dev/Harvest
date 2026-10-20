@@ -1,3 +1,4 @@
+import { isXBookmarkUrl } from "../../core/x-page-url.js";
 import { fetchXBookmarkPage } from "../content/x-bookmark-page.js";
 import { isBookmarkPageResult, isPageScan, isXPageState, isXMediaSnapshot } from "../contracts/page-contracts.js";
 import { scanDocument } from "../content/page-scan.js";
@@ -205,7 +206,7 @@ export class PageReadSession {
                 if (!isXMediaSnapshot(result))
                     throw new Error("Xの動画情報を読み取れませんでした。");
                 this.assertSourceUrl(result.url);
-                if (!targetPostId && /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/i\/(?:history|bookmarks)(?:[/?#]|$)/i.test(this.sourceUrl)) {
+                if (!targetPostId && isXBookmarkUrl(this.sourceUrl)) {
                     this.assertBookmarkEpoch(result);
                     this.bookmarkEpoch ??= result.bookmarkEpoch;
                 }

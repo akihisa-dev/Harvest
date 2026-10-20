@@ -1,14 +1,10 @@
+import { isXBookmarkUrl } from "../../core/x-page-url.js";
 import { defaultDisplayedImageGroup } from "../../core/images.js";
 import { collectPageMedia } from "../../core/page-media.js";
 import { localizeErrorMessage, t } from "./localization.js";
 import { scanTab, scanUrl } from "../browser/page-access.js";
 function isWebUrl(url) {
     return url !== undefined && /^https?:\/\//i.test(url);
-}
-function isBookmarkUrl(url) {
-    const parsed = new URL(url);
-    return /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(url)
-        && /^\/i\/(?:history|bookmarks)(?:\/|$)/i.test(parsed.pathname);
 }
 /** Owns one scan from URL validation through atomic publication and cancellation. */
 export function createScanSessionController(options) {
@@ -41,7 +37,7 @@ export function createScanSessionController(options) {
         const controller = new AbortController();
         activeController = controller;
         stopRequested = false;
-        bookmarkScan = targetUrl ? isBookmarkUrl(targetUrl) : null;
+        bookmarkScan = targetUrl ? isXBookmarkUrl(targetUrl, true) : null;
         state = "scanning";
         diagnostics = null;
         options.onBusyChange(true);
@@ -61,7 +57,7 @@ export function createScanSessionController(options) {
                     return;
                 if (activeTab?.id === undefined || !isWebUrl(activeTab.url))
                     throw new Error(t("errorNoActivePage"));
-                bookmarkScan = isBookmarkUrl(activeTab.url);
+                bookmarkScan = isXBookmarkUrl(activeTab.url, true);
                 if (stopRequested && !bookmarkScan) {
                     controller.abort();
                     throw new Error(t("errorScanCancelled"));

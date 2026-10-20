@@ -1,16 +1,16 @@
+import { isXPageUrl, isXBookmarkUrl } from "../../core/x-page-url.js";
 import { parseXMedia, xMediaUrlKey, xOriginalPhotoUrl } from "../../core/x-media.js";
 import { mergeMediaCandidates } from "../../core/media-selection.js";
 import { mergeBookmarkSnapshots, supplementXSnapshot } from "./x-scan-evidence.js";
-const isXUrl = (url) => /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(url);
 const pageMovedMessage = "解析中にページが移動しました。もう一度解析してください。";
 export function xPageTarget(sourceUrl, requestedUrl) {
-    if (!isXUrl(sourceUrl))
+    if (!isXPageUrl(sourceUrl))
         return undefined;
-    const targetUrl = requestedUrl && isXUrl(requestedUrl) ? requestedUrl : sourceUrl;
+    const targetUrl = requestedUrl && isXPageUrl(requestedUrl) ? requestedUrl : sourceUrl;
     return {
         expectVideo: /\/status\/\d+\/video\/\d+(?:[?#]|$)/i.test(targetUrl),
         postId: /\/status\/(\d+)(?:[/?#]|$)/i.exec(targetUrl)?.[1],
-        bookmarkPage: /^\/i\/(?:history|bookmarks)(?:\/|$)/i.test(new URL(sourceUrl).pathname),
+        bookmarkPage: isXBookmarkUrl(sourceUrl, true),
     };
 }
 /** Owns ordered acquisition and retry decisions; the reader owns Chrome and document identity. */
