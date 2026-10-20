@@ -1165,7 +1165,12 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
   const byUrl = new Map(candidates.map(({url, kind}) => [url, {url, kind}]));
   const media = orderedCandidates(candidates).map(url => byUrl.get(url)!);
   checkDeadline();
-  const hasFrames = observation.elements(root, false).some(element => /^(?:iframe|frame)$/i.test(element.tagName));
+  const finalElements = observation.elements(root, false);
+  const hasFrames = finalElements.some(element => /^(?:iframe|frame)$/i.test(element.tagName));
+  const pageUrl = new URL(sourceUrl);
+  const hasRecordingPlayer = /^[a-z0-9-]+\.sharepoint\.com$/i.test(pageUrl.hostname)
+    && /\/_layouts\/(?:15\/)?(?:stream|onedrive|doc|embed)\.aspx$/i.test(pageUrl.pathname)
+    && finalElements.some(element => /^video$/i.test(element.tagName));
   return {url: sourceUrl, title: document.title, images, ...(media.length > 0 ? {media} : {}),
-    ...(hasFrames ? {hasFrames: true} : {}), ...(framesOnly ? {framePath} : {})};
+    ...(hasFrames ? {hasFrames: true} : {}), ...(hasRecordingPlayer ? {hasRecordingPlayer: true} : {}), ...(framesOnly ? {framePath} : {})};
 }

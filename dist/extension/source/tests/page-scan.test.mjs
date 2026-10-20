@@ -1321,3 +1321,14 @@ for(const depth of [100,200,400])test(`親子の同一バッチ変更で同じ�
   assert.ok(styleReads<depth*20,`computed style呼出し: ${styleReads}`);
   assert.equal(globalThis.getComputedStyle,original);
 });
+
+for(const src of ['blob:https://contoso.sharepoint.com/fixture','https://contoso.sharepoint.com/play.mpd','https://contoso.sharepoint.com/play.mp4'])test(`SharePointの動画要素の証拠を保存可能URLと分けて渡す: ${src}`,async()=>{
+  const video=new FixtureElement('video',{src},[],{src,currentSrc:src});
+  const root=new FixtureElement('html',{},[video]);
+  const result=await runWithFixture(new FixtureDocument(root),EmptyMutationObserver,()=>{
+    globalThis.location.href='https://contoso.sharepoint.com/sites/team/_layouts/15/embed.aspx?UniqueId=12345678-1234-abcd-1234-123456789abc';
+    return scanDocument();
+  });
+  assert.equal(result.hasRecordingPlayer,true);
+  if(!src.endsWith('.mp4'))assert.equal(result.media?.length??0,0);
+});

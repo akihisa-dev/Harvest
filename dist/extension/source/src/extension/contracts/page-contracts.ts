@@ -13,6 +13,8 @@ export interface PageScan {
   images: string[];
   media?: MediaImageMetadata[];
   hasFrames?: boolean;
+  /** SharePoint player evidence, independent of a directly savable media URL. */
+  hasRecordingPlayer?: boolean;
   framePath?: number[];
   /** Added by the extension after verifying each frame's document identity. */
   frames?: PageScan[];
@@ -54,6 +56,7 @@ export function isPageScan(value: unknown): value is PageScan {
   return Array.isArray(images) && images.every(item => typeof item === "string")
     && optionalString(value["sourcePage"])
     && optionalBoolean(value["hasFrames"])
+    && optionalBoolean(value["hasRecordingPlayer"])
     && (value["framePath"] === undefined || (Array.isArray(value["framePath"])
       && value["framePath"].every(item => Number.isSafeInteger(item) && item >= 0)))
     && (value["xDiagnostics"] === undefined || diagnostics(value["xDiagnostics"]))

@@ -41,12 +41,16 @@ export async function streamSite(t) {
       if (permission === 'denied') {response.writeHead(403);response.end('Download blocked');return;}
       if (permission === 'expired') {response.writeHead(302, {location: '/login-required'});response.end();return;}
       const source = url.searchParams.get('SourceUrl');
-      if (source !== `https://${host}/sites/team/Documents/Recordings/meeting.mp4`) {response.writeHead(404);response.end('Wrong recording');return;}
+      if (source !== `https://${host}/sites/team/Documents/Recordings/meeting.mp4` && url.searchParams.get('UniqueId') !== '12345678-1234-abcd-1234-123456789abc') {response.writeHead(404);response.end('Wrong recording');return;}
       response.writeHead(200, {'content-type': 'video/mp4', 'content-disposition': 'attachment; filename="meeting.mp4"', 'content-length': String(recording.length)});
       response.end(request.method === 'HEAD' ? undefined : recording);return;
     }
     if (/\/thumb\d\.png$/.test(url.pathname)) {response.writeHead(200, {'content-type': 'image/png'});response.end(redPng);return;}
     if (url.pathname === '/playback-segment') {response.writeHead(200, {'content-type': 'video/mp4'});response.end(fragmentedMp4);return;}
+    if (url.pathname === '/parent') {
+      response.writeHead(200, {'content-type': 'text/html'});
+      response.end('<title>録画の親ページ</title><iframe src="/sites/team/_layouts/15/embed.aspx?UniqueId=12345678-1234-abcd-1234-123456789abc"></iframe>');return;
+    }
     // A typical MSE player exposes a blob URL rather than the original MP4 URL.
     const html = `<title>仮想Stream 会議録画</title><h1>会議録画</h1><video controls poster="/thumb1.png"></video>
       <img src="/thumb2.png" width="120" height="80"><img src="/thumb3.png" width="120" height="80">
@@ -88,12 +92,14 @@ export async function streamSite(t) {
   await panel.evaluate(() => {window.downloadIds=[];chrome.downloads.onCreated.addListener(item => window.downloadIds.push(item.id));});
   const path = '/sites/team/Documents/Recordings/meeting.mp4';
   const pages = {
+    embed: `https://${host}/sites/team/_layouts/15/embed.aspx?UniqueId=12345678-1234-abcd-1234-123456789abc`,
+    iframe: `https://${host}/parent`,
     stream: `https://${host}/sites/team/_layouts/15/stream.aspx?id=${encodeURIComponent(path)}`,
     library: `https://${host}/sites/team/Documents/Forms/AllItems.aspx?id=${encodeURIComponent(path)}&parent=${encodeURIComponent('/sites/team/Documents/Recordings')}`,
   };
   async function scan(kind, current = false) {
     await playback.goto(pages[kind]);
-    await playback.waitForFunction(() => document.querySelector('video')?.src.startsWith('blob:') && document.querySelector('video').dataset.ready === 'true');
+    await playback.waitForFunction(() => {const doc=document.querySelector('iframe')?.contentDocument??document;const video=doc.querySelector('video');return video?.src.startsWith('blob:')&&video.dataset.ready==='true';});
     if (current) {
       await playback.bringToFront();
       // Keep the real playback tab active, as it would be beside Chrome's side panel.
@@ -108,6 +114,8 @@ export async function streamSite(t) {
   async function playSaved(filename) {
     assert.ok(resolve(filename).startsWith(resolve(temporary, 'downloads') + '/'));
     savedFilename = filename;
+    // iframe-only sources need a separate video page for saved-file playback.
+    if (!await playback.locator('video').count()) await playback.goto(pages.stream);
     return playback.evaluate(async () => {
       const video = document.querySelector('video');
       video.muted = true;video.src = '/saved.mp4';

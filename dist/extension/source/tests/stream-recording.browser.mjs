@@ -4,11 +4,11 @@ import {createHash} from 'node:crypto';
 import {streamSite} from './support/stream-site.mjs';
 import {readCompletedDownload} from './support/animation-panel.mjs';
 
-for (const [kind, current] of [['stream', false], ['library', false], ['library', true]]) test(`実ページ読み取りとCookie認証から65 MiB録画の保存までを置換なしで検証: ${kind}, current=${current}`, {timeout: 60000}, async t => {
+for (const [kind, current] of [['stream', false], ['library', false], ['library', true], ['embed', false], ['iframe', false]]) test(`実ページ読み取りとCookie認証から65 MiB録画の保存までを置換なしで検証: ${kind}, current=${current}`, {timeout: 60000}, async t => {
   const fixture = await streamSite(t), {panel, requests, recording} = fixture;
   const row = await fixture.scan(kind, current);
-  if (!row.includes('meeting.mp4')) t.diagnostic(JSON.stringify({kind, row, status: await panel.locator('#status').innerText(), requests, networkErrors: fixture.networkErrors}));
-  assert.match(row, /meeting\.mp4/, 'サムネイル画像だけでは成功にしない');
+  if (!/meeting\.mp4|recording\.mp4/.test(row)) t.diagnostic(JSON.stringify({kind, row, status: await panel.locator('#status').innerText(), requests, networkErrors: fixture.networkErrors}));
+  assert.match(row, /meeting\.mp4|recording\.mp4/, 'サムネイル画像だけでは成功にしない');
   assert.equal(await panel.locator('#images > li').count(), 1);
   await panel.locator('#video-export-format-mp4').check();
   await panel.locator('#export').click();

@@ -108,7 +108,7 @@ export class PageReadSession {
         const url = new URL(page.url);
         const libraryRecording = /\/Forms\/AllItems\.aspx$/i.test(url.pathname) && streamDownloadUrl(page.url) !== null;
         if (!/\/stream\.aspx$/i.test(url.pathname) && !libraryRecording && !/\.mp4(?:$|[?#])/i.test(url.searchParams.get("id") ?? url.searchParams.get("file") ?? "")
-            && !page.media?.some(item => item.kind === "video"))
+            && !page.hasRecordingPlayer && !page.media?.some(item => item.kind === "video"))
             return page;
         const stream = await inspectStreamRecording(page.url, this.signal);
         const downloadUrl = streamDownloadUrl(page.url);

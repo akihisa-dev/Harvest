@@ -25,6 +25,7 @@ export function isPageScan(value) {
     return Array.isArray(images) && images.every(item => typeof item === "string")
         && optionalString(value["sourcePage"])
         && optionalBoolean(value["hasFrames"])
+        && optionalBoolean(value["hasRecordingPlayer"])
         && (value["framePath"] === undefined || (Array.isArray(value["framePath"])
             && value["framePath"].every(item => Number.isSafeInteger(item) && item >= 0)))
         && (value["xDiagnostics"] === undefined || diagnostics(value["xDiagnostics"]))
