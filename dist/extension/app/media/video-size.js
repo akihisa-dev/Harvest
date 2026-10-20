@@ -28,14 +28,12 @@ export async function fetchVideoSize(item, signal) {
 /** Bound requests and retain metadata only while the thumbnail row exists. */
 export function createVideoSizeLoader(labels) {
     const entries = new Map();
+    const pending = new Map();
     let active = 0;
     function pump() {
-        for (const [element, entry] of entries) {
-            if (active >= 3)
-                break;
-            if (entry.started)
-                continue;
-            entry.started = true;
+        while (active < 3 && pending.size) {
+            const [element, entry] = pending.entries().next().value;
+            pending.delete(element);
             active += 1;
             void fetchVideoSize(entry.item, entry.controller.signal).catch(() => null).then(size => {
                 if (entries.get(element) !== entry)
@@ -47,6 +45,7 @@ export function createVideoSizeLoader(labels) {
     }
     function release(element) {
         entries.get(element)?.controller.abort();
+        pending.delete(element);
         entries.delete(element);
     }
     return {
@@ -57,7 +56,9 @@ export function createVideoSizeLoader(labels) {
             release(element);
             element.hidden = false;
             element.textContent = labels.loading;
-            entries.set(element, { item, controller: new AbortController(), started: false });
+            const entry = { item, controller: new AbortController() };
+            entries.set(element, entry);
+            pending.set(element, entry);
             pump();
         },
         release,

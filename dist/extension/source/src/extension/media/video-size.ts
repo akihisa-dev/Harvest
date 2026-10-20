@@ -26,13 +26,14 @@ export async function fetchVideoSize(item: ImageItem, signal?: AbortSignal): Pro
 
 /** Bound requests and retain metadata only while the thumbnail row exists. */
 export function createVideoSizeLoader(labels: {loading: string; unknown: string}) {
-  const entries = new Map<HTMLElement, {item: ImageItem; controller: AbortController; started: boolean}>();
+  type Entry = {item: ImageItem; controller: AbortController};
+  const entries = new Map<HTMLElement, Entry>();
+  const pending = new Map<HTMLElement, Entry>();
   let active = 0;
   function pump(): void {
-    for (const [element, entry] of entries) {
-      if (active >= 3) break;
-      if (entry.started) continue;
-      entry.started = true;
+    while (active < 3 && pending.size) {
+      const [element, entry] = pending.entries().next().value!;
+      pending.delete(element);
       active += 1;
       void fetchVideoSize(entry.item, entry.controller.signal).catch(() => null).then(size => {
         if (entries.get(element) !== entry) return;
@@ -43,6 +44,7 @@ export function createVideoSizeLoader(labels: {loading: string; unknown: string}
   }
   function release(element: HTMLElement): void {
     entries.get(element)?.controller.abort();
+    pending.delete(element);
     entries.delete(element);
   }
   return {
@@ -52,7 +54,9 @@ export function createVideoSizeLoader(labels: {loading: string; unknown: string}
       release(element);
       element.hidden = false;
       element.textContent = labels.loading;
-      entries.set(element, {item, controller: new AbortController(), started: false});
+      const entry = {item, controller: new AbortController()};
+      entries.set(element, entry);
+      pending.set(element, entry);
       pump();
     },
     release,

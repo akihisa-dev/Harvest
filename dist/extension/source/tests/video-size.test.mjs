@@ -72,3 +72,40 @@ test("サイズ取得は同時3件までとし、削除後の結果を表示せ�
   loader.clear();
   assert.equal(pending[3].options.signal.aborted, true);
 });
+
+test("大量の即時完了でも待機行だけを線形に探索する", async t => {
+  let visited = 0;
+  for (const key of [Symbol.iterator, "entries"]) {
+    const original = Map.prototype[key];
+    t.mock.method(Map.prototype, key, function* () {
+      for (const pair of original.call(this)) {
+        if (pair[1]?.item && pair[1]?.controller) visited++;
+        yield pair;
+      }
+    });
+  }
+  const loader = createVideoSizeLoader({loading: "loading", unknown: "unknown"});
+  const elements = Array.from({length: 1000}, () => ({textContent: "", hidden: true}));
+  for (const element of elements) loader.set(element, {...item, youtube: {bytes: 1000, quality: "720p"}});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(elements.every(element => element.textContent === "720p · 1.0 KB"));
+  assert.ok(visited <= elements.length * 2, `探索行数: ${visited}`);
+  loader.clear();
+});
+
+test("開始前に除去した行とclearした待機行は取得しない", async t => {
+  const pending = [];
+  t.mock.method(globalThis, "fetch", (_url, options) => new Promise(resolve => pending.push({resolve, options})));
+  const loader = createVideoSizeLoader({loading: "loading", unknown: "unknown"});
+  const elements = Array.from({length: 6}, () => ({textContent: "", hidden: true}));
+  for (const element of elements) loader.set(element, item);
+  loader.release(elements[3]);
+  pending[0].resolve(new Response(null, {headers: {"content-length": "1000"}}));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(pending.length, 4);
+  assert.equal(elements[3].textContent, "loading");
+  loader.clear();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(pending.length, 4);
+  assert.ok(pending.slice(1).every(request => request.options.signal.aborted));
+});
