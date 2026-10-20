@@ -16,7 +16,7 @@ function fixture(){
  window.switchToLikes=()=>{module.timelineId='favorites-other';state.urt.bookmarks.entries=[entry('99')];mount('99');window.currentList='likes';};
  mount('1');
 }
- const context = await launchExtensionContext(t, temp+'/profile');
+ const context = await launchExtensionContext(t, temp+'/profile', {locale: 'ja-JP'});
  const cdp=await context.browser().newBrowserCDPSession();const {id}=await cdp.send('Extensions.loadUnpacked',{path:root+'/dist/extension'});
  await context.route('**/*',r=>r.request().url().startsWith('chrome-extension:')?r.continue():r.request().resourceType()==='document'?r.fulfill({contentType:'text/html',body:'<!doctype html><title>Final boundary fixture</title><main></main>'}):r.abort());
  const target=await context.newPage(),panel=await context.newPage();

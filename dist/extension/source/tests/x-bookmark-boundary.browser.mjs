@@ -25,7 +25,7 @@ function fixture({ending,switchAt}){
   if(empty)document.querySelector('main').replaceChildren();else mount('99');};
  mount('1');
 }
- const context = await launchExtensionContext(t, temp+'/profile');
+ const context = await launchExtensionContext(t, temp+'/profile', {locale: 'ja-JP'});
  const cdp=await context.browser().newBrowserCDPSession();const {id}=await cdp.send('Extensions.loadUnpacked',{path:root+'/dist/extension'});
  await context.route('**/*',r=>r.request().url().startsWith('chrome-extension:')?r.continue():r.request().resourceType()==='document'?r.fulfill({contentType:'text/html',body:'<!doctype html><title>Boundary fixture</title><main></main>'}):r.abort());
  const target=await context.newPage(),panel=await context.newPage();
