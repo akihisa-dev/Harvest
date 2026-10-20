@@ -9,6 +9,8 @@
 
 ## 開発環境と依存関係
 
+対応OSはWindowsとmacOSです。Linuxでの動作保証や実機検証は完了条件に含めません。共通処理の移植性を保つため、一時フォルダーは引き続きOSの一時領域を使用します。
+
 pnpmは`package.json`の`packageManager`と`pnpm-lock.yaml`で12.5.1に固定します。通常設定は`pnpm-workspace.yaml`に置き、`.npmrc`はregistry/authentication設定が必要な場合だけ使います。pnpmの版を変えるときは、`package.json`、lockfile、`scripts/check-runtime.mjs`を同じ変更で揃えます。依存導入では`pnpm install --frozen-lockfile`を使います。
 
 ## コミットとタグ
