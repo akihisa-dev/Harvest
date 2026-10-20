@@ -207,3 +207,33 @@ test('動画情報を待つ間の中止では、その後に再生操作を開�
   assert.match((await pending).error,/終了/);
   assert.equal(window[Symbol.for('harvest.youtube.capture.controls')],undefined);
 });
+
+for(const change of ['hash','query','other-video','other-element','player-changed','user-unmuted'])for(const muted of [false,true])test(`同一動画のURL変更では自分の消音だけを戻す: ${change}, muted=${muted}`,async t=>{
+  const previous=Object.fromEntries(['location','document','window','XMLHttpRequest'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
+  t.after(()=>{for(const [key,descriptor] of Object.entries(previous)){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
+  const address=`https://www.youtube.com/watch?v=${videoId}`;
+  globalThis.location={origin:'https://www.youtube.com',pathname:'/watch',href:address};
+  class XHR {open(){}send(){}}
+  globalThis.XMLHttpRequest=XHR;
+  const fetcher=async()=>{};globalThis.window={fetch:fetcher};
+  const response={videoDetails:{videoId},playabilityStatus:{status:'OK'}};
+  let unmuted=0,paused=0,seek=0;
+  const element={muted,volume:0.4,playbackRate:1.5,currentTime:14,paused:false,play:async()=>{},pause(){paused++;}};
+  let current=element;
+  const player={getPlayerResponse:()=>response,mute(){},unMute(){unmuted++;},seekTo(){seek++;},loadVideoById(){
+    location.href=address+(change==='query'?'&feature=share':'#save-progress');
+    element.volume=0.7;element.playbackRate=2;element.currentTime=27;
+    if(change==='other-video')location.href='https://www.youtube.com/watch?v=01234567890';
+    if(change==='other-element')current={...element};
+    if(change==='player-changed')response.videoDetails.videoId='01234567890';
+    if(change==='user-unmuted')element.muted=false;
+  }};
+  globalThis.document={getElementById:()=>player,querySelector:()=>current};
+  const result=await readYoutubePage(videoId,true,'',true);
+  assert.match(result.error,/移動/);
+  const restored=['hash','query'].includes(change)&&!muted;
+  assert.equal(element.muted,change==='user-unmuted'?false:!restored);
+  assert.equal(unmuted,restored?1:0);assert.equal(paused,0);assert.equal(seek,0);
+  assert.equal(element.volume,0.7);assert.equal(element.playbackRate,2);assert.equal(element.currentTime,27);
+  assert.equal(window.fetch,fetcher);assert.equal(window[Symbol.for('harvest.youtube.capture')],undefined);
+});

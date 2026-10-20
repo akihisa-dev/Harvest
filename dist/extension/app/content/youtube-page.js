@@ -254,6 +254,20 @@ export async function readYoutubePage(videoId, capturePlayback, owner, restorePl
         }
         catch { /* A detached/loading player must not prevent cleanup. */ } };
         const currentVideo = document.querySelector("#movie_player video");
+        // A hash/share-query change still cancels capture, but must not leave our
+        // mute behind on the very same player. Do not seek or restore other state.
+        if (restorePlayback && location.href !== initialUrl && currentVideo === video) {
+            let sameVideo = false;
+            attempt(() => {
+                const current = new URL(location.href);
+                sameVideo = current.origin === "https://www.youtube.com" && current.pathname === "/watch"
+                    && current.searchParams.get("v") === videoId && record(source()?.["videoDetails"])?.["videoId"] === videoId;
+            });
+            if (sameVideo && video.muted && !playback.muted) {
+                attempt(() => { video.muted = false; });
+                attempt(() => { document.getElementById("movie_player")?.unMute?.(); });
+            }
+        }
         if (!restorePlayback || location.href === initialUrl) {
             attempt(() => video.pause());
             if (currentVideo && currentVideo !== video)
