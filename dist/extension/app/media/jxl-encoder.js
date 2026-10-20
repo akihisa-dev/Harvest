@@ -13,6 +13,7 @@ function terminateWorker(error) {
     worker?.terminate();
     worker = null;
     for (const [id, request] of pending) {
+        clearTimeout(request.timer);
         if (request.signal && request.abort)
             request.signal.removeEventListener("abort", request.abort);
         request.reject(error);
@@ -39,6 +40,7 @@ function getWorker() {
         if (!request)
             return;
         pending.delete(reply.id);
+        clearTimeout(request.timer);
         if (request.signal && request.abort)
             request.signal.removeEventListener("abort", request.abort);
         if (reply.error)
@@ -67,7 +69,15 @@ export function encodeJxl(image, signal) {
     const activeWorker = getWorker();
     const id = nextId++;
     return new Promise((resolve, reject) => {
-        const request = signal ? { resolve, reject, signal } : { resolve, reject };
+        const bytes = image.data.byteLength;
+        // Include earlier queued pixels; large encodes get a conservative size-based allowance.
+        const queuedBytes = [...pending.values()].reduce((sum, request) => sum + request.bytes, bytes);
+        const timeoutMs = 120_000 + Math.ceil(queuedBytes / (1024 * 1024)) * 1000;
+        const timer = setTimeout(() => {
+            if (worker === activeWorker && pending.has(id))
+                terminateWorker(new Error("JXLの変換に失敗しました。"));
+        }, timeoutMs);
+        const request = signal ? { resolve, reject, signal, bytes, timer } : { resolve, reject, bytes, timer };
         const abort = () => terminateWorker(cancelledError());
         const storedRequest = signal ? { ...request, abort } : request;
         pending.set(id, storedRequest);
@@ -82,6 +92,7 @@ export function encodeJxl(image, signal) {
         }
         catch (error) {
             pending.delete(id);
+            clearTimeout(timer);
             if (signal)
                 signal.removeEventListener("abort", abort);
             const failure = error instanceof Error ? error : new Error("JXLの変換に失敗しました。");

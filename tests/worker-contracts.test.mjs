@@ -48,7 +48,7 @@ test("JXLは未完了要求をidle扱いせず、不正な応答で全要求を�
     const second = encodeJxl(image());
     worker.onmessage({data: {id: worker.requests[0].id, buffer: new ArrayBuffer(1)}});
     await first;
-    assert.equal(timers, 0);
+    assert.equal(timers, 2, "処理期限2件のみでidleタイマーは作らない");
     worker.onmessage({data: null});
     await assert.rejects(second, /読み取れません/);
     assert.equal(worker.terminated, true);

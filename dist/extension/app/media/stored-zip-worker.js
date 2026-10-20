@@ -4,13 +4,17 @@ function checksumInWorker(worker, blob, id, signal) {
     if (signal?.aborted)
         throw new DOMException("ZIP作成を中止しました。", "AbortError");
     return new Promise((resolve, reject) => {
+        let finished = false;
         const cleanup = () => {
+            clearTimeout(timer);
             worker.removeEventListener("message", onMessage);
             worker.removeEventListener("error", onError);
             worker.removeEventListener("messageerror", onError);
             signal?.removeEventListener("abort", onAbort);
         };
         const onMessage = (event) => {
+            if (finished)
+                return;
             const replyId = workerRequestId(event.data);
             if (replyId !== null && replyId !== id)
                 return;
@@ -18,6 +22,7 @@ function checksumInWorker(worker, blob, id, signal) {
                 onError();
                 return;
             }
+            finished = true;
             cleanup();
             if (event.data.error !== undefined)
                 reject(new Error(event.data.error));
@@ -27,13 +32,21 @@ function checksumInWorker(worker, blob, id, signal) {
                 resolve(event.data.checksum);
         };
         const onError = () => {
+            if (finished)
+                return;
+            finished = true;
             cleanup();
             reject(new Error("ZIPのCRC確認に失敗しました。"));
         };
         const onAbort = () => {
+            if (finished)
+                return;
+            finished = true;
             cleanup();
             reject(new DOMException("ZIP作成を中止しました。", "AbortError"));
         };
+        // Each file gets its own allowance; completed files cannot consume the next one's budget.
+        const timer = setTimeout(onError, 120_000 + Math.ceil(blob.size / (1024 * 1024)) * 1000);
         worker.addEventListener("message", onMessage);
         worker.addEventListener("error", onError, { once: true });
         worker.addEventListener("messageerror", onError, { once: true });
