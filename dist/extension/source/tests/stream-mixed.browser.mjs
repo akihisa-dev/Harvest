@@ -29,9 +29,10 @@ for(const type of ['video/mp4','application/octet-stream'])test(`録画の実通
  },[...mp3.bytes]);
  assert.equal(audio.codec,'mp3');assert.ok(audio.duration>0);
  await fixture.scan('iframe');await panel.locator('#all-visibility').click();await panel.locator('#all-selection').check();assert.equal(await panel.locator('#images > li').count(),2);
- await panel.locator('#export-format-original').check();await panel.locator('#video-export-format-mp4').check();await panel.locator('#export').click();
+ await panel.locator('#export-format-original').check();await panel.locator('#video-export-format-mp4').check();
+ const anticipated=await panel.locator('#source-drop').textContent();assert.match(anticipated,/\.zip$/);await panel.locator('#export').click();
  await panel.waitForFunction(()=>document.querySelector('#status').dataset.state==='success');
- const zip=await read();assert.match(zip.item.filename,/\.zip$/);
+ const zip=await read();assert.match(zip.item.filename,/\.zip$/);assert.ok(zip.item.filename.endsWith('/'+anticipated));
  const entries=[];let at=0;
  while(zip.bytes.readUInt32LE(at)===0x04034b50){const size=zip.bytes.readUInt32LE(at+22),start=at+30+zip.bytes.readUInt16LE(at+26);entries.push(zip.bytes.subarray(start,start+size));at=start+size;}
  assert.equal(entries.length,2);assert.ok(entries.some(entry=>entry.equals(Buffer.from(bytes))));

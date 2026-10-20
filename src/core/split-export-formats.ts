@@ -18,6 +18,10 @@ export function isVideoExportFormat(value: unknown): value is VideoExportFormat 
 export function isStillImage(item: ImageItem): boolean {
   return item.kind !== "video" && item.kind !== "gif" && item.recommendedFormat !== "gif";
 }
+/** Large recordings bypass archive preparation, including original MP4 output. */
+export function usesDirectRecordingDownload(items: readonly ImageItem[], videoFormat: VideoExportFormat): boolean {
+  return items.length > 0 && videoFormat !== "mp3" && items.every(item => item.kind === "video" && item.stream);
+}
 export function splitSettingsMatch(a: SplitExportSettings, b: SplitExportSettings): boolean {
   return a.imageFormat === b.imageFormat && a.videoFormat === b.videoFormat && a.includeSourcePage === b.includeSourcePage;
 }

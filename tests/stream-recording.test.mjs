@@ -181,3 +181,21 @@ for(const name of ['meeting.mp4','進捗%20確認.mp4','folder%2Fmeeting.mp4','�
   embed.searchParams.set('file',name);
   assert.equal(streamRecordingFilename({pageUrl:embed.href}),name);
 });
+
+for(const count of [1,2])for(const format of ['original','recommend','mp4'])test(`録画${count}件の${format}は予告したMP4名で保存する`,async t=>{
+ const {createExportPresentation}=await import('../dist/extension/app/panel/export-presentation.js');
+ head(t);const fake=chromeApi(t);install(t,'document',{documentElement:{setAttribute(){}},body:{dataset:{}},querySelectorAll:()=>[]});
+ let selected=Array.from({length:count},()=>({url,sourcePage:pageUrl,selected:true,kind:'video',stream:{pageUrl,bytes}}));
+ const presentation=createExportPresentation({getTitle:()=> 'meeting',getSelection:()=>({format:'original',videoFormat:format,includeSourcePage:false,selected}),fallbackTitle:'Harvest',sourceHeading:'Source'});
+ const anticipated=presentation.resultFilename;
+ assert.equal(anticipated,count===1?'meeting.mp4':'meeting_001.mp4');
+ const controller=createMixedExportController({getSelectedItems:()=>selected,getZipFilename:()=>presentation.zipFilename,getPdfFilename:()=>presentation.pdfFilename,
+  isBusy:()=>false,isDisposed:()=>false,onBusyChange(){},onStatus(){},onCloseViewer(){},onClearSourceUrl(){},onCompleted(){},onScrollToFailures(){}});
+ const work=controller.export({imageFormat:'original',videoFormat:format,includeSourcePage:false});await tick();
+ assert.equal(fake.starts[0].filename,anticipated);
+ for(let index=0;index<count;index++){fake.finish(index+1,'complete');await tick();}
+ await work;assert.equal(fake.starts.length,count);
+ selected=[];assert.equal(presentation.resultFilename,'meeting.zip');
+ selected=[{url:'https://example.test/one.mp4',sourcePage:pageUrl,selected:true,kind:'video'},{url:'https://example.test/two.mp4',sourcePage:pageUrl,selected:true,kind:'video'}];
+ if(format==='original')assert.equal(presentation.resultFilename,'meeting.zip');
+});

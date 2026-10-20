@@ -1,7 +1,7 @@
 import { resolveImageExportFormat } from "../../core/export-recommendations.js";
 import { createPdf } from "../../core/pdf.js";
 import { originalMediaType } from "../../core/media-types.js";
-import { indexedExportFilename, isStillImage, pdfSourceFilename, splitSettingsMatch } from "../../core/split-export-formats.js";
+import { indexedExportFilename, isStillImage, pdfSourceFilename, splitSettingsMatch, usesDirectRecordingDownload } from "../../core/split-export-formats.js";
 import { individualFilename } from "../../core/export-files.js";
 import { storedZipDataLimit } from "../../core/stored-zip.js";
 import { ImageArchiveLimitError } from "../../core/image-archive.js";
@@ -62,7 +62,7 @@ export function createMixedExportController(options) {
                             run.complete();
                             return;
                         }
-                        if (work.videoFormat !== "mp3" && work.selected.every(item => item.kind === "video" && item.stream)) {
+                        if (usesDirectRecordingDownload(work.selected, work.videoFormat)) {
                             work.failed.clear();
                             const remaining = work.selected.filter(item => !work.saved.has(item));
                             for (const [index, item] of remaining.entries()) {

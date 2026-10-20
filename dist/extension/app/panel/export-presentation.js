@@ -1,5 +1,5 @@
 import { createSourcePageLayout } from "../../core/pdf.js";
-import { isStillImage, pdfSourceFilename } from "../../core/split-export-formats.js";
+import { isStillImage, pdfSourceFilename, usesDirectRecordingDownload } from "../../core/split-export-formats.js";
 import { resolveImageExportFormat } from "../../core/export-recommendations.js";
 import { originalItemExtension } from "../../core/export-formats.js";
 import { replaceLoneSurrogates, sourceTextGraphemes, sourceTextNeedsLineImage, sourceTextDirection, SOURCE_TEXT_FONT_FAMILY } from "../../core/source-text.js";
@@ -88,7 +88,7 @@ export function createExportPresentation(options) {
             if (count === 1 && pdf)
                 return filename("pdf");
             const videosOnly = selected.length > 0 && selected.every(item => item.kind === "video");
-            if (count > 1 && !(videosOnly && videoFormat !== "original"))
+            if (count > 1 && !(videosOnly && videoFormat !== "original") && !usesDirectRecordingDownload(selected, videoFormat))
                 return filename("zip");
             const item = selected[0], original = item?.kind === "video" ? videoFormat === "original" : format === "original";
             const extension = !item ? null : original ? originalItemExtension(item)?.toLowerCase()

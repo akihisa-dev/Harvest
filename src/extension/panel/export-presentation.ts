@@ -1,6 +1,6 @@
 import type { ImageItem } from "../../core/images.js";
 import { createSourcePageLayout } from "../../core/pdf.js";
-import {isStillImage, pdfSourceFilename, type ImageExportFormat, type VideoExportFormat} from "../../core/split-export-formats.js";
+import {isStillImage, pdfSourceFilename, usesDirectRecordingDownload, type ImageExportFormat, type VideoExportFormat} from "../../core/split-export-formats.js";
 import {resolveImageExportFormat, type ResolvedImageExportFormat} from "../../core/export-recommendations.js";
 import type { ExportFormat } from "../../core/export-formats.js";
 import { originalItemExtension } from "../../core/export-formats.js";
@@ -122,7 +122,7 @@ export function createExportPresentation(options: ExportPresentationOptions) {
       const count = format === "pdf" ? selected.length-still.length+(pdf?1:0) : selected.length;
       if (count === 1 && pdf) return filename("pdf");
       const videosOnly=selected.length>0&&selected.every(item=>item.kind === "video");
-      if (count > 1 && !(videosOnly&&videoFormat !== "original")) return filename("zip");
+      if (count > 1 && !(videosOnly&&videoFormat !== "original") && !usesDirectRecordingDownload(selected, videoFormat)) return filename("zip");
       const item=selected[0],original=item?.kind === "video" ? videoFormat === "original" : format === "original";
       const extension=!item ? null : original ? originalItemExtension(item)?.toLowerCase()
         : item.kind === "video" ? videoFormat === "mp3" ? "mp3" : "mp4" : !isStillImage(item) ? "gif" : format === "recommend" ? "png" : format;
