@@ -3,7 +3,7 @@ import {BlobSource, EncodedPacketSink, Input, MP4} from "harvest-vendor-mediabun
 import {hasCompleteGif, hasCompleteMp4Boxes} from "../../core/original-media-structure.js";
 import {inspectJpegStructure} from "../../core/jpeg.js";
 import {hasCompletePng} from "../../core/original-image-structure.js";
-import {hasCompleteWebm} from "../../core/webm-structure.js";
+import {validateWebm} from "./webm-validation.js";
 import {inspectWebpAnimation} from "../../core/webp-animation.js";
 import {validateIsoImage} from "./iso-image-validation.js";
 import {checkCancelled, invalidImage} from "../contracts/image-data-contract.js";
@@ -23,7 +23,7 @@ export async function validateOriginalMedia(blob: Blob, signal?: AbortSignal): P
   if (mimeType !== "video/mp4") {
     const valid = mimeType === "image/jpeg" ? inspectJpegStructure(bytes)
       : mimeType === "image/png" ? hasCompletePng(bytes)
-        : mimeType === "video/webm" ? hasCompleteWebm(bytes)
+        : mimeType === "video/webm" ? await validateWebm(bytes, signal)
           : mimeType === "image/webp" ? ["static", "animated"].includes(inspectWebpAnimation(bytes) ?? "")
             : ["image/avif", "image/heic", "image/heif"].includes(mimeType) ? await validateIsoImage(bytes, signal) : hasCompleteGif(bytes);
     if (!valid) throw invalid();
