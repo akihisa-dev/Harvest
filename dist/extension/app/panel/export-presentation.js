@@ -53,10 +53,20 @@ export function createExportPresentation(options) {
     function filename(extension) {
         return `${exportFileBaseName(options.getTitle(), options.fallbackTitle)}.${extension}`;
     }
+    let previousPreview;
     function preview(selection) {
         const still = selection.selected.filter(isStillImage);
         const sourceFilename = pdfSourceFilename(selection.selected.length, selection.selected.indexOf(still[0]), selection.selected.length - still.length, filename("pdf"));
-        return createSourcePreview(still, outputFormat(selection), selection.includeSourcePage, options.sourceHeading, sourceFilename);
+        if (outputFormat(selection) !== "pdf" || !selection.includeSourcePage || !still[0]) {
+            previousPreview = undefined;
+            return null;
+        }
+        const url = still[0].sourcePage;
+        if (previousPreview?.url === url && previousPreview.filename === sourceFilename)
+            return previousPreview.value;
+        const value = createSourcePreview(still, "pdf", true, options.sourceHeading, sourceFilename);
+        previousPreview = { url, filename: sourceFilename, value };
+        return value;
     }
     return {
         get pdfFilename() { return filename("pdf"); },

@@ -8,26 +8,26 @@ export function createSourcePageLayout(source) {
     const filename = replaceLoneSurrogates(source.filename);
     const url = replaceLoneSurrogates(source.url);
     const availableWidth = (SOURCE_PAGE_WIDTH - SOURCE_PAGE_MARGIN * 2) * 1000;
-    const headingLines = wrapSourceText(heading, availableWidth / 18);
-    const filenameLines = wrapSourceText(filename, availableWidth / 12);
+    const headingLines = wrapSourceText(prepareSourceText(heading), availableWidth / 18);
+    const filenameLines = wrapSourceText(prepareSourceText(filename), availableWidth / 12);
     const fixedHeight = headingLines.length * 25 + filenameLines.length * 18 + 20;
     const availableHeight = Math.max(1, SOURCE_PAGE_HEIGHT - SOURCE_PAGE_MARGIN * 2 - fixedHeight);
-    const urlUnits = sourceTextGraphemes(url).reduce((total, character) => total + sourcePageCharacterWidth(character), 0);
+    const preparedUrl = prepareSourceText(url);
+    const urlUnits = preparedUrl.flat().reduce((total, part) => total + part.width, 0) + (preparedUrl.length - 1) * 600;
     let urlSize = 10;
-    let urlLines = wrapSourceText(url, availableWidth / urlSize);
+    let urlLines = wrapSourceText(preparedUrl, availableWidth / urlSize);
     while (urlSize > 0.25 && fixedHeight + urlLines.length * urlSize * 1.4 > availableHeight) {
         urlSize -= 0.25;
-        urlLines = wrapSourceText(url, availableWidth / urlSize);
+        urlLines = wrapSourceText(preparedUrl, availableWidth / urlSize);
     }
     if (fixedHeight + urlLines.length * urlSize * 1.4 > availableHeight) {
         urlSize = Math.max(0.05, Math.sqrt((availableHeight * availableWidth) / Math.max(urlUnits, 1) / 1.4));
-        urlLines = wrapSourceText(url, availableWidth / urlSize);
+        urlLines = wrapSourceText(preparedUrl, availableWidth / urlSize);
     }
     const lines = [];
     let y = SOURCE_PAGE_HEIGHT - SOURCE_PAGE_MARGIN;
     const addSection = (textLines, size, leading) => {
-        for (const text of textLines) {
-            const widthUnits = sourceTextGraphemes(text).reduce((total, character) => total + sourcePageCharacterWidth(character), 0);
+        for (const { text, width: widthUnits } of textLines) {
             lines.push({
                 text,
                 x: SOURCE_PAGE_MARGIN,
@@ -52,22 +52,25 @@ export function createSourcePageLayout(source) {
 export function sourcePageCharacterWidth(character) {
     return sourceGraphemeNeedsImage(character) ? 1000 : 600;
 }
-function wrapSourceText(value, maxWidth) {
+function prepareSourceText(value) {
+    return value.split(/\r\n|\r|\n/u).map(paragraph => sourceTextGraphemes(paragraph)
+        .map(text => ({ text, width: sourcePageCharacterWidth(text) })));
+}
+function wrapSourceText(paragraphs, maxWidth) {
     const output = [];
-    for (const paragraph of value.split(/\r\n|\r|\n/u)) {
+    for (const paragraph of paragraphs) {
         let line = "";
         let width = 0;
-        for (const character of sourceTextGraphemes(paragraph)) {
-            const characterWidth = sourcePageCharacterWidth(character);
+        for (const { text, width: characterWidth } of paragraph) {
             if (line !== "" && width + characterWidth > maxWidth) {
-                output.push(line);
+                output.push({ text: line, width });
                 line = "";
                 width = 0;
             }
-            line += character;
+            line += text;
             width += characterWidth;
         }
-        output.push(line);
+        output.push({ text: line, width });
     }
     return output;
 }
