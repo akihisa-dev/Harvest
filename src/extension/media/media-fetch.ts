@@ -1,4 +1,5 @@
 import {validateOriginalMedia} from "./original-media-validation.js";
+import {isStreamRecording, isStreamMp4Content, type StreamRecording} from "../../core/stream-recording.js";
 import {mediaTypeMatchesKind, normalizeMediaMimeType, originalMediaType, type ImageItemMediaKind} from "../../core/media-types.js";
 import { checkCancelled, ImageDataError, invalidImage, MAX_IMAGE_BYTES } from "../contracts/image-data-contract.js";
 import { readImageBytes } from "./image-response-bytes.js";
@@ -7,6 +8,7 @@ import {fetchResponse, type ResponseFetchErrors} from "./response-fetch.js";
 export const DEFAULT_MEDIA_TIMEOUT_MS = 120_000;
 
 export interface OriginalMediaOptions {
+  readonly stream?: StreamRecording;
   readonly signal?: AbortSignal;
   readonly sourcePage?: string;
   readonly timeoutMs?: number;
@@ -54,9 +56,11 @@ export async function fetchOriginalMedia(
   kind: ImageItemMediaKind = "image",
   options: OriginalMediaOptions = {},
 ): Promise<Blob> {
-  return fetchResponse(url, {...options, timeoutMs: options.timeoutMs ?? DEFAULT_MEDIA_TIMEOUT_MS}, mediaFetchErrors, async (response, {sourceSignal, signal}) => {
+  if (options.stream && (kind !== "video" || !isStreamRecording(options.stream, url))) throw invalidImage("メディアの形式を確認できませんでした。");
+  return fetchResponse(url, {...options, ...(options.stream ? {sourcePage: options.stream.pageUrl} : {}), timeoutMs: options.timeoutMs ?? DEFAULT_MEDIA_TIMEOUT_MS}, mediaFetchErrors, async (response, {sourceSignal, signal}) => {
     const contentType = response.headers.get("content-type") ?? "";
-    const normalizedType = normalizeMediaMimeType(contentType);
+    if (options.stream && (response.status !== 200 || !isStreamMp4Content(contentType, response.headers.get("content-disposition")))) throw invalidImage("メディアの形式を確認できませんでした。");
+    const normalizedType = options.stream ? "video/mp4" : normalizeMediaMimeType(contentType);
     const mediaType = originalMediaType(normalizedType);
     if (!mediaType || !mediaTypeMatchesKind(kind, mediaType.kind)) {
       throw invalidImage("メディアの形式を確認できませんでした。");

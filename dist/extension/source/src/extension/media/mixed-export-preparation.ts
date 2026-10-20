@@ -67,7 +67,7 @@ export async function prepareMixedExport(work: MixedExportWork, options: Options
       const original = item.kind === "video" || imageFormat === "original";
       if (original) {
         const onProgress = item.kind === "video" ? (fraction: number) => itemProgress(index, fraction * (work.videoFormat === "original" ? .95 : .7)) : undefined;
-        results[index]!.resolve({kind:"media",blob:item.youtube ? await fetchYoutubeVideo(item.youtube,signal,onProgress) : await fetchOriginalMedia(item.url,item.kind ?? "image",{signal,sourcePage:item.sourcePage,...(onProgress ? {onProgress} : {})}),release});
+        results[index]!.resolve({kind:"media",blob:item.youtube ? await fetchYoutubeVideo(item.youtube,signal,onProgress) : await fetchOriginalMedia(item.url,item.kind ?? "image",{signal,sourcePage:item.sourcePage,...(item.stream ? {stream:item.stream} : {}),...(onProgress ? {onProgress} : {})}),release});
       }
       else {
         const knownGif = item.kind === "gif" || item.recommendedFormat === "gif";

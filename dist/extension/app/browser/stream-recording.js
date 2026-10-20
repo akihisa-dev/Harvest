@@ -1,4 +1,4 @@
-import { streamDownloadUrl } from "../../core/stream-recording.js";
+import { streamDownloadUrl, isStreamMp4Content } from "../../core/stream-recording.js";
 export const streamAccessError = "録画をダウンロードできません。ダウンロード権限とMicrosoft 365へのログイン状態を確認してください。";
 /** HEAD checks the official download route without buffering any recording data. */
 export async function inspectStreamRecording(pageUrl, signal) {
@@ -11,11 +11,8 @@ export async function inspectStreamRecording(pageUrl, signal) {
         const response = await fetch(url, { method: "HEAD", credentials: "include", redirect: "error", cache: "no-store", signal: requestSignal,
             ...{ targetAddressSpace: "public" } });
         try {
-            const type = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
-            const disposition = response.headers.get("content-disposition") ?? "";
             // Login/error pages, DASH/HLS and non-video documents cannot become MP4 results.
-            if (response.status !== 200 || (type !== "video/mp4"
-                && !(type === "application/octet-stream" && /filename\*?\s*=.*\.mp4(?:[";\s]|$)/i.test(disposition))))
+            if (response.status !== 200 || !isStreamMp4Content(response.headers.get("content-type"), response.headers.get("content-disposition")))
                 throw new Error(streamAccessError);
             const length = response.headers.get("content-length");
             const bytes = length && /^\d+$/.test(length) ? Number(length) : undefined;

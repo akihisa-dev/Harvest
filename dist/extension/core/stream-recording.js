@@ -1,3 +1,9 @@
+/** The declared MP4 response contract, shared by HEAD and bounded GET. */
+export function isStreamMp4Content(contentType, disposition) {
+    const type = contentType?.split(";")[0]?.trim().toLowerCase();
+    return type === "video/mp4" || (type === "application/octet-stream"
+        && /filename\*?\s*=.*\.mp4(?:[";\s]|$)/i.test(disposition ?? ""));
+}
 function recordingPage(value) {
     try {
         const page = new URL(value);

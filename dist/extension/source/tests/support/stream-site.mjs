@@ -12,10 +12,10 @@ import {redPng} from '../animation-fixtures.mjs';
 import {mp4Bytes, fragmentedMp4} from '../media-fixtures.mjs';
 
 /** A local HTTPS site, including auth and binary download, with no replaced Chrome APIs. */
-export async function streamSite(t) {
+export async function streamSite(t, options = {}) {
   const host = 'harvest-fixture.sharepoint.com';
-  const recording = Buffer.alloc(65 * 1024 ** 2);
-  recording.set(mp4Bytes);recording.writeUInt32BE(recording.length - mp4Bytes.length, mp4Bytes.length);recording.write('free', mp4Bytes.length + 4);
+  const recording = options.recording ?? Buffer.alloc(65 * 1024 ** 2);
+  if (!options.recording) {recording.set(mp4Bytes);recording.writeUInt32BE(recording.length - mp4Bytes.length, mp4Bytes.length);recording.write('free', mp4Bytes.length + 4);}
   const requests = [], sockets = new Set();
   let permission = 'allowed', savedFilename;
   const server = createServer({key, cert}, (request, response) => {
@@ -42,14 +42,14 @@ export async function streamSite(t) {
       if (permission === 'expired') {response.writeHead(302, {location: '/login-required'});response.end();return;}
       const source = url.searchParams.get('SourceUrl');
       if (source !== `https://${host}/sites/team/Documents/Recordings/meeting.mp4` && url.searchParams.get('UniqueId') !== '12345678-1234-abcd-1234-123456789abc') {response.writeHead(404);response.end('Wrong recording');return;}
-      response.writeHead(200, {'content-type': 'video/mp4', 'content-disposition': 'attachment; filename="meeting.mp4"', 'content-length': String(recording.length)});
+      response.writeHead(200, {'content-type': options.contentType ?? 'video/mp4', 'content-disposition': 'attachment; filename="meeting.mp4"', 'content-length': String(recording.length)});
       response.end(request.method === 'HEAD' ? undefined : recording);return;
     }
     if (/\/thumb\d\.png$/.test(url.pathname)) {response.writeHead(200, {'content-type': 'image/png'});response.end(redPng);return;}
     if (url.pathname === '/playback-segment') {response.writeHead(200, {'content-type': 'video/mp4'});response.end(fragmentedMp4);return;}
     if (url.pathname === '/parent') {
       response.writeHead(200, {'content-type': 'text/html'});
-      response.end('<title>録画の親ページ</title><iframe src="/sites/team/_layouts/15/embed.aspx?UniqueId=12345678-1234-abcd-1234-123456789abc"></iframe>');return;
+      response.end(`<title>録画の親ページ</title><iframe src="/sites/team/_layouts/15/embed.aspx?UniqueId=12345678-1234-abcd-1234-123456789abc"></iframe>${options.includeImage ? '<img src="/thumb1.png" width="120" height="80">' : ''}`);return;
     }
     // A typical MSE player exposes a blob URL rather than the original MP4 URL.
     const html = `<title>仮想Stream 会議録画</title><h1>会議録画</h1><video controls poster="/thumb1.png"></video>
