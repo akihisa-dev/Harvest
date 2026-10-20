@@ -169,3 +169,15 @@ for (const format of ['mp4', 'recommend', 'original']) test(`長い録画の${fo
   assert.deepEqual(fake.starts.map(item => item.filename), ['会議_001.mp4', '会議_002.mp4', '会議_002.mp4']);
   assert.ok(calls.every(call => call.options.method === 'HEAD'));
 });
+
+for(const name of ['meeting.mp4','進捗%20確認.mp4','folder%2Fmeeting.mp4','確認%25.mp4','進捗 50%.mp4','確認#1.mp4'])test(`録画の復号済みファイル名を二重に復号しない: ${name}`,()=>{
+  const path='/sites/team/Documents/Recordings/'+name;
+  const page=new URL('https://contoso.sharepoint.com/sites/team/_layouts/15/stream.aspx');page.searchParams.set('id',path);
+  const download=streamDownloadUrl(page.href);
+  const source=new URL(download).searchParams.get('SourceUrl');
+  assert.equal(decodeURIComponent(new URL(source).pathname),path);
+  assert.equal(streamRecordingFilename({pageUrl:page.href}),name);
+  const embed=new URL('https://contoso.sharepoint.com/sites/team/_layouts/15/embed.aspx?UniqueId=12345678-1234-abcd-1234-123456789abc');
+  embed.searchParams.set('file',name);
+  assert.equal(streamRecordingFilename({pageUrl:embed.href}),name);
+});
