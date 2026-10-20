@@ -930,7 +930,27 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
           }
           const batch = [...pendingElements];
           pendingElements.clear();
-          for (const element of batch) {
+          // A pending ancestor already covers this subtree, including open
+          // shadow roots. This cache belongs only to the current batch.
+          const queued = new Set(batch);
+          const coverage = new Map<Element, boolean>();
+          const covered = (element: Element): boolean => {
+            const path: Element[] = [];
+            let parent = composedParent(element);
+            let result = false;
+            while (parent) {
+              checkDeadline();
+              if (queued.has(parent)) { result = true; break; }
+              const known = coverage.get(parent);
+              if (known !== undefined) { result = known; break; }
+              path.push(parent);
+              parent = composedParent(parent);
+            }
+            for (const ancestor of path) coverage.set(ancestor, result);
+            return result;
+          };
+          const roots = batch.filter(element => !covered(element));
+          for (const element of roots) {
             if (!isInPageTree(element)) continue;
             const tree = pageElements(element, true);
             checkDeadline();

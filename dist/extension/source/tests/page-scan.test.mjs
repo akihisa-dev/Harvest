@@ -1297,3 +1297,27 @@ test('videoの拡張子なしURLは直接候補にし、音声・分割配信・
   assert.deepEqual(result.images, ['https://example.test/unowned']);
   assert.deepEqual(result.media.map(item => [item.url, item.kind]), [...['opaque-one', 'opaque-two', 'opaque-three', 'movie.mp4', 'movie.webm'].map(path => [`https://example.test/${path}`, 'video']), ['https://example.test/unowned', 'image']]);
 });
+
+for(const depth of [100,200,400])test(`親子の同一バッチ変更で同じ部分木を反復走査しない: ${depth}`,async()=>{
+  const image=new FixtureElement('img',{src:'https://cdn.example.test/one.jpg'});
+  const chain=[image];
+  for(let i=0;i<depth;i++)chain.unshift(new FixtureElement('div',{},[chain[0]]));
+  const root=new FixtureElement('html',{},[chain[0]]);
+  let styleReads=0;
+  const original=globalThis.getComputedStyle;
+  let callback,mutated=false;
+  class Observer extends EmptyMutationObserver {constructor(fn){super();callback=fn;}}
+  const result=await runWithFixture(new FixtureDocument(root),Observer,()=>{
+    const readStyle=globalThis.getComputedStyle;
+    globalThis.getComputedStyle=(...args)=>{styleReads++;return readStyle(...args);};
+    globalThis.setTimeout=(fn,delay)=>{
+      if(delay===800)return 1;
+      if(delay===250&&!mutated){mutated=true;callback(chain.map(target=>({type:'attributes',target,attributeName:'class'})));return 2;}
+      fn();return 3;
+    };
+    return scanDocument();
+  });
+  assert.deepEqual(result.images,['https://cdn.example.test/one.jpg']);
+  assert.ok(styleReads<depth*20,`computed style呼出し: ${styleReads}`);
+  assert.equal(globalThis.getComputedStyle,original);
+});
