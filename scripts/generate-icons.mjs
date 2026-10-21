@@ -13,23 +13,27 @@ try {
     image.src = `data:image/svg+xml,${encodeURIComponent(new XMLSerializer().serializeToString(document))}`;
     await image.decode();
 
-    const master = window.document.createElement("canvas");
-    master.width = master.height = 1024;
-    const context = master.getContext("2d");
-    context.scale(2, 2);
-    context.fillStyle = "#202020";
-    context.beginPath();
-    context.roundRect(32, 32, 448, 448, 120);
-    context.fill();
-    // Center the existing grain silhouette at 1.2x, retaining its proportions.
-    context.drawImage(image, -51.2, -40.4, 614.4, 614.4);
-
     return [16, 32, 48, 128, 1024].map(size => {
-      const canvas = window.document.createElement("canvas");
-      canvas.width = canvas.height = size;
-      const output = canvas.getContext("2d");
-      output.imageSmoothingQuality = "high";
-      output.drawImage(master, 0, 0, size, size);
+      // Render the vector at 4x each output size, then halve twice. A single
+      // large reduction can skip narrow edge coverage and leave jagged diagonals.
+      let canvas = window.document.createElement("canvas");
+      canvas.width = canvas.height = size * 4;
+      const context = canvas.getContext("2d");
+      context.scale(canvas.width / 512, canvas.height / 512);
+      context.fillStyle = "#202020";
+      context.beginPath();
+      context.roundRect(32, 32, 448, 448, 120);
+      context.fill();
+      // Keep the original grain silhouette, position, proportions, and colors.
+      context.drawImage(image, -51.2, -40.4, 614.4, 614.4);
+      while (canvas.width > size) {
+        const reduced = window.document.createElement("canvas");
+        reduced.width = reduced.height = canvas.width / 2;
+        const output = reduced.getContext("2d");
+        output.imageSmoothingQuality = "high";
+        output.drawImage(canvas, 0, 0, reduced.width, reduced.height);
+        canvas = reduced;
+      }
       return {size, png: canvas.toDataURL("image/png").split(",")[1]};
     });
   }, source);
