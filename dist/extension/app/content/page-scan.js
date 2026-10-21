@@ -472,9 +472,10 @@ export async function scanDocument(targetPostId, framesOnly = false) {
             }
         }
     };
-    const add = (value, positionElement, sourceElement) => {
+    const add = (value, positionElement, sourceElement, parsedUrl = false) => {
         checkDeadline();
-        const candidate = value?.trim();
+        // srcset tokenization already removed ASCII separators; Unicode spaces belong to its URL.
+        const candidate = parsedUrl ? value : value?.trim();
         if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:"))
             return;
         try {
@@ -877,7 +878,7 @@ export async function scanDocument(targetPostId, framesOnly = false) {
             if (!isVideoSource) {
                 for (const attribute of imageSrcsetAttributes) {
                     for (const candidate of srcsetImages(element.getAttribute(attribute)))
-                        add(candidate, positionElement, element);
+                        add(candidate, positionElement, element, true);
                 }
             }
             if (tagName === "img") {

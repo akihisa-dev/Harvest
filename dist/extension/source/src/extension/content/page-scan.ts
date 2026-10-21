@@ -435,9 +435,10 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
     }
   };
 
-  const add = (value: string | null | undefined, positionElement?: Element, sourceElement?: Element): void => {
+  const add = (value: string | null | undefined, positionElement?: Element, sourceElement?: Element, parsedUrl = false): void => {
     checkDeadline();
-    const candidate = value?.trim();
+    // srcset tokenization already removed ASCII separators; Unicode spaces belong to its URL.
+    const candidate = parsedUrl ? value : value?.trim();
     if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:")) return;
     try {
       const url = new URL(candidate, document.baseURI || location.href).href;
@@ -813,7 +814,7 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
       }
       if (!isVideoSource) {
         for (const attribute of imageSrcsetAttributes) {
-          for (const candidate of srcsetImages(element.getAttribute(attribute))) add(candidate, positionElement, element);
+          for (const candidate of srcsetImages(element.getAttribute(attribute))) add(candidate, positionElement, element, true);
         }
       }
       if (tagName === "img") {

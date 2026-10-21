@@ -1332,3 +1332,13 @@ for(const src of ['blob:https://contoso.sharepoint.com/fixture','https://contoso
   assert.equal(result.hasRecordingPlayer,true);
   if(!src.endsWith('.mp4'))assert.equal(result.media?.length??0,0);
 });
+
+
+test('srcset末尾のNBSPをURLの一部として保持し、誤った追加候補を作らない', async () => {
+  for (const suffix of ['\u00a0', '%C2%A0']) for (const current of ['small.jpg', 'large.jpg%C2%A0']) {
+    const image = new FixtureElement('img', {srcset: `/small.jpg 1x, /large.jpg${suffix} 2x`}, [], {currentSrc: `https://example.test/${current}`});
+    const result = await runWithFixture(new FixtureDocument(new FixtureElement('html', {}, [image])), undefined, () => scanDocument());
+    assert.deepEqual(new Set(result.images), new Set([`https://example.test/${current}`, 'https://example.test/large.jpg%C2%A0']));
+    assert.deepEqual(new Set(result.media.map(item => item.url)), new Set(result.images));
+  }
+});

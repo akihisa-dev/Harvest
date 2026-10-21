@@ -500,3 +500,26 @@ test('復号済みのDOM・JSON画像URLにHTML実体参照の復号を重ねな
     }
   }
 });
+
+test('実DOMのsrcset末尾NBSPはDPRに関係なく正しいURLだけを収集する', async t => {
+  const source = await readFile(new URL('../dist/extension/app/content/page-scan.js', import.meta.url), 'utf8');
+  const browser = await launchBrowser(t);
+  for (const deviceScaleFactor of [1, 2]) {
+    const context = await browser.newContext({deviceScaleFactor});
+    const page = await context.newPage();
+    await page.route('**/*', route => route.fulfill({contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgQIAK53X/QAAAABJRU5ErkJggg==', 'base64')}));
+    await page.setContent('<base href="https://example.test/"><img id="image">');
+    const result = await page.evaluate(async source => {
+      const image = document.querySelector('img');
+      image.srcset = '/small.jpg 1x, /large.jpg\u00a0 2x';
+      await new Promise(resolve => {image.onload = resolve; image.onerror = resolve;});
+      const moduleUrl = URL.createObjectURL(new Blob([source], {type:'text/javascript'}));
+      const {scanDocument} = await import(moduleUrl);
+      URL.revokeObjectURL(moduleUrl);
+      return {current: image.currentSrc, scan: await scanDocument()};
+    }, source);
+    assert.equal(result.current, `https://example.test/${deviceScaleFactor === 1 ? 'small.jpg' : 'large.jpg%C2%A0'}`);
+    assert.deepEqual(new Set(result.scan.images), new Set([result.current, 'https://example.test/large.jpg%C2%A0']));
+    await context.close();
+  }
+});
