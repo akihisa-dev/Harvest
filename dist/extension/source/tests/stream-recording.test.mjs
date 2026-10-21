@@ -97,7 +97,7 @@ test('3 GiBの録画は本文を読まず容量と録画情報を動画一覧ま
   assert.equal(Object.values(collection.groups)[0].label, 'MP4 (1件)');
 });
 
-const failureMessages = {401: /HTTP 401/, 403: /HTTP 403/, 404: /HTTP 404/, 405: /エラーを返し/, 302: /エラーを返し/, html: /動画以外/, manifest: /動画以外/, empty: /形式または容量/, redirect: /通信または転送先/};
+const failureMessages = {401: /HTTP 401/, 403: /HTTP 403/, 404: /HTTP 404/, 302: /エラーを返し/, html: /動画以外/, manifest: /動画以外/, empty: /形式または容量/, redirect: /通信または転送先/};
 for (const failure of Object.keys(failureMessages).map(value => /^\d+$/.test(value) ? Number(value) : value)) test(`録画の権限・認証・応答が不適切なら取得を拒否する: ${failure}`, async t => {
   head(t, () => {
     if (failure === 'redirect') throw new TypeError('redirect rejected');
@@ -106,6 +106,34 @@ for (const failure of Object.keys(failureMessages).map(value => /^\d+$/.test(val
       'content-length': failure === 'empty' ? '0' : '10'}});
   });
   await assert.rejects(inspectStreamRecording(pageUrl), failureMessages[failure]);
+});
+
+for (const status of [405, 501]) for (const partial of [true, false]) test(`HEAD非対応${status}でも同じ取得先のGETから容量を確認し、本文を読み込まない: partial=${partial}`, async t => {
+  const calls = [];let cancelled = 0;
+  t.mock.method(globalThis, 'fetch', async (target, options) => {
+    calls.push(options);assert.equal(target, url);
+    assert.equal(options.credentials, 'include');assert.equal(options.redirect, 'error');assert.equal(options.cache, 'no-store');
+    if (options.method === 'HEAD') return new Response(null, {status});
+    assert.equal(options.headers.Range, 'bytes=0-0');
+    const response = new Response(new ReadableStream({cancel() {cancelled++;}}), {status: partial ? 206 : 200,
+      headers: {'content-type': 'video/mp4', 'content-length': partial ? '1' : String(bytes), ...(partial ? {'content-range': `bytes 0-0/${bytes}`} : {})}});
+    for (const name of ['blob', 'arrayBuffer', 'text']) response[name] = () => {throw new Error('Do not buffer recording');};
+    return response;
+  });
+  assert.deepEqual(await inspectStreamRecording(pageUrl), {pageUrl, bytes});
+  assert.equal(calls.length, 2);assert.equal(calls[0].signal, calls[1].signal);assert.equal(cancelled, 1);
+});
+
+for (const failure of [403, 405, 'bad-range', 'html']) test(`HEAD非対応後もGETの不正な応答を成功にしない: ${failure}`, async t => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    if (++calls === 1) return new Response(null, {status: 405});
+    if (typeof failure === 'number') return new Response(null, {status: failure});
+    return new Response(null, {status: 206, headers: {'content-type': failure === 'html' ? 'text/html' : 'video/mp4',
+      'content-range': failure === 'bad-range' ? 'bytes 1-2/100' : 'bytes 0-0/100', 'content-length': '1'}});
+  });
+  await assert.rejects(inspectStreamRecording(pageUrl), failure === 403 ? /HTTP 403/ : failure === 405 ? /エラーを返し/ : failure === 'html' ? /動画以外/ : /形式または容量/);
+  assert.equal(calls, 2);
 });
 
 test('通信障害と時間切れを権限不足と表示せず、中止はそのまま返す', async t => {

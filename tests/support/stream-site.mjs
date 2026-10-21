@@ -23,7 +23,7 @@ export async function streamSite(t, options = {}) {
   const server = createServer({key, cert}, (request, response) => {
     const url = new URL(request.url, `https://${host}`);
     const authenticated = (request.headers.cookie ?? '').split(';').some(value => value.trim() === 'fixtureSession=signed-in');
-    requests.push({path: url.pathname, query: url.search, method: request.method, authenticated});
+    requests.push({path: url.pathname, query: url.search, method: request.method, authenticated, range: request.headers.range});
     if (url.pathname === '/login') {
       response.writeHead(200, {'content-type': 'text/html', 'set-cookie': 'fixtureSession=signed-in; Secure; HttpOnly; SameSite=Lax; Path=/'});
       response.end('<title>Fixture sign-in</title><p>Local synthetic session</p>');return;
@@ -44,6 +44,11 @@ export async function streamSite(t, options = {}) {
       if (permission === 'expired') {response.writeHead(302, {location: '/login-required'});response.end();return;}
       const source = url.searchParams.get('SourceUrl');
       if ((!source || decodeURIComponent(new URL(source).pathname) !== path || new URL(source).origin !== `https://${host}`) && url.searchParams.get('UniqueId') !== '12345678-1234-abcd-1234-123456789abc') {response.writeHead(404);response.end('Wrong recording');return;}
+      if (request.method === 'HEAD' && options.headStatus) {response.writeHead(options.headStatus);response.end();return;}
+      if (request.method === 'GET' && request.headers.range === 'bytes=0-0' && !options.ignoreRange) {
+        response.writeHead(206, {'content-type': 'video/mp4', 'content-range': `bytes 0-0/${recording.length}`, 'content-length': '1'});
+        response.end(recording.subarray(0, 1));return;
+      }
       response.writeHead(200, {'content-type': options.contentType ?? 'video/mp4', 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`, 'content-length': String(recording.length)});
       if (request.method === 'HEAD') response.end();
       else if (options.chunkIntervalMs) {

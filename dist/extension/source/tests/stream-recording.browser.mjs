@@ -25,6 +25,22 @@ for (const [kind, current] of [['stream', false], ['library', false], ['library'
   assert.ok(downloads.every(request => request.authenticated));
 });
 
+for (const [headStatus, ignoreRange] of [[405, false], [501, false], [405, true]]) test(`HEAD非対応でも実Chromeで65 MiB録画を最後まで保存する: ${headStatus}, ignoreRange=${ignoreRange}`, {timeout: 60000}, async t => {
+  const fixture = await streamSite(t, {headStatus, ignoreRange}), {panel, requests, recording} = fixture;
+  assert.match(await fixture.scan('stream'), /meeting\.mp4/);
+  await panel.locator('#video-export-format-mp4').check();await panel.locator('#export').click();
+  await panel.waitForFunction(() => document.querySelector('#status').dataset.state === 'success');
+  const item = await panel.evaluate(async () => (await chrome.downloads.search({id: window.downloadIds.at(-1)}))[0]);
+  assert.equal(item.state, 'complete');assert.equal(item.fileSize, recording.length);
+  assert.equal(createHash('sha256').update(await readCompletedDownload(item.filename)).digest('hex'), createHash('sha256').update(recording).digest('hex'));
+  const played = await fixture.playSaved(item.filename);assert.equal(played.ended, true);assert.equal(played.currentTime, played.duration);
+  const downloads = requests.filter(request => request.path.endsWith('/download.aspx'));
+  assert.ok(downloads.some(request => request.method === 'HEAD'));
+  assert.ok(downloads.some(request => request.method === 'GET' && request.range === 'bytes=0-0'));
+  assert.equal(downloads.filter(request => request.method === 'GET' && request.range !== 'bytes=0-0').length, 1);
+  assert.ok(downloads.every(request => request.authenticated));
+});
+
 for (const permission of ['denied', 'expired']) test(`仮想Streamの${permission}は実通信で録画保存を拒否する`, {timeout: 60000}, async t => {
   const fixture = await streamSite(t), {panel, requests} = fixture;
   await fixture.scan('stream');
