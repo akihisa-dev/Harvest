@@ -1,4 +1,5 @@
 import { defaultDisplayedImageGroup, groupMediaImages, normalizeImageUrls } from "./images.js";
+import { isStreamRecording } from "./stream-recording.js";
 function sameWebOrigin(image, source) {
     try {
         const target = new URL(image), page = new URL(source);
@@ -37,9 +38,16 @@ export function collectPageMedia(page, frames = []) {
                 sourcePages.set(url, document.url);
             }
         }
-        for (const item of document.media)
-            if (!metadata.has(item.url))
+        for (const item of document.media) {
+            const previous = metadata.get(item.url);
+            // Enrich the first occurrence without changing its position or display evidence.
+            if (!previous)
                 metadata.set(item.url, item);
+            else if (!previous.stream && item.kind === "video" && document.verifiedSource
+                && isStreamRecording(item.stream, item.url) && sameWebOrigin(item.stream.pageUrl, document.url)) {
+                metadata.set(item.url, { ...previous, kind: "video", stream: item.stream });
+            }
+        }
     }
     return { urls: [...sourcePages.keys()], media: [...metadata.values()],
         rejected: documents.reduce((count, document) => count + document.rejected, 0),

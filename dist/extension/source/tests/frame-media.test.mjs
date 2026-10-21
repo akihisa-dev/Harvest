@@ -54,3 +54,27 @@ test('重複画像は実オリジン確認済みの収集元を優先し、順�
     assert.equal(getImageFetchCredentials(image, result.initial.sourcePages.get(image)), 'omit');
   }
 });
+
+
+test('親の重複動画にも確認済みiframeの録画情報を引き継ぐ', async () => {
+  const {streamDownloadUrl} = await import('../dist/extension/core/stream-recording.js');
+  const {usesDirectRecordingDownload} = await import('../dist/extension/core/split-export-formats.js');
+  const pageUrl = 'https://tenant.sharepoint.com/sites/team/_layouts/15/stream.aspx?id=/sites/team/recording.mp4';
+  const url = streamDownloadUrl(pageUrl), stream = {pageUrl, bytes: 869};
+  const frame = {url: pageUrl, sourcePage: pageUrl, images: [], media: [{url, kind: 'video', stream}]};
+  for (const images of [[], [url]]) {
+    const parent = {url: 'https://outer.test/book', images, media: images.map(url => ({url, kind: 'video'}))};
+    const result = collectPageMedia(parent, [frame, frame]), collection = new ImageCollection();
+    collection.replace(result.urls, parent.url, result.media, result.initial);
+    assert.equal(collection.items.length, 1);
+    assert.deepEqual(collection.items[0].stream, stream);
+    assert.equal(collection.items[0].sourcePage, pageUrl);
+    for (const format of ['original', 'mp4', 'recommend']) assert.equal(usesDirectRecordingDownload(collection.items, format), true);
+    assert.equal(usesDirectRecordingDownload(collection.items, 'mp3'), false);
+    assert.equal(usesDirectRecordingDownload([...collection.items, {url: 'https://outer.test/image.png', kind: 'image'}], 'mp4'), false);
+  }
+  for (const invalid of [{...frame, sourcePage: undefined}, {...frame, media: [{url, kind: 'video', stream: {...stream, pageUrl: 'https://other.test/'}}]}]) {
+    const result = collectPageMedia({url: 'https://outer.test/', images: [url], media: [{url, kind: 'video'}]}, [invalid]);
+    assert.equal(result.media[0].stream, undefined);
+  }
+});
