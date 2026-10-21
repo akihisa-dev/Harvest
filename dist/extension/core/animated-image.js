@@ -62,3 +62,20 @@ export function declaredAnimationFrames(bytes, type) {
     }
     return null;
 }
+/** A one-frame APNG track may omit duration; retain its container delay. */
+export function singleApngFrameDuration(bytes) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let offset = 8; offset + 12 <= bytes.length;) {
+        const size = view.getUint32(offset), end = offset + 12 + size;
+        if (end > bytes.length)
+            return null;
+        if (String.fromCharCode(...bytes.subarray(offset + 4, offset + 8)) === "fcTL") {
+            if (size !== 26)
+                return null;
+            const numerator = view.getUint16(offset + 28), denominator = view.getUint16(offset + 30) || 100;
+            return numerator * 1_000_000 / denominator;
+        }
+        offset = end;
+    }
+    return null;
+}

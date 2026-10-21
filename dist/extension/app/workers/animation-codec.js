@@ -1,6 +1,6 @@
 import { getImageDimensions } from "../../core/image-dimensions.js";
 import { GifEncoder } from "../../core/gif-encoder.js";
-import { animatedImageType, declaredAnimationFrames } from "../../core/animated-image.js";
+import { animatedImageType, declaredAnimationFrames, singleApngFrameDuration } from "../../core/animated-image.js";
 import { imageDimensionsError, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS } from "../contracts/image-data-contract.js";
 /** Inspect transparency first; reserve its GIF index consistently across the whole animation. */
 export async function convertAnimatedImage(blob, maxBytes) {
@@ -30,7 +30,8 @@ export async function convertAnimatedImage(blob, maxBytes) {
         const track = decoder.tracks.selectedTrack;
         if (declared !== null && track?.frameCount !== declared)
             throw new Error("アニメーション画像のデータが不完全または破損しています。");
-        if (!track || !track.animated || !Number.isSafeInteger(track.frameCount) || track.frameCount < 1 || track.frameCount > 10000)
+        const singleApng = type === "image/png" && declared === 1 && track?.frameCount === 1;
+        if (!track || (!track.animated && !singleApng) || !Number.isSafeInteger(track.frameCount) || track.frameCount < 1 || track.frameCount > 10000)
             throw new Error("アニメーション画像のフレームを保持できません。");
         if (dimensions && dimensions.width * dimensions.height * track.frameCount > MAX_IMAGE_PIXELS)
             throw new Error("アニメーション画像の展開量が上限を超えています。");
@@ -50,7 +51,7 @@ export async function convertAnimatedImage(blob, maxBytes) {
                     throw new Error("GIFへ変換できませんでした。");
                 context.clearRect(0, 0, width, height);
                 context.drawImage(image, 0, 0);
-                return { rgba: context.getImageData(0, 0, width, height).data, duration: image.duration ?? 0 };
+                return { rgba: context.getImageData(0, 0, width, height).data, duration: singleApng ? singleApngFrameDuration(bytes) ?? 0 : image.duration ?? 0 };
             }
             finally {
                 image.close();

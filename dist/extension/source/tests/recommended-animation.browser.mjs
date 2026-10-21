@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {animationPanel} from './support/animation-panel.mjs';
-import {staticWebp,apng,animatedGif} from './animation-fixtures.mjs';
+import {staticWebp,apng,animatedGif,singleFrameApng} from './animation-fixtures.mjs';
 
 function storedEntries(bytes) {
   const entries=[];
@@ -27,4 +27,31 @@ test('拡張子なしGIFを実レスポンスで確認し、推奨単体/選択�
   await scan(['/unknown']);assert.match((await saved('png')).filename,/\.gif$/);assert.deepEqual((await saved('png')).bytes,animatedGif);assert.deepEqual((await saved('recommend')).bytes,animatedGif);
   await page.locator('#export-format-png').check();
   const before=await count();await page.evaluate(()=>{document.querySelector('#export').click();document.querySelector('#export').click();});await page.waitForFunction(()=>document.querySelector('#export').dataset.saving==='false');assert.equal(await count(),before);
+});
+
+
+test('1フレームAPNGは赤い代替画像ではなく青い選択フレームを時間付きGIFへ保存する', {timeout:90_000}, async t => {
+  const assets = new Map([['/single.png', [singleFrameApng, 'image/png']]]);
+  const {page,scan,saved} = await animationPanel(t, assets);
+  await scan(['/single.png']);
+  for (const format of ['original', 'recommend']) assert.deepEqual((await saved(format)).bytes, singleFrameApng);
+  for (const format of ['pdf', 'jpg', 'png', 'jxl']) {
+    const output = await saved(format);
+    assert.match(output.filename, /\.gif$/);
+    const decoded = await page.evaluate(async bytes => {
+      const decoder = new ImageDecoder({data:new Uint8Array(bytes),type:'image/gif',preferAnimation:true});
+      await decoder.tracks.ready; await decoder.completed;
+      const track = decoder.tracks.selectedTrack;
+      const {image} = await decoder.decode({frameIndex:0});
+      const canvas = new OffscreenCanvas(8,8), context = canvas.getContext('2d');
+      context.drawImage(image,0,0);
+      const result = {frames:track.frameCount, repetitions:track.repetitionCount, pixel:[...context.getImageData(0,0,1,1).data]};
+      image.close();decoder.close();return result;
+    }, [...output.bytes]);
+    assert.equal(decoded.frames, 1);
+    assert.equal(output.bytes.includes(Buffer.from("NETSCAPE2.0")), false, "one play must not add a loop extension");
+    assert.deepEqual(decoded.pixel, [0,0,255,255]);
+    const control = output.bytes.indexOf(Buffer.from([0x21,0xf9,4]));
+    assert.ok(control >= 0); assert.equal(output.bytes.readUInt16LE(control + 4), 10);
+  }
 });
