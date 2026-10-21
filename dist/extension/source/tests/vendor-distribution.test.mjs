@@ -74,9 +74,12 @@ test("Git管理外の同梱ソースと固定依存からZIPを再作成し、�
   } else await run('unzip', ['-q', archive, '-d', unpacked], {cwd: root});
   assert.equal(JSON.parse(await readFile(join(unpacked, 'manifest.json'), 'utf8')).version, version);
   const actual = join(root, "dist/extension");
-  const files = (await filesUnder(expected)).map(path => relative(expected, path));
-  assert.deepEqual((await filesUnder(actual)).map(path => relative(actual, path)), files);
-  assert.deepEqual((await filesUnder(unpacked)).map(path => relative(unpacked, path)), files);
+  // Finder metadata is intentionally excluded by the distribution packager.
+  const productFiles = async directory => (await filesUnder(directory))
+    .map(path => relative(directory, path)).filter(path => !path.split(/[\\/]/).includes(".DS_Store"));
+  const files = await productFiles(expected);
+  assert.deepEqual(await productFiles(actual), files);
+  assert.deepEqual(await productFiles(unpacked), files);
   for (const file of files) {
     assert.deepEqual(await readFile(join(actual, file)), await readFile(join(expected, file)), file);
     assert.deepEqual(await readFile(join(unpacked, file)), await readFile(join(expected, file)), file);
