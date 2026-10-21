@@ -4,9 +4,15 @@
  * be passed through this module.
  */
 const english = {
-    errorStreamAccess: "Could not download the recording. Check download permission and your Microsoft 365 sign-in.",
+    errorStreamAccess: "The recording format or size does not match the download information.",
+    errorStreamNetwork: "Could not connect to the recording endpoint. The connection or redirect check failed.",
+    errorStreamLogin: "The recording endpoint requires sign-in (HTTP 401).",
+    errorStreamRejected: "The recording download endpoint rejected the request (HTTP 403).",
+    errorStreamMissing: "The recording endpoint was not found (HTTP 404).",
+    errorStreamServer: "The recording endpoint returned an error.",
+    errorStreamContent: "The recording endpoint returned non-video data, possibly a sign-in page.",
     errorStreamFile: "Could not identify the recording file. Open its Stream playback page and analyze it.",
-    errorStreamTimeout: "Checking recording download permission timed out. Try again.",
+    errorStreamTimeout: "Checking the recording download endpoint timed out. Try again.",
     errorYoutubeHost: "Keep a web page open to save the YouTube video.",
     errorYoutubeTarget: "Could not verify the target YouTube video.",
     errorYoutubeRead: "Could not read the YouTube video information.",
@@ -244,9 +250,15 @@ const english = {
     errorSaveFormatPreference: "Could not save the export format setting.",
 };
 const japanese = {
-    errorStreamAccess: "録画をダウンロードできません。ダウンロード権限とMicrosoft 365へのログイン状態を確認してください。",
+    errorStreamAccess: "録画の形式または容量が取得情報と一致しません。",
+    errorStreamNetwork: "録画の取得先に接続できませんでした。通信または転送先の確認に失敗しました。",
+    errorStreamLogin: "録画の取得先でログインが必要です（HTTP 401）。",
+    errorStreamRejected: "保存用の取得先がリクエストを拒否しました（HTTP 403）。",
+    errorStreamMissing: "録画の取得先が見つかりません（HTTP 404）。",
+    errorStreamServer: "録画の取得先がエラーを返しました。",
+    errorStreamContent: "録画の取得先が動画以外のデータを返しました。ログイン画面などの可能性があります。",
     errorStreamFile: "録画ファイルを特定できません。Streamの録画再生ページを開いて解析してください。",
-    errorStreamTimeout: "録画のダウンロード権限の確認が時間切れになりました。もう一度お試しください。",
+    errorStreamTimeout: "録画の取得先の確認が時間切れになりました。もう一度お試しください。",
     errorYoutubeHost: "YouTubeの取得にはWebページを開いたタブが必要です。",
     errorYoutubeTarget: "YouTubeの対象動画を確認できませんでした。",
     errorYoutubeRead: "YouTubeの動画情報を読み取れませんでした。",

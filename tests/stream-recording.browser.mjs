@@ -33,7 +33,7 @@ for (const permission of ['denied', 'expired']) test(`仮想Streamの${permissio
   await panel.locator('#video-export-format-mp4').check();
   await panel.locator('#export').click();
   await panel.waitForFunction(() => document.querySelector('#export').dataset.saving === 'false' && !document.querySelector('#failures').hidden);
-  assert.match(await panel.locator('#failures').innerText(), /ダウンロード権限|ログイン/);
+  assert.match(await panel.locator('#failures').innerText(), permission === 'denied' ? /HTTP 403/ : /通信または転送先/);
   assert.equal(await panel.evaluate(() => window.downloadIds.length), 0);
   assert.equal(requests.filter(request => request.path.endsWith('/download.aspx') && request.method === 'GET').length, 0);
   assert.notEqual(await panel.locator('#status').getAttribute('data-state'), 'success');

@@ -241,6 +241,14 @@ for (const [language, expected] of [["ja", "ja"], ["ja-JP", "ja"], ["JA-jp", "ja
       const {uiLanguage, t, localizeErrorMessage, formatPlural} = await import(`../dist/extension/app/panel/localization.js?audit=${language}`);
       assert.equal(uiLanguage, expected);
       for (const [message, key] of [
+        ["録画の形式または容量が取得情報と一致しません。", "errorStreamAccess"],
+        ["録画の取得先に接続できませんでした。通信または転送先の確認に失敗しました。", "errorStreamNetwork"],
+        ["録画の取得先でログインが必要です（HTTP 401）。", "errorStreamLogin"],
+        ["保存用の取得先がリクエストを拒否しました（HTTP 403）。", "errorStreamRejected"],
+        ["録画の取得先が見つかりません（HTTP 404）。", "errorStreamMissing"],
+        ["録画の取得先がエラーを返しました。", "errorStreamServer"],
+        ["録画の取得先が動画以外のデータを返しました。ログイン画面などの可能性があります。", "errorStreamContent"],
+        ["録画の取得先の確認が時間切れになりました。もう一度お試しください。", "errorStreamTimeout"],
         ["画像が大きすぎるため、処理できません。", "errorDataTooLarge"],
         ["この画像URLは安全性を確認できないため取得できません。", "errorFetchTarget"],
         ["選択項目と保存データの形式が一致しません。", "errorMediaSelectionMismatch"],

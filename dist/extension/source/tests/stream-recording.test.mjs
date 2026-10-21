@@ -97,21 +97,31 @@ test('3 GiBの録画は本文を読まず容量と録画情報を動画一覧ま
   assert.equal(Object.values(collection.groups)[0].label, 'MP4 (1件)');
 });
 
-for (const failure of [401, 403, 404, 405, 302, 'html', 'manifest', 'empty', 'redirect']) test(`録画の権限・認証・応答が不適切なら取得を拒否する: ${failure}`, async t => {
+const failureMessages = {401: /HTTP 401/, 403: /HTTP 403/, 404: /HTTP 404/, 405: /エラーを返し/, 302: /エラーを返し/, html: /動画以外/, manifest: /動画以外/, empty: /形式または容量/, redirect: /通信または転送先/};
+for (const failure of Object.keys(failureMessages).map(value => /^\d+$/.test(value) ? Number(value) : value)) test(`録画の権限・認証・応答が不適切なら取得を拒否する: ${failure}`, async t => {
   head(t, () => {
     if (failure === 'redirect') throw new TypeError('redirect rejected');
     if (typeof failure === 'number') return new Response(null, {status: failure});
     return new Response(null, {headers: {'content-type': failure === 'html' ? 'text/html' : failure === 'manifest' ? 'application/dash+xml' : 'video/mp4',
       'content-length': failure === 'empty' ? '0' : '10'}});
   });
-  await assert.rejects(inspectStreamRecording(pageUrl), /ダウンロード権限/);
+  await assert.rejects(inspectStreamRecording(pageUrl), failureMessages[failure]);
+});
+
+test('通信障害と時間切れを権限不足と表示せず、中止はそのまま返す', async t => {
+  head(t, () => {throw new TypeError('Failed to fetch');});
+  await assert.rejects(inspectStreamRecording(pageUrl), /通信または転送先/);
+  t.mock.method(AbortSignal, 'timeout', () => AbortSignal.abort(new DOMException('Expired', 'TimeoutError')));
+  await assert.rejects(inspectStreamRecording(pageUrl), /取得先の確認が時間切れ/);
+  const controller = new AbortController();controller.abort();
+  await assert.rejects(inspectStreamRecording(pageUrl, controller.signal), {name: 'AbortError'});
 });
 
 test('MP4添付名のある汎用バイナリだけを録画として扱い、不明な容量は推定しない', async t => {
   head(t, () => new Response(null, {headers: {'content-type': 'application/octet-stream', 'content-disposition': 'attachment; filename="meeting.mp4"'}}));
   assert.deepEqual(await inspectStreamRecording(pageUrl), {pageUrl});
   t.mock.method(globalThis, 'fetch', async () => new Response(null, {headers: {'content-type': 'application/octet-stream'}}));
-  await assert.rejects(inspectStreamRecording(pageUrl), /ダウンロード権限/);
+  await assert.rejects(inspectStreamRecording(pageUrl), /動画以外/);
 });
 
 test('解析途中の移動を検出し、以前の文書の録画を公開しない', async t => {
@@ -136,7 +146,7 @@ test('録画再生ページを一つの動画として解析し、ロゴや再�
 for (const extra of [{mime: 'text/html'}, {fileSize: 10}, {fileSize: 0}]) test(`Chromeが完了しても録画の形式・サイズが違えば成功にしない: ${JSON.stringify(extra)}`, async t => {
   head(t);const fake = chromeApi(t);
   const promise = downloadManagedRecording({pageUrl}, 'meeting.mp4', new AbortController().signal);
-  const rejected = assert.rejects(promise, /ダウンロード権限/);
+  const rejected = assert.rejects(promise, /形式または容量/);
   await tick();fake.finish(1, 'complete', extra);await rejected;
   assert.equal(fake.listeners.size, 0);
 });
