@@ -6,10 +6,10 @@ import {animationPanel} from './support/animation-panel.mjs';
 import {animatedGif, redPng} from './animation-fixtures.mjs';
 import {mp4Bytes} from './media-fixtures.mjs';
 
-for (const locale of ['ja-JP', 'en-US']) test(`保存ボタンは画像を枚数、動画・PDF・混在をパーセントで表示する: ${locale}`, {timeout: 60000}, async t => {
+for (const locale of ['ja-JP', 'en-US']) test(`保存ボタンは画像・PDF・画像混在を枚数、動画をパーセントで表示する: ${locale}`, {timeout: 60000}, async t => {
   const {page, scan} = await animationPanel(t, new Map([
-    ['/red.png', [redPng, 'image/png']], ['/movie.mp4', [mp4Bytes, 'video/mp4']], ['/animated.gif', [animatedGif, 'image/gif']],
-  ]), {locale, responseDelayMs: () => 100});
+    ['/red.png', [redPng, 'image/png']], ['/second.png', [redPng, 'image/png']], ['/movie.mp4', [mp4Bytes, 'video/mp4']], ['/animated.gif', [animatedGif, 'image/gif']],
+  ]), {locale, responseDelayMs: (_request, path) => path === "/second.png" ? 1000 : 100});
   await page.setViewportSize({width: locale === 'ja-JP' ? 320 : 800, height: 400});
   assert.match(page.url(), /^chrome-extension:/);
   assert.ok(await page.title());
@@ -36,14 +36,20 @@ for (const locale of ['ja-JP', 'en-US']) test(`保存ボタンは画像を枚数
     ['gif', ['/animated.gif'], 'pdf', 'original', false],
     ['video', ['/movie.mp4'], 'png', 'original', true],
     ['mp4', ['/movie.mp4'], 'png', 'mp4', true],
-    ['pdf', ['/red.png'], 'pdf', 'original', true],
-    ['mixed', ['/red.png', '/movie.mp4'], 'png', 'original', true],
+    ['pdf', ['/red.png'], 'pdf', 'original', false],
+    ['pdf-pages', ['/red.png', '/second.png'], 'pdf', 'original', false],
+    ['mixed', ['/red.png', '/movie.mp4'], 'png', 'original', false],
+    ['mixed-pdf', ['/red.png', '/movie.mp4'], 'pdf', 'original', false],
   ]) {
     await scan(paths, name);
     if (await page.locator('#image-export-formats').isVisible()) await page.locator(`#export-format-${imageFormat}`).check();
     if (paths.includes('/movie.mp4')) await page.locator(`#video-export-format-${videoFormat}`).check();
     await page.evaluate(() => {window.progressLabels = [];});
     await page.locator('#export').click();
+    if (name === 'pdf-pages') {
+      await page.waitForFunction(() => document.querySelector('#export .button-label').textContent === '1 / 2');
+      await page.screenshot({path: join(tmpdir(), `harvest-pdf-count-progress-${locale}.png`)});
+    }
     if (name === 'video') {
       await page.waitForFunction(() => {
         const label = document.querySelector('#export .button-label').textContent;
@@ -57,6 +63,13 @@ for (const locale of ['ja-JP', 'en-US']) test(`保存ボタンは画像を枚数
     const labels = await page.evaluate(() => window.progressLabels);
     assert.ok(labels.length > 0, name);
     assert.ok(labels.every(label => (percentage ? /^\d+%$/ : /^\d+ \/ \d+$/).test(label)), `${name}: ${JSON.stringify(labels)}`);
+    if (!percentage) {
+      assert.equal(labels.at(-1), `${paths.length} / ${paths.length}`, `${name}: 保存完了確認中も元の枚数を保つ`);
+      assert.ok(labels.every(label => {
+        const [completed, total] = label.split(' / ').map(Number);
+        return Number.isInteger(completed) && completed <= total;
+      }));
+    }
     if (percentage) {
       const values = labels.map(Number.parseFloat);
       assert.ok(values.every((value, index) => value < 100 && (!index || value >= values[index - 1])), `${name}: ${values}`);

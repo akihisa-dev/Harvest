@@ -3,7 +3,7 @@ import {resolveImageExportFormat, type ResolvedImageExportFormat} from "../../co
 import {createPdf} from "../../core/pdf.js";
 import type {PdfImagePage} from "../../core/pdf-types.js";
 import {originalMediaType} from "../../core/media-types.js";
-import {indexedExportFilename, isStillImage, pdfSourceFilename, splitSettingsMatch, usesDirectRecordingDownload, type SplitExportSettings} from "../../core/split-export-formats.js";
+import {indexedExportFilename, pdfSourceFilename, splitSettingsMatch, usesDirectRecordingDownload, type SplitExportSettings} from "../../core/split-export-formats.js";
 import {individualFilename} from "../../core/export-files.js";
 import {storedZipDataLimit, type StoredZipEntry} from "../../core/stored-zip.js";
 import {ImageArchiveLimitError} from "../../core/image-archive.js";
@@ -21,8 +21,7 @@ export interface MixedExportControllerOptions extends ExportControllerOptions {
   readonly getPdfFilename: () => string;
 }
 function usesPercentageProgress(work: MixedExportWork): boolean {
-  return work.selected.some(item => item.kind === "video")
-    || (work.resolvedImageFormat === "pdf" && work.selected.some(isStillImage));
+  return work.selected.every(item => item.kind === "video");
 }
 /** Prepares every selected item before any download, including the aggregated still-image PDF. */
 export function createMixedExportController(options: MixedExportControllerOptions) {
@@ -48,15 +47,15 @@ export function createMixedExportController(options: MixedExportControllerOption
         preparationProgress(work, completed, total) {
           if (usesDirectRecordingDownload(work.selected, work.videoFormat)) return `${Math.min(99, Math.floor(100 * work.saved.size / work.selected.length))}%`;
           return (percentage ??= usesPercentageProgress(work))
-            ? `${Math.floor(90 * (total ? completed / total : 1))}%` : `${completed} / ${total}`;
+            ? `${Math.floor(90 * (total ? completed / total : 1))}%` : `${Math.floor(completed)} / ${total}`;
         },
         preparationMessage:(retry,completed,total) => t(retry ? "retryFiles" : "prepareFiles",{completed,total}),
         async run(run) {
           const {work} = run;
           percentage ??= usesPercentageProgress(work);
           let lastPercent = 90;
-          const finalProgress = (fraction: number, count: string): string => {
-            if (!percentage) return count;
+          const finalProgress = (fraction: number): string => {
+            if (!percentage) return `${work.selected.length} / ${work.selected.length}`;
             lastPercent = Math.max(lastPercent, Math.min(99, Math.floor(90 + 9 * fraction)));
             return `${lastPercent}%`;
           };
@@ -116,7 +115,7 @@ export function createMixedExportController(options: MixedExportControllerOption
               }
             }
             if (pages.length) {
-              run.reportStatus(t("pdfCreating"),"busy",finalProgress(0, `${pages.length} / ${pages.length}`));
+              run.reportStatus(t("pdfCreating"),"busy",finalProgress(0));
               const filename = indexedExportFilename(pdfIndex,work.selected.length,"pdf");
               const sourceFilename = pdfSourceFilename(work.selected.length,pdfIndex,entries.length,options.getPdfFilename());
               const source = work.includeSourcePage ? {heading:t("sourceHeading"),filename:sourceFilename,url:firstPage!.sourcePage} : undefined;
@@ -136,14 +135,14 @@ export function createMixedExportController(options: MixedExportControllerOption
                 const filename = entry.blob.type === "application/pdf" && entries.length === 1 ? options.getPdfFilename()
                   : individualFilename(options.getZipFilename(),entry.filename,entries.length);
                 work.savingStarted=true;
-                run.reportStatus(t("saveFiles",{completed:work.saved.size,total:entries.length}),"busy",finalProgress(work.saved.size / entries.length, `${work.saved.size} / ${entries.length}`));
+                run.reportStatus(t("saveFiles",{completed:work.saved.size,total:entries.length}),"busy",finalProgress(work.saved.size / entries.length));
                 await downloadManagedBlob(entry.blob,filename,run.signal);
                 if (videosOnly) work.saved.add(item);
                 else for (const selected of work.selected) work.saved.add(selected);
               }
             } else {
-              run.reportStatus(t("zipCreating"),"busy",finalProgress(0, t("zipCreatingShort")));
-              const zip = await createStoredZipInWorker(entries,{signal:run.signal,onProgress(completed,total){run.reportStatus(t("zipCreatingProgress",{completed,total}),"busy",finalProgress(total ? completed / total : 0, `${completed} / ${total}`));}});
+              run.reportStatus(t("zipCreating"),"busy",finalProgress(0));
+              const zip = await createStoredZipInWorker(entries,{signal:run.signal,onProgress(completed,total){run.reportStatus(t("zipCreatingProgress",{completed,total}),"busy",finalProgress(total ? completed / total : 0));}});
               if (run.stopped) return;
               work.savingStarted=true;
               await downloadManagedBlob(zip,options.getZipFilename(),run.signal);

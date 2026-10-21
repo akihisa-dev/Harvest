@@ -764,11 +764,11 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     };
     document.querySelector("#export").dispatch("click");
     assert.equal(exportButton.dataset.saving, "true", "PDF保存中はボタンにロードマークを出す");
-    assert.equal(exportButton.textContent, "0%", "PDF保存中はボタンにパーセントを表示する");
+    assert.equal(exportButton.textContent, "0 / 4", "PDF保存中はボタンに処理済み枚数と対象枚数を表示する");
     assert.equal(exportButton.getAttribute("aria-label"), "ファイルを準備しています… 0 / 4 もう一度押すと保存を中止します", "保存中のボタンは進捗と中止方法を読み上げられる");
     assert.equal(exportOverlay.hidden, false, "PDF保存中はビュアーにオーバーレイを重ねる");
     assert.equal(exportButton.disabled, false, "保存中も再クリックで中止できる");
-    assert.equal(document.querySelector("#status").textContent, "0%", "PDF作成中もパーセントの進捗を画面に表示する");
+    assert.equal(document.querySelector("#status").textContent, "0 / 4", "PDF作成中も枚数の進捗を画面に表示する");
     assert.equal(document.querySelector("#status").getAttribute("aria-label"), "ファイルを準備しています… 0 / 4", "PDF作成の状態と進捗を読み上げ用に残す");
     assert.equal(document.querySelector("#images").children.every(row => !row.draggable), true);
     assert.equal(document.querySelector("#status").dataset.state, "busy");
@@ -781,7 +781,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     document.querySelector("#images").children[1].dispatch("drop", {clientX: 75, clientY: 150});
     assert.equal(document.querySelector("#status").dataset.state, "busy");
     assert.deepEqual(document.querySelector("#images").children.map(row => previewUrl(row.children[0])), busyOrder);
-    await waitUntil(() => exportButton.textContent === "45%");
+    await waitUntil(() => exportButton.textContent === "2 / 4");
     assert.equal(exportButton.getAttribute("aria-label"), "ファイルを準備しています… 2 / 4 もう一度押すと保存を中止します", "処理に合わせて進捗と中止方法が更新される");
     releaseFailedFetch();
     await waitUntil(() => document.querySelector("#failures").hidden === false);
@@ -811,7 +811,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     createdUrls.length = 0;
     document.querySelector("#export").dispatch("click");
     assert.equal(exportButton.dataset.saving, "true", "再試行中もロードマークを出す");
-    assert.equal(exportButton.textContent, "0%", "再試行中もパーセントの進捗を表示する");
+    assert.equal(exportButton.textContent, "0 / 1", "再試行中は残り枚数に対する進捗を表示する");
     assert.equal(exportOverlay.hidden, false, "再試行中もビュアーにオーバーレイを重ねる");
     await waitUntil(() => document.downloads.length === 1);
     await waitUntil(() => exportButton.dataset.saving === "false");
@@ -839,7 +839,7 @@ test("画像操作と失敗画像の再試行で選択順序とPDFの完全性�
     exportButton.dispatch("click");
     await waitUntil(() => cancelledFetches > 0);
     const cancelProgress = exportButton.textContent;
-    assert.match(cancelProgress, /^\d+%$/);
+    assert.match(cancelProgress, /^\d+ \/ \d+$/);
     assert.equal(exportButton.disabled, false, "PDF保存中のボタンは中止操作を受け付ける");
     exportButton.dispatch("click");
     assert.equal(exportButton.textContent, cancelProgress, "再クリック後も中止処理が終わるまで進捗を保つ");
