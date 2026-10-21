@@ -41,8 +41,9 @@ declare module "harvest-vendor-mediabunny" {
   }
   export const QUALITY_HIGH: object;
   export class BlobSource { constructor(blob: Blob); }
+  export class BufferSource { constructor(bytes: Uint8Array); }
   export class Input {
-    constructor(options: {formats: object[]; source: BlobSource});
+    constructor(options: {formats: object[]; source: BlobSource | BufferSource});
     getPrimaryVideoTrack(): Promise<MediaTrack | null>;
     getPrimaryAudioTrack(): Promise<MediaTrack | null>;
     getTracks(): Promise<object[]>;

@@ -1,6 +1,7 @@
 import {normalizeMediaMimeType} from "../../core/media-types.js";
-import {BlobSource, EncodedPacketSink, Input, MP4} from "harvest-vendor-mediabunny";
+import {BufferSource, EncodedPacketSink, Input, MP4} from "harvest-vendor-mediabunny";
 import {hasCompleteGif, hasCompleteMp4Boxes} from "../../core/original-media-structure.js";
+import {indexMediaRanges} from "../../core/iso-media-ranges.js";
 import {inspectJpegStructure} from "../../core/jpeg.js";
 import {hasCompletePng} from "../../core/original-image-structure.js";
 import {validateWebm} from "./webm-validation.js";
@@ -32,7 +33,8 @@ export async function validateOriginalMedia(blob: Blob, signal?: AbortSignal): P
     return;
   }
   if (!hasCompleteMp4Boxes(bytes)) throw invalid();
-  const input = new Input({formats: [MP4], source: new BlobSource(blob)});
+  const containsMedia = indexMediaRanges(bytes);
+  const input = new Input({formats: [MP4], source: new BufferSource(bytes)});
   try {
     const video = await input.getPrimaryVideoTrack();
     if (!video) throw invalid();
@@ -44,7 +46,11 @@ export async function validateOriginalMedia(blob: Blob, signal?: AbortSignal): P
       for await (const declared of sink.packets(undefined, undefined, {metadataOnly: true})) {
         checkCancelled(signal);
         const packet = previousDeclaredPacket ? await sink.getNextPacket(previousDeclaredPacket) : await sink.getFirstPacket();
-        if (!packet || packet.data.byteLength !== declared.byteLength) throw invalid();
+        // The pinned BufferSource demuxer returns sample subarrays of this input.
+        // Check identity as well as bounds; copied/decrypted bytes cannot prove an offset.
+        if (!packet || packet.data.byteLength !== declared.byteLength
+          || packet.data.buffer !== bytes.buffer
+          || !containsMedia(packet.data.byteOffset - bytes.byteOffset, packet.data.byteLength)) throw invalid();
         trackBytes += packet.data.byteLength;
         previousDeclaredPacket = declared;
       }

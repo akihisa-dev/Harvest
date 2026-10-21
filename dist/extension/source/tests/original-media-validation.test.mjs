@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {mp4Bytes, brokenMedia} from './media-fixtures.mjs';
+import {mp4Bytes, fragmentedMp4, brokenMedia} from './media-fixtures.mjs';
 import {validateOriginalMedia} from '../dist/extension/app/media/original-media-validation.js';
 import {prepareMp4} from '../dist/extension/app/media/mp4-conversion.js';
 import {fetchOriginalMedia} from '../dist/extension/app/media/media-fetch.js';
@@ -92,4 +92,29 @@ test('最後のサンプル読み取り中の中止も成功として記録し�
   }
   assert.equal(await prepareMp4(input.blob), input.blob);
   assert.equal(input.reads(), 2);
+});
+
+
+test('通常とfragmented MP4は原本を保ち、mdat外を指すサンプルは取得時とMP4準備で拒否する', async t => {
+  for (const bytes of [mp4Bytes, fragmentedMp4]) {
+    const blob = new Blob([bytes], {type: 'video/mp4'});
+    assert.equal(await prepareMp4(blob), blob);
+  }
+  const stco = mp4Bytes.indexOf(Buffer.from('stco'));
+  const trun = fragmentedMp4.indexOf(Buffer.from('trun'));
+  assert.ok(stco > 0 && trun > 0);
+  for (const mode of ['header', 'boundary', 'fragment-header']) {
+    const bytes = Buffer.from(mode === 'fragment-header' ? fragmentedMp4 : mp4Bytes);
+    if (mode === 'fragment-header') {
+      const moof = bytes.indexOf(Buffer.from('moof')) - 4;
+      bytes.writeInt32BE(-moof, trun + 12);
+    } else {
+      const offset = mode === 'header' ? 0 : bytes.indexOf(Buffer.from('mdat')) + 2;
+      bytes.writeUInt32BE(offset, stco + 12);
+    }
+    t.mock.method(globalThis, 'fetch', async () => new Response(bytes, {headers: {'content-type': 'video/mp4'}}));
+    await assert.rejects(fetchOriginalMedia('https://media.test/broken.mp4', 'video'), error => error.kind === 'invalid-image');
+    await assert.rejects(prepareMp4(new Blob([bytes], {type: 'video/mp4'})), error => error.kind === 'invalid-image');
+    t.mock.restoreAll();
+  }
 });

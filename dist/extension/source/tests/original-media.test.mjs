@@ -338,3 +338,41 @@ test("GIF87a、複数フレーム、ローカルパレットと拡張ブロッ�
     globalThis.fetch = previous.fetch;
   }
 });
+
+test('mdat外のMP4をoriginalとMP4の保存成功にせず、原本を保持して再試行する', async () => {
+  const savedChrome = globalThis.chrome;
+  globalThis.chrome = {i18n: {getUILanguage: () => 'en'}, downloads: completedDownloads()};
+  globalThis.window = {setTimeout};
+  globalThis.document = {body: {append() {}}, createElement: () => ({click() {}, remove() {}})};
+  const archives = [];
+  URL.createObjectURL = blob => {archives.push(blob); return 'blob:archive';};
+  URL.revokeObjectURL = () => {};
+  try {
+    for (const videoFormat of ['original', 'mp4']) for (const input of [mp4Bytes, fragmentedMp4]) {
+      const damaged = Buffer.from(input);
+      const stco = damaged.indexOf(Buffer.from('stco'));
+      if (input === mp4Bytes) damaged.writeUInt32BE(0, stco + 12);
+      else damaged.writeInt32BE(-(damaged.indexOf(Buffer.from('moof')) - 4), damaged.indexOf(Buffer.from('trun')) + 12);
+      let bytes = damaged, completed = 0;
+      globalThis.fetch = async () => fakeResponse(bytes, 'video/mp4');
+      const item = {url: 'https://media.test/movie.mp4', sourcePage: 'https://media.test/', kind: 'video', selected: true};
+      const controller = createMixedExportController({getSelectedItems: () => [item], getZipFilename: () => 'Movie.zip',
+        getPdfFilename: () => 'Movie.pdf', isBusy: () => false, isDisposed: () => false, onBusyChange() {}, onStatus() {},
+        onCloseViewer() {}, onClearSourceUrl() {}, onScrollToFailures() {}, onCompleted() {completed++;}});
+      const settings = {imageFormat: 'original', videoFormat, includeSourcePage: false};
+      archives.length = 0;
+      await controller.export(settings);
+      assert.equal(archives.length, 0);
+      assert.equal(completed, 0);
+      assert.match(controller.pending.failed.get(item), /不完全|破損/);
+      bytes = input;
+      await controller.export(settings);
+      assert.equal(completed, 1);
+      assert.equal(controller.pending, null);
+      assert.deepEqual(Buffer.from(await archives[0].arrayBuffer()), input);
+    }
+  } finally {
+    Object.assign(globalThis, {chrome: savedChrome, document: previous.document, window: previous.window, fetch: previous.fetch});
+    URL.createObjectURL = previous.createObjectURL; URL.revokeObjectURL = previous.revokeObjectURL;
+  }
+});

@@ -4,7 +4,7 @@ import {build} from "esbuild";
 
 // Fixture creation uses the upstream bundle in a separate test page.
 export const mediabunnyExports = [
-  "AudioSampleSink", "BlobSource", "BufferTarget", "Conversion",
+  "AudioSampleSink", "BlobSource", "BufferSource", "BufferTarget", "Conversion",
   "EncodedAudioPacketSource", "EncodedPacketSink", "EncodedVideoPacketSource",
   "Input", "MP4", "Mp4OutputFormat", "Output", "QUALITY_HIGH", "WEBM",
 ];
