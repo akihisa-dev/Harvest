@@ -11,7 +11,7 @@ export async function fetchVideoSize(item, signal) {
         return item.youtube.bytes ?? null;
     if (item.stream)
         return item.stream.bytes ?? null;
-    return fetchResponse(item.url, { sourcePage: item.sourcePage, ...(signal ? { signal } : {}), method: "HEAD", timeoutMs: 10000 }, errors, async (response) => {
+    return fetchResponse(item.url, { sourcePage: item.sourcePage, fetchSourcePage: item.fetchSourcePage, ...(signal ? { signal } : {}), method: "HEAD", timeoutMs: 10000 }, errors, async (response) => {
         const type = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
         const encoding = response.headers.get("content-encoding");
         if (type && !type.startsWith("video/") && type !== "application/octet-stream")
@@ -51,7 +51,7 @@ export function createVideoSizeLoader(labels) {
     return {
         set(element, item) {
             const current = entries.get(element);
-            if (current?.item.url === item.url && current.item.sourcePage === item.sourcePage)
+            if (current?.item.url === item.url && current.item.sourcePage === item.sourcePage && current.item.fetchSourcePage === item.fetchSourcePage)
                 return;
             release(element);
             element.hidden = false;

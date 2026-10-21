@@ -78,3 +78,26 @@ test('親の重複動画にも確認済みiframeの録画情報を引き継ぐ',
     assert.equal(result.media[0].stream, undefined);
   }
 });
+
+test('一意な不透明iframeの表示用URLを認証へ使わず、確認済み出典へだけ昇格する', async t => {
+  const {fetchOriginalMedia} = await import('../dist/extension/app/media/media-fetch.js');
+  const {fetchImage} = await import('../dist/extension/app/media/image-fetch.js');
+  const {pngBytes} = await import('./original-fixtures.mjs');
+  const image = 'https://media.test/private.png';
+  const opaque = {url: 'https://media.test/frame', images: [image]};
+  const verified = {...opaque, url: 'https://media.test/verified', sourcePage: 'https://media.test/verified'};
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {calls.push(options); return new Response(pngBytes, {headers: {'content-type': 'image/png'}});});
+  for (const frames of [[opaque], [opaque, verified], [verified, opaque]]) {
+    const result = collectPageMedia({url: 'https://outer.test/', images: []}, frames), collection = new ImageCollection();
+    collection.replace(result.urls, 'https://outer.test/', result.media, result.initial);
+    const item = collection.items[0];
+    assert.equal(item.sourcePage, frames[0].url, 'display and PDF provenance stay intact');
+    assert.equal(item.fetchSourcePage, frames.length === 1 ? null : verified.sourcePage);
+    for (const fetcher of [() => fetchOriginalMedia(item.url, 'image', item), () => fetchImage(item.url, item)]) {
+      await fetcher();
+      assert.equal(calls.at(-1).credentials, frames.length === 1 ? 'omit' : 'include');
+    }
+  }
+  await assert.rejects(fetchOriginalMedia('http://127.0.0.1/private.png', 'image', {sourcePage: 'http://127.0.0.1/frame', fetchSourcePage: null}));
+});

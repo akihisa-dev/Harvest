@@ -25,18 +25,19 @@ export async function cancelResponse(response: Response | undefined): Promise<vo
 /** Owns the request and response lifetime, including consumption under the same deadline. */
 export async function fetchResponse<T>(
   url: string,
-  options: {readonly timeoutMs: number; readonly method?: "HEAD" | "POST"; readonly body?: Uint8Array<ArrayBuffer>; readonly signal?: AbortSignal; readonly sourcePage?: string},
+  options: {readonly timeoutMs: number; readonly method?: "HEAD" | "POST"; readonly body?: Uint8Array<ArrayBuffer>; readonly signal?: AbortSignal; readonly sourcePage?: string; readonly fetchSourcePage?: string | null | undefined},
   errors: ResponseFetchErrors,
   consume: (response: Response, state: ResponseFetchState) => Promise<T>,
 ): Promise<T> {
   checkCancelled(options.signal);
+  const sourcePage = options.fetchSourcePage === null ? undefined : options.fetchSourcePage ?? options.sourcePage;
   try {
-    validateImageFetchTarget(url, options.sourcePage);
+    validateImageFetchTarget(url, sourcePage);
   } catch (error) {
     if (error instanceof ImageFetchTargetError) throw invalidImage(error.message);
     throw error;
   }
-  const credentials = getImageFetchCredentials(url, options.sourcePage);
+  const credentials = getImageFetchCredentials(url, sourcePage);
   const targetAddressSpace = getImageFetchTargetAddressSpace(url);
   if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) throw new RangeError("timeoutMs must be a positive finite number.");
   const controller = new AbortController();

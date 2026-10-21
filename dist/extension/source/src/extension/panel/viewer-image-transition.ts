@@ -46,7 +46,8 @@ export function createViewerImageTransition(options: ViewerImageTransitionOption
     const previousUrl = renderedItem?.url ?? null;
     const reusesPreview = renderedItem !== null
       && (renderedItem.previewUrl ?? renderedItem.url) === (current.previewUrl ?? current.url)
-      && renderedItem.sourcePage === current.sourcePage;
+      && renderedItem.sourcePage === current.sourcePage
+      && renderedItem.fetchSourcePage === current.fetchSourcePage;
     const currentIndex = pages.findIndex(item => item.url === current.url);
     cancelPendingLoad();
     const existingOutgoing = motionImages();

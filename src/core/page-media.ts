@@ -19,7 +19,7 @@ function sameWebOrigin(image: string, source: string): boolean {
 
 /** Keep document provenance and selection independent from the combined URL groups. */
 export function collectPageMedia(page: DocumentMedia, frames: readonly DocumentMedia[] = []) {
-  const documents = [page, ...frames].map(document => {
+  const documents = [page, ...frames].map((document, index) => {
     const urls = normalizeImageUrls([...(document.media ?? []).map(item => item.url), ...document.images], document.url);
     const media = (document.media ?? []).flatMap(item => {
       const url = normalizeImageUrls([item.url], document.url)[0];
@@ -27,7 +27,7 @@ export function collectPageMedia(page: DocumentMedia, frames: readonly DocumentM
     });
     const groups = groupMediaImages(urls, media);
     const key = defaultDisplayedImageGroup(groups);
-    return {url: document.sourcePage ?? document.url, verifiedSource: document.sourcePage !== undefined, urls, media, group: key ? groups[key] : undefined,
+    return {fetchSource: document.sourcePage ?? (index === 0 ? document.url : null), url: document.sourcePage ?? document.url, verifiedSource: document.sourcePage !== undefined, urls, media, group: key ? groups[key] : undefined,
       rejected: (document.media ?? []).length - media.length};
   });
   // Existing page selection always wins. With an empty shell, prefer a frame
@@ -36,14 +36,21 @@ export function collectPageMedia(page: DocumentMedia, frames: readonly DocumentM
     : documents.slice(1).find(document => document.group?.isMangaBody)
       ?? documents.slice(1).find(document => document.urls.length);
   const sourcePages = new Map<string, string>();
+  const fetchSourcePages = new Map<string, string | null>();
   const metadata = new Map<string, MediaImageMetadata>();
   for (const document of documents) {
     for (const url of document.urls) {
       const previous = sourcePages.get(url);
+      const previousFetch = fetchSourcePages.get(url);
       // Updating an existing Map value preserves its original display position.
       // Only an observed document with a browser-verified origin can replace it.
       if (previous === undefined || (document.verifiedSource && !sameWebOrigin(url, previous) && sameWebOrigin(url, document.url))) {
         sourcePages.set(url, document.url);
+      }
+      // Authentication may gain verified evidence without rewriting display provenance.
+      if (!fetchSourcePages.has(url) || (document.verifiedSource
+        && (!previousFetch || !sameWebOrigin(url, previousFetch)) && sameWebOrigin(url, document.url))) {
+        fetchSourcePages.set(url, document.fetchSource);
       }
     }
     for (const item of document.media) {
@@ -58,5 +65,5 @@ export function collectPageMedia(page: DocumentMedia, frames: readonly DocumentM
   }
   return {urls: [...sourcePages.keys()], media: [...metadata.values()],
     rejected: documents.reduce((count, document) => count + document.rejected, 0),
-    initial: {selectedUrls: preferred?.group?.items ?? [], sourcePages}};
+    initial: {selectedUrls: preferred?.group?.items ?? [], sourcePages, fetchSourcePages}};
 }

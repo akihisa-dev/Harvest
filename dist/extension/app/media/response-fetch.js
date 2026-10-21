@@ -12,15 +12,16 @@ export async function cancelResponse(response) {
 /** Owns the request and response lifetime, including consumption under the same deadline. */
 export async function fetchResponse(url, options, errors, consume) {
     checkCancelled(options.signal);
+    const sourcePage = options.fetchSourcePage === null ? undefined : options.fetchSourcePage ?? options.sourcePage;
     try {
-        validateImageFetchTarget(url, options.sourcePage);
+        validateImageFetchTarget(url, sourcePage);
     }
     catch (error) {
         if (error instanceof ImageFetchTargetError)
             throw invalidImage(error.message);
         throw error;
     }
-    const credentials = getImageFetchCredentials(url, options.sourcePage);
+    const credentials = getImageFetchCredentials(url, sourcePage);
     const targetAddressSpace = getImageFetchTargetAddressSpace(url);
     if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0)
         throw new RangeError("timeoutMs must be a positive finite number.");

@@ -14,7 +14,7 @@ export async function prepareAudioWithCover(
   checkCancelled(signal);
   if (!item.previewUrl) return audio;
   try {
-    const fetched = await fetchImage(item.previewUrl, {sourcePage: item.sourcePage, ...(signal ? {signal} : {})});
+    const fetched = await fetchImage(item.previewUrl, {sourcePage: item.sourcePage, fetchSourcePage: item.fetchSourcePage, ...(signal ? {signal} : {})});
     const image = await convertImage(fetched, "jpg", signal);
     checkCancelled(signal);
     if (image.size > 4 * 1024 * 1024) return audio;

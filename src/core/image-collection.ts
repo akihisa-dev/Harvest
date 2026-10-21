@@ -20,7 +20,7 @@ export class ImageCollection {
     urls: readonly string[],
     sourcePage: string,
     media: readonly MediaImageMetadata[] = [],
-    initial?: {selectedUrls: readonly string[]; sourcePages: ReadonlyMap<string, string>},
+    initial?: {selectedUrls: readonly string[]; sourcePages: ReadonlyMap<string, string>; fetchSourcePages?: ReadonlyMap<string, string | null>},
   ): void {
     const groups = groupMediaImages(urls, media);
     const selectedGroups = defaultSelectedImageGroups(groups);
@@ -31,6 +31,7 @@ export class ImageCollection {
       return {
         url,
         sourcePage: initial?.sourcePages.get(url) ?? sourcePage,
+        ...(initial?.fetchSourcePages?.has(url) ? {fetchSourcePage: initial.fetchSourcePages.get(url)!} : {}),
         selected: selectedUrls.has(url),
         ...(details ? {kind: details.kind} : {}),
         ...(details?.previewUrl ? {previewUrl: details.previewUrl} : {}),

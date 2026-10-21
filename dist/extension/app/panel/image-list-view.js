@@ -264,17 +264,17 @@ export function createImageListView(options) {
         const filename = item.stream ? streamRecordingFilename(item.stream) : options.getFilename(item.url);
         // Capture mutable media fields as values, not the mutable ImageItem identity.
         const state = [index, overallIndex, item.selected, failed, busy, filename,
-            item.kind, item.sourcePage, item.previewUrl, options.previewLoader.generation];
+            item.kind, item.sourcePage, item.previewUrl, options.previewLoader.generation, item.fetchSourcePage];
         if (drag.draggedImage !== item)
             setClass(row, "dragging", false);
         const unchanged = parts.rendered?.every((value, position) => value === state[position]);
         const prior = parts.previewState;
-        const previewChanged = !prior || prior[0] !== item.kind || prior[1] !== item.sourcePage || prior[2] !== item.previewUrl || prior[3] !== options.previewLoader.generation;
+        const previewChanged = !prior || prior[0] !== item.kind || prior[1] !== item.sourcePage || prior[2] !== item.previewUrl || prior[3] !== options.previewLoader.generation || prior[4] !== item.fetchSourcePage;
         if (unchanged && !previewChanged)
             return;
         if (previewChanged) {
             options.previewLoader.set(parts.preview, item);
-            parts.previewState = [item.kind, item.sourcePage, item.previewUrl, options.previewLoader.generation];
+            parts.previewState = [item.kind, item.sourcePage, item.previewUrl, options.previewLoader.generation, item.fetchSourcePage];
         }
         parts.updateResolution();
         if (unchanged)

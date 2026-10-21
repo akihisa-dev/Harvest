@@ -12,7 +12,7 @@ const errors: ResponseFetchErrors = {
 export async function fetchVideoSize(item: ImageItem, signal?: AbortSignal): Promise<number | null> {
   if (item.youtube) return item.youtube.bytes ?? null;
   if (item.stream) return item.stream.bytes ?? null;
-  return fetchResponse(item.url, {sourcePage: item.sourcePage, ...(signal ? {signal} : {}), method: "HEAD", timeoutMs: 10000}, errors, async response => {
+  return fetchResponse(item.url, {sourcePage: item.sourcePage, fetchSourcePage: item.fetchSourcePage, ...(signal ? {signal} : {}), method: "HEAD", timeoutMs: 10000}, errors, async response => {
     const type = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
     const encoding = response.headers.get("content-encoding");
     if (type && !type.startsWith("video/") && type !== "application/octet-stream") return null;
@@ -50,7 +50,7 @@ export function createVideoSizeLoader(labels: {loading: string; unknown: string}
   return {
     set(element: HTMLElement, item: ImageItem): void {
       const current = entries.get(element);
-      if (current?.item.url === item.url && current.item.sourcePage === item.sourcePage) return;
+      if (current?.item.url === item.url && current.item.sourcePage === item.sourcePage && current.item.fetchSourcePage === item.fetchSourcePage) return;
       release(element);
       element.hidden = false;
       element.textContent = labels.loading;

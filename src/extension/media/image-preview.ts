@@ -39,7 +39,7 @@ export interface ImagePreviewLoader {
 }
 
 function entryKey(item: ImageItem): string {
-  return JSON.stringify([item.previewUrl ?? item.url, item.sourcePage]);
+  return JSON.stringify([item.previewUrl ?? item.url, item.sourcePage, item.fetchSourcePage ?? (item.fetchSourcePage === null ? null : item.sourcePage)]);
 }
 
 function previewBlob(item: Awaited<ReturnType<typeof fetchImage>>): Blob {
@@ -120,7 +120,7 @@ export function createImagePreviewLoader(): ImagePreviewLoader {
       if (entries.get(entry.key) !== entry || !entry.elements.size || (observer && !isPinned(entry))) continue;
       entry.started = true;
       activeFetches += 1;
-      const options = {signal: entry.controller.signal, sourcePage: entry.item.sourcePage} as PreviewFetchOptions;
+      const options = {signal: entry.controller.signal, sourcePage: entry.item.sourcePage, fetchSourcePage: entry.item.fetchSourcePage} as PreviewFetchOptions;
       void fetchImage(entry.item.previewUrl ?? entry.item.url, options).then(fetched => {
         if (entries.get(entry.key) !== entry || !entry.elements.size) return;
         const objectUrl = URL.createObjectURL(previewBlob(fetched));

@@ -50,7 +50,7 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
   let pointer: {id: number; x: number; y: number} | null = null;
   let lastThumbnailWheelAt = -Infinity;
   const thumbnailRows = new Map<string, HTMLLIElement>();
-  const thumbnailStates = new WeakMap<HTMLLIElement, readonly (string | number | boolean | undefined)[]>();
+  const thumbnailStates = new WeakMap<HTMLLIElement, readonly (string | number | boolean | null | undefined)[]>();
   const imageTransition = createViewerImageTransition({
     stage: elements.stage,
     image: elements.image,
@@ -145,12 +145,12 @@ export function createViewerController(options: ViewerControllerOptions): Viewer
       const thumbnail = button.children[0] as HTMLImageElement;
       const active = item.url === activeUrl;
       const label = options.getPageLabel(item);
-      const state = [index, active, label, item.kind, item.sourcePage, item.previewUrl, options.previewLoader.generation];
+      const state = [index, active, label, item.kind, item.sourcePage, item.previewUrl, options.previewLoader.generation, item.fetchSourcePage];
       const prior = thumbnailStates.get(row);
       if (!prior?.every((value, position) => value === state[position])) {
         setAttribute(button, "aria-current", String(active));
         setAttribute(button, "aria-label", t("thumbnailAria", {index: index + 1, filename: label}));
-        if (!prior || prior[1] !== active || prior[3] !== item.kind || prior[4] !== item.sourcePage || prior[5] !== item.previewUrl || prior[6] !== options.previewLoader.generation) {
+        if (!prior || prior[1] !== active || prior[3] !== item.kind || prior[4] !== item.sourcePage || prior[5] !== item.previewUrl || prior[6] !== options.previewLoader.generation || prior[7] !== item.fetchSourcePage) {
           options.previewLoader.set(thumbnail, item, active);
         }
         setText(number, String(index + 1));

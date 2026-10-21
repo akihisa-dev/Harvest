@@ -231,3 +231,47 @@ test('重複画像は確認済みiframeの同一オリジン出典で取得し�
   assert.deepEqual(result.denied, {source: 'https://outer.test/book', credentials: 'omit', failed: true});
   assert.ok(result.localDenied);
 });
+
+test('不透明なHTTPS iframeの固有画像へHTML・CSP sandboxともCookieを送らない', {timeout:60000}, async t => {
+  const temporary = await temporaryDirectory(t, join(tmpdir(), 'harvest-opaque-https-'));
+  const context = await launchExtensionContext(t, join(temporary, 'profile'));
+  const cdp = await resourcesFor(t).acquire(() => context.browser().newBrowserCDPSession(), session => session.detach());
+  const {id} = await cdp.send('Extensions.loadUnpacked', {path:resolve('dist/extension')});
+  await context.addCookies([{url:'https://media.test',name:'session',value:'synthetic',sameSite:'None',secure:true}]);
+  await context.route('https://**/*', route => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/private.png') return route.fulfill({status:route.request().headers().cookie?.includes('session=synthetic') ? 200 : 403,contentType:'image/png',body:png});
+    if (url.hostname === 'outer.test') {
+      const mode = url.searchParams.get('mode'), duplicate = url.searchParams.get('duplicate') === 'true';
+      return route.fulfill({contentType:'text/html',body:`<title>Fixture</title>${duplicate ? '<img src="https://media.test/private.png">' : ''}<iframe ${mode === 'html' ? 'sandbox="allow-scripts"' : ''} src="https://media.test/${mode}"></iframe>`});
+    }
+    return route.fulfill({contentType:'text/html',headers:url.pathname === '/csp' ? {'Content-Security-Policy':'sandbox allow-scripts'} : {},body:'<img src="/private.png">'});
+  });
+  const panel = await context.newPage();await panel.goto(`chrome-extension://${id}/app/index.html`);
+  const page = await context.newPage();
+  for (const mode of ['html','csp','normal']) for (const duplicate of [false,true]) {
+    const url = `https://outer.test/book?mode=${mode}&duplicate=${duplicate}`;await page.goto(url);
+    const result = await panel.evaluate(async url => {
+      const {scanTab} = await import(chrome.runtime.getURL('app/browser/page-access.js'));
+      const {collectPageMedia} = await import(chrome.runtime.getURL('core/page-media.js'));
+      const {ImageCollection} = await import(chrome.runtime.getURL('core/image-collection.js'));
+      const {fetchOriginalMedia} = await import(chrome.runtime.getURL('app/media/media-fetch.js'));
+      const {fetchImage} = await import(chrome.runtime.getURL('app/media/image-fetch.js'));
+      const [tab] = await chrome.tabs.query({url}); const scan = await scanTab(tab.id);
+      const media = collectPageMedia(scan,scan.frames), collection = new ImageCollection();
+      collection.replace(media.urls,scan.url,media.media,media.initial);
+      const item = collection.items.find(item => item.url === 'https://media.test/private.png');
+      const success = [];
+      for (const action of [() => fetchOriginalMedia(item.url,'image',item), () => fetchImage(item.url,item)]) {
+        try {await action();success.push(true);} catch {success.push(false);}
+      }
+      return {success, source:item.sourcePage, fetchSource:item.fetchSourcePage, count:collection.items.length};
+    },url);
+    assert.equal(result.count,1);
+    assert.deepEqual(result.success,[mode === 'normal',mode === 'normal'],`${mode}/${duplicate}`);
+    if (!duplicate && mode !== 'normal') {
+      assert.equal(result.source,`https://media.test/${mode}`);
+      assert.equal(result.fetchSource,null);
+    }
+  }
+});

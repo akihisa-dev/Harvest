@@ -27,6 +27,7 @@ export interface ImageDataOptions {
   readonly signal?: AbortSignal;
   /** The page that supplied the image URL; only this origin may use site credentials. */
   readonly sourcePage?: string;
+  readonly fetchSourcePage?: string | null | undefined;
 }
 
 export type FetchedImage =

@@ -67,11 +67,11 @@ export async function prepareMixedExport(work: MixedExportWork, options: Options
       const original = item.kind === "video" || imageFormat === "original";
       if (original) {
         const onProgress = item.kind === "video" ? (fraction: number) => itemProgress(index, fraction * (work.videoFormat === "original" ? .95 : .7)) : undefined;
-        results[index]!.resolve({kind:"media",blob:item.youtube ? await fetchYoutubeVideo(item.youtube,signal,onProgress) : await fetchOriginalMedia(item.url,item.kind ?? "image",{signal,sourcePage:item.sourcePage,...(item.stream ? {stream:item.stream} : {}),...(onProgress ? {onProgress} : {})}),release});
+        results[index]!.resolve({kind:"media",blob:item.youtube ? await fetchYoutubeVideo(item.youtube,signal,onProgress) : await fetchOriginalMedia(item.url,item.kind ?? "image",{signal,sourcePage:item.sourcePage,fetchSourcePage:item.fetchSourcePage,...(item.stream ? {stream:item.stream} : {}),...(onProgress ? {onProgress} : {})}),release});
       }
       else {
         const knownGif = item.kind === "gif" || item.recommendedFormat === "gif";
-        results[index]!.resolve({kind:"image",fetched:await fetchImage(item.url,{signal,sourcePage:item.sourcePage,...(knownGif ? {timeoutMs:DEFAULT_MEDIA_TIMEOUT_MS} : {})}),release});
+        results[index]!.resolve({kind:"image",fetched:await fetchImage(item.url,{signal,sourcePage:item.sourcePage,fetchSourcePage:item.fetchSourcePage,...(knownGif ? {timeoutMs:DEFAULT_MEDIA_TIMEOUT_MS} : {})}),release});
       }
     } catch (error) { results[index]!.resolve({kind:"error",error,release}); }
   });

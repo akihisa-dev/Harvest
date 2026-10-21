@@ -4,6 +4,8 @@ import type {StreamRecording} from "./stream-recording.js";
 export interface ImageItem {
   url: string;
   sourcePage: string;
+  /** null explicitly forbids using display provenance for authenticated fetches. */
+  fetchSourcePage?: string | null;
   selected: boolean;
   kind?: "image" | "gif" | "video";
   previewUrl?: string;

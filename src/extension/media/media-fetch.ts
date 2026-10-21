@@ -11,6 +11,7 @@ export interface OriginalMediaOptions {
   readonly stream?: StreamRecording;
   readonly signal?: AbortSignal;
   readonly sourcePage?: string;
+  readonly fetchSourcePage?: string | null | undefined;
   readonly timeoutMs?: number;
   readonly onProgress?: (fraction: number) => void;
 }

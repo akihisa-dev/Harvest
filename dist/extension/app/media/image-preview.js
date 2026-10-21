@@ -1,6 +1,6 @@
 import { fetchImage } from "./image-fetch.js";
 function entryKey(item) {
-    return JSON.stringify([item.previewUrl ?? item.url, item.sourcePage]);
+    return JSON.stringify([item.previewUrl ?? item.url, item.sourcePage, item.fetchSourcePage ?? (item.fetchSourcePage === null ? null : item.sourcePage)]);
 }
 function previewBlob(item) {
     return item.kind === "bitmap" ? item.blob : new Blob([item.page.jpeg.slice().buffer], { type: "image/jpeg" });
@@ -84,7 +84,7 @@ export function createImagePreviewLoader() {
                 continue;
             entry.started = true;
             activeFetches += 1;
-            const options = { signal: entry.controller.signal, sourcePage: entry.item.sourcePage };
+            const options = { signal: entry.controller.signal, sourcePage: entry.item.sourcePage, fetchSourcePage: entry.item.fetchSourcePage };
             void fetchImage(entry.item.previewUrl ?? entry.item.url, options).then(fetched => {
                 if (entries.get(entry.key) !== entry || !entry.elements.size)
                     return;
