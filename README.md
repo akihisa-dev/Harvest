@@ -174,7 +174,7 @@ pnpm verify:full
 
 Chrome-independent selection, ordering, ZIP assembly, and PDF assembly live in `src/core/`. UI, browser integration, and image format conversion live in `src/extension/`.
 
-`response-fetch.ts` handles image/video requests and timeouts; `image-fetch.ts` and `media-fetch.ts` validate fetched content; `image-decode.ts` and `pdf-image.ts` prepare pixels for PDF; `image-format.ts` and `image-export-controller.ts` handle image conversion and retries. The JXL encoder and its Apache-2.0 license are bundled. Existing PDF creation and image preparation calling interfaces are preserved. See [core processing](src/core/README.md) and [UI and browser integration](src/extension/README.md) for responsibility boundaries; these documents are in Japanese.
+`response-fetch.ts` handles image/video requests and timeouts; `image-fetch.ts` and `media-fetch.ts` validate fetched content; `image-decode.ts` prepares image pixels; `image-format.ts` performs image conversion. `mixed-export-preparation.ts` prepares all selected media, while `mixed-export-controller.ts` assembles PDF/ZIP output and manages downloads and retries with `split-export-session.ts` and `export-lifecycle.ts`. PDF assembly lives in `core/pdf.ts`. The JXL encoder and its Apache-2.0 license are bundled. The retired preparation interfaces and their replacements are documented in [export path migration](docs/export-path-migration.md). See [core processing](src/core/README.md) and [UI and browser integration](src/extension/README.md) for responsibility boundaries; these documents are in Japanese.
 
 The build places compiled modules together, and `check:build` verifies that their imports resolve within the distribution.
 
@@ -362,7 +362,7 @@ pnpm verify:full
 
 Chrome APIに依存しない画像の選択・順序、ZIPの組み立てとPDFの組み立ては `src/core/`、画面操作とブラウザーへの接続・画像形式の変換は `src/extension/` に置きます。
 
-画像・動画の通信と時間制限は `response-fetch.ts`、取得内容の検査は `image-fetch.ts` と `media-fetch.ts`、PDF向けの画素処理は `image-decode.ts` と `pdf-image.ts`、画像形式への変換と再試行は `image-format.ts` と `mixed-export-preparation.ts`・`mixed-export-controller.ts` が担当します。JXLエンコーダーとApache-2.0のライセンスを配布物に同梱します。既存のPDF作成関数と画像準備関数の呼び出し方は維持します。担当の境界は [共通処理](src/core/README.md) と [画面・ブラウザー接続](src/extension/README.md) を参照してください。
+画像・動画の通信と時間制限は `response-fetch.ts`、取得内容の検査は `image-fetch.ts` と `media-fetch.ts`、画像の画素処理は `image-decode.ts`、画像形式への変換は `image-format.ts` が担当します。`mixed-export-preparation.ts` が選択メディア全件を準備し、`mixed-export-controller.ts` がPDF・ZIPの出力を組み立て、`split-export-session.ts`・`export-lifecycle.ts` と保存・中止・再試行を管理します。PDFの組み立ては `core/pdf.ts` が担当します。JXLエンコーダーとApache-2.0のライセンスを配布物に同梱します。撤去した旧準備APIと移行先は [保存経路の移行](docs/export-path-migration.md) を参照してください。担当の境界は [共通処理](src/core/README.md) と [画面・ブラウザー接続](src/extension/README.md) を参照してください。
 
 ビルドはコンパイル済みモジュールをまとめて配置し、`check:build` で各モジュールの参照先が配布物内に存在することを確認します。
 
