@@ -14,20 +14,26 @@ async function audioBytes(frames=13){
   for(let i=0;i<frames;i++)await source.add(new EncodedPacket(new Uint8Array([0x21,0x10,0x04,0x60,0x8c,0x1c]),'key',i*1024/44100,1024/44100),{decoderConfig:{codec:'mp4a.40.2',sampleRate:44100,numberOfChannels:2,description:new Uint8Array([0x12,0x10])}});
   source.close();await output.finalize();return new Uint8Array(target.buffer);
 }
-for(const {refresh,chunked,differentDurations,backoff=0} of [
+for(const {refresh,chunked,differentDurations,backoff=0,corrupt} of [
   {refresh:false,chunked:false,differentDurations:false},
   {refresh:true,chunked:false,differentDurations:false},
   {refresh:false,chunked:true,differentDurations:false},
   {refresh:false,chunked:false,differentDurations:true},
   {refresh:false,chunked:true,differentDurations:false,backoff:120},
-])test(`解析から音声付きMP4準備まで完了する: refresh=${refresh}, chunked=${chunked}, differentDurations=${differentDurations}, backoff=${backoff}`,async tctx=>{
+  {refresh:false,chunked:false,differentDurations:false,corrupt:'video'},
+  {refresh:false,chunked:false,differentDurations:false,corrupt:'audio'},
+])test(`${corrupt ? `配信から受け取った${corrupt}のmdat外参照を保存準備で拒否する` : '解析から音声付きMP4準備まで完了する'}: refresh=${refresh}, chunked=${chunked}, differentDurations=${differentDurations}, backoff=${backoff}`,async tctx=>{
   const previous={chrome:globalThis.chrome,fetch:globalThis.fetch,Worker:globalThis.Worker};
   tctx.after(()=>{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}});
-  const audioFrames=differentDurations?22:13,audioData=await audioBytes(audioFrames);
+  const audioFrames=differentDurations?22:13,audioData=Buffer.from(await audioBytes(audioFrames)),videoData=Buffer.from(fragmentedMp4);
+  if(corrupt){
+    const bytes=corrupt==='video'?videoData:audioData,moof=bytes.indexOf(Buffer.from('moof'))-4,trun=bytes.indexOf(Buffer.from('trun'));
+    assert.ok(moof>0&&trun>moof);bytes.writeInt32BE(-moof,trun+12);
+  }
   const formats=[{...video,height:32,fps:10,durationMs:300,contentLength:fragmentedMp4.length},{...audio,durationMs:differentDurations?Math.ceil(audioFrames*1024/44100*1000):300,contentLength:audioData.length}];
   const header=(format,index,sequence,size)=>part(20,join([n(1,index),t(2,videoId),b(13,identity(format)),n(8,sequence===0?1:0),n(9,sequence),n(11,0),n(12,sequence===0?0:format.durationMs),n(14,size)]));
   const trackParts=formats.map((format,index)=>{
-    const [init,media]=split(index===0?fragmentedMp4:audioData);
+    const [init,media]=split(index===0?videoData:audioData);
     const item=(bytes,sequence)=>join([header(format,index,sequence,bytes.length),part(21,new Uint8Array([index,...bytes])),part(22,new Uint8Array([index]))]);
     return [initialization(format,1),item(init,0),item(media,1)];
   });
@@ -68,7 +74,14 @@ for(const {refresh,chunked,differentDurations,backoff=0} of [
     if(backoff&&ms===backoff){serverWaits++;waiting=true;return schedule(()=>{waiting=false;callback(...args);},0);}
     return schedule(callback,ms,...args);
   });
-  assert.equal('capture' in source,false);const progress=[];const blob=await fetchYoutubeVideo(source,undefined,value=>progress.push(value));
+  assert.equal('capture' in source,false);const progress=[];
+  if(corrupt){
+    await assert.rejects(fetchYoutubeVideo(source,undefined,value=>progress.push(value)),/YouTube動画の映像と音声をまとめられませんでした/);
+    assert.ok(progress.length>0&&progress.every(value=>value<1),'破損入力で保存準備完了を通知しない');
+    assert.equal(workers[0].terminated,true);assert.deepEqual(closed,[1,2]);
+    return;
+  }
+  const blob=await fetchYoutubeVideo(source,undefined,value=>progress.push(value));
   assert.equal(unneededWaits,0,'受信が進んでいれば不要なタイマー待機を挟まない');
   assert.equal(serverWaits,backoff?responses.length-1:0,'配信先の待機指示は全応答で維持する');
   assert.ok(progress.length > 1);assert.equal(progress.at(-1),1);

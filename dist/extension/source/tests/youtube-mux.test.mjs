@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {mp4Bytes} from './media-fixtures.mjs';
+import {mp4Bytes,fragmentedMp4} from './media-fixtures.mjs';
 import {muxYoutube} from '../dist/extension/app/workers/youtube-mux.js';
+import {hasCompleteMp4Boxes} from '../dist/extension/core/original-media-structure.js';
 import {prepareYoutubeMp4} from '../dist/extension/app/media/youtube-fetch.js';
 import {BlobSource,BufferTarget,EncodedAudioPacketSource,EncodedPacket,EncodedPacketSink,Input,MP4,Mp4OutputFormat,Output} from '../node_modules/mediabunny/dist/bundles/mediabunny.min.mjs';
 
-async function audioFixture(frames=13){
-  const target=new BufferTarget(),output=new Output({format:new Mp4OutputFormat(),target}),source=new EncodedAudioPacketSource('aac');
+async function audioFixture(frames=13,options={}){
+  const target=new BufferTarget(),output=new Output({format:new Mp4OutputFormat(options),target}),source=new EncodedAudioPacketSource('aac');
   output.addAudioTrack(source);await output.start();
   for(let i=0;i<frames;i++)await source.add(new EncodedPacket(new Uint8Array([0x21,0x10,0x04,0x60,0x8c,0x1c]),'key',i*1024/44100,1024/44100),{decoderConfig:{codec:'mp4a.40.2',sampleRate:44100,numberOfChannels:2,description:new Uint8Array([0x12,0x10])}});
   source.close();await output.finalize();return new Blob([target.buffer],{type:'audio/mp4'});
@@ -71,6 +72,36 @@ test('結合でも末尾のサンプル欠落を拒否し、部分的な動画�
   const bytes = Buffer.from(mp4Bytes), stsz = bytes.indexOf(Buffer.from('stsz'));
   bytes.writeUInt32BE(bytes.readUInt32BE(stsz + 24) + 100, stsz + 24);
   await assert.rejects(muxYoutube(new Blob([bytes], {type: 'video/mp4'}), await audioFixture(), {videoMs: 300, audioMs: 300}, 65536), /不完全/);
+});
+
+test('通常・分割MP4の正常サンプルを保持し、映像・音声のmdat外参照を結合前に拒否する', async () => {
+  for (const fragmented of [false, true]) {
+    const video = new Blob([fragmented ? fragmentedMp4 : mp4Bytes], {type: 'video/mp4'});
+    const audio = await audioFixture(13, fragmented ? {fastStart: 'fragmented'} : {});
+    const sources = [video, audio], durations = {videoMs: 300, audioMs: 300};
+    const combined = await muxYoutube(video, audio, durations, 65536);
+    assert.deepEqual(await packets(combined, 'video'), await packets(video, 'video'));
+    assert.deepEqual(await packets(combined, 'audio'), await packets(audio, 'audio'));
+    for (const track of [0, 1]) for (const mode of ['header', 'boundary', 'end']) {
+      const bytes = Buffer.from(await sources[track].arrayBuffer());
+      const mdat = bytes.indexOf(Buffer.from('mdat'));
+      assert.ok(mdat > 4);
+      const offset = mode === 'header' ? 0 : mode === 'boundary' ? mdat + 2 : mdat - 4 + bytes.readUInt32BE(mdat - 4) - 1;
+      if (fragmented) {
+        const moof = bytes.indexOf(Buffer.from('moof')) - 4, trun = bytes.indexOf(Buffer.from('trun'));
+        assert.ok(moof > 0 && trun > moof);
+        bytes.writeInt32BE(offset - moof, trun + 12);
+      } else {
+        const stco = bytes.indexOf(Buffer.from('stco'));
+        assert.ok(stco > 0);
+        bytes.writeUInt32BE(offset, stco + 12);
+      }
+      assert.equal(hasCompleteMp4Boxes(bytes), true, 'box構造だけでは破損を検出できない入力');
+      const broken = [...sources];
+      broken[track] = new Blob([bytes], {type: sources[track].type});
+      await assert.rejects(muxYoutube(broken[0], broken[1], durations, 65536), /不完全/, `${fragmented}/${track}/${mode}`);
+    }
+  }
 });
 
 test('結合Workerは中止・不正な応答・時間切れで終了する',async t=>{
