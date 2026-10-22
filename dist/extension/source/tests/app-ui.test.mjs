@@ -32,7 +32,11 @@ class StubElement {
       remove: name => { this.className = this.className.split(" ").filter(value => value !== name).join(" "); }
     };
   }
-  addEventListener(name, callback) { this.listeners.set(name, callback); }
+  addEventListener(name, callback) {
+    if (!this.listeners.has(name)) this.listeners.set(name, new Set());
+    this.listeners.get(name).add(callback);
+  }
+  removeEventListener(name, callback) { this.listeners.get(name)?.delete(callback); }
   append(...children) { this.children.push(...children.filter(Boolean)); }
   replaceChildren(...children) {
     this.replaceChildrenCalls++;
@@ -69,7 +73,7 @@ class StubElement {
   dispatch(name, event = {}) {
     const dispatched = {preventDefault() {}, target: this, currentTarget: this, ...event};
     this[`on${name}`]?.(dispatched);
-    return this.listeners.get(name)?.(dispatched);
+    return Promise.all([...(this.listeners.get(name) ?? [])].map(callback => callback(dispatched)));
   }
 }
 

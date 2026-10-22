@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {createImagePreviewLoader} from "../dist/extension/app/media/image-preview.js";
 
-class PreviewImage {
+class PreviewImage extends EventTarget {
   constructor() {
+    super();
     this.dataset = {};
     this.attributes = new Map();
     this.isConnected = true;
@@ -14,6 +15,71 @@ class PreviewImage {
   getAttribute(name) { return this.attributes.get(name) ?? null; }
   removeAttribute(name) { this.attributes.delete(name); }
 }
+
+test("画像の表示失敗を共有して再試行し、解放後や別画像の遅延イベントを無視する", async t => {
+  let requests = 0;
+  const revoked = [];
+  t.mock.method(globalThis, "fetch", async () => {
+    requests++;
+    return new Response(new Uint8Array([1, 2, 3]), {headers: {"content-type": "image/png"}});
+  });
+  const revoke = URL.revokeObjectURL.bind(URL);
+  t.mock.method(URL, "revokeObjectURL", url => {revoked.push(url); revoke(url);});
+  const loader = createImagePreviewLoader();
+  t.after(() => loader.clear());
+  const item = {url: "https://cdn.example/broken.png", sourcePage: "https://reader.example/book", selected: true};
+  const list = new PreviewImage(), viewer = new PreviewImage(), copy = new PreviewImage();
+  const handlers = [];
+  const addListener = list.addEventListener.bind(list);
+  t.mock.method(list, "addEventListener", (type, handler, options) => {
+    if (type === "error") handlers.push(handler);
+    addListener(type, handler, options);
+  });
+  loader.set(list, item, true);
+  loader.set(viewer, item, true);
+  await waitFor(() => list.src.startsWith("blob:"));
+  const brokenUrl = list.src;
+  const releaseCopy = loader.retainImage(list, copy);
+  Object.assign(copy, {currentSrc: brokenUrl, complete: true, naturalWidth: 0});
+  copy.dispatchEvent(new Event("error"));
+  for (const image of [list, viewer, copy]) {
+    assert.equal(image.src, "");
+    assert.equal(image.dataset.previewFailed, "true");
+  }
+  assert.deepEqual(revoked, [brokenUrl]);
+  assert.deepEqual(loader.diagnostics, {bound: 1, ready: 0, failed: 1, pending: 0});
+  loader.set(viewer, item, true);
+  assert.equal(requests, 1, "表示失敗でも既存の待ち時間を守る");
+  releaseCopy();
+  await new Promise(resolve => setTimeout(resolve, 1_050));
+  loader.set(viewer, item, true);
+  await waitFor(() => list.src.startsWith("blob:") && list.src !== brokenUrl);
+  assert.equal(requests, 2);
+  assert.equal(list.src, viewer.src);
+  assert.equal(list.dataset.previewFailed, undefined);
+  assert.equal(viewer.dataset.previewFailed, undefined);
+
+  const retryUrl = list.src;
+  Object.assign(list, {currentSrc: brokenUrl, complete: true, naturalWidth: 0});
+  list.dispatchEvent(new Event("error"));
+  assert.equal(list.src, retryUrl, "古いURLの失敗は再取得した画像を無効化しない");
+  Object.assign(list, {currentSrc: retryUrl, complete: false});
+  list.dispatchEvent(new Event("error"));
+  assert.equal(list.src, retryUrl, "読み込み途中に届く以前のイベントを無視する");
+
+  loader.clearImage(list);
+  loader.set(list, {...item, url: "https://cdn.example/new.png"}, true);
+  await waitFor(() => list.src.startsWith("blob:"));
+  const newUrl = list.src;
+  Object.assign(list, {currentSrc: newUrl, complete: true, naturalWidth: 0});
+  handlers[0]();
+  assert.equal(list.src, newUrl, "解除済みbindingの遅延通知は新しい画像に影響しない");
+  assert.equal(viewer.src, retryUrl);
+  loader.clear();
+  for (const handler of handlers) handler();
+  assert.deepEqual(loader.diagnostics, {bound: 0, ready: 0, failed: 0, pending: 0});
+  assert.equal(requests, 3, "解放した要素から取得を再開しない");
+});
 
 for (const reuseQueued of [false, true]) {
   test(`画面外の待機を飛ばして${reuseQueued ? "既存" : "新規"}のビューアー対象を優先し、再表示で再開する`, async t => {

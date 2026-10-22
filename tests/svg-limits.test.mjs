@@ -17,7 +17,7 @@ for (const [width,height] of [[16385,1],[8001,8000]]) {
     await assert.rejects(fetchImage("https://example.com/uploads/a.svg", {}), /大きすぎる/);
     await assert.rejects(decodeImage({kind:"bitmap", blob:new Blob([svg], {type:"image/svg+xml"})}, {}), /大きすぎる/);
     for (const format of ["jpg","png","jxl"]) await assert.rejects(convertImage({kind:"bitmap",blob:new Blob([svg],{type:"image/svg+xml"})},format), /大きすぎる/);
-    const image = {dataset:{},isConnected:true,loading:"",getAttribute(){return null;},removeAttribute(){},set src(value){srcSets++;}};
+    const image = {dataset:{},isConnected:true,loading:"",addEventListener(){},removeEventListener(){},getAttribute(){return null;},removeAttribute(){},set src(value){srcSets++;}};
     const loader = createImagePreviewLoader();
     try {
       loader.set(image,{url:"https://example.com/uploads/a.svg",sourcePage:"https://example.com/page"},true);

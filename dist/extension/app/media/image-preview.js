@@ -74,6 +74,27 @@ export function createImagePreviewLoader() {
         cachedEntries.set(entry.key, entry);
         enforceRetentionLimit();
     }
+    function fail(entry) {
+        if (entries.get(entry.key) !== entry)
+            return;
+        cachedEntries.delete(entry.key);
+        revoke(entry);
+        entry.started = false;
+        entry.retryAfter = Date.now() + retryDelayMs;
+        for (const image of entry.elements)
+            image.dataset["previewFailed"] = "true";
+    }
+    function bind(image, entry, eager) {
+        const binding = { key: entry.key, visible: false, eager, onError: () => {
+                // A removed/rebound image or an old queued event cannot invalidate a new load.
+                if (bindings.get(image) !== binding || !entry.objectUrl || image.src !== entry.objectUrl
+                    || image.currentSrc !== entry.objectUrl || !image.complete || image.naturalWidth !== 0)
+                    return;
+                fail(entry);
+            } };
+        bindings.set(image, binding);
+        image.addEventListener("error", binding.onError);
+    }
     function pumpQueue() {
         while (activeFetches < maximumConcurrentFetches && queue.length) {
             // Read live bindings so an already queued viewer image is promoted too.
@@ -102,14 +123,7 @@ export function createImagePreviewLoader() {
                 else
                     cache(entry);
                 enforceRetentionLimit();
-            }).catch(() => {
-                if (entries.get(entry.key) !== entry)
-                    return;
-                for (const image of entry.elements)
-                    image.dataset["previewFailed"] = "true";
-                entry.started = false;
-                entry.retryAfter = Date.now() + retryDelayMs;
-            }).finally(() => {
+            }).catch(() => fail(entry)).finally(() => {
                 activeFetches -= 1;
                 pumpQueue();
             });
@@ -129,6 +143,7 @@ export function createImagePreviewLoader() {
         const binding = bindings.get(image);
         if (!binding)
             return;
+        image.removeEventListener("error", binding.onError);
         const entry = entries.get(binding.key);
         const wasPinned = entry ? isPinned(entry) : false;
         bindings.delete(image);
@@ -215,7 +230,7 @@ export function createImagePreviewLoader() {
             entry.elements.add(image);
             if (entry.retryAfter > 0 && !entry.objectUrl)
                 image.dataset["previewFailed"] = "true";
-            bindings.set(image, { key, visible: false, eager });
+            bind(image, entry, eager);
             observer?.observe(image);
             if (entry.objectUrl) {
                 image.src = entry.objectUrl;
@@ -232,7 +247,7 @@ export function createImagePreviewLoader() {
                 return () => { };
             release(copy);
             entry.elements.add(copy);
-            bindings.set(copy, { key: entry.key, visible: false, eager: true });
+            bind(copy, entry, true);
             cachedEntries.delete(entry.key);
             if (copy.src !== entry.objectUrl)
                 copy.src = entry.objectUrl;
