@@ -14,12 +14,13 @@ async function audioBytes(frames=13){
   for(let i=0;i<frames;i++)await source.add(new EncodedPacket(new Uint8Array([0x21,0x10,0x04,0x60,0x8c,0x1c]),'key',i*1024/44100,1024/44100),{decoderConfig:{codec:'mp4a.40.2',sampleRate:44100,numberOfChannels:2,description:new Uint8Array([0x12,0x10])}});
   source.close();await output.finalize();return new Uint8Array(target.buffer);
 }
-for(const {refresh,chunked,differentDurations} of [
+for(const {refresh,chunked,differentDurations,backoff=0} of [
   {refresh:false,chunked:false,differentDurations:false},
   {refresh:true,chunked:false,differentDurations:false},
   {refresh:false,chunked:true,differentDurations:false},
   {refresh:false,chunked:false,differentDurations:true},
-])test(`解析から音声付きMP4準備まで完了する: refresh=${refresh}, chunked=${chunked}, differentDurations=${differentDurations}`,async tctx=>{
+  {refresh:false,chunked:true,differentDurations:false,backoff:120},
+])test(`解析から音声付きMP4準備まで完了する: refresh=${refresh}, chunked=${chunked}, differentDurations=${differentDurations}, backoff=${backoff}`,async tctx=>{
   const previous={chrome:globalThis.chrome,fetch:globalThis.fetch,Worker:globalThis.Worker};
   tctx.after(()=>{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}});
   const audioFrames=differentDurations?22:13,audioData=await audioBytes(audioFrames);
@@ -40,7 +41,9 @@ for(const {refresh,chunked,differentDurations} of [
     }
     assert.ok(responses.length>7);
   }
+  if(backoff)responses[0]=join([part(35,n(4,backoff)),responses[0]]);
   const address=`https://www.youtube.com/watch?v=${videoId}`,closed=[],captures=[],workers=[];let requests=0,responseIndex=0;
+  let waiting=false,serverWaits=0,unneededWaits=0;
   const event=()=>({addListener(){},removeListener(){}});
   globalThis.chrome={windows:{create:async()=>{throw new Error('No new window');}},tabs:{query:async()=>[{id:1,url:'https://www.youtube.com/'}],create:async()=>{throw new Error('No new tab');},remove:async()=>{throw new Error('Do not close host tab');},get:async()=>({status:'complete'}),onRemoved:event(),onUpdated:event()},scripting:{executeScript:async request=>{
     if(request.func.name==='manageYoutubeFrame'){if(request.args[2])closed.push(closed.length+1);return [{documentId:'host',result:address}];}
@@ -50,6 +53,7 @@ for(const {refresh,chunked,differentDurations} of [
   }}};
   globalThis.Worker=class{constructor(){workers.push(this);}terminate(){this.terminated=true;}postMessage(request){this.request=request;void muxYoutube(request.video,request.audio,request.durations,request.maxBytes).then(blob=>{if(!this.terminated)this.onmessage({data:{blob}});}).catch(error=>this.onmessage({data:{error:error.message}}));}};
   globalThis.fetch=async(endpoint,options)=>{
+    assert.equal(waiting,false,'配信先の待機指示が終わるまで次を要求しない');
     requests++;assert.equal(new URL(endpoint).hostname,'r1-test.googlevideo.com');assert.equal(options.method,'POST');assert.equal(options.redirect,'error');assert.equal(options.credentials,'omit');
     assert.equal(wireBytes(readWire(wireBytes(readWire(options.body),19)),2).length,32);
     assert.equal(wireNumber(readWire(wireBytes(readWire(options.body),1)),40),0);
@@ -58,7 +62,15 @@ for(const {refresh,chunked,differentDurations} of [
     return new Response(responses[responseIndex++],{headers:{'content-type':'application/vnd.yt-ump'}});
   };
   const scan=await scanYoutube(videoId),source=scan.media[0].youtube;
+  const schedule=globalThis.setTimeout;
+  tctx.mock.method(globalThis,'setTimeout',(callback,ms,...args)=>{
+    if(ms===0&&responseIndex>0&&responseIndex<responses.length)unneededWaits++;
+    if(backoff&&ms===backoff){serverWaits++;waiting=true;return schedule(()=>{waiting=false;callback(...args);},0);}
+    return schedule(callback,ms,...args);
+  });
   assert.equal('capture' in source,false);const progress=[];const blob=await fetchYoutubeVideo(source,undefined,value=>progress.push(value));
+  assert.equal(unneededWaits,0,'受信が進んでいれば不要なタイマー待機を挟まない');
+  assert.equal(serverWaits,backoff?responses.length-1:0,'配信先の待機指示は全応答で維持する');
   assert.ok(progress.length > 1);assert.equal(progress.at(-1),1);
   assert.ok(progress.every(value=>Number.isFinite(value)&&value>=0&&value<=1));
   if(chunked)assert.ok(progress.some(value=>value>0&&value<.95),'受信途中にも進捗を通知する');

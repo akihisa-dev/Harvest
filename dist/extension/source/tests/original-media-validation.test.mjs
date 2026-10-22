@@ -118,3 +118,32 @@ test('通常とfragmented MP4は原本を保ち、mdat外を指すサンプル�
     t.mock.restoreAll();
   }
 });
+
+test('MP4検査は未照合の宣言を1件だけ保持し、通常・分割形式の末尾まで照合する', async t => {
+  const {EncodedPacketSink} = await import('../dist/extension/app/vendor/mediabunny/index.js');
+  let pending = 0, peak = 0, checked = 0;
+  for (const method of ['getFirstPacket', 'getNextPacket']) {
+    const original = EncodedPacketSink.prototype[method];
+    t.mock.method(EncodedPacketSink.prototype, method, async function(...args) {
+      const packet = await original.apply(this, args);
+      const options = args[method === 'getFirstPacket' ? 0 : 1];
+      if (packet && options?.metadataOnly) { pending++; peak = Math.max(peak, pending); }
+      else if (packet) { pending--; checked++; }
+      return packet;
+    });
+  }
+  for (const bytes of [mp4Bytes, fragmentedMp4]) {
+    pending = peak = checked = 0;
+    await validateOriginalMedia(new Blob([bytes], {type: 'video/mp4'}));
+    assert.equal(peak, 1, '読み取り済み・未照合の宣言を増やさない');
+    assert.equal(pending, 0);
+    assert.equal(checked, 3, '最後のフレームも検査する');
+  }
+});
+
+test('最後のサンプルだけがファイルを超えていても、途中までのMP4を成功にしない', async () => {
+  const bytes = Buffer.from(mp4Bytes), stsz = bytes.indexOf(Buffer.from('stsz'));
+  assert.equal(bytes.readUInt32BE(stsz + 12), 3);
+  bytes.writeUInt32BE(bytes.readUInt32BE(stsz + 24) + 100, stsz + 24);
+  await assert.rejects(validateOriginalMedia(new Blob([bytes], {type: 'video/mp4'})), error => error.kind === 'invalid-image');
+});

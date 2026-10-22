@@ -37,6 +37,42 @@ test('完全に取得済みの映像300msと音声約511msを、別々の終端�
   await assert.rejects(muxYoutube(video,audio,{...durations,audioMs:1000},65536),/末尾/);
 });
 
+test('結合は各入力を1回だけ読み、未照合のサンプルを1件以内に保つ', async t => {
+  const video = new Blob([mp4Bytes], {type: 'video/mp4'}), audio = await audioFixture(128);
+  const reads = [0, 0];
+  for (const [index, blob] of [video, audio].entries()) {
+    const read = blob.arrayBuffer.bind(blob);
+    t.mock.method(blob, 'arrayBuffer', () => { reads[index]++; return read(); });
+    t.mock.method(blob, 'slice', () => { assert.fail('構造検査後に入力Blobを読み直さない'); });
+  }
+  const {EncodedPacketSink: ProductSink} = await import('../dist/extension/app/vendor/mediabunny/index.js');
+  let pending = 0, peak = 0, checked = 0;
+  for (const method of ['getFirstPacket', 'getNextPacket']) {
+    const original = ProductSink.prototype[method];
+    t.mock.method(ProductSink.prototype, method, async function(...args) {
+      const packet = await original.apply(this, args);
+      const options = args[method === 'getFirstPacket' ? 0 : 1];
+      if (packet && options?.metadataOnly) { pending++; peak = Math.max(peak, pending); }
+      else if (packet) { pending--; checked++; }
+      return packet;
+    });
+  }
+  const combined = await muxYoutube(video, audio, {videoMs: 300, audioMs: 128 * 1024 / 44100 * 1000}, 65536);
+  assert.deepEqual(reads, [1, 1]);
+  assert.equal(peak, 1);
+  assert.equal(pending, 0);
+  assert.equal(checked, 131);
+  t.mock.restoreAll();
+  assert.deepEqual(await packets(combined, 'video'), await packets(video, 'video'));
+  assert.deepEqual(await packets(combined, 'audio'), await packets(audio, 'audio'));
+});
+
+test('結合でも末尾のサンプル欠落を拒否し、部分的な動画を返さない', async () => {
+  const bytes = Buffer.from(mp4Bytes), stsz = bytes.indexOf(Buffer.from('stsz'));
+  bytes.writeUInt32BE(bytes.readUInt32BE(stsz + 24) + 100, stsz + 24);
+  await assert.rejects(muxYoutube(new Blob([bytes], {type: 'video/mp4'}), await audioFixture(), {videoMs: 300, audioMs: 300}, 65536), /不完全/);
+});
+
 test('結合Workerは中止・不正な応答・時間切れで終了する',async t=>{
   const old=globalThis.Worker,workers=[];
   globalThis.Worker=class{constructor(){workers.push(this);}postMessage(){}terminate(){this.terminated=true;}};

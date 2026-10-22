@@ -43,8 +43,11 @@ export async function validateOriginalMedia(blob: Blob, signal?: AbortSignal): P
       const sink = new EncodedPacketSink(track);
       let previousDeclaredPacket: object | undefined;
       let trackBytes = 0;
-      // Metadata iteration does not stop silently when a declared sample is outside the file.
-      for await (const declared of sink.packets(undefined, undefined, {metadataOnly: true})) {
+      // Read one declared sample at a time. The playback iterator preloads a
+      // growing queue, which is unnecessary when validating an in-memory file.
+      // Metadata must still lead: a data-only read can end at a missing sample.
+      for (let declared = await sink.getFirstPacket({metadataOnly: true}); declared;
+        declared = await sink.getNextPacket(declared, {metadataOnly: true})) {
         // BufferSource promises can all settle in the same task. Yield to a
         // timer so UI cancellation and the caller's deadline can actually run.
         if (performance.now() >= yieldAt) {

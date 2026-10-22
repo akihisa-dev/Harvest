@@ -36,8 +36,8 @@ declare module "harvest-vendor-mediabunny" {
   export class EncodedPacketSink {
     constructor(track: object);
     packets(start?: object, end?: object, options?: {metadataOnly: boolean}): AsyncGenerator<MediaPacket, void, unknown>;
-    getFirstPacket(): Promise<MediaPacket | null>;
-    getNextPacket(previous: object): Promise<MediaPacket | null>;
+    getFirstPacket(options?: {metadataOnly: boolean}): Promise<MediaPacket | null>;
+    getNextPacket(previous: object, options?: {metadataOnly: boolean}): Promise<MediaPacket | null>;
   }
   export const QUALITY_HIGH: object;
   export class BlobSource { constructor(blob: Blob); }

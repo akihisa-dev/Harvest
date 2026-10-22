@@ -86,7 +86,8 @@ async function fetchYoutubeWithinDeadline(source:YoutubeSource,signal:AbortSigna
         const progressed=session.receivedBytes>before;
         if(progressed)lastProgressAt=performance.now();
         if(!session.complete&&performance.now()-lastProgressAt>=30000)throw new Error("YouTubeの動画配信が取得を継続できませんでした。");
-        if(!session.complete)await delay(Math.max(session.backoffMs,progressed?0:500),signal);
+        const waitMs=Math.max(session.backoffMs,progressed?0:500);
+        if(!session.complete&&waitMs>0)await delay(waitMs,signal);
       }
       const output=session.output();checkCancelled(signal);
       const blob=await prepareYoutubeMp4(new Blob([output.video],{type:"video/mp4"}),new Blob([output.audio],{type:"audio/mp4"}),output.durations,signal);
