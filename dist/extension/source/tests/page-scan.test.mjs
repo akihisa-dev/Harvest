@@ -654,6 +654,23 @@ test("srcsetの空白なし区切りとURL内のカンマを区別する", async
   assert.equal(result.images.some(url => url.includes("small.gif,large.gif")), false);
 });
 
+test("srcset末尾の区切りだけを除き、URL内部のカンマ・NBSP・符号化済みカンマを保つ", async () => {
+  const cases = [
+    ["single.jpg,", "single.jpg"],
+    ["multiple.jpg,,,", "multiple.jpg"],
+    ["spaces.jpg,,, \t", "spaces.jpg"],
+    ["/scan,page.jpg,,,", "/scan,page.jpg"],
+    ["/nbsp.jpg\u00a0,,,", "/nbsp.jpg%C2%A0"],
+    ["/encoded.jpg%2C,,,", "/encoded.jpg%2C"],
+    ["/query.jpg?value=a,b,,,", "/query.jpg?value=a,b"],
+  ];
+  const root = new FixtureElement("html", {}, cases.map(([srcset]) => new FixtureElement("source", {srcset})));
+  const result = await runWithFixture(new FixtureDocument(root), EmptyMutationObserver, () => scanDocument());
+  const expected = cases.map(([, url]) => new URL(url, "https://example.test/books/chapter").href);
+  assert.deepEqual(result.images, expected);
+  assert.deepEqual(result.media.map(item => item.url), expected);
+});
+
 test("表示位置を優先し、meta先行の重複URLと位置のない候補を補正する", async () => {
   const topImage = new FixtureElement("img", {
     src: "https://cdn.example.test/pages/top.jpg",

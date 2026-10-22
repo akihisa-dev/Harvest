@@ -479,6 +479,8 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
   const parseSrcset = (value: string): SrcsetEntry[] => {
     const entries: SrcsetEntry[] = [];
     const trimAscii = (text: string): string => text.replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, "");
+    // Only srcset URL tokens lose trailing separators; internal/encoded commas remain URLs.
+    const srcsetUrl = (text: string): string => trimAscii(text).replace(/,+$/, "");
     let index = 0;
     while (index < value.length) {
       checkDeadline();
@@ -515,17 +517,17 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
       // Keep commas inside URLs such as /scan,page.jpg while recognizing
       // image filename pairs with or without whitespace after the comma.
       if (commaSeparator >= 0) {
-        entries.push({url: trimAscii(value.slice(start, commaSeparator)), value: 0, kind: null});
+        entries.push({url: srcsetUrl(value.slice(start, commaSeparator)), value: 0, kind: null});
         index = commaSeparator + 1;
         continue;
       }
       if (whitespace < 0) {
         const rest = value.slice(start);
-        entries.push({url: trimAscii(rest), value: 0, kind: null});
+        entries.push({url: srcsetUrl(rest), value: 0, kind: null});
         break;
       }
 
-      const url = trimAscii(value.slice(start, whitespace));
+      const url = srcsetUrl(value.slice(start, whitespace));
       const comma = value.indexOf(",", whitespace);
       const descriptorText = trimAscii(comma < 0 ? value.slice(whitespace) : value.slice(whitespace, comma));
       const width = descriptorText.match(/^(\d+)w$/);

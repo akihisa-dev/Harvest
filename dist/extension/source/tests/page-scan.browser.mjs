@@ -4,6 +4,8 @@ import {readFile} from "node:fs/promises";
 import test from "node:test";
 import {normalizeImageUrls} from "../dist/extension/core/images.js";
 import {ImageCollection} from "../dist/extension/core/image-collection.js";
+import {collectPageMedia} from "../dist/extension/core/page-media.js";
+import {redPng} from "./animation-fixtures.mjs";
 
 test("audioのsourceを収集せず、画像の初期選択とpicture・videoのsourceを保つ", async (t) => {
   const source = await readFile(new URL("../dist/extension/app/content/page-scan.js", import.meta.url), "utf8");
@@ -498,6 +500,34 @@ test('復号済みのDOM・JSON画像URLにHTML実体参照の復号を重ねな
       assert.deepEqual(result.images, [expected], `${extension}/${mode}`);
       assert.deepEqual(result.media.map(item => item.url), [expected], `${extension}/${mode}`);
     }
+  }
+});
+
+test("srcset末尾の区切りをChromeと同じURLとして収集・初期選択する", async t => {
+  const source = await readFile(new URL("../dist/extension/app/content/page-scan.js", import.meta.url), "utf8");
+  const browser = await launchBrowser(t), page = await browser.newPage();
+  await page.route("https://example.test/**", route => route.fulfill({contentType: "image/png", body: redPng}));
+  for (const [srcset, path] of [
+    ["/one.png,", "/one.png"], ["/one.png,,,", "/one.png"], ["/one.png,,, \t", "/one.png"],
+    ["/scan,page.png,,,", "/scan,page.png"], ["/one.png%2C,,,", "/one.png%2C"],
+    ["/one.png\u00a0,,,", "/one.png%C2%A0"],
+  ]) {
+    await page.setContent('<base href="https://example.test/"><img>');
+    const result = await page.evaluate(async ({source, srcset}) => {
+      const image = document.querySelector("img");
+      image.srcset = srcset;
+      await image.decode();
+      const moduleUrl = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));
+      const {scanDocument} = await import(moduleUrl);
+      URL.revokeObjectURL(moduleUrl);
+      return {current: image.currentSrc, scan: await scanDocument()};
+    }, {source, srcset});
+    const expected = `https://example.test${path}`;
+    assert.equal(result.current, expected);
+    assert.deepEqual(result.scan.images, [expected]);
+    const collected = collectPageMedia(result.scan), collection = new ImageCollection();
+    collection.replace(collected.urls, result.scan.url, collected.media, collected.initial);
+    assert.deepEqual(collection.items.map(item => ({url: item.url, selected: item.selected})), [{url: expected, selected: true}]);
   }
 });
 
