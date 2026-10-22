@@ -243,13 +243,17 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
     return undefined;
   };
 
+  // Match URL parsing's surrounding C0/space removal without deleting Unicode URL bytes.
+  const trimUrl = (value: string | null | undefined): string | undefined =>
+    value?.replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, "");
+
   const recordMedia = (
     value: string | null | undefined,
     kind: MediaKind,
     sourceElement?: Element,
   ): void => {
     checkDeadline();
-    const candidate = value?.trim();
+    const candidate = trimUrl(value);
     if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:")) return;
     let url: string;
     try {
@@ -269,7 +273,7 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
   ): void => {
     checkDeadline();
     if (/^audio\//i.test(declaredType?.trim() ?? "")) return;
-    const candidate = value?.trim();
+    const candidate = trimUrl(value);
     if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:")) return;
     try {
       const parsed = new URL(candidate, document.baseURI || location.href);
@@ -435,10 +439,9 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
     }
   };
 
-  const add = (value: string | null | undefined, positionElement?: Element, sourceElement?: Element, parsedUrl = false): void => {
+  const add = (value: string | null | undefined, positionElement?: Element, sourceElement?: Element): void => {
     checkDeadline();
-    // srcset tokenization already removed ASCII separators; Unicode spaces belong to its URL.
-    const candidate = parsedUrl ? value : value?.trim();
+    const candidate = trimUrl(value);
     if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:")) return;
     try {
       const url = new URL(candidate, document.baseURI || location.href).href;
@@ -819,7 +822,7 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
       }
       if (!isVideoSource) {
         for (const attribute of imageSrcsetAttributes) {
-          for (const candidate of srcsetImages(element.getAttribute(attribute))) add(candidate, positionElement, element, true);
+          for (const candidate of srcsetImages(element.getAttribute(attribute))) add(candidate, positionElement, element);
         }
       }
       if (tagName === "img") {

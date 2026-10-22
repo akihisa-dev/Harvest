@@ -258,9 +258,11 @@ export async function scanDocument(targetPostId, framesOnly = false) {
         }
         return undefined;
     };
+    // Match URL parsing's surrounding C0/space removal without deleting Unicode URL bytes.
+    const trimUrl = (value) => value?.replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, "");
     const recordMedia = (value, kind, sourceElement) => {
         checkDeadline();
-        const candidate = value?.trim();
+        const candidate = trimUrl(value);
         if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:"))
             return;
         let url;
@@ -279,7 +281,7 @@ export async function scanDocument(targetPostId, framesOnly = false) {
         checkDeadline();
         if (/^audio\//i.test(declaredType?.trim() ?? ""))
             return;
-        const candidate = value?.trim();
+        const candidate = trimUrl(value);
         if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:"))
             return;
         try {
@@ -472,10 +474,9 @@ export async function scanDocument(targetPostId, framesOnly = false) {
             }
         }
     };
-    const add = (value, positionElement, sourceElement, parsedUrl = false) => {
+    const add = (value, positionElement, sourceElement) => {
         checkDeadline();
-        // srcset tokenization already removed ASCII separators; Unicode spaces belong to its URL.
-        const candidate = parsedUrl ? value : value?.trim();
+        const candidate = trimUrl(value);
         if (!candidate || candidate.startsWith("data:") || candidate.startsWith("blob:"))
             return;
         try {
@@ -883,7 +884,7 @@ export async function scanDocument(targetPostId, framesOnly = false) {
             if (!isVideoSource) {
                 for (const attribute of imageSrcsetAttributes) {
                     for (const candidate of srcsetImages(element.getAttribute(attribute)))
-                        add(candidate, positionElement, element, true);
+                        add(candidate, positionElement, element);
                 }
             }
             if (tagName === "img") {

@@ -1405,3 +1405,18 @@ test('srcset末尾のNBSPをURLの一部として保持し、誤った追加候�
     assert.deepEqual(new Set(result.media.map(item => item.url)), new Set(result.images));
   }
 });
+
+test('単一画像URLのUnicode空白を保持し、ASCIIの周辺空白と空値だけを除く', async () => {
+  for (const value of ['/page.jpg\u00a0', '/page.jpg\u3000', '/page.jpg%C2%A0', '/pa\u00a0ge.jpg', '\t /page.jpg \r\n']) {
+    const expected = new URL(value, 'https://example.test/').href;
+    for (const attribute of ['src', 'data-src', 'data-original']) {
+      const image = new FixtureElement('img', {[attribute]: value}, [], {src: '', currentSrc: ''});
+      const result = await runWithFixture(new FixtureDocument(new FixtureElement('html', {}, [image])), undefined, () => scanDocument());
+      assert.deepEqual(result.images, [expected]);
+      assert.deepEqual(result.media.map(item => item.url), [expected]);
+    }
+  }
+  const images = ['', ' \t\r\n', '\u0000\u001f'].map(src => new FixtureElement('img', {src}, [], {src: '', currentSrc: ''}));
+  const result = await runWithFixture(new FixtureDocument(new FixtureElement('html', {}, images)), undefined, () => scanDocument());
+  assert.deepEqual(result.images, []);
+});
