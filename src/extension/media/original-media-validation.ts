@@ -35,6 +35,7 @@ export async function validateOriginalMedia(blob: Blob, signal?: AbortSignal): P
   if (!hasCompleteMp4Boxes(bytes)) throw invalid();
   const containsMedia = indexMediaRanges(bytes);
   const input = new Input({formats: [MP4], source: new BufferSource(bytes)});
+  let yieldAt = performance.now() + 8;
   try {
     const video = await input.getPrimaryVideoTrack();
     if (!video) throw invalid();
@@ -44,6 +45,12 @@ export async function validateOriginalMedia(blob: Blob, signal?: AbortSignal): P
       let trackBytes = 0;
       // Metadata iteration does not stop silently when a declared sample is outside the file.
       for await (const declared of sink.packets(undefined, undefined, {metadataOnly: true})) {
+        // BufferSource promises can all settle in the same task. Yield to a
+        // timer so UI cancellation and the caller's deadline can actually run.
+        if (performance.now() >= yieldAt) {
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          yieldAt = performance.now() + 8;
+        }
         checkCancelled(signal);
         const packet = previousDeclaredPacket ? await sink.getNextPacket(previousDeclaredPacket) : await sink.getFirstPacket();
         // The pinned BufferSource demuxer returns sample subarrays of this input.
