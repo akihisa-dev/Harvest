@@ -837,9 +837,12 @@ export async function scanDocument(targetPostId, framesOnly = false) {
                     if (typeof value === "string")
                         scanText(value, undefined, element);
                     else if (value && typeof value === "object") {
-                        for (const key of Object.keys(value)) {
+                        const keys = Object.keys(value);
+                        // The stack pops last-in first, so enqueue children in reverse
+                        // to visit arrays and nested objects in their original order.
+                        for (let index = keys.length - 1; index >= 0; index--) {
                             checkDeadline();
-                            pending.push(value[key]);
+                            pending.push(value[keys[index]]);
                         }
                     }
                 }

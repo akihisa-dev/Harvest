@@ -781,9 +781,12 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
           const value = pending.pop();
           if (typeof value === "string") scanText(value, undefined, element);
           else if (value && typeof value === "object") {
-            for (const key of Object.keys(value)) {
+            const keys = Object.keys(value);
+            // The stack pops last-in first, so enqueue children in reverse
+            // to visit arrays and nested objects in their original order.
+            for (let index = keys.length - 1; index >= 0; index--) {
               checkDeadline();
-              pending.push((value as Record<string, unknown>)[key]);
+              pending.push((value as Record<string, unknown>)[keys[index]!]);
             }
           }
         }

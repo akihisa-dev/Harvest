@@ -1203,6 +1203,52 @@ test("有効なJSON画像文字列のエスケープを復元し、生文字列�
   }
 });
 
+test("JSONの配列・入れ子・重複・エスケープでも元の一覧順を保つ", async () => {
+  for (const names of [["001", "002", "003"], ["zeta", "alpha", "middle"]]) {
+    const urls = names.map(name => `https://cdn.example.test/${name}.png`);
+    const nested = {pages: [{image: urls[0]}, {nested: [urls[1], {image: urls[2]}]}], duplicate: urls[0]};
+    for (const textContent of [
+      JSON.stringify(urls), JSON.stringify({pages: urls}), JSON.stringify(nested),
+      JSON.stringify(nested).replaceAll("/", "\\u002f"),
+      `const pages = ${JSON.stringify(urls)};`,
+    ]) {
+      const script = new FixtureElement("script", {}, [], {textContent});
+      const result = await runWithFixture(new FixtureDocument(new FixtureElement("html", {}, [script])), undefined, scanDocument);
+      assert.deepEqual(result.images, urls, textContent);
+      assert.deepEqual(result.media.map(item => item.url), urls, textContent);
+    }
+  }
+});
+
+test("JSONの更新・削除で古い候補を除き、新しい候補の一覧順を保つ", async () => {
+  const url = name => `https://cdn.example.test/${name}.png`;
+  const updated = new FixtureElement("script", {}, [], {textContent: JSON.stringify({pages: [url("old")]})});
+  const removed = new FixtureElement("script", {}, [], {textContent: JSON.stringify({pages: [url("removed")]})});
+  const root = new FixtureElement("html", {}, [updated, removed]);
+  let observerCallback, mutated = false;
+  class ChangingObserver extends EmptyMutationObserver {
+    constructor(callback) { super(); observerCallback = callback; }
+  }
+  const result = await runWithFixture(new FixtureDocument(root), ChangingObserver, () => {
+    globalThis.setTimeout = (callback, delay) => {
+      if (delay === 800) return 1;
+      if (delay === 250 && !mutated) {
+        mutated = true;
+        updated.textContent = JSON.stringify({pages: [url("zeta"), {image: url("alpha")}, url("middle"), url("zeta")]});
+        root.children = [updated]; removed.parentElement = null; removed.parentNode = null;
+        observerCallback([
+          {type: "childList", target: updated, removedNodes: [], addedNodes: [{nodeType: 3}]},
+          {type: "childList", target: root, removedNodes: [removed], addedNodes: []},
+        ]);
+        return 2;
+      }
+      callback(); return 3;
+    };
+    return scanDocument();
+  });
+  assert.deepEqual(result.images, ["zeta", "alpha", "middle"].map(url));
+});
+
 test("本文の囲み括弧・句読点を区別し、URL自身の括弧とクエリを保持する", async () => {
   const base = "https://cdn.example.test/";
   const cases = [
