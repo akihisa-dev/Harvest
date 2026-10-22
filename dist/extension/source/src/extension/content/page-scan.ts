@@ -552,10 +552,12 @@ export async function scanDocument(targetPostId?: string, framesOnly = false): P
     if (entries.length === 0) return [];
     // Width descriptors and density descriptors cannot be compared.  Prefer
     // the largest width when present, otherwise the largest density.  This
-    // makes the result independent of the order used by the page.
+    // makes the result independent of the order used by the page. An omitted
+    // descriptor is 1x when compared with densities; keep all unsized-only URLs.
     const widthEntries = entries.filter(entry => entry.kind === "w");
-    const densityEntries = entries.filter(entry => entry.kind === "x");
-    const sized = widthEntries.length > 0 ? widthEntries : densityEntries;
+    const hasDensity = entries.some(entry => entry.kind === "x");
+    const sized = widthEntries.length > 0 ? widthEntries
+      : hasDensity ? entries.map(entry => entry.kind === null ? {...entry, value: 1} : entry) : [];
     if (sized.length === 0) return entries.map(entry => entry.url);
     const first = sized[0];
     if (!first) return [];

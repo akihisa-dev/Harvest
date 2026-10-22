@@ -1420,3 +1420,20 @@ test('単一画像URLのUnicode空白を保持し、ASCIIの周辺空白と空�
   const result = await runWithFixture(new FixtureDocument(new FixtureElement('html', {}, images)), undefined, () => scanDocument());
   assert.deepEqual(result.images, []);
 });
+
+test('srcsetの指定省略は密度と比較するとき1xになり、幅と未指定だけの候補を維持する', async () => {
+  for (const [srcset, names] of [
+    ['/full.png, /half.png 0.5x', ['full']],
+    ['/half.png 0.5x, /full.png', ['full']],
+    ['/full.png , /half.png 0.5x', ['full']],
+    ['/full.png 1x, /half.png 0.5x', ['full']],
+    ['/full.png, /double.png 2x', ['double']],
+    ['/double.png 2x, /full.png', ['double']],
+    ['/full.png, /half.png', ['full', 'half']],
+    ['/full.png, /half.png 500w, /wide.png 1000w', ['wide']],
+  ]) {
+    const source = new FixtureElement('source', {srcset});
+    const result = await runWithFixture(new FixtureDocument(new FixtureElement('html', {}, [source])), undefined, () => scanDocument());
+    assert.deepEqual(result.images, names.map(name => `https://example.test/${name}.png`), srcset);
+  }
+});
