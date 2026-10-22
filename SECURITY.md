@@ -20,9 +20,9 @@ WebP・AVIF・HEIC・HEIFの原本取得ではコンテナーの境界と必須�
 
 ## 脆弱性の報告方法
 
-脆弱性を公開Issueで報告しないでください。GitHubでPrivate vulnerability reportingを有効にした後、Security Advisoriesから非公開で報告してください。
+脆弱性を公開Issueで報告しないでください。[GitHubの非公開報告フォーム](https://github.com/akihisa-dev/Harvest/security/advisories/new)から報告してください。GitHubアカウントへのログインが必要です。非公開の脆弱性報告（Private vulnerability reporting）は有効になっており、所有者 [akihisa-dev](https://github.com/akihisa-dev) が一次対応を担当します。
 
-報告には影響する版、再現条件、影響範囲、可能なら修正案を含めます。認証情報や利用者データ、実際に利用できる攻撃データを記載しないでください。公開前にdocs/repository-setup.mdの設定を行います。
+報告には影響する版、再現条件、影響範囲、可能なら修正案を含めます。認証情報や利用者データ、実際に利用できる攻撃データを記載しないでください。リポジトリの保護・報告設定は[運用設定](docs/repository-setup.md)に記載します。
 
 ## 収集モードの表示と終了
 
