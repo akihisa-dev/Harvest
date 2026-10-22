@@ -1,19 +1,10 @@
+import { updateCrc32 } from "./crc32.js";
 const ZIP32_MAX = 0xffff_ffff;
 export const storedZipEntryLimit = 0xffff;
 const LOCAL_HEADER_SIZE = 30;
 const CENTRAL_HEADER_SIZE = 46;
 const DIRECTORY_END_SIZE = 22;
 const utf8 = new TextEncoder();
-const crcTable = (() => {
-    const table = new Uint32Array(256);
-    for (let index = 0; index < table.length; index += 1) {
-        let value = index;
-        for (let bit = 0; bit < 8; bit += 1)
-            value = (value & 1) ? (value >>> 1) ^ 0xedb8_8320 : value >>> 1;
-        table[index] = value >>> 0;
-    }
-    return table;
-})();
 function abortError() {
     return new DOMException("ZIP作成を中止しました。", "AbortError");
 }
@@ -34,8 +25,7 @@ export async function storedZipChecksum(blob, signal) {
             checkCancelled(signal);
             if (done)
                 break;
-            for (const byte of value)
-                crc = (crc >>> 8) ^ crcTable[(crc ^ byte) & 0xff];
+            crc = updateCrc32(crc, value);
         }
         return (crc ^ 0xffff_ffff) >>> 0;
     }

@@ -51,7 +51,9 @@ export async function prepareMixedExport(work: MixedExportWork, options: Options
     const promise = new Promise<Outcome & {readonly release: () => void}>(done => {resolve = done;});
     return {promise,resolve};
   });
-  const concurrency = remaining.some(item => item.kind === "video" || item.kind === "gif" || item.recommendedFormat === "gif" || imageFormat === "original") ? 1 : 3;
+  // Original still images use the same bounded window as converted images.
+  // Keep known video/animation work serial to bound its larger working sets.
+  const concurrency = remaining.some(item => item.kind === "video" || item.kind === "gif" || item.recommendedFormat === "gif") ? 1 : 3;
   const fractions = remaining.map(() => 0);
   let completedUnits = 0;
   const itemProgress = (index: number, fraction: number): void => {

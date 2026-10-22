@@ -1,8 +1,4 @@
-const crcTable = Uint32Array.from({length: 256}, (_, index) => {
-  let value = index;
-  for (let bit = 0; bit < 8; bit++) value = (value >>> 1) ^ ((value & 1) ? 0xedb88320 : 0);
-  return value >>> 0;
-});
+import {crc32} from "./crc32.js";
 
 /** PNG chunk integrity only: keep originals independent from available pixel decoders. */
 export function hasCompletePng(bytes: Uint8Array): boolean {
@@ -17,9 +13,7 @@ export function hasCompletePng(bytes: Uint8Array): boolean {
     if (end > bytes.length) return false;
     const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
     if (!/^[A-Za-z]{4}$/.test(type)) return false;
-    let crc = 0xffffffff;
-    for (let i = offset + 4; i < end - 4; i++) crc = (crc >>> 8) ^ crcTable[(crc ^ bytes[i]!) & 255]!;
-    if (((crc ^ 0xffffffff) >>> 0) !== view.getUint32(end - 4)) return false;
+    if (crc32(bytes.subarray(offset + 4, end - 4)) !== view.getUint32(end - 4)) return false;
     if (!header && type !== "IHDR") return false;
     if (type !== "IDAT" && data > 0) endedData = true;
     if (type === "IHDR") {

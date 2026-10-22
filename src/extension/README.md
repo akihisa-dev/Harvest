@@ -101,6 +101,8 @@ PDF出典のRTL文字を含む行は、ブラウザーのCanvasでLatin文字や
 
 並行取得の開始数、未消費結果の保持枠、中断と待機解除は [preparation-workers.ts](../core/preparation-workers.ts) が管理します。[mixed-export-preparation.ts](media/mixed-export-preparation.ts) は最大3件の取得と1件ずつの入力順変換を行い、容量予算を確認します。先頭画像が遅れても未消費取得結果は3件以内に保ちます。
 
+静止・未分類画像はoriginal（recommendedからの解決を含む）でも最大3件を並行取得し、形式ごとの原本検査後に入力順で準備結果へ登録します。待機中の原本も3件の枠へ含め、既知の動画・GIFが残っている場合は1件ずつ処理します。1件64 MiB・取得120秒の制限、成功分だけを保持する再試行、中止時の取得停止は維持します。並行取得の一時データはパネル内のメモリだけに置き、保存先・保持期間・外部送信先・権限は変更しません。
+
 画像・メディア共通の [response-fetch.ts](media/response-fetch.ts) が接続先・認証・転送制限、応答本文を含む時間制限、中断と応答の解放を担当します。[image-fetch.ts](media/image-fetch.ts) と [media-fetch.ts](media/media-fetch.ts) は形式ごとの内容検査と失敗理由を担当し、静止・未分類画像取得20秒、既知GIF・動画・original取得120秒の上限と従来のエラー判定の優先順位を渡します。[image-response-bytes.ts](media/image-response-bytes.ts) は応答本文を64 MiBを超える前に止めます。`readImageBytes()` はプレビューなど別の取得経路でも同じバイト上限を共有できます。
 
 取得したバイト列でJPEGの成分・表・走査ヘッダー・画像データ・終端を検査し、構造が不正なら準備失敗にします。
