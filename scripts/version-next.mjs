@@ -1,16 +1,17 @@
 import { readFile } from "node:fs/promises";
+import {assertExtensionVersion} from "./lib/extension-version.mjs";
 
 const allowedLevels = new Set(["major", "minor", "patch"]);
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 const args = process.argv.slice(2).filter((argument) => argument !== "--");
-const semverPattern = /^(\d+)\.(\d+)\.(\d+)$/;
 
 let current = packageJson.version;
 const levels = [];
 let currentProvided = false;
 
 for (const arg of args) {
-  if (semverPattern.test(arg) && !currentProvided && levels.length === 0) {
+  if (/^\d/.test(arg) && !currentProvided && levels.length === 0) {
+    assertExtensionVersion(arg, "現在のversion");
     current = arg;
     currentProvided = true;
     continue;
@@ -22,10 +23,9 @@ for (const arg of args) {
   throw new Error(`引数が不正です: ${arg}（[現在値] <major|minor|patch>...）`);
 }
 
-if (!semverPattern.test(current)) throw new Error(`不正なversion: ${current}`);
+const parts = assertExtensionVersion(current, "現在のversion");
 if (levels.length === 0) throw new Error("更新区分を指定してください: major、minor、patch");
 
-const parts = current.split(".").map(Number);
 for (const level of levels) {
   if (level === "major") {
     parts[0] += 1;
@@ -37,6 +37,7 @@ for (const level of levels) {
   } else {
     parts[2] += 1;
   }
+  assertExtensionVersion(parts.join("."), `${level}加算後のversion`);
 }
 
 console.log(parts.join("."));

@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import {assertExtensionVersion} from "./lib/extension-version.mjs";
 
 const staged = execFileSync("git", ["diff", "--cached", "--name-only", "--diff-filter=ACMR"], { encoding: "utf8" })
   .trim().split("\n").filter(Boolean);
@@ -16,6 +17,7 @@ const packageJson = JSON.parse(readStaged("package.json"));
 const template = JSON.parse(readStaged("manifest.template.json"));
 const generated = JSON.parse(readStaged("dist/extension/manifest.json"));
 const versions = [packageJson.version, template.version, generated.version];
+for (const [index, file] of requiredFiles.entries()) assertExtensionVersion(versions[index], `stageした${file}`);
 if (!versions.every((version) => version === packageJson.version)) {
   throw new Error(`stageしたversionが一致しません: package=${packageJson.version}, template=${template.version}, generated=${generated.version}`);
 }

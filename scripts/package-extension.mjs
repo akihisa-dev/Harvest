@@ -4,16 +4,13 @@ import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { replaceArchiveAfterValidation } from "./archive-transaction.mjs";
 import {checkRuntime} from "./lib/runtime.mjs";
+import {assertExtensionVersion} from "./lib/extension-version.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const dist = join(root, "dist");
 const extensionDirectory = join(dist, "extension");
 const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
-const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
-
-if (typeof packageJson.version !== "string" || !versionPattern.test(packageJson.version)) {
-  throw new Error(`package.jsonのversionがSemVer形式ではありません: ${packageJson.version}`);
-}
+assertExtensionVersion(packageJson.version, "package.json");
 
 function run(command, args, { cwd, captureOutput = false } = {}) {
   return new Promise((resolvePromise, rejectPromise) => {

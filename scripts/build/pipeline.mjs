@@ -1,6 +1,7 @@
 import {cp, copyFile, mkdir, rm, writeFile} from "node:fs/promises";
 import {dirname, join} from "node:path";
 import {projectRoot, readJson} from "../lib/project.mjs";
+import {assertExtensionVersion} from "../lib/extension-version.mjs";
 import {applicationAssets, correspondingSource} from "./artifact-plan.mjs";
 import {replaceDirectory} from "./output-transaction.mjs";
 import {compileTypeScript, copyRuntimeModules, buildBookmarkCaptureEntry, copyVendorLibraries} from "./runtime.mjs";
@@ -8,6 +9,8 @@ import {compileTypeScript, copyRuntimeModules, buildBookmarkCaptureEntry, copyVe
 export async function buildExtension(root = projectRoot) {
   const manifest = await readJson(join(root, "manifest.template.json"));
   const packageJson = await readJson(join(root, "package.json"));
+  assertExtensionVersion(packageJson.version, "package.json");
+  assertExtensionVersion(manifest.version, "manifest.template.json");
   if (manifest.version !== packageJson.version) {
     throw new Error("package.jsonとmanifest.template.jsonのversionが一致しません。");
   }

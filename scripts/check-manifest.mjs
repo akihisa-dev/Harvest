@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
+import {assertExtensionVersion} from "./lib/extension-version.mjs";
 
 const manifest = JSON.parse(await readFile(new URL("../manifest.template.json", import.meta.url), "utf8"));
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+assertExtensionVersion(manifest.version, "manifest.template.json");
+assertExtensionVersion(packageJson.version, "package.json");
 
 if (manifest.manifest_version !== 3) throw new Error("manifest_versionは3である必要があります。");
 if (manifest.version !== packageJson.version) throw new Error("manifestとpackage.jsonのversionが一致しません。");

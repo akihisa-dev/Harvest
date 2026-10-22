@@ -7,6 +7,8 @@
 5. stageするpathを明示し、`git add .`と`git add -A`は使いません。秘密情報、無関係な変更を含めません。
 6. レビューの指摘を解決してから取り込みます。
 
+版番号の形式は、Harvestの規則としてドットで区切る3つの整数に限定します。さらに[Chromeのmanifest version条件](https://developer.chrome.com/docs/extensions/reference/manifest/version)に従い、各数値は0〜65535、先頭の余分な0と全桁0は不可とします。`-beta.1`・`+build.1`等の接尾辞も受け付けません。版検査、manifest検査、ステージ済み検査、ビルド、ZIP作成、採番は`scripts/lib/extension-version.mjs`で同じ条件を確認します。採番は加算ごとに検査し、上限を超えた場合は番号を自動で繰り上げず停止します。
+
 ## 開発環境と依存関係
 
 対応OSはWindowsとmacOSです。Linuxでの動作保証や実機検証は完了条件に含めません。共通処理の移植性を保つため、一時フォルダーは引き続きOSの一時領域を使用します。
