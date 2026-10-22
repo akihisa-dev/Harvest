@@ -20,6 +20,12 @@ const titles = [
   ['a'.repeat(99) + '\ud800', 'a'.repeat(99) + '�'],
   ['.leading', 'leading'], ['trailing.', 'trailing'],
   ['...', '画像'], ['   ', '画像'], ['制御\u0000\n\u007f文字', '制御___文字'],
+  ['first\u0085second', 'first_second'],
+  ['C1' + String.fromCodePoint(...Array.from({length: 32}, (_, i) => 0x80 + i)) + '文字', 'C1' + '_'.repeat(32) + '文字'],
+  ['非文字' + String.fromCodePoint(...Array.from({length: 32}, (_, i) => 0xfdd0 + i),
+    ...Array.from({length: 17}, (_, plane) => [plane * 0x10000 + 0xfffe, plane * 0x10000 + 0xffff]).flat()), '非文字' + '_'.repeat(66)],
+  ['a'.repeat(99) + '\u{10ffff}', 'a'.repeat(99) + '_'],
+  ['許可\u00a0\u2028\u2029😀文字', '許可\u00a0\u2028\u2029😀文字'],
 ];
 
 test('実Chromeでタイトル境界の単体・複数MP4を安全な名前で保存する', async (t) => {

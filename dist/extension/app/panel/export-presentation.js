@@ -17,7 +17,7 @@ export function exportFileBaseName(pageTitle, fallback) {
     const encoder = new TextEncoder();
     function normalize(value) {
         const normalized = replaceLoneSurrogates(value)
-            .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, "_")
+            .replace(/[\\/:*?"<>|\p{Cc}\p{Noncharacter_Code_Point}]/gu, "_")
             .replace(/^[.\s]+|[.\s]+$/g, "");
         let truncated = "";
         let bytes = 0;
