@@ -37,3 +37,33 @@ test('実Chromeの原本・推奨保存は不完全なWebP・AVIFを失敗にし
     }
   }
 });
+
+test('WebP必須ヘッダー欠落を単独・混在保存で拒否し、正常分を保持して失敗分だけ再試行する', {timeout:60_000}, async t => {
+  const {animatedGif} = await import('./animation-fixtures.mjs');
+  const truncated = Buffer.alloc(22);
+  truncated.write('RIFF');truncated.writeUInt32LE(14,4);truncated.write('WEBPVP8L',8);truncated.writeUInt32LE(1,16);truncated[20]=0x2f;
+  const badFrame = Buffer.from(animatedWebp);
+  badFrame[badFrame.indexOf('VP8L')+8]=0;
+  const assets = new Map([['/good.gif',[animatedGif,'image/gif']]]);
+  const {page,scan,saved,failed,requests} = await animationPanel(t,assets);
+  for (const format of ['original','recommend']) {
+    for (const [bad,good] of [[truncated,staticWebp],[badFrame,animatedWebp]]) {
+      assets.set('/photo.webp',[bad,'image/webp']);
+      await scan(['/photo.webp']);
+      await page.locator(`#export-format-${format}`).check();
+      assert.match(await failed(),/不完全|破損/);
+      assets.set('/photo.webp',[good,'image/webp']);
+      assert.deepEqual((await saved(format)).bytes,good);
+    }
+    assets.set('/photo.webp',[truncated,'image/webp']);
+    await scan(['/good.gif','/photo.webp']);
+    await page.locator(`#export-format-${format}`).check();
+    assert.match(await failed(),/不完全|破損/);
+    const before= requests().filter(path=>path==='/good.gif').length;
+    assets.set('/photo.webp',[staticWebp,'image/webp']);
+    const output = await saved(format);
+    assert.match(output.filename,/\.zip$/);
+    assert.ok(output.bytes.includes(animatedGif));assert.ok(output.bytes.includes(staticWebp));
+    assert.equal(requests().filter(path=>path==='/good.gif').length,before,'successful item is not fetched again');
+  }
+});

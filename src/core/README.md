@@ -38,6 +38,8 @@
 
 [original-media-structure.ts](original-media-structure.ts) はGIFのブロック終端・画像フレームとMP4の既知コンテナの境界・必須トップレベル構造を確認します。識別子だけのデータや途中切断を保存前に拒否し、デコードや元バイトの書き換えは行いません。
 
+[webp-animation.ts](webp-animation.ts) は静止画像とANMF内の画像で同じヘッダー検査を行います。[VP8L仕様](https://developers.google.com/speed/webp/docs/webp_lossless_bitstream_specification#2_riff_header)の5バイトのヘッダー・識別子・版、および[VP8仕様](https://datatracker.ietf.org/doc/html/rfc6386#section-9.1)の10バイトのキーフレームヘッダー・表示フラグ・同期符号・非ゼロ寸法を確認します。圧縮画素の完全な復号は行わず、正常な原本は元のバイト列で保存します。
+
 [iso-boxes.ts](iso-boxes.ts) はISO形式のコンテナの長さ・拡張長・親の終端を読み、AVIFの寸法取得、ファイル形式の識別、MP4の完全性検査で共用します。[gif-blocks.ts](gif-blocks.ts) はGIFの色テーブルとデータブロックの境界を読み、寸法取得と完全性検査へ提供します。境界の読み方を共有し、途中までの入力から寸法を取得できる条件や、完全なファイルとして受け入れる条件は各利用側が決めます。
 
 [original-isobmff-image.ts](original-isobmff-image.ts) はAVIF・HEIF系原本のボックス境界、画像項目の必須管理情報と格納範囲を検査します。画像本体はファイル内のmdatまたはmeta内のidatにあることを確認し、外部ファイル参照を保存成功にしません。動画を持つ原本では既存のMP4ボックス境界検査も使います。[AVIF仕様の最小ボックス構成](https://aomediacodec.github.io/av1-avif/latest-approved.html#minimum-set-of-boxes)を参照し、復号対応や再圧縮は要求しません。圧縮された画素の正しさすべてを保証する検査ではありません。

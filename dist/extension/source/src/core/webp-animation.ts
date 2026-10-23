@@ -1,3 +1,17 @@
+/** Inspect the mandatory VP8/VP8L image header, not the compressed pixel stream. */
+function validImageHeader(bytes: Uint8Array, start: number, size: number, lossless: boolean): boolean {
+  if (lossless) {
+      // Signature, 14-bit dimensions, alpha hint and three zero version bits.
+      return size >= 5 && bytes[start] === 0x2f && (bytes[start + 4]! & 0xe0) === 0;
+  }
+  if (size < 10) return false;
+  const tag = bytes[start]!;
+  return (tag & 1) === 0 && ((tag >> 1) & 7) <= 3 && (tag & 0x10) !== 0 &&
+      bytes[start + 3] === 0x9d && bytes[start + 4] === 0x01 && bytes[start + 5] === 0x2a &&
+      (bytes[start + 6]! | ((bytes[start + 7]! & 0x3f) << 8)) > 0 &&
+      (bytes[start + 8]! | ((bytes[start + 9]! & 0x3f) << 8)) > 0;
+}
+
 /** Inspect WebP container bounds without allocating pixels or decoding frames. */
 export function inspectWebpAnimation(bytes: Uint8Array): "static" | "animated" | "invalid" | null {
   const text = (offset: number, value: string): boolean => [...value].every((character, index) => bytes[offset + index] === character.charCodeAt(0));
@@ -37,8 +51,10 @@ export function inspectWebpAnimation(bytes: Uint8Array): "static" | "animated" |
               const innerEnd = inner + 8 + innerSize + (innerSize % 2);
               if (innerEnd > end)
                   return "invalid";
-              if (text(inner, "VP8 ") || text(inner, "VP8L"))
-                  frameImage ||= innerSize > 0;
+              if (text(inner, "VP8 ") || text(inner, "VP8L")) {
+                  if (!validImageHeader(bytes, inner + 8, innerSize, text(inner, "VP8L"))) return "invalid";
+                  frameImage = true;
+              }
               inner = innerEnd;
           }
           if (!frameImage)
@@ -46,7 +62,8 @@ export function inspectWebpAnimation(bytes: Uint8Array): "static" | "animated" |
           frames++;
       }
       else if (text(offset, "VP8 ") || text(offset, "VP8L")) {
-          stillImage ||= size > 0;
+          if (!validImageHeader(bytes, start, size, text(offset, "VP8L"))) return "invalid";
+          stillImage = true;
       }
       offset = next;
   }
