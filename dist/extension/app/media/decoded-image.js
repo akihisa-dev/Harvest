@@ -46,11 +46,31 @@ export function waitForImageOperation(operation, signal, discard) {
             abort();
     });
 }
-/** Own the bitmap and optional canvas until the consumer, including async encoding, settles. */
+async function loadDrawable(source, policy) {
+    if (source.type.split(";", 1)[0] !== "image/svg+xml") {
+        const decoding = createImageBitmap(source).catch(() => { throw policy.decodeFailure(); });
+        const bitmap = await waitForImageOperation(decoding, policy.signal, late => late.close());
+        return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close() };
+    }
+    // SVG in an image element disables scripts and external resource loading.
+    // Never insert the SVG markup into the extension document.
+    const image = new Image();
+    const url = URL.createObjectURL(source);
+    const close = () => { image.removeAttribute("src"); URL.revokeObjectURL(url); };
+    try {
+        image.src = url;
+        await waitForImageOperation(image.decode().catch(() => { throw policy.decodeFailure(); }), policy.signal);
+        return { source: image, width: image.naturalWidth, height: image.naturalHeight, close };
+    }
+    catch (error) {
+        close();
+        throw error;
+    }
+}
+/** Own the decoded image and optional canvas until async encoding settles. */
 export async function withDecodedImage(source, policy, consume) {
     checkCancelled(policy.signal);
-    const decoding = createImageBitmap(source).catch(() => { throw policy.decodeFailure(); });
-    const bitmap = await waitForImageOperation(decoding, policy.signal, late => late.close());
+    const bitmap = await loadDrawable(source, policy);
     let canvas;
     try {
         checkCancelled(policy.signal);
@@ -74,7 +94,7 @@ export async function withDecodedImage(source, policy, consume) {
                     context.fillStyle = "#ffffff";
                     context.fillRect(0, 0, width, height);
                 }
-                context.drawImage(bitmap, 0, 0);
+                context.drawImage(bitmap.source, 0, 0);
                 return { canvas, context };
             },
         });

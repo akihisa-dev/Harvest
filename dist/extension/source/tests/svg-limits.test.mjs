@@ -32,3 +32,38 @@ test("通常SVGは従来どおりBlobを返す", async t => {
  const result=await fetchImage("https://example.com/uploads/a.svg",{});
  assert.deepEqual(result.dimensions,{width:2,height:2});assert.equal(result.blob.type,"image/svg+xml");
 });
+
+for (const outcome of ["cancel", "failure", "success", "consumer-failure"]) test(`SVG読込の${outcome}で画像参照とBlob URLを解放する`, async t => {
+  const {withDecodedImage} = await import("../dist/extension/app/media/decoded-image.js");
+  const controller = new AbortController();
+  let complete, fail, created = 0, revoked = 0, released = 0;
+  const previous = globalThis.Image;
+  globalThis.Image = class {
+    naturalWidth = 32; naturalHeight = 24;
+    set src(value) { assert.equal(value, "blob:svg-test"); }
+    removeAttribute(name) { assert.equal(name, "src"); released++; }
+    decode() { return new Promise((resolve, reject) => { complete = resolve; fail = reject; }); }
+  };
+  t.after(() => { if (previous === undefined) delete globalThis.Image; else globalThis.Image = previous; });
+  t.mock.method(URL,"createObjectURL",() => { created++; return "blob:svg-test"; });
+  t.mock.method(URL,"revokeObjectURL",value => { assert.equal(value,"blob:svg-test"); revoked++; });
+  const work = withDecodedImage(new Blob(['<svg/>'],{type:"image/svg+xml"}), {
+    signal:controller.signal, decodeFailure:() => Error("decode failed"), invalidDimensions:message => Error(message),
+  }, async image => {
+    assert.deepEqual([image.width,image.height],[32,24]);
+    await Promise.resolve(); assert.equal(revoked,0);
+    if (outcome === "consumer-failure") throw Error("encoding failed");
+    return "ok";
+  });
+  if (outcome === "cancel") {
+    const rejected = assert.rejects(work, error => error.kind === "cancelled");
+    controller.abort(); await rejected; complete();
+  } else if (outcome === "failure") {
+    const rejected = assert.rejects(work,/decode failed/); fail(Error("invalid XML")); await rejected;
+  } else {
+    const settled = outcome === "success" ? work : assert.rejects(work,/encoding failed/);
+    complete(); await settled;
+  }
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual([created,revoked,released],[1,1,1]);
+});
