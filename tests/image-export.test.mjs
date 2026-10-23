@@ -1,3 +1,4 @@
+import {readStoredZip} from "./support/stored-zip-reader.mjs";
 import {successfulDownloads} from "./support/downloads.mjs";
 import {exifJpeg} from "./jpeg-fixtures.mjs";
 import {storedZipChecksum} from "../dist/extension/core/stored-zip.js";
@@ -39,22 +40,6 @@ after(() => {
   Object.assign(globalThis, previous);
 });
 
-async function readStoredZip(blob) {
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  const view = new DataView(bytes.buffer);
-  const entries = [];
-  let offset = 0;
-  while (view.getUint32(offset, true) === 0x0403_4b50) {
-    const nameLength = view.getUint16(offset + 26, true);
-    const size = view.getUint32(offset + 22, true);
-    const name = new TextDecoder().decode(bytes.subarray(offset + 30, offset + 30 + nameLength));
-    const start = offset + 30 + nameLength;
-    entries.push({name, data: bytes.slice(start, start + size)});
-    offset = start + size;
-  }
-  assert.equal(view.getUint32(offset, true), 0x0201_4b50);
-  return entries;
-}
 
 function canvasFor({getImageData = () => ({data: new Uint8ClampedArray([10, 20, 30, 128]), width: 1, height: 1}), onBlob} = {}) {
   const calls = {fill: [], draws: 0, contextOptions: undefined, size: []};

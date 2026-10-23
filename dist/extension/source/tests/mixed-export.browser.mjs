@@ -1,9 +1,10 @@
+import {readStoredZipBytes as entries} from "./support/stored-zip-reader.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {animationPanel} from './support/animation-panel.mjs';
 import {animatedWebp,animatedGif,redPng,bluePng} from './animation-fixtures.mjs';
 import {mp4Bytes} from './media-fixtures.mjs';
-function entries(bytes){const result=[];let at=0;while(bytes.readUInt32LE(at)===0x04034b50){const size=bytes.readUInt32LE(at+22),nameSize=bytes.readUInt16LE(at+26),start=at+30+nameSize;result.push({name:bytes.subarray(at+30,start).toString(),bytes:bytes.subarray(start,start+size)});at=start+size;}return result;}
+
 test('独立画像/動画形式で静止PDF＋GIF＋MP4を全件ZIP保存し、失敗分のみ再試行する',{timeout:90000},async t=>{
  const assets=new Map([['/red.png',[redPng,'image/png']],['/blue.png',[bluePng,'image/png']],['/a.webp',[animatedWebp,'image/webp']],['/g.gif',[animatedGif,'image/gif']],['/movie.mp4',[mp4Bytes,'video/mp4']]]);
  const {page,scan,saved,failed,count,requests}=await animationPanel(t,assets);

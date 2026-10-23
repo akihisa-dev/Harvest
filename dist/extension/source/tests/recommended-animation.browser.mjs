@@ -1,16 +1,10 @@
+import {readStoredZipBytes as storedEntries} from "./support/stored-zip-reader.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {animationPanel} from './support/animation-panel.mjs';
 import {staticWebp,apng,animatedGif,singleFrameApng} from './animation-fixtures.mjs';
 
-function storedEntries(bytes) {
-  const entries=[];
-  for(let offset=0;bytes.readUInt32LE(offset)===0x04034b50;){
-    const size=bytes.readUInt32LE(offset+22), start=offset+30+bytes.readUInt16LE(offset+26);
-    entries.push({name:bytes.subarray(offset+30,start).toString(),bytes:bytes.subarray(start,start+size)});offset=start+size;
-  }
-  return entries;
-}
+
 test('拡張子なしGIFを実レスポンスで確認し、推奨単体/選択順ZIP・表示・再試行で原本保持する', {timeout:90_000}, async t => {
   const assets=new Map([['/unknown',[animatedGif,'image/gif']],['/animation.gif',[animatedGif,'image/gif']],['/static.webp',[staticWebp,'image/webp']],['/apng.png',[apng,'image/png']]]);
   const {page,scan,saved,failed,count}=await animationPanel(t,assets);

@@ -1,3 +1,4 @@
+import {readStoredZipBytes} from "./support/stored-zip-reader.mjs";
 import {extensionFile} from "./support/extension-files.mjs";
 import {startServer, launchBrowser} from "./support/browser.mjs";
 import assert from "node:assert/strict";
@@ -62,6 +63,7 @@ test("ZIPのworker CRC32と格納データを確認し、中止時にworkerを�
     controller.abort();
     const cancellation = await cancelled;
     return {
+      archiveBytes: [...contents],
       crc32,
       payload,
       expectedPayload: [...bytes],
@@ -72,6 +74,9 @@ test("ZIPのworker CRC32と格納データを確認し、中止時にworkerを�
   });
   assert.equal(result.crc32, 0xcbf43926, "CRC32('123456789') matches the standard check value");
   assert.deepEqual(result.payload, result.expectedPayload, "ZIP stores the source payload byte-for-byte");
+  const entries = readStoredZipBytes(Uint8Array.from(result.archiveBytes));
+  assert.deepEqual(entries.map(entry => entry.name), ["vector.bin"]);
+  assert.deepEqual([...entries[0].data], result.expectedPayload);
   assert.deepEqual(result.cancellation, {name: "AbortError"});
   assert.equal(result.createdWorkers, 2);
   assert.equal(result.terminatedWorkers, 2, "worker is terminated after success and cancellation");

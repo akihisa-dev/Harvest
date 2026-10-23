@@ -1,3 +1,4 @@
+import {readStoredZipBytes as zipEntries} from "./support/stored-zip-reader.mjs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
 import assert from "node:assert/strict";
@@ -7,16 +8,6 @@ import {serveExtension} from "./support/extension-files.mjs";
 import {launchBrowser} from "./support/browser.mjs";
 import {gifBytes, mp4Bytes} from "./media-fixtures.mjs";
 
-function zipEntries(bytes) {
-  const entries = [];
-  for (let offset = 0; bytes.readUInt32LE(offset) === 0x04034b50;) {
-    const size = bytes.readUInt32LE(offset + 22);
-    const start = offset + 30 + bytes.readUInt16LE(offset + 26);
-    entries.push({name: bytes.subarray(offset + 30, start).toString(), bytes: bytes.subarray(start, start + size)});
-    offset = start + size;
-  }
-  return entries;
-}
 
 for (const language of ["ja", "en"]) test(`${language}: 元形式・推奨形式の表示と保存は選択中の種類に追従する`, async t => {
   const {url} = await serveExtension(t);

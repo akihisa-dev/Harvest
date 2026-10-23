@@ -1,3 +1,4 @@
+import {readStoredZip as unzipStored} from "./support/stored-zip-reader.mjs";
 import {baselineJpeg, progressiveJpeg, exifJpeg} from './jpeg-fixtures.mjs';
 import {webmBytes, pngBytes} from './original-fixtures.mjs';
 import {staticWebp, animatedWebp} from './animation-fixtures.mjs';
@@ -40,24 +41,6 @@ function fakeResponse(bytes, contentType, extraHeaders = {}) {
   return new Response(bytes, {headers: {"content-type": contentType, ...extraHeaders}});
 }
 
-function unzipStored(blob) {
-  return blob.arrayBuffer().then(buffer => {
-    const bytes = new Uint8Array(buffer);
-    const view = new DataView(buffer);
-    const entries = [];
-    let offset = 0;
-    while (view.getUint32(offset, true) === 0x0403_4b50) {
-      const nameLength = view.getUint16(offset + 26, true);
-      const size = view.getUint32(offset + 22, true);
-      const name = new TextDecoder().decode(bytes.subarray(offset + 30, offset + 30 + nameLength));
-      const start = offset + 30 + nameLength;
-      entries.push({name, data: bytes.slice(start, start + size)});
-      offset = start + size;
-    }
-    assert.equal(view.getUint32(offset, true), 0x0201_4b50);
-    return entries;
-  });
-}
 
 test("original media preserves GIF and MP4 bytes with MIME-based ZIP extensions", async () => {
   const jpegBytes = baselineJpeg;
