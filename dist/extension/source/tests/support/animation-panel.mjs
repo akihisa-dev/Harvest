@@ -2,9 +2,10 @@ import {tmpdir} from "node:os";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
-import {resolve, join} from 'node:path';
+import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {temporaryDirectory,launchExtensionContext,startServer} from './browser.mjs';
+import {extensionRoot} from './extension-files.mjs';
 
 // Chrome completion may precede visibility of the final path or bytes.
 export async function readCompletedDownload(filename) {
@@ -51,7 +52,7 @@ export async function animationPanel(t, assets, options = {}) {
   await context.route('**/*', route => {
     const url = new URL(route.request().url());return ['http:','https:'].includes(url.protocol) && url.origin !== origin ? route.abort('blockedbyclient') : route.continue();
   });
-  const cdp = await context.browser().newBrowserCDPSession();const {id} = await cdp.send('Extensions.loadUnpacked',{path:resolve('dist/extension')});await cdp.send('Browser.setDownloadBehavior',{behavior:'default'});
+  const cdp = await context.browser().newBrowserCDPSession();const {id} = await cdp.send('Extensions.loadUnpacked',{path:extensionRoot});await cdp.send('Browser.setDownloadBehavior',{behavior:'default'});
   const page = await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));t.after(()=>assert.deepEqual(errors,[]));
   await page.goto(`chrome-extension://${id}/app/index.html`);await page.evaluate(()=>{window.downloadIds=[];chrome.downloads.onCreated.addListener(item=>window.downloadIds.push(item.id));});
   const count = () => page.evaluate(()=>window.downloadIds.length);

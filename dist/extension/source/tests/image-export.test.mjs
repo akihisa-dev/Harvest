@@ -251,7 +251,7 @@ test("PNG conversion keeps alpha instead of painting a background", async () => 
   }
 });
 
-test("JXL output decodes to the same pixels, including alpha", async () => {
+test("JXL変換はWorkerへ画素を渡し、コーデック単体は透過を保持する", async () => {
   const previousDocument = globalThis.document;
   const previousCreateImageBitmap = globalThis.createImageBitmap;
   const previousFetch = globalThis.fetch;
@@ -289,6 +289,7 @@ test("JXL output decodes to the same pixels, including alpha", async () => {
     assert.equal(jxl.type, "image/jxl");
     assert.equal(workerRequest.width, 2);
     assert.equal(workerRequest.height, 1);
+    assert.deepEqual(new Uint8ClampedArray(workerRequest.pixels), rgba);
     const decode = (await import("../node_modules/@jsquash/jxl/decode.js")).default;
     const encoded = await encodeJxlPixels({data: rgba, width: 2, height: 1});
     const decoded = await decode(encoded);

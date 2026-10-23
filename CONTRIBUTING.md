@@ -43,7 +43,7 @@ Node/pnpmの版確認は`scripts/lib/runtime.mjs`で共用します。`check-run
 
 ## 同梱ライブラリ
 
-JXL出力には`@jsquash/jxl` 1.3.0（Apache-2.0）を使用します。単一スレッド用エンコーダー、WebAssembly、初期化ヘルパーだけを拡張機能へ含め、ワーカー内で初期化します。この経路では`wasm-feature-detect`を使用しないため、同パッケージはnpmの間接依存にだけ残し、配布しません。実行時に外部からコードを取得しません。JXLの追加分は非圧縮で約1.4 MBです。内部のlibjxl・Brotli・Highway・skcmsと生成ランタイムの表示は`third_party/jxl/THIRD-PARTY-NOTICES.txt`を正本とし、配布物と対応ソースへ含めます。`provenance.json`のSHA-256がエンコーダーと一致しない場合はビルドを止め、更新時にライセンスの由来も再確認します。
+JXL出力には`@jsquash/jxl` 1.3.0（Apache-2.0）を使用します。単一スレッド用エンコーダー、WebAssembly、初期化ヘルパーだけを拡張機能へ含め、ワーカー内で初期化します。この経路では`wasm-feature-detect`を使用しないため、同パッケージはnpmの間接依存にだけ残し、配布しません。実行時に外部からコードを取得しません。JXLの追加分は非圧縮で約1.4 MBです。`tests/jxl-pixels.browser.mjs`は実拡張のWorkerを通って保存されたJXLを既存依存の復号器で読み、不透明・半透明PNGの寸法と全RGBAを比較します。復号器はテスト専用で、製品の実行コードには追加しません。`HARVEST_TEST_EXTENSION_DIR`で隔離コピーを指定でき、Workerの画素消失を注入した場合の検出も確認できます。内部のlibjxl・Brotli・Highway・skcmsと生成ランタイムの表示は`third_party/jxl/THIRD-PARTY-NOTICES.txt`を正本とし、配布物と対応ソースへ含めます。`provenance.json`のSHA-256がエンコーダーと一致しない場合はビルドを止め、更新時にライセンスの由来も再確認します。
 
 WebMからMP4への変換には`mediabunny` 1.61.0（MPL-2.0）を完全固定で使用します。ブラウザー標準のWebCodecsで映像・音声を変換し、コンテナー解析とMP4組み立てを同ライブラリが担当します。開発用の`esbuild` 0.28.2（MIT）で必要な公開APIから到達するコードだけをまとめ、約428 KiBのブラウザー用コードとライセンスを同梱します。esbuildは配布する実行コードに含めず、プラットフォーム別の固定バイナリを利用するためインストールスクリプトも許可しません。ネットワーク上の入力を受け付ける開発サーバー用途では使用しません。型定義用の推移依存も配布実行コードには含めません。Mediabunnyのグローバル型とTypeScriptのDOM型の競合を避けるため、`vendor-modules.d.ts`に使用するAPIだけの境界を置き、型検査全体は省略しません。
 
