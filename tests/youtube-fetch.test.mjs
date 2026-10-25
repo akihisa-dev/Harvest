@@ -14,9 +14,10 @@ async function audioBytes(frames=13){
   for(let i=0;i<frames;i++)await source.add(new EncodedPacket(new Uint8Array([0x21,0x10,0x04,0x60,0x8c,0x1c]),'key',i*1024/44100,1024/44100),{decoderConfig:{codec:'mp4a.40.2',sampleRate:44100,numberOfChannels:2,description:new Uint8Array([0x12,0x10])}});
   source.close();await output.finalize();return new Uint8Array(target.buffer);
 }
-for(const {refresh,chunked,differentDurations,backoff=0,corrupt,audioOnly=false} of [
+for(const {refresh,chunked,differentDurations,backoff=0,corrupt,audioOnly=false,largeVideo=false} of [
   {refresh:false,chunked:false,differentDurations:false,audioOnly:true},
   {refresh:false,chunked:false,differentDurations:false,audioOnly:true,corrupt:"audio"},
+  {refresh:false,chunked:false,differentDurations:false,largeVideo:true},
   {refresh:false,chunked:false,differentDurations:false},
   {refresh:true,chunked:false,differentDurations:false},
   {refresh:false,chunked:true,differentDurations:false},
@@ -24,7 +25,7 @@ for(const {refresh,chunked,differentDurations,backoff=0,corrupt,audioOnly=false}
   {refresh:false,chunked:true,differentDurations:false,backoff:120},
   {refresh:false,chunked:false,differentDurations:false,corrupt:'video'},
   {refresh:false,chunked:false,differentDurations:false,corrupt:'audio'},
-])test(`${corrupt ? `配信から受け取った${corrupt}のmdat外参照を保存準備で拒否する` : '解析から音声付きMP4準備まで完了する'}: refresh=${refresh}, chunked=${chunked}, differentDurations=${differentDurations}, backoff=${backoff}, audioOnly=${audioOnly}`,async tctx=>{
+])test(`${corrupt ? `配信から受け取った${corrupt}のmdat外参照を保存準備で拒否する` : '解析から音声付きMP4準備まで完了する'}: refresh=${refresh}, chunked=${chunked}, differentDurations=${differentDurations}, backoff=${backoff}, audioOnly=${audioOnly}, largeVideo=${largeVideo}`,async tctx=>{
   const previous={chrome:globalThis.chrome,fetch:globalThis.fetch,Worker:globalThis.Worker};
   tctx.after(()=>{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}});
   const audioFrames=differentDurations?22:13,audioData=Buffer.from(await audioBytes(audioFrames)),videoData=Buffer.from(fragmentedMp4);
@@ -32,7 +33,7 @@ for(const {refresh,chunked,differentDurations,backoff=0,corrupt,audioOnly=false}
     const bytes=corrupt==='video'?videoData:audioData,moof=bytes.indexOf(Buffer.from('moof'))-4,trun=bytes.indexOf(Buffer.from('trun'));
     assert.ok(moof>0&&trun>moof);bytes.writeInt32BE(-moof,trun+12);
   }
-  const formats=[{...video,height:32,fps:10,durationMs:300,contentLength:audioOnly?108*1024*1024:fragmentedMp4.length},{...audio,durationMs:differentDurations?Math.ceil(audioFrames*1024/44100*1000):300,contentLength:audioData.length}];
+  const formats=[{...video,height:32,fps:10,durationMs:300,contentLength:audioOnly||largeVideo?108*1024*1024:fragmentedMp4.length},{...audio,durationMs:differentDurations?Math.ceil(audioFrames*1024/44100*1000):300,contentLength:audioData.length}];
   const header=(format,index,sequence,size)=>part(20,join([n(1,index),t(2,videoId),b(13,identity(format)),n(8,sequence===0?1:0),n(9,sequence),n(11,0),n(12,sequence===0?0:format.durationMs),n(14,size)]));
   const trackParts=formats.map((format,index)=>{
     const [init,media]=split(index===0?videoData:audioData);

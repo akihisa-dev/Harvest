@@ -122,3 +122,12 @@ test('音声のみのMP4は圧縮音声を保持し、不完全な末尾と容�
   await assert.rejects(muxYoutube(null,audio,{videoMs:0,audioMs:2000},65536),/末尾/);
   await assert.rejects(muxYoutube(null,audio,{videoMs:0,audioMs:300},10),/容量/);
 });
+
+test('108 MiBの映像入力を64 MiBで拒否せず、音声との結合で圧縮データを保持する',async()=>{
+  const free=new Uint8Array(108*1024*1024-mp4Bytes.length);
+  new DataView(free.buffer).setUint32(0,free.length);free.set([102,114,101,101],4);
+  const video=new Blob([mp4Bytes,free],{type:'video/mp4'}),audio=await audioFixture();
+  const result=await muxYoutube(video,audio,{videoMs:300,audioMs:300},512*1024*1024);
+  assert.deepEqual(await packets(result,'video'),await packets(new Blob([mp4Bytes]),'video'));
+  assert.deepEqual(await packets(result,'audio'),await packets(audio,'audio'));
+});

@@ -45,7 +45,7 @@ test('MP3は未対応入力、不正なPCM、空結果と上限超過を拒否�
 test('音声Workerの要求は動画入力だけ、返答はMP3だけを許可する', () => {
   const input = new Blob(['source'], {type: 'video/mp4'}), audio = new Blob(['mp3'], {type: 'audio/mpeg'});
   assert.equal(isAudioConversionRequest({blob: input, maxBytes: 100}), true);
-  for (const value of [null, {}, {blob: audio, maxBytes: 100}, {blob: input, maxBytes: Infinity}, {blob: input, maxBytes: 64 * 1024 * 1024 + 1}]) assert.equal(isAudioConversionRequest(value), false);
+  for (const value of [null, {}, {blob: audio, maxBytes: 100}, {blob: input, maxBytes: Infinity}, {blob: input, maxBytes: 512 * 1024 * 1024 + 1}]) assert.equal(isAudioConversionRequest(value), false);
   assert.equal(isAudioConversionReply({blob: audio}), true);
   assert.equal(isAudioConversionReply({error: 'failure'}), true);
   for (const value of [null, {}, {blob: input}, {blob: audio, error: 'failure'}, {blob: new Blob([], {type:'audio/mpeg'})}]) assert.equal(isAudioConversionReply(value), false);

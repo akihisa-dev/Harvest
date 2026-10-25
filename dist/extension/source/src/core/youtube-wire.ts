@@ -1,3 +1,4 @@
+import {MAX_MEDIA_BYTES} from "./media-limits.js";
 /** Bounded protobuf wire primitives. Preserve unknown fields when rebuilding a native request. */
 export interface WireField {readonly id: number; readonly wire: number; readonly value: bigint | Uint8Array; readonly raw: Uint8Array;}
 const malformed = (): Error => new Error("YouTubeの配信データが不完全または未対応です。");
@@ -53,7 +54,7 @@ export function wireText(fields: readonly WireField[], id: number): string {
 }
 export function joinBytes(parts: readonly Uint8Array[]): Uint8Array<ArrayBuffer> {
   const size = parts.reduce((sum,part) => sum+part.length,0);
-  if (!Number.isSafeInteger(size) || size > 64*1024*1024) throw malformed();
+  if (!Number.isSafeInteger(size) || size > MAX_MEDIA_BYTES) throw malformed();
   const result = new Uint8Array(size); let offset = 0;
   for (const part of parts) {result.set(part,offset);offset += part.length;}
   return result;

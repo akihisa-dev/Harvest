@@ -1,8 +1,9 @@
+import { MAX_MEDIA_BYTES } from "../../core/media-limits.js";
 import { runSingleWorker } from "./single-worker.js";
 import { isConversionProgress, isAudioConversionReply } from "../contracts/worker-contracts.js";
-import { checkCancelled, MAX_IMAGE_BYTES } from "../contracts/image-data-contract.js";
+import { checkCancelled } from "../contracts/image-data-contract.js";
 /** One worker owns one conversion and is released on completion, failure, timeout, or cancellation. */
-export function prepareAudio(blob, signal, maxBytes = MAX_IMAGE_BYTES, onProgress) {
+export function prepareAudio(blob, signal, maxBytes = MAX_MEDIA_BYTES, onProgress) {
     checkCancelled(signal);
     if (!["video/mp4", "video/webm"].includes(blob.type))
         return Promise.reject(new Error("選択項目と保存データの形式が一致しません。"));
@@ -12,7 +13,7 @@ export function prepareAudio(blob, signal, maxBytes = MAX_IMAGE_BYTES, onProgres
         return Promise.reject(new Error("この環境では動画から音声を取り出せません。"));
     return runSingleWorker({
         create: () => new Worker(new URL("../workers/audio-conversion-worker.js", import.meta.url), { type: "module" }),
-        request: { blob, maxBytes: Math.min(maxBytes, MAX_IMAGE_BYTES) },
+        request: { blob, maxBytes: Math.min(maxBytes, MAX_MEDIA_BYTES) },
         signal, timeoutMs: 120_000,
         abortError: () => new DOMException("音声の取り出しを中止しました。", "AbortError"),
         timeoutError: () => new Error("音声の取り出しがタイムアウトしました。"),
@@ -26,7 +27,7 @@ export function prepareAudio(blob, signal, maxBytes = MAX_IMAGE_BYTES, onProgres
                 finish(new Error("音声を取り出した結果が空です。"));
             else if (data.error)
                 finish(new Error(data.error));
-            else if (data.blob && data.blob.size > Math.min(maxBytes, MAX_IMAGE_BYTES))
+            else if (data.blob && data.blob.size > Math.min(maxBytes, MAX_MEDIA_BYTES))
                 finish(new Error("音声データが保存容量の上限を超えています。"));
             else if (data.blob)
                 finish(undefined, data.blob);

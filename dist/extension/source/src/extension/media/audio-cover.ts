@@ -1,6 +1,7 @@
+import {MAX_MEDIA_BYTES} from "../../core/media-limits.js";
 import type {ImageItem} from "../../core/images.js";
 import {createMp3CoverTag} from "../../core/mp3-cover.js";
-import {checkCancelled, MAX_IMAGE_BYTES} from "../contracts/image-data-contract.js";
+import {checkCancelled} from "../contracts/image-data-contract.js";
 import {prepareAudio} from "./audio-conversion.js";
 import {fetchImage} from "./image-fetch.js";
 import {convertImage} from "./image-format.js";
@@ -9,7 +10,7 @@ import {convertImage} from "./image-format.js";
 export async function prepareAudioWithCover(
   item: ImageItem, title: string, ...options: Parameters<typeof prepareAudio>
 ): Promise<Blob> {
-  const [, signal, maxBytes = MAX_IMAGE_BYTES] = options;
+  const [, signal, maxBytes = MAX_MEDIA_BYTES] = options;
   const audio = await prepareAudio(...options);
   checkCancelled(signal);
   if (!item.previewUrl) return audio;
@@ -20,7 +21,7 @@ export async function prepareAudioWithCover(
     if (image.size > 4 * 1024 * 1024) return audio;
     const tag = createMp3CoverTag(new Uint8Array(await image.arrayBuffer()), "image/jpeg", title);
     checkCancelled(signal);
-    if (tag.length + audio.size > Math.min(maxBytes, MAX_IMAGE_BYTES)) return audio;
+    if (tag.length + audio.size > Math.min(maxBytes, MAX_MEDIA_BYTES)) return audio;
     return new Blob([tag, audio], {type: "audio/mpeg"});
   } catch {
     checkCancelled(signal);

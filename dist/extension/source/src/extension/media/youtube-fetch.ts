@@ -1,10 +1,11 @@
+import {MAX_MEDIA_BYTES} from "../../core/media-limits.js";
 import {selectYoutubeFormats,youtubeStreamingUrl,type YoutubeSource,type YoutubeTrackDurations} from "../../core/youtube.js";
 import {YoutubeSabrSession,youtubeAuthenticationError} from "../../core/youtube-sabr.js";
 import {acquireYoutubeEvidence} from "../browser/youtube-page-access.js";
-import {checkCancelled,MAX_IMAGE_BYTES} from "../contracts/image-data-contract.js";
+import {checkCancelled} from "../contracts/image-data-contract.js";
 import {isMp4ConversionReply,type YoutubeMuxRequest} from "../contracts/worker-contracts.js";
 import {fetchResponse,type ResponseFetchErrors} from "./response-fetch.js";
-import {readImageBytes} from "./image-response-bytes.js";
+import {readMediaBytes} from "./image-response-bytes.js";
 import {validateOriginalMedia} from "./original-media-validation.js";
 
 const errors:ResponseFetchErrors={
@@ -31,12 +32,12 @@ export function prepareYoutubeMp4(video:Blob|null,audio:Blob,durations:YoutubeTr
     const timer=setTimeout(()=>finish(new Error("YouTube動画の結合がタイムアウトしました。")),120000);
     worker.onmessage=(event:MessageEvent<unknown>)=>{
       const reply=event.data;
-      if(!isMp4ConversionReply(reply)||reply.error||!reply.blob||reply.blob.size>MAX_IMAGE_BYTES)finish(new Error("YouTube動画の映像と音声をまとめられませんでした。"));
+      if(!isMp4ConversionReply(reply)||reply.error||!reply.blob||reply.blob.size>MAX_MEDIA_BYTES)finish(new Error("YouTube動画の映像と音声をまとめられませんでした。"));
       else finish(undefined,reply.blob);
     };
     worker.onerror=worker.onmessageerror=()=>finish(new Error("YouTube動画の映像と音声をまとめられませんでした。"));
     signal?.addEventListener("abort",abort,{once:true});if(signal?.aborted){abort();return;}
-    try{worker.postMessage({video,audio,durations,maxBytes:MAX_IMAGE_BYTES} satisfies YoutubeMuxRequest);}catch{finish(new Error("YouTube動画の映像と音声をまとめられませんでした。"));}
+    try{worker.postMessage({video,audio,durations,maxBytes:MAX_MEDIA_BYTES} satisfies YoutubeMuxRequest);}catch{finish(new Error("YouTube動画の映像と音声をまとめられませんでした。"));}
   });
 }
 
@@ -65,7 +66,7 @@ async function fetchYoutubeWithinDeadline(source:YoutubeSource,signal:AbortSigna
       if(!evidence.capture)throw new Error(youtubeAuthenticationError);
       const {video,audio}=selectYoutubeFormats(evidence.formats);
       if(!audioOnly&&`${video.height}p${video.fps>30?video.fps:""}`!==source.quality)throw new Error("YouTube動画の画質情報が変わりました。もう一度解析してください。");
-      const session=new YoutubeSabrSession(source.videoId,evidence.capture.url,new Uint8Array(evidence.capture.body),video,audio,MAX_IMAGE_BYTES,audioOnly);
+      const session=new YoutubeSabrSession(source.videoId,evidence.capture.url,new Uint8Array(evidence.capture.body),video,audio,MAX_MEDIA_BYTES,audioOnly);
       const started=performance.now();let lastProgressAt=started,totalTransferred=0;
       for(let request=0;request<2048&&!session.complete;request++){
         checkCancelled(signal);
@@ -75,9 +76,9 @@ async function fetchYoutubeWithinDeadline(source:YoutubeSource,signal:AbortSigna
         const bytes=await fetchResponse(endpoint.href,{method:"POST",body:session.request(Math.round(performance.now()-started)),timeoutMs:Math.min(30000,Math.max(1,120000-(performance.now()-started))),...(signal?{signal}:{})},errors,async response=>{
           const type=response.headers.get("content-type")?.split(";")[0]?.trim();
           if(type!=="application/vnd.yt-ump"&&type!=="application/octet-stream")throw new Error("YouTubeの配信データが不完全または未対応です。");
-          return readImageBytes(response,MAX_IMAGE_BYTES);
+          return readMediaBytes(response);
         });
-        totalTransferred+=bytes.length;if(totalTransferred>MAX_IMAGE_BYTES*3)throw new Error("YouTubeの動画配信が取得を継続できませんでした。");
+        totalTransferred+=bytes.length;if(totalTransferred>MAX_MEDIA_BYTES*3)throw new Error("YouTubeの動画配信が取得を継続できませんでした。");
         session.ingest(bytes);
         const expectedBytes=audioOnly?audio.contentLength:video.contentLength+audio.contentLength;
         const fraction=expectedBytes>0 ? session.receivedBytes/expectedBytes

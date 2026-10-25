@@ -1,8 +1,9 @@
+import {MAX_MEDIA_BYTES} from "../../core/media-limits.js";
 import {validateOriginalMedia} from "./original-media-validation.js";
 import {isStreamRecording, isStreamMp4Content, type StreamRecording} from "../../core/stream-recording.js";
 import {mediaTypeMatchesKind, normalizeMediaMimeType, originalMediaType, type ImageItemMediaKind} from "../../core/media-types.js";
 import { checkCancelled, ImageDataError, invalidImage, MAX_IMAGE_BYTES } from "../contracts/image-data-contract.js";
-import { readImageBytes } from "./image-response-bytes.js";
+import { readImageBytes, readMediaBytes } from "./image-response-bytes.js";
 import {fetchResponse, type ResponseFetchErrors} from "./response-fetch.js";
 
 export const DEFAULT_MEDIA_TIMEOUT_MS = 120_000;
@@ -67,7 +68,7 @@ export async function fetchOriginalMedia(
       throw invalidImage("メディアの形式を確認できませんでした。");
     }
 
-    const bytes = await readImageBytes(response, MAX_IMAGE_BYTES, options.onProgress);
+    const bytes = await (kind === "video" ? readMediaBytes(response, MAX_MEDIA_BYTES, options.onProgress) : readImageBytes(response, MAX_IMAGE_BYTES, options.onProgress));
     checkCancelled(sourceSignal);
     if (!mediaType.matches(bytes)) throw invalidImage("メディアの種類とデータが一致しません。");
     const blob = new Blob([bytes.buffer as ArrayBuffer], {type: normalizedType});

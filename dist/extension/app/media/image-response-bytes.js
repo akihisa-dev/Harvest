@@ -1,3 +1,4 @@
+import { MAX_MEDIA_BYTES } from "../../core/media-limits.js";
 import { IMAGE_TOO_LARGE_MESSAGE, invalidImage, MAX_IMAGE_BYTES } from "../contracts/image-data-contract.js";
 import { cancelResponse } from "./response-fetch.js";
 function contentLength(response) {
@@ -9,10 +10,17 @@ function contentLength(response) {
 }
 /** Read an image response with a hard byte ceiling; the optional limit can only tighten it. */
 export async function readImageBytes(response, requestedLimit = MAX_IMAGE_BYTES, onProgress) {
+    return readBoundedBytes(response, requestedLimit, MAX_IMAGE_BYTES, onProgress);
+}
+/** Read encoded video/audio using its own ceiling, without relaxing image limits. */
+export function readMediaBytes(response, requestedLimit = MAX_MEDIA_BYTES, onProgress) {
+    return readBoundedBytes(response, requestedLimit, MAX_MEDIA_BYTES, onProgress);
+}
+async function readBoundedBytes(response, requestedLimit, ceiling, onProgress) {
     if (!Number.isSafeInteger(requestedLimit) || requestedLimit <= 0) {
         throw new RangeError("requestedLimit must be a positive safe integer.");
     }
-    const limit = Math.min(requestedLimit, MAX_IMAGE_BYTES);
+    const limit = Math.min(requestedLimit, ceiling);
     const declaredLength = contentLength(response);
     if (declaredLength !== undefined && declaredLength > limit) {
         void cancelResponse(response);

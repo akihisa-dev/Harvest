@@ -1,3 +1,4 @@
+import { MAX_MEDIA_BYTES } from "./media-limits.js";
 const malformed = () => new Error("YouTubeの配信データが不完全または未対応です。");
 export function readWire(bytes) {
     if (bytes.length > 65536)
@@ -62,7 +63,7 @@ export function wireText(fields, id) {
 }
 export function joinBytes(parts) {
     const size = parts.reduce((sum, part) => sum + part.length, 0);
-    if (!Number.isSafeInteger(size) || size > 64 * 1024 * 1024)
+    if (!Number.isSafeInteger(size) || size > MAX_MEDIA_BYTES)
         throw malformed();
     const result = new Uint8Array(size);
     let offset = 0;

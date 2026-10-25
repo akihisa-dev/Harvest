@@ -1,8 +1,9 @@
+import { MAX_MEDIA_BYTES } from "../../core/media-limits.js";
 import { validateOriginalMedia } from "./original-media-validation.js";
 import { isStreamRecording, isStreamMp4Content } from "../../core/stream-recording.js";
 import { mediaTypeMatchesKind, normalizeMediaMimeType, originalMediaType } from "../../core/media-types.js";
 import { checkCancelled, ImageDataError, invalidImage, MAX_IMAGE_BYTES } from "../contracts/image-data-contract.js";
-import { readImageBytes } from "./image-response-bytes.js";
+import { readImageBytes, readMediaBytes } from "./image-response-bytes.js";
 import { fetchResponse } from "./response-fetch.js";
 export const DEFAULT_MEDIA_TIMEOUT_MS = 120_000;
 /** Return a safe file extension for a MIME type that this exporter recognizes. */
@@ -53,7 +54,7 @@ export async function fetchOriginalMedia(url, kind = "image", options = {}) {
         if (!mediaType || !mediaTypeMatchesKind(kind, mediaType.kind)) {
             throw invalidImage("メディアの形式を確認できませんでした。");
         }
-        const bytes = await readImageBytes(response, MAX_IMAGE_BYTES, options.onProgress);
+        const bytes = await (kind === "video" ? readMediaBytes(response, MAX_MEDIA_BYTES, options.onProgress) : readImageBytes(response, MAX_IMAGE_BYTES, options.onProgress));
         checkCancelled(sourceSignal);
         if (!mediaType.matches(bytes))
             throw invalidImage("メディアの種類とデータが一致しません。");

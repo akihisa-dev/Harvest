@@ -1,3 +1,4 @@
+import { MAX_MEDIA_BYTES } from "../../core/media-limits.js";
 export function isYoutubeMuxRequest(value) {
     if (!record(value))
         return false;
@@ -5,7 +6,7 @@ export function isYoutubeMuxRequest(value) {
     if (!record(durations) || !(typeof durations["videoMs"] === "number" && Number.isFinite(durations["videoMs"]) && (value["video"] === null ? durations["videoMs"] === 0 : durations["videoMs"] > 0) && typeof durations["audioMs"] === "number" && Number.isFinite(durations["audioMs"]) && durations["audioMs"] > 0))
         return false;
     return (value["video"] === null || value["video"] instanceof Blob && value["video"].size > 0) && value["audio"] instanceof Blob && value["audio"].size > 0
-        && typeof value["maxBytes"] === "number" && Number.isSafeInteger(value["maxBytes"]) && value["maxBytes"] > 0 && value["maxBytes"] <= 64 * 1024 * 1024
+        && typeof value["maxBytes"] === "number" && Number.isSafeInteger(value["maxBytes"]) && value["maxBytes"] > 0 && value["maxBytes"] <= MAX_MEDIA_BYTES
         && (value["video"]?.size ?? 0) + value["audio"].size <= value["maxBytes"];
 }
 export function isConversionProgress(value) {
@@ -71,7 +72,7 @@ export function isAnimationConversionReply(value) {
 export function isAudioConversionRequest(value) {
     return record(value) && value["blob"] instanceof Blob && ["video/mp4", "video/webm"].includes(value["blob"].type)
         && value["blob"].size > 0 && typeof value["maxBytes"] === "number" && Number.isSafeInteger(value["maxBytes"])
-        && value["maxBytes"] > 0 && value["maxBytes"] <= 64 * 1024 * 1024;
+        && value["maxBytes"] > 0 && value["maxBytes"] <= MAX_MEDIA_BYTES;
 }
 export function isAudioConversionReply(value) {
     return record(value) && (failure(value, "blob") || (value["error"] === undefined && value["blob"] instanceof Blob
