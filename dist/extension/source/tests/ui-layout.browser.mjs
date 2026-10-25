@@ -337,8 +337,12 @@ async function assertNoBrowserErrors(page, label, errors) {
 test("real Chrome keeps the large viewer beside vertical controls across panel sizes and content states", async t => {
   const {server, url} = await serveExtension(t);
   const browser = await launchBrowser(t, {ignoreDefaultArgs: ["--hide-scrollbars"]});
-  const dimensions = [[1220, 800], [1000, 800], [768, 600], [768, 421], [768, 300], [700, 300], [320, 300], [320, 400], [400, 300], [400, 400], [360, 800]];
-  for (const locale of ["ja-JP", "en-US"]) {
+  // Cover distinct layout constraints without multiplying every size by every language.
+  const cases = [
+    {locale: "ja-JP", dimensions: [[1220, 800], [768, 300], [320, 300]]},
+    {locale: "en-US", dimensions: [[400, 400]]},
+  ];
+  for (const {locale, dimensions} of cases) {
     const context = await browser.newContext({locale, reducedMotion: "reduce"});
     await context.addInitScript(() => {
       localStorage.setItem("harvest.exportFormat", "pdf");

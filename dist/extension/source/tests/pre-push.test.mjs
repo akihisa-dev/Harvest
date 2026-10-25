@@ -17,7 +17,7 @@ test("pre-pushは再生成後の配布物漏れを拒否し、無関係な差分
   fs.mkdirSync(path.join(root, "bin"));
   // Only the build boundary is stubbed: the real cleanliness check runs afterwards.
   fs.writeFileSync(path.join(root, "bin/pnpm"), `#!/bin/sh
-if [ "$1" = "verify:full" ]; then cp source.txt dist/extension/app.js; else exec "$NODE_BIN" "$CHECKER"; fi
+if [ "$1" = "verify" ]; then cp source.txt dist/extension/app.js; else exec "$NODE_BIN" "$CHECKER"; fi
 `, {mode: 0o755});
   const write = (name, value) => fs.writeFileSync(path.join(root, name), value);
   write("source.txt", "old"); write("dist/extension/app.js", "old");

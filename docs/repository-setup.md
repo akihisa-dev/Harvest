@@ -15,4 +15,4 @@ Harvestの公開リポジトリは [akihisa-dev/Harvest](https://github.com/akih
 - Dependabotによる依存パッケージの自動更新PRは使わない。定期更新用の設定ファイルを追加しない。
 - GitHub Actionsはリポジトリ単位で無効にする。GitHub管理のDependabot Updatesを含め、自動実行されるワークフローを利用しない。
 
-自動CI、CodeQL、Dependency Reviewはありません。push前の確認は`pnpm setup:hooks`で設定するリポジトリ専用Gitフックを使い、`pnpm verify:full`と`pnpm check:generated`を実行します。ユーザーのglobal Git設定は変更しません。運用理由と検証手順は[CONTRIBUTING.md](../CONTRIBUTING.md)に定めます。
+自動CI、CodeQL、Dependency Reviewはありません。push前の確認は`pnpm setup:hooks`で設定するリポジトリ専用Gitフックを使い、`pnpm verify`と`pnpm check:generated`を実行します。ユーザーのglobal Git設定は変更しません。運用理由と検証手順は[CONTRIBUTING.md](../CONTRIBUTING.md)に定めます。

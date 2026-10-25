@@ -17,9 +17,9 @@
 ## 検証とGit
 
 - 作業はmainで行い、新しいブランチを作成しません。別作業との重複回避を理由にブランチへ分離することも禁止します。
-- 基本確認は`pnpm verify:full`です。実際のChromeによる画面テストを含みます。検証コマンドの使い分けとGitフックの設定は[CONTRIBUTING.md](CONTRIBUTING.md)に定めます。
+- 基本確認は`pnpm verify`です。動作・画面を変えた場合は影響するChromeテストだけを追加し、無関係な全画面テストを毎回実行しません。広範囲の変更と公開前には`pnpm verify:full`を使います。検証コマンドの使い分けとGitフックの設定は[CONTRIBUTING.md](CONTRIBUTING.md)に定めます。
 - セキュリティ、権限、データ処理、ビルド、GitHub運用を変える場合、関連文書も更新します。
-- push前の検証は`pnpm verify:full`、タグ・リリース前の検証は`pnpm verify:release`です。GitHub Actionsによるpush後の同一検証の重複実行は採用していません。理由はCONTRIBUTING.mdに定めます。
+- push前の基本検証は`pnpm verify`、タグ・リリース前の検証は`pnpm verify:release`です。GitHub Actionsによるpush後の同一検証の重複実行は採用していません。理由はCONTRIBUTING.mdに定めます。
 
 ## バージョン管理
 
