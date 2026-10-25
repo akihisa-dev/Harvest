@@ -2,11 +2,11 @@ export function isYoutubeMuxRequest(value) {
     if (!record(value))
         return false;
     const durations = value["durations"];
-    if (!record(durations) || ![durations["videoMs"], durations["audioMs"]].every(v => typeof v === "number" && Number.isFinite(v) && v > 0))
+    if (!record(durations) || !(typeof durations["videoMs"] === "number" && Number.isFinite(durations["videoMs"]) && (value["video"] === null ? durations["videoMs"] === 0 : durations["videoMs"] > 0) && typeof durations["audioMs"] === "number" && Number.isFinite(durations["audioMs"]) && durations["audioMs"] > 0))
         return false;
-    return value["video"] instanceof Blob && value["audio"] instanceof Blob && value["video"].size > 0 && value["audio"].size > 0
+    return (value["video"] === null || value["video"] instanceof Blob && value["video"].size > 0) && value["audio"] instanceof Blob && value["audio"].size > 0
         && typeof value["maxBytes"] === "number" && Number.isSafeInteger(value["maxBytes"]) && value["maxBytes"] > 0 && value["maxBytes"] <= 64 * 1024 * 1024
-        && value["video"].size + value["audio"].size <= value["maxBytes"];
+        && (value["video"]?.size ?? 0) + value["audio"].size <= value["maxBytes"];
 }
 export function isConversionProgress(value) {
     return record(value) && typeof value["progress"] === "number" && Number.isFinite(value["progress"])

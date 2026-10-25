@@ -114,3 +114,11 @@ test('結合Workerは中止・不正な応答・時間切れで終了する',asy
   const invalid=prepareYoutubeMp4(video,audio,durations);workers[1].onmessage({data:{blob:new Blob(['not-video'])}});await assert.rejects(invalid,/まとめ/);assert.equal(workers[1].terminated,true);
   t.mock.timers.enable({apis:['setTimeout']});const timed=prepareYoutubeMp4(video,audio,durations);t.mock.timers.tick(120000);await assert.rejects(timed,/タイムアウト/);assert.equal(workers[2].terminated,true);
 });
+
+test('音声のみのMP4は圧縮音声を保持し、不完全な末尾と容量超過を拒否する',async()=>{
+  const audio=await audioFixture();
+  const result=await muxYoutube(null,audio,{videoMs:0,audioMs:300},65536);
+  assert.deepEqual(await packets(result,'audio'),await packets(audio,'audio'));
+  await assert.rejects(muxYoutube(null,audio,{videoMs:0,audioMs:2000},65536),/末尾/);
+  await assert.rejects(muxYoutube(null,audio,{videoMs:0,audioMs:300},10),/容量/);
+});

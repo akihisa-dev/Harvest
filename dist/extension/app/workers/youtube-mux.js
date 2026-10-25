@@ -3,10 +3,10 @@ import { hasCompleteMp4Boxes } from "../../core/original-media-structure.js";
 import { indexMediaRanges } from "../../core/iso-media-ranges.js";
 /** Copy encoded AVC/AAC packets into one MP4, preserving timestamps and avoiding recompression. */
 export async function muxYoutube(video, audio, durations, maxBytes) {
-    if (video.size + audio.size > maxBytes)
+    if ((video?.size ?? 0) + audio.size > maxBytes)
         throw new Error("YouTube動画が保存容量の上限を超えています。");
     const buffers = [];
-    for (const blob of [video, audio]) {
+    for (const blob of video ? [video, audio] : [audio]) {
         const bytes = new Uint8Array(await blob.arrayBuffer());
         if (!hasCompleteMp4Boxes(bytes))
             throw new Error("YouTube動画の分割データが不完全または未対応です。");
@@ -19,20 +19,21 @@ export async function muxYoutube(video, audio, durations, maxBytes) {
     const unsubscribe = target.on("write", ({ end }) => { if (end > maxBytes)
         throw new Error("YouTube動画が保存容量の上限を超えています。"); });
     try {
-        const v = await inputs[0].getPrimaryVideoTrack(), a = await inputs[1].getPrimaryAudioTrack();
-        if (!v || !a || await v.getCodec() !== "avc" || await a.getCodec() !== "aac" || (await inputs[0].getTracks()).length !== 1 || (await inputs[1].getTracks()).length !== 1)
+        const v = video ? await inputs[0].getPrimaryVideoTrack() : null, a = await inputs.at(-1).getPrimaryAudioTrack();
+        if ((video && (!v || await v.getCodec() !== "avc")) || !a || await a.getCodec() !== "aac" || (await Promise.all(inputs.map(input => input.getTracks()))).some(tracks => tracks.length !== 1))
             throw new Error("YouTube動画の映像または音声を確認できませんでした。");
-        const vc = await v.getDecoderConfig(), ac = await a.getDecoderConfig();
-        if (!vc || !ac || !vc.codec.startsWith("avc1") || !ac.codec.startsWith("mp4a"))
+        const vc = v ? await v.getDecoderConfig() : null, ac = await a.getDecoderConfig();
+        if ((video && (!vc || !vc.codec.startsWith("avc1"))) || !ac || !ac.codec.startsWith("mp4a"))
             throw new Error("YouTube動画の映像または音声を確認できませんでした。");
-        output.addVideoTrack(videoSource);
+        if (video)
+            output.addVideoTrack(videoSource);
         output.addAudioTrack(audioSource);
         await output.start();
-        const tracks = [v, a];
+        const tracks = v ? [v, a] : [a];
         for (let index = 0; index < tracks.length; index++) {
             const track = tracks[index], sink = new EncodedPacketSink(track);
             const bytes = buffers[index], containsMedia = indexMediaRanges(bytes);
-            const durationMs = index === 0 ? durations.videoMs : durations.audioMs;
+            const durationMs = video && index === 0 ? durations.videoMs : durations.audioMs;
             let previous, count = 0, end = 0, start = Infinity;
             // Keep only the current declared sample; no playback prefetch queue.
             for (let metadata = await sink.getFirstPacket({ metadataOnly: true }); metadata; metadata = await sink.getNextPacket(metadata, { metadataOnly: true })) {
@@ -42,7 +43,7 @@ export async function muxYoutube(video, audio, durations, maxBytes) {
                 // Check the original input before remuxing can hide an invalid sample offset.
                 if (packet.data.buffer !== bytes.buffer || !containsMedia(packet.data.byteOffset - bytes.byteOffset, packet.data.byteLength))
                     throw new Error("YouTube動画の分割データが不完全または未対応です。");
-                if (index === 0)
+                if (video && index === 0)
                     await videoSource.add(packet, { decoderConfig: vc });
                 else
                     await audioSource.add(packet, { decoderConfig: ac });
@@ -54,7 +55,8 @@ export async function muxYoutube(video, audio, durations, maxBytes) {
             if (!count || Math.abs(start) > 0.1 || Math.abs(end * 1000 - durationMs) > 100 || Math.abs(await track.computeDuration() * 1000 - durationMs) > 100)
                 throw new Error("YouTube動画の末尾まで取得できませんでした。");
         }
-        videoSource.close();
+        if (video)
+            videoSource.close();
         audioSource.close();
         await output.finalize();
         if (!target.buffer?.byteLength || target.buffer.byteLength > maxBytes)
@@ -63,7 +65,8 @@ export async function muxYoutube(video, audio, durations, maxBytes) {
     }
     finally {
         unsubscribe();
-        videoSource.close();
+        if (video)
+            videoSource.close();
         audioSource.close();
         if (output.state !== "finalized")
             await output.cancel().catch(() => { });

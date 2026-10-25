@@ -21,7 +21,7 @@ function delay(ms:number,signal?:AbortSignal):Promise<void>{
     signal?.addEventListener("abort",abort,{once:true});if(signal?.aborted)abort();
   });
 }
-export function prepareYoutubeMp4(video:Blob,audio:Blob,durations:YoutubeTrackDurations,signal?:AbortSignal):Promise<Blob>{
+export function prepareYoutubeMp4(video:Blob|null,audio:Blob,durations:YoutubeTrackDurations,signal?:AbortSignal):Promise<Blob>{
   checkCancelled(signal);
   return new Promise((resolve,reject)=>{
     const worker=new Worker(new URL("../workers/youtube-mux-worker.js",import.meta.url),{type:"module"});
@@ -41,7 +41,7 @@ export function prepareYoutubeMp4(video:Blob,audio:Blob,durations:YoutubeTrackDu
 }
 
 /** One deadline covers authorization, retries, transfer, muxing, and validation. */
-export async function fetchYoutubeVideo(source:YoutubeSource,signal?:AbortSignal,onProgress?:(fraction:number)=>void):Promise<Blob>{
+export async function fetchYoutubeVideo(source:YoutubeSource,signal?:AbortSignal,onProgress?:(fraction:number)=>void,audioOnly=false):Promise<Blob>{
   checkCancelled(signal);
   const controller=new AbortController();
   let reject!:(error:Error)=>void;
@@ -51,12 +51,12 @@ export async function fetchYoutubeVideo(source:YoutubeSource,signal?:AbortSignal
   const timer=setTimeout(()=>{reject(errors.timeout());controller.abort();},120000);
   try{
     if(signal?.aborted)abort();
-    return await Promise.race([fetchYoutubeWithinDeadline(source,controller.signal,onProgress),interrupted]);
+    return await Promise.race([fetchYoutubeWithinDeadline(source,controller.signal,onProgress,audioOnly),interrupted]);
   }finally{clearTimeout(timer);signal?.removeEventListener("abort",abort);}
 }
 
 /** Refresh playback evidence per retry; never reuse partial data across tokens. */
-async function fetchYoutubeWithinDeadline(source:YoutubeSource,signal:AbortSignal,onProgress?:(fraction:number)=>void):Promise<Blob>{
+async function fetchYoutubeWithinDeadline(source:YoutubeSource,signal:AbortSignal,onProgress?:(fraction:number)=>void,audioOnly=false):Promise<Blob>{
   let lastError:unknown;
   for(let attempt=0;attempt<2;attempt++){
     checkCancelled(signal);
@@ -64,8 +64,8 @@ async function fetchYoutubeWithinDeadline(source:YoutubeSource,signal:AbortSigna
       const evidence=await acquireYoutubeEvidence(source.videoId,true,signal);
       if(!evidence.capture)throw new Error(youtubeAuthenticationError);
       const {video,audio}=selectYoutubeFormats(evidence.formats);
-      if(`${video.height}p${video.fps>30?video.fps:""}`!==source.quality)throw new Error("YouTube動画の画質情報が変わりました。もう一度解析してください。");
-      const session=new YoutubeSabrSession(source.videoId,evidence.capture.url,new Uint8Array(evidence.capture.body),video,audio,MAX_IMAGE_BYTES);
+      if(!audioOnly&&`${video.height}p${video.fps>30?video.fps:""}`!==source.quality)throw new Error("YouTube動画の画質情報が変わりました。もう一度解析してください。");
+      const session=new YoutubeSabrSession(source.videoId,evidence.capture.url,new Uint8Array(evidence.capture.body),video,audio,MAX_IMAGE_BYTES,audioOnly);
       const started=performance.now();let lastProgressAt=started,totalTransferred=0;
       for(let request=0;request<2048&&!session.complete;request++){
         checkCancelled(signal);
@@ -79,9 +79,9 @@ async function fetchYoutubeWithinDeadline(source:YoutubeSource,signal:AbortSigna
         });
         totalTransferred+=bytes.length;if(totalTransferred>MAX_IMAGE_BYTES*3)throw new Error("YouTubeの動画配信が取得を継続できませんでした。");
         session.ingest(bytes);
-        const fraction=video.contentLength>0&&audio.contentLength>0
-          ? session.receivedBytes/(video.contentLength+audio.contentLength)
-          : session.progressMs/Math.max(video.durationMs,audio.durationMs);
+        const expectedBytes=audioOnly?audio.contentLength:video.contentLength+audio.contentLength;
+        const fraction=expectedBytes>0 ? session.receivedBytes/expectedBytes
+          : session.progressMs/(audioOnly?audio.durationMs:Math.max(video.durationMs,audio.durationMs));
         onProgress?.(Math.min(.95, .95 * fraction));
         const progressed=session.receivedBytes>before;
         if(progressed)lastProgressAt=performance.now();
@@ -90,8 +90,8 @@ async function fetchYoutubeWithinDeadline(source:YoutubeSource,signal:AbortSigna
         if(!session.complete&&waitMs>0)await delay(waitMs,signal);
       }
       const output=session.output();checkCancelled(signal);
-      const blob=await prepareYoutubeMp4(new Blob([output.video],{type:"video/mp4"}),new Blob([output.audio],{type:"audio/mp4"}),output.durations,signal);
-      await validateOriginalMedia(blob,signal);onProgress?.(1);return blob;
+      const blob=await prepareYoutubeMp4(audioOnly?null:new Blob([output.video],{type:"video/mp4"}),new Blob([output.audio],{type:"audio/mp4"}),output.durations,signal);
+      if(!audioOnly)await validateOriginalMedia(blob,signal);onProgress?.(1);return blob;
     }catch(error){lastError=error;if(signal?.aborted||!(error instanceof Error)||error.message!==youtubeAuthenticationError)throw error;}
   }
   throw lastError;

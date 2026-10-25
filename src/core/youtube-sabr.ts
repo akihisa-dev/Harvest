@@ -12,7 +12,7 @@ interface Track {
 interface PartialSegment {readonly track: Track; readonly sequence: number; readonly init: boolean; readonly start: number; readonly duration: number; readonly expected: number; readonly chunks: Uint8Array[]; bytes: number;}
 const invalid = (): Error => new Error("YouTube動画の分割データが不完全または未対応です。");
 // SABR's enum uses 0 for both tracks; it is not an audio/video bitwise OR.
-const VIDEO_AND_AUDIO = 0;
+const VIDEO_AND_AUDIO = 0, AUDIO_ONLY = 1;
 export const youtubeAuthenticationError = "YouTubeの取得用認証を更新できませんでした。もう一度保存をお試しください。";
 
 function formatId(format: YoutubeFormat): Uint8Array {
@@ -55,7 +55,7 @@ export class YoutubeSabrSession {
   private readonly abr: Uint8Array;
   private readonly context: Uint8Array;
   constructor(readonly videoId: string, url: string, private readonly template: Uint8Array,
-    video: YoutubeFormat,audio: YoutubeFormat,private readonly maxBytes: number) {
+    video: YoutubeFormat,audio: YoutubeFormat,private readonly maxBytes: number, private readonly audioOnly = false) {
     this.endpoint=youtubeStreamingUrl(url);
     const request=readWire(template);
     this.abr=wireBytes(request,1)??new Uint8Array();
@@ -73,8 +73,9 @@ export class YoutubeSabrSession {
       if(!this.activeContexts.has(id))this.unsentContexts.add(id);
     }
     this.tracks=[{format:video,segments:new Map()},{format:audio,segments:new Map()}];
-    if(video.contentLength+audio.contentLength>maxBytes)throw new Error("YouTube動画が保存容量の上限を超えています。");
+    if((audioOnly?audio.contentLength:video.contentLength+audio.contentLength)>maxBytes)throw new Error("YouTube動画が保存容量の上限を超えています。");
   }
+  private get activeTracks(): readonly Track[] {return this.audioOnly?[this.tracks[1]]:this.tracks;}
   get url(): string {return this.endpoint;}
   get backoffMs(): number {return this.waitMs;}
   get downloadedBytes(): number {return this.total;}
@@ -89,31 +90,31 @@ export class YoutubeSabrSession {
     }
     return end;
   }
-  get progressMs(): number {return Math.min(...this.tracks.map(t=>this.covered(t)));}
+  get progressMs(): number {return Math.min(...this.activeTracks.map(t=>this.covered(t)));}
   get complete(): boolean {
-    return this.partials.size===0&&this.tracks.every(t=>t.init&&t.lastSegment!==undefined&&t.lastSegment>0
+    return this.partials.size===0&&this.activeTracks.every(t=>t.init&&t.lastSegment!==undefined&&t.lastSegment>0
       &&t.segments.size===t.lastSegment&&t.endMs!==undefined&&Math.abs(this.covered(t)-t.endMs)<=100);
   }
   request(elapsedMs: number): Uint8Array<ArrayBuffer> {
     const progress=this.progressMs;
     const changes=new Map<number,readonly Uint8Array[]>([
       [21,[encodeNumber(21,this.tracks[0].format.height)]],[28,[encodeNumber(28,Math.round(progress))]],
-      [29,[encodeNumber(29,elapsedMs)]],[36,[encodeNumber(36,elapsedMs)]],[39,[encodeNumber(39,elapsedMs)]],[40,[encodeNumber(40,VIDEO_AND_AUDIO)]],
+      [29,[encodeNumber(29,elapsedMs)]],[36,[encodeNumber(36,elapsedMs)]],[39,[encodeNumber(39,elapsedMs)]],[40,[encodeNumber(40,this.audioOnly?AUDIO_ONLY:VIDEO_AND_AUDIO)]],
     ]);
     const contextChanges=new Map<number,readonly Uint8Array[]>([
       [3,this.cookie?[encodeBytes(3,this.cookie)]:[]],
       [5,[...this.contexts].filter(([id])=>this.activeContexts.has(id)).map(([id,data])=>encodeBytes(5,this.initialContexts.get(id)??joinBytes([encodeNumber(1,id),encodeBytes(2,data)])))],
       [6,[...new Set([...this.unsentContexts,...[...this.contexts.keys()].filter(id=>!this.activeContexts.has(id))])].filter(id=>!this.activeContexts.has(id)).map(id=>encodeNumber(6,id))],
     ]);
-    const ranges=this.tracks.filter(t=>t.init&&this.contiguousCount(t)>0).map(t=>encodeBytes(3,joinBytes([
+    const ranges=this.activeTracks.filter(t=>t.init&&this.contiguousCount(t)>0).map(t=>encodeBytes(3,joinBytes([
       encodeBytes(1,formatId(t.format)),encodeNumber(2,0),encodeNumber(3,Math.round(this.covered(t))),
       encodeNumber(4,1),encodeNumber(5,this.contiguousCount(t)),
     ])));
     return replaceWire(this.template,new Map([
       [1,[encodeBytes(1,replaceWire(this.abr,changes))]],
-      [2,this.tracks.filter(t=>t.init).map(t=>encodeBytes(2,formatId(t.format)))],
+      [2,this.activeTracks.filter(t=>t.init).map(t=>encodeBytes(2,formatId(t.format)))],
       [3,ranges],[4,[]],[6,[]],
-      [16,[encodeBytes(16,formatId(this.tracks[1].format))]],[17,[encodeBytes(17,formatId(this.tracks[0].format))]],
+      [16,[encodeBytes(16,formatId(this.tracks[1].format))]],[17,this.audioOnly?[]:[encodeBytes(17,formatId(this.tracks[0].format))]],
       [18,[]],[19,[encodeBytes(19,replaceWire(this.context,contextChanges))]],[21,[]],[24,[]],[25,[]],[1000,[]],
     ]));
   }
@@ -149,7 +150,7 @@ export class YoutubeSabrSession {
   private initialize(fields: WireField[]): void {
     if(wireText(fields,1)!==this.videoId)throw invalid();
     const id=wireBytes(fields,2);if(!id)throw invalid();
-    const track=this.tracks.find(t=>sameFormat(id,t.format));if(!track)return;
+    const track=this.tracks.find(t=>sameFormat(id,t.format));if(!track||(this.audioOnly&&track===this.tracks[0]))return;
     const last=wireNumber(fields,4),timescale=wireNumber(fields,10),ticks=wireNumber(fields,9);
     const end=timescale&&ticks?ticks*1000/timescale:wireNumber(fields,3);
     if(last<=0||last>50000||!Number.isFinite(end)||end<=0||Math.abs(end-track.format.durationMs)>1500)throw invalid();
@@ -161,7 +162,7 @@ export class YoutubeSabrSession {
     const id=wireNumber(fields,1);if(id>255||this.partials.has(id))throw invalid();
     const format=wireBytes(fields,13)??joinBytes([encodeNumber(1,wireNumber(fields,3)),encodeNumber(2,wireNumber(fields,4)),encodeText(3,wireText(fields,5))]);
     const track=this.tracks.find(t=>sameFormat(format,t.format));
-    if(!track)throw new Error("YouTubeが指定した画質とは異なる動画を返しました。");
+    if(!track||(this.audioOnly&&track===this.tracks[0]))throw new Error("YouTubeが指定した画質とは異なる動画を返しました。");
     const init=Boolean(wireNumber(fields,8)),sequence=wireNumber(fields,9),expected=wireNumber(fields,14);
     let start=wireNumber(fields,11),duration=wireNumber(fields,12);
     const time=wireBytes(fields,15);
@@ -192,7 +193,7 @@ export class YoutubeSabrSession {
   }
   output(): {video: Uint8Array<ArrayBuffer>;audio: Uint8Array<ArrayBuffer>;durations: YoutubeTrackDurations} {
     if(!this.complete)throw invalid();
-    const result=this.tracks.map(t=>joinBytes([t.init!,...[...t.segments.values()].sort((a,b)=>a.sequence-b.sequence).map(s=>s.data)]));
-    return {video:result[0]!,audio:result[1]!,durations:{videoMs:this.tracks[0].endMs!,audioMs:this.tracks[1].endMs!}};
+    const result=this.tracks.map(t=>t.init?joinBytes([t.init,...[...t.segments.values()].sort((a,b)=>a.sequence-b.sequence).map(s=>s.data)]):new Uint8Array());
+    return {video:result[0]!,audio:result[1]!,durations:{videoMs:this.audioOnly?0:this.tracks[0].endMs!,audioMs:this.tracks[1].endMs!}};
   }
 }

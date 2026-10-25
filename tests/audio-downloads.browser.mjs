@@ -22,17 +22,17 @@ test('音声MP3を個別/混在保存し、MP3再生・WebM変換・無音拒否
   assert.match(page.url(), /^chrome-extension:/);
   assert.ok(await page.title());
   const fixturePage = await mediaFixturePage(t, page);
-  const make = (webm, silent = false) => fixturePage.evaluate(async ({webm, silent}) => {
+  const make = (webm, silent = false, audioOnly = false) => fixturePage.evaluate(async ({webm, silent, audioOnly}) => {
     const {Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, CanvasSource, AudioBufferSource} = await import('/mediabunny.js');
     const canvas = new OffscreenCanvas(32, 24), target = new BufferTarget();
     canvas.getContext("2d").fillRect(0, 0, 32, 24);
     const output = new Output({format: webm ? new WebMOutputFormat() : new Mp4OutputFormat(), target});
     const video = new CanvasSource(canvas, {codec: webm ? 'vp8' : 'avc', bitrate: 100000});
-    output.addVideoTrack(video, {frameRate: 10});
+    if (!audioOnly) output.addVideoTrack(video, {frameRate: 10});
     const audio = silent ? null : new AudioBufferSource({codec: webm ? 'opus' : 'aac', bitrate: 64000});
     if (audio) output.addAudioTrack(audio);
     await output.start();
-    await Promise.all([(async () => {for (let i = 0; i < 4; i++) await video.add(i / 10, .1); video.close();})(), (async () => {
+    await Promise.all([(async () => {if (audioOnly) return; for (let i = 0; i < 4; i++) await video.add(i / 10, .1); video.close();})(), (async () => {
       if (!audio) return;
       const buffer = new AudioBuffer({length: 19200, numberOfChannels: 1, sampleRate: 48000});
       const values = buffer.getChannelData(0);
@@ -40,7 +40,7 @@ test('音声MP3を個別/混在保存し、MP3再生・WebM変換・無音拒否
       await audio.add(buffer); audio.close();
     })()]);
     await output.finalize(); return [...new Uint8Array(target.buffer)];
-  }, {webm, silent});
+  }, {webm, silent, audioOnly});
   const inspect = bytes => fixturePage.evaluate(async bytes => {
     const {Input, BlobSource, ALL_FORMATS, EncodedPacketSink, AudioSampleSink} = await import('/mediabunny.js');
     const input = new Input({formats: ALL_FORMATS, source: new BlobSource(new Blob([new Uint8Array(bytes)]))});
@@ -79,6 +79,16 @@ test('音声MP3を個別/混在保存し、MP3再生・WebM変換・無音拒否
   const source = await inspect(mp4), result = await inspect(output.bytes);
   assert.equal(result.video, false); assert.equal(result.codec, 'mp3');
   assert.ok(result.rms > .05); assert.ok(Math.abs(result.duration - source.duration) < .06);
+  const audioOnlyInput = await make(false, false, true);
+  const converted = await page.evaluate(async bytes => {
+    const {prepareYoutubeMp4} = await import(chrome.runtime.getURL('app/media/youtube-fetch.js'));
+    const {prepareAudio} = await import(chrome.runtime.getURL('app/media/audio-conversion.js'));
+    const intermediate = await prepareYoutubeMp4(null, new Blob([new Uint8Array(bytes)], {type:'audio/mp4'}), {videoMs:0,audioMs:400});
+    return [...new Uint8Array(await (await prepareAudio(intermediate)).arrayBuffer())];
+  }, audioOnlyInput);
+  const audioOnlySource = await inspect(audioOnlyInput), audioOnlyResult = await inspect(converted);
+  assert.equal(audioOnlyResult.codec, 'mp3');assert.equal(audioOnlyResult.video, false);
+  assert.ok(audioOnlyResult.rms > .05);assert.ok(Math.abs(audioOnlyResult.duration - audioOnlySource.duration) < .06);
   await scan(['/movie.mp4', '/second.webm'], 'batch');
   const before = await count(); await page.locator('#export').click();
   await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'success');

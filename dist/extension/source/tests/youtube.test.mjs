@@ -132,3 +132,21 @@ test('初回要求で取得済みcookie・送信済み状態・未送信状態�
   s.ingest(part(59,join([b(2,new Uint8Array([9])),b(3,new Uint8Array([33]))])));
   assert.equal(wireBytes(state(),5),undefined);assert.deepEqual(state().filter(f=>f.id===6).map(f=>Number(f.value)),[44,45,9]);
 });
+
+test('MP3用取得は大きな映像を要求せず、音声の末尾・容量・再試行状態を検査する',()=>{
+  const huge={...video,contentLength:108*1024*1024};
+  assert.throws(()=>new YoutubeSabrSession(videoId,url,template,huge,audio,1024),/容量/);
+  const s=new YoutubeSabrSession(videoId,url,template,huge,audio,1024,true);
+  s.ingest(initialization(audio));s.ingest(segment(audio,1,0));s.ingest(segment(audio,1,1));
+  assert.equal(s.complete,false);assert.throws(()=>s.output(),/不完全/);
+  const request=readWire(s.request(1));
+  assert.equal(wireNumber(readWire(wireBytes(request,1)),40),1);
+  assert.equal(wireBytes(request,17),undefined);
+  assert.equal(wireNumber(readWire(wireBytes(readWire(wireBytes(request,3)),1)),1),audio.itag);
+  s.ingest(segment(audio,1,2));assert.equal(s.complete,true);assert.equal(s.progressMs,2000);
+  assert.equal(s.output().video.length,0);assert.equal(s.output().audio.length,6);
+  assert.throws(()=>new YoutubeSabrSession(videoId,url,template,huge,{...audio,contentLength:1025},1024,true),/容量/);
+  const bounded=new YoutubeSabrSession(videoId,url,template,huge,{...audio,contentLength:0},128,true);
+  bounded.ingest(initialization(audio));bounded.ingest(segment(audio,1,0));bounded.ingest(segment(audio,1,1,new Uint8Array(100)));
+  assert.throws(()=>bounded.ingest(segment(audio,1,2,new Uint8Array(100))),/容量/);
+});
