@@ -23,6 +23,7 @@
 
 ## バージョン管理
 
-- Harvestは1.0.0を正式版の起点とし、`MAJOR.MINOR.PATCH`の3つの数値で管理します。versionの正本はrootの`package.json`です。
+- Harvestのversionは`MAJOR.MINOR.PATCH`の3つの数値で管理し、正本はrootの`package.json`です。特定の版への移行を理由に、それ以前のコミットを採番から除外したり、累積した番号をリセットしたりしません。
+- 全履歴の再計算では、初回コミットから現在までを古い順に確認し、各コミットの変更内容と互換性から区分を判断して順次加算します。互換性のない公開機能・保存形式・設定の変更はMAJOR、互換性を保つ機能追加はMINOR、不具合修正・文書・テスト・ビルド・保守変更はPATCHとし、MAJORでは下位2桁、MINORではPATCHを0に戻します。番号更新だけの専用コミットは確認記録に含め、変更を二重に加算しません。
 - バージョン更新時は`package.json`、編集用の`manifest.template.json`、生成済み`dist/extension/manifest.json`の同じversionを専用コミットへ含めます。ソースや同梱文書の変更で生成物が変わる場合は、buildで`dist/extension/`を更新して同じcommitに含めます。
 - stage済みのversion一致と、番号更新時の同一commitへの登録は`pnpm version:check-staged`で確認します。更新候補は`pnpm version:next -- patch minor patch`などで表示できます。
