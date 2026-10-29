@@ -3,9 +3,12 @@ import test from 'node:test';
 import {createHash} from 'node:crypto';
 import {streamSite} from './support/stream-site.mjs';
 import {readCompletedDownload} from './support/animation-panel.mjs';
+import {mp4Bytes} from './media-fixtures.mjs';
 
-for (const [kind, current] of [['stream', false], ['library', false], ['library', true], ['embed', false], ['iframe', false]]) test(`実ページ読み取りとCookie認証から65 MiB録画の保存までを置換なしで検証: ${kind}, current=${current}`, {timeout: 60000}, async t => {
-  const fixture = await streamSite(t), {panel, requests, recording} = fixture;
+for (const [kind, current] of [['stream', false], ['library', false], ['library', true], ['embed', false], ['iframe', false]]) {
+ const largeRecording = kind === 'stream' || (kind === 'library' && !current);
+ test(`実ページ読み取りとCookie認証から${largeRecording ? '65 MiB' : '小容量'}録画の保存までを置換なしで検証: ${kind}, current=${current}`, {timeout: 60000}, async t => {
+  const fixture = await streamSite(t, largeRecording ? {} : {recording: mp4Bytes}), {panel, requests, recording} = fixture;
   const row = await fixture.scan(kind, current);
   if (!/meeting\.mp4|recording\.mp4/.test(row)) t.diagnostic(JSON.stringify({kind, row, status: await panel.locator('#status').innerText(), requests, networkErrors: fixture.networkErrors}));
   assert.match(row, /meeting\.mp4|recording\.mp4/, 'サムネイル画像だけでは成功にしない');
@@ -24,9 +27,12 @@ for (const [kind, current] of [['stream', false], ['library', false], ['library'
   assert.equal(downloads.filter(request => request.method === 'GET').length, 1);
   assert.ok(downloads.every(request => request.authenticated));
 });
+}
 
-for (const [headStatus, ignoreRange] of [[405, false], [501, false], [405, true]]) test(`HEAD非対応でも実Chromeで65 MiB録画を最後まで保存する: ${headStatus}, ignoreRange=${ignoreRange}`, {timeout: 60000}, async t => {
-  const fixture = await streamSite(t, {headStatus, ignoreRange}), {panel, requests, recording} = fixture;
+for (const [headStatus, ignoreRange] of [[405, false], [501, false], [405, true]]) {
+ const largeRecording = headStatus === 405;
+ test(`HEAD非対応でも実Chromeで${largeRecording ? '65 MiB' : '小容量'}録画を最後まで保存する: ${headStatus}, ignoreRange=${ignoreRange}`, {timeout: 60000}, async t => {
+  const fixture = await streamSite(t, {headStatus, ignoreRange, ...(largeRecording ? {} : {recording: mp4Bytes})}), {panel, requests, recording} = fixture;
   assert.match(await fixture.scan('stream'), /meeting\.mp4/);
   await panel.locator('#video-export-format-mp4').check();await panel.locator('#export').click();
   await panel.waitForFunction(() => document.querySelector('#status').dataset.state === 'success');
@@ -40,6 +46,7 @@ for (const [headStatus, ignoreRange] of [[405, false], [501, false], [405, true]
   assert.equal(downloads.filter(request => request.method === 'GET' && request.range !== 'bytes=0-0').length, 1);
   assert.ok(downloads.every(request => request.authenticated));
 });
+}
 
 for (const permission of ['denied', 'expired']) test(`仮想Streamの${permission}は実通信で録画保存を拒否する`, {timeout: 60000}, async t => {
   const fixture = await streamSite(t), {panel, requests} = fixture;
@@ -56,7 +63,6 @@ for (const permission of ['denied', 'expired']) test(`仮想Streamの${permissio
 });
 
 for (const filename of ['進捗 50%.mp4', '進捗%20確認.mp4', 'folder%2Fmeeting.mp4', '確認%25.mp4']) test(`仮想SharePointの原本を名前の%を変えず実Chromeで取得する: ${filename}`, {timeout: 60000}, async t => {
-  const {mp4Bytes} = await import('./media-fixtures.mjs');
   const fixture = await streamSite(t, {filename, recording: mp4Bytes});
   const {panel, requests} = fixture;
   assert.ok((await fixture.scan('stream')).includes(filename));

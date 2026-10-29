@@ -81,6 +81,8 @@ GitHub Actionsを導入していないのは意図的な開発方針です。検
 
 Streamの保存確認は例外として、`tests/support/stream-site.mjs`の仮想HTTPSサイトでChromeのページ読み取り・fetch・downloadsを置き換えずに行います。Cookieによる仮想ログイン、blob再生、Stream／SharePoint一覧型のページ、権限拒否、認証切れを再現し、65 MiBの全体保存・SHA-256一致・保存動画の末尾までの再生を確認します。`tests/support/stream-tls.mjs`は公開されたテスト専用の鍵・証明書で、実サービスの認証情報ではありません。テストChromeだけに証明書の公開鍵指紋と仮想ホストのloopback宛て解決、当該サーバーのポートだけを公開サイトとみなす設定を渡します。普段のChromeやOSの証明書設定、製品のネットワーク制限は変更せず、外部ネットワークにも接続しません。
 
+65 MiBの保存は、StreamとSharePoint一覧へのURL入力、HEAD 405後の範囲GETが206を返す場合と範囲指定を無視して200を返す場合の4ケースで確認します。現在の一覧タブ・埋め込み・iframe・HEAD 501は小さい有効MP4を使い、全ケースで認証、保存完了、全内容の一致、末尾再生と通信回数の確認を維持します。
+
 画面テストのブラウザー、一時プロファイル、ローカルサーバーは [tests/support/browser.mjs](tests/support/browser.mjs) の関数へテストのコンテキスト `t` を渡して作成します。[resources.mjs](tests/support/resources.mjs) が取得の逆順で解放するため、準備途中の失敗でも後片付けが実行され、解放の一つが失敗しても残りを処理します。テストごとの画面操作と期待値は各テストに置きます。
 
 配布物をHTTPで読み込むテストは [extension-files.mjs](tests/support/extension-files.mjs) で配布フォルダー内のファイルを配信します。`pnpm test` と `pnpm test:ui` はビルド済みの内容を検証するため、ソースを変更した後は先に `pnpm build` を実行します。`pnpm verify:full` はこの順序を含めて実行します。
