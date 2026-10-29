@@ -27,6 +27,8 @@ Git hookは`pre-commit`でstage済み差分の空白エラーと3つのversion�
 
 ## ビルド処理の構成
 
+`pnpm verify`の型検査はビルド中のTypeScriptコンパイルが担当し、型エラーがあれば後続の検証へ進まず停止します。同じソースを直後に再検査せず、配布物を生成せずに型だけ確認する場合は`pnpm typecheck`を使います。core/Workerの別の型環境や依存方向は、引き続き`pnpm check:architecture`で検査します。
+
 Node/pnpmの版確認は`scripts/lib/runtime.mjs`で共用します。`check-runtime.mjs`は開発用としてGitフック設定も必須にします。`package:extension`は版確認だけを行い、Git管理外へ取り出した配布ソースからもZIPを再作成できます。開発リポジトリの`verify`・push前検証のフック確認は変わりません。同梱ソースの回帰テストでは実際にZIPを作り、展開後の全ファイルも照合します。
 
 `src/extension/`は実行場所と責務ごとのサブディレクトリを持ち、配布物の`app/`にも同じ階層を保ちます。パネルとバックグラウンドの入口は従来どおり`app/index.js`と`background.js`です。同梱ライブラリは`app/vendor/`へ配置し、コーデックからの参照をビルド時に解決します。`check:build`はimportだけでなく`new URL(..., import.meta.url)`によるWorker等の参照先も確認します。

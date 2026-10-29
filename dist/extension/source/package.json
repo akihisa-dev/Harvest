@@ -23,7 +23,7 @@
     "check:build": "node scripts/check-build.mjs",
     "check:generated": "node scripts/check-generated.mjs",
     "check:release": "node scripts/check-release.mjs",
-    "verify": "pnpm check:runtime && pnpm build && pnpm typecheck && pnpm check:architecture && pnpm test && pnpm check:manifest && pnpm check:build && pnpm check:version",
+    "verify": "pnpm check:runtime && pnpm build && pnpm check:architecture && pnpm test && pnpm check:manifest && pnpm check:build && pnpm check:version",
     "verify:full": "pnpm verify && pnpm test:ui",
     "verify:ci": "pnpm verify:full && pnpm check:generated",
     "verify:release": "pnpm verify:full && pnpm check:release",
